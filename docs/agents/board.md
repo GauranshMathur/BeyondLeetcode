@@ -6,7 +6,7 @@ One orchestrator session runs the board with `/orchestrate` and dispatches worke
 
 ## State lives on GitHub
 
-Work can stop at any moment and resume from any machine or a cloud session, so nothing that matters stays local:
+Work can stop at any moment and resume from any machine with a local clone, so nothing that matters stays local:
 
 - **Progress** is the board (Status, Sprint, Owner) plus, for code, the card's draft PR. The maintainer reads both from anywhere.
 - **Work in progress** is pushed: a code card's branch is pushed and its draft PR opened on the first commit, and every commit after that is pushed. A design card publishes to the canvas after each card. A worktree is a disposable local copy of the branch, never the only copy.
@@ -76,10 +76,10 @@ A worker moves its own card to Done once the card's type bar is met. Owner stays
 - New artboards (file, width, height, page) are reported to the orchestrator, who updates `canvas.json` and the STATUS sticky.
 
 **Code card**
-1. **Branch.** If the branch `<code>-<slug>` already exists on origin, you are resuming: check it out and read its draft PR checklist. Otherwise create it: `git worktree add ../BeyondLeetcode.worktrees/<code> -b <code>-<slug> origin/main` (see `superpowers:using-git-worktrees`; in a cloud session, a plain branch in the session's checkout is fine).
+1. **Branch.** If the branch `<code>-<slug>` already exists on origin, you are resuming: check it out and read its draft PR checklist. Otherwise create it: `git worktree add ../BeyondLeetcode.worktrees/<code> -b <code>-<slug> origin/main` (see `superpowers:using-git-worktrees`).
 2. **Draft PR.** On the first commit, push and open `gh pr create --draft` with the card code in the title (`feat(beyondleetcode): P8 run/submit states`) and a checklist of the steps left. Push every commit after that and tick the checklist as you go.
 3. Build test-first with `mattpocock-skills:tdd`.
-4. Review the diff with `mattpocock-skills:code-review` and `codex-headless:advise`; fix what they find or record why not in the PR body. Where the Codex CLI is not installed (cloud sessions), `advise` runs its Fable half only; say so in the PR.
+4. Review the diff with `mattpocock-skills:code-review` and `codex-headless:advise`; fix what they find or record why not in the PR body. Where the Codex CLI is not installed, `advise` runs its Fable half only; say so in the PR.
 5. Mark the PR ready, wait for CI green (`gh pr checks --watch`), squash-merge, remove the worktree (`superpowers:finishing-a-development-branch`), then move the card to Done.
 
 A card touching the code runner or its container flags also gets a `sandbox-security-reviewer` pass before merge.

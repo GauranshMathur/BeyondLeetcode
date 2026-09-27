@@ -14,7 +14,7 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 - `/orchestrate` skill; `card-designer`, `card-builder`, `sandbox-security-reviewer` agents.
 - `.claude/settings.json`: board and git allowlist, secret-file edit block. Svelte MCP in `.mcp.json`.
 - Board: Owner and Sprint fields; `architecture` label.
-- Machine-independent: all state on GitHub and the canvas; project settings install the plugins the workflow uses, so `/orchestrate` resumes the same from any clone or a cloud session.
+- Machine-independent: all state on GitHub and the canvas; project settings install the plugins the workflow uses, so `/orchestrate` resumes the same from any local clone. Cloud sessions are not supported (no plugins, no `gh project`).
 
 **Exit:** all of the above committed on `main`.
 
