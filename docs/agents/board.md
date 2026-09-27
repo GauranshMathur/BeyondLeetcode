@@ -1,48 +1,97 @@
 # Board: planned work
 
-Planned work lives as **cards** on the GitHub Project board **BeyondLeetcode UI — MVP1**: https://github.com/users/GauranshMathur/projects/1
+Planned work lives as **cards** on the GitHub Project board https://github.com/users/GauranshMathur/projects/1. Cards are draft items on the board, never repo issues. GitHub Issues stay for incoming requests (content, bugs) and for `architecture` findings; see `issue-tracker.md`.
 
-Cards are draft items on the board, never repo issues. GitHub Issues stay for incoming requests (content enhancements, bugs); see `issue-tracker.md`.
+One orchestrator session runs the board with `/orchestrate` and dispatches workers (`card-designer`, `card-builder`). Workers never dispatch other agents.
 
-A card title reads `[CODE] Area: what`. The code prefix names the canvas page: `F` Foundations, `P` Practice, `R` Reading, `A` Auth, `AD` Admin, `AC` Account, `S` System.
+## State lives on GitHub
 
-## Board IDs
+Work can stop at any moment and resume from any machine or a cloud session, so nothing that matters stays local:
 
-| What | Value |
-|---|---|
-| Project number / owner | `1` / `GauranshMathur` |
-| Project ID | `PVT_kwHOAm0pms4Bk1LB` |
-| Status field ID | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` |
-| Todo / In Progress / Done | `f75ad846` / `47fc9ee4` / `98236657` |
+- **Progress** is the board (Status, Sprint, Owner) plus, for code, the card's draft PR. The maintainer reads both from anywhere.
+- **Work in progress** is pushed: a code card's branch is pushed and its draft PR opened on the first commit, and every commit after that is pushed. A design card publishes to the canvas after each card. A worktree is a disposable local copy of the branch, never the only copy.
+- **Plans** are written where the next session will look: the card body (`Blocked:` lines) and the PR description's checklist. Session memory is lost on stop.
+- **The maintainer steers from the board.** Moving a card between columns or sprints, editing its body, or clearing its Owner takes effect on the next round; the orchestrator re-reads the board every round and caches nothing.
+- **One orchestrator at a time.** Any In Progress card whose worker is not running belongs to the next orchestrator to resume.
+
+## Cards
+
+A title reads `[CODE] Area: what`. The prefix names the canvas page (`F`, `P`, `R`, `A`, `AD`, `AC`, `S`; see `design-canvas.md`). Code cards use `C`.
+
+A body has three parts:
+
+```
+<what to change, 1–3 lines>
+Files: <the files this card edits>
+Done when: <one observable line>
+```
+
+**Size.** A card is one artboard or one state, one lane, one `Done when` line. A card that needs two is split: remove the parent and create children with suffixed codes (`P8` → `P8a`, `P8b`), each with its own `Done when`. Only the orchestrator splits.
+
+## Fields
+
+| Field | ID | Values |
+|---|---|---|
+| Status | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` | Todo `f75ad846` · In Progress `47fc9ee4` · Done `98236657` |
+| Sprint | `PVTSSF_lAHOAm0pms4Bk1LBzhjlFwI` | 0 `3ad2db80` · 1 `ec5cba1c` · 2 `9bd8950b` · 3 `bc546063` · 4 `42ff5017` · 5 `420a1181` |
+| Owner | `PVTF_lAHOAm0pms4Bk1LBzhjlEXM` | text: the worker name holding the card |
+
+Project ID `PVT_kwHOAm0pms4Bk1LB`, number `1`, owner `GauranshMathur`. What each sprint is for: `docs/sprints.md`.
 
 ```bash
-# Todo cards
+# Todo cards in a sprint, with owner
 gh project item-list 1 --owner GauranshMathur --limit 200 --format json \
-  --jq '.items[] | select(.status=="Todo") | {id, title, body: .content.body}'
+  --jq '.items[] | select(.status=="Todo" and .sprint=="Sprint 1 · Design foundations") | {id, title, owner, body: .content.body}'
 
-# Move a card (swap in the option ID for the target column)
+# Set a single-select field (Status or Sprint)
 gh project item-edit --project-id PVT_kwHOAm0pms4Bk1LB --id <item-id> \
-  --field-id PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw --single-select-option-id <option-id>
+  --field-id <field-id> --single-select-option-id <option-id>
 
-# New card: create it, then move it to Todo
+# Set Owner (claim) / clear it (release)
+gh project item-edit --project-id PVT_kwHOAm0pms4Bk1LB --id <item-id> \
+  --field-id PVTF_lAHOAm0pms4Bk1LBzhjlEXM --text "<worker>"
+gh project item-edit --project-id PVT_kwHOAm0pms4Bk1LB --id <item-id> \
+  --field-id PVTF_lAHOAm0pms4Bk1LBzhjlEXM --clear
+
+# New card (then set Status Todo and its Sprint)
 gh project item-create 1 --owner GauranshMathur --title "[CODE] Area: what" --body "..."
 ```
 
-## Working cards
+## Claim
 
-You are the orchestrator; subagents do the cards.
+**Owner is the lock.** A card with an Owner belongs to that worker; nobody else touches it. The orchestrator claims before dispatch: set Owner, then Status In Progress. Re-read the card after writing; if another Owner landed first, drop it and pick again.
 
-1. **Pick.** Choose cards from Todo and sort them into **lanes**: cards that edit the same file share a lane and run in order; different files mean different lanes. `F` cards all edit Foundations, so they form one lane, and they run in an earlier round than any card that uses the patterns they add. Done when every picked card sits in exactly one lane.
-2. **Claim.** Move every picked card to In Progress. Done when the board shows each one In Progress.
-3. **Dispatch.** One subagent per lane, every lane in a single message so they run in parallel. Each brief carries the card title and body, the files the lane owns, and the lane rules below. Done when every lane has reported back.
-4. **Integrate.** Only you edit `project/canvas.json`: re-read it from the canvas, add entries for any new artboards the lanes created, rewrite each touched page's STATUS sticky, publish. Done when every new artboard appears on its page and each STATUS sticky lists only cards still open.
-5. **Close.** Move each finished card to Done. A card a lane could not finish stays In Progress, and you tell the user what blocked it. Done when the board matches the canvas.
+## Lanes
 
-## Lane rules (design cards)
+Cards that edit the same file share a **lane** and run in order; cards on different files run in parallel lanes, as many as there are. All `F` cards edit Foundations, so they form one lane and finish before any card that uses what they add.
 
-- Canvas: https://claude.ai/artifact/WRJr84ccDYXAd3Yg1Xvp1d. Read each file you will change from the canvas before editing it.
-- Edit only the `.dc.html` files your lane owns. Leave `canvas.json` to the orchestrator; report any new artboard's file name, width and height instead.
-- A pattern the Foundations page lacks goes to the orchestrator as a new `F` card rather than being invented on a board.
-- Every artboard works in light and dark: colors come from the file's `tokens()` function, and a new artboard ships with its `-dark` wrapper file.
-- Content stays placeholder, in `[brackets]`.
-- Publish only the files you changed. If a publish is refused because someone saved meanwhile, re-read those files and redo the edit once.
+## Done when
+
+A worker moves its own card to Done once the card's type bar is met. Owner stays set, as the record of who did it.
+
+**Design card**
+- The `Done when` line holds on the canvas.
+- Light and dark both render from `tokens()`; a new artboard ships with its `-dark` wrapper.
+- Only Foundations patterns are used.
+- New artboards (file, width, height, page) are reported to the orchestrator, who updates `canvas.json` and the STATUS sticky.
+
+**Code card**
+1. **Branch.** If the branch `<code>-<slug>` already exists on origin, you are resuming: check it out and read its draft PR checklist. Otherwise create it: `git worktree add ../BeyondLeetcode.worktrees/<code> -b <code>-<slug> origin/main` (see `superpowers:using-git-worktrees`; in a cloud session, a plain branch in the session's checkout is fine).
+2. **Draft PR.** On the first commit, push and open `gh pr create --draft` with the card code in the title (`feat(beyondleetcode): P8 run/submit states`) and a checklist of the steps left. Push every commit after that and tick the checklist as you go.
+3. Build test-first with `mattpocock-skills:tdd`.
+4. Review the diff with `mattpocock-skills:code-review` and `codex-headless:advise`; fix what they find or record why not in the PR body. Where the Codex CLI is not installed (cloud sessions), `advise` runs its Fable half only; say so in the PR.
+5. Mark the PR ready, wait for CI green (`gh pr checks --watch`), squash-merge, remove the worktree (`superpowers:finishing-a-development-branch`), then move the card to Done.
+
+A card touching the code runner or its container flags also gets a `sandbox-security-reviewer` pass before merge.
+
+## Blocked
+
+When a worker cannot finish (a decision nobody has made, a missing Foundations pattern, a second publish conflict):
+
+1. Append `Blocked: <the question, one line>` to the card body.
+2. Leave it In Progress with its Owner.
+3. Report the question to the orchestrator, who asks the maintainer. Guessing a product decision is never the way through.
+
+## After a major feature
+
+When a sprint's feature lands, the orchestrator runs `mattpocock-skills:improve-codebase-architecture`. Each finding worth doing becomes a GitHub issue labelled `architecture` + `needs-triage`, linking the files involved.
