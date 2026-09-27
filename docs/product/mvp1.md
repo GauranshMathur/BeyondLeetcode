@@ -7,20 +7,24 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 **Shape.** A topic map of DSA topics. Each topic holds several chapters; each chapter is a reading about a real system and the data structure decision it made, followed by that chapter's problems, solved in the browser.
 
 **Progress.**
-- Topics hard-lock in order, NeetCode-style. A topic is done when every chapter is read and every *core* problem is solved; *extra* problems are optional.
-- Inside an unlocked topic nothing locks: any chapter or problem can be opened in any order.
+- Topics unlock by prerequisites, NeetCode-roadmap style: each topic lists the topics it needs and unlocks when all of them are complete, so several topics can be open at once.
+- A topic is complete when every chapter is read and every *core* problem is solved; *extra* problems are optional.
+- A chapter counts as read automatically once the learner reaches its end. There is no mark-as-read button.
 - The Map is the progress view. There is no separate Progress page.
 
 **Problems.**
 - Languages: Python, TypeScript, Go.
-- Hints reveal one at a time.
-- The solution unlocks after the problem is solved, or after N failed submissions.
-- An accepted submission shows an Accepted panel; when it completes the topic, the panel says so and names the topic it unlocks.
+- Problems build on each other: each one asks the learner to add to what they already built, rather than solving an isolated puzzle. How builds work is being settled (see `CONTEXT.md` and the ADRs).
+- **Run** executes the visible example tests and changes no progress. **Submit** executes every test, hidden ones included; only an Accepted submit solves a problem.
+- Hints are free and reveal one at a time. Each hint guides the learner back to the concept in the chapter they read, not just toward the answer.
+- The solution is always visible; whether to look is the learner's choice. It is an explanation plus a working solution in all three languages, written or sourced by humans and verified under `docs/content-standards.md`.
+- An accepted submission shows an Accepted panel; when it completes the topic, the panel says so and names the topics it unlocks.
 - Every problem and chapter has a prefilled "report an issue" link that opens a GitHub issue.
 
 **Instance modes.**
 - **Local:** single user, no login. The nav shows "Local" instead of a username.
 - **Multi-user:** local accounts, plus optional GitHub and Google sign-in. Registration is open or invite-only (admin toggle); invite-only uses an Accept invite page. There is no email reset: the admin resets passwords from the Users page. A first-run setup screen creates the admin.
+- Switching an instance from Local to Multi-user keeps the Local progress as the first admin's.
 - Instance settings beyond the registration toggle live in config, not UI, for MVP1.
 
 **Devices.** Desktop first. Mobile must work, including writing and submitting code. Mobile boards exist for Problem, Map, Topic, Chapter and Sign in.
