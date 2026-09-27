@@ -27,7 +27,7 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue.
+Incoming requests (content enhancements, bugs) become a GitHub issue. Planned work broken into tickets becomes cards on the project board instead; see `board.md`.
 
 ## When a skill says "fetch the relevant ticket"
 
