@@ -32,7 +32,7 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 
 **Devices.** Desktop first. Mobile must work, including writing and submitting code. Mobile boards exist for Problem, Map, Topic, Chapter and Sign in.
 
-**Out of MVP1.** Leaderboard, Progress page, Readings list (Map → Topic is the only path), paid anything. The landing page becomes the project site later, outside the app.
+**Out of MVP1.** Leaderboard, Progress page, in-app content authoring (content is static, see ADR 0005), Readings list (Map → Topic is the only path), paid anything. The landing page becomes the project site later, outside the app.
 
 **Content.** New topics, chapters and problems arrive as GitHub issues, then PRs, under `docs/content-standards.md`.
 
