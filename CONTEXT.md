@@ -17,15 +17,31 @@ A reading inside a Topic about one real system and the data structure decision i
 _Avoid_: Reading, article, lesson
 
 **Problem**:
-A coding task belonging to exactly one Chapter, solved in the browser against Tests.
-_Avoid_: Question, exercise, challenge
+One step of a Topic's Build, belonging to exactly one Chapter: it asks the Learner to add something to the Build, checked against Tests.
+_Avoid_: Question, exercise, challenge, stage
 
 **Core Problem**:
-A Problem that must be Solved for its Topic to be Complete.
+A Problem on its Build's Main Line; it must be Solved for its Topic to be Complete.
 
 **Extra Problem**:
-An optional Problem; Solving it never affects Topic completion.
+An optional Problem that branches off the Main Line; Solving it never affects Topic completion or later Problems.
 _Avoid_: Bonus, optional
+
+## Builds
+
+**Build**:
+The codebase a Learner grows across one Topic, one Problem at a time, in one Language.
+_Avoid_: Project, codebase, workspace
+
+**Main Line**:
+The ordered Core Problems of a Topic; each one starts from the Build as the one before it left it.
+
+**Branch**:
+The Build copy an Extra Problem works on; its changes never flow back to the Main Line.
+
+**Reference Code**:
+The known-good Build as it stands after a given Problem, in each Language; a Learner can start any Problem from it.
+_Avoid_: Starter code, scaffold, template
 
 **Hint**:
 One step of guidance on a Problem, revealed one at a time in a fixed order, that points the Learner back to the concept in the Chapter behind it.
@@ -55,7 +71,7 @@ The Learner has at least one Accepted Submission for the Problem.
 ## Running code
 
 **Language**:
-One of Python, TypeScript or Go; the learner picks one per attempt.
+One of Python, TypeScript or Go, chosen per Build; switching starts a new copy of the Build from Reference Code and keeps the old one.
 
 **Test**:
 One input and expected outcome a Problem is checked against; an Example Test is visible to the Learner, a Hidden Test is not.
@@ -65,7 +81,7 @@ Executing the Learner's code against the Example Tests; it never changes progres
 _Avoid_: Test run, try
 
 **Submission**:
-Executing the Learner's code against every Test, producing a Verdict.
+Executing the Learner's Build against every Test of the Problem and of every earlier Core Problem, producing a Verdict.
 _Avoid_: Attempt
 
 **Verdict**:

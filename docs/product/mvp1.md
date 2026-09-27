@@ -14,8 +14,11 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 
 **Problems.**
 - Languages: Python, TypeScript, Go.
-- Problems build on each other: each one asks the learner to add to what they already built, rather than solving an isolated puzzle. How builds work is being settled (see `CONTEXT.md` and the ADRs).
-- **Run** executes the visible example tests and changes no progress. **Submit** executes every test, hidden ones included; only an Accepted submit solves a problem.
+- **Builds, not puzzles.** Each topic has one build: a codebase the learner grows across its chapters. Every core problem adds to it, starting from the learner's own code as the previous core problem left it (`docs/adr/0001-topic-builds.md`).
+  - The language is chosen per build. Switching starts a new copy from reference code; the old copy is kept.
+  - Any problem can be opened at any time, and any problem can be started from reference code instead of the learner's own, so nothing locks inside a topic and one broken step never traps anyone.
+  - Extra problems branch off the build; their changes never flow into later problems.
+- **Run** executes the visible example tests and changes no progress. **Submit** executes every test of the problem plus every test of the earlier core problems in the build, hidden ones included; only an Accepted submit solves a problem.
 - Hints are free and reveal one at a time. Each hint guides the learner back to the concept in the chapter they read, not just toward the answer.
 - The solution is always visible; whether to look is the learner's choice. It is an explanation plus a working solution in all three languages, written or sourced by humans and verified under `docs/content-standards.md`.
 - An accepted submission shows an Accepted panel; when it completes the topic, the panel says so and names the topics it unlocks.
