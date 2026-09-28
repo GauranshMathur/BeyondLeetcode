@@ -11,7 +11,7 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			// adapter-node: the build runs as a plain server under Bun (`bun ./build/index.js`) in the image (ADR 0004).
+			// adapter-node: the build runs as a plain server under Bun (`bun ./build/index.js`).
 			adapter: adapter()
 		})
 	],
