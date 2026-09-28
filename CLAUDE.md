@@ -2,7 +2,7 @@
 
 Content a learner reads or solves (chapters, problems, tests, hints, card text) must meet `docs/content-standards.md`: primary sources, human-verified.
 
-MVP1 product rules and the stack are decided in `docs/product/mvp1.md`; read it before designing or building a feature. Work runs in goal-based sprints: `docs/sprints.md`.
+MVP1 product rules and the stack are decided in `docs/product/mvp1.md`; read it before designing or building a feature. Work runs in goal-based sprints: `docs/sprints.md`. Modules, their seams and the Learning core interface: `docs/module-map.md`.
 
 ## Agent skills
 

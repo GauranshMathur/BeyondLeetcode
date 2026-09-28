@@ -40,14 +40,14 @@ The ordered Core Problems of a Topic; each one starts from the Build as the one 
 The Build copy an Extra Problem works on; its changes never flow back to the Main Line.
 
 **Reference Code**:
-The known-good Build as it stands after a given Problem, in each Language; a Learner can start any Problem from it.
+The known-good Build as it stands after a given Problem, in each Language. Starting a Problem from Reference Code gives the Build as it stands after the previous Problem; before a Topic's first Problem the Build is empty.
 _Avoid_: Starter code, scaffold, template
 
 **Hint**:
 One step of guidance on a Problem, revealed one at a time in a fixed order, that points the Learner back to the concept in the Chapter behind it.
 
 **Solution**:
-The reference answer to a Problem: an explanation plus working code in every Language, always available to the Learner.
+The reference answer to a Problem: an explanation plus the Reference Code after that Problem, in every Language, always available to the Learner.
 _Avoid_: Editorial, answer
 
 ## Progress
@@ -77,7 +77,7 @@ The Learner has at least one Accepted Submission for the Problem.
 One of Python, TypeScript or Go, chosen per Build; switching starts a new copy of the Build from Reference Code and keeps the old one.
 
 **Test**:
-One input and expected outcome a Problem is checked against; an Example Test is visible to the Learner, a Hidden Test is not.
+One input and expected outcome a Problem is checked against; an Example Test is visible to the Learner, a Hidden Test is not, and a failing Hidden Test reveals nothing about its input or the Learner's output.
 
 **Run**:
 Executing the Learner's code against the Example Tests; it never changes progress.
