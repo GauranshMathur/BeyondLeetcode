@@ -24,7 +24,10 @@ A body has three parts:
 <what to change, 1–3 lines>
 Files: <the files this card edits>
 Done when: <one observable line>
+Blocked by: <card codes that must be Done first, or none>
 ```
+
+Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is ready only when every card it names is Done.
 
 **Size.** A card is one artboard or one state, one lane, one `Done when` line. A card that needs two is split: remove the parent and create children with suffixed codes (`P8` → `P8a`, `P8b`), each with its own `Done when`. Only the orchestrator splits.
 
