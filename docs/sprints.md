@@ -43,8 +43,8 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 **Goal:** the full single-learner experience.
 
-- Design: P5 Hints tab, P6 Solution tab (locked / unlocked), AC1 Settings (Local variant).
-- Build: topic hard-locks and completion (all chapters read + core problems solved), core/extra problems, hints, the solution unlock after solve or N failures, the topic-complete Accepted variant, report-an-issue links, Settings.
+- Design: P5 Hints tab, P6 Solution tab (always visible), AC1 Settings (Local variant).
+- Build: topic hard-locks and completion (all chapters read + core problems solved), core/extra problems, hints, the always-visible Solution tab, the topic-complete Accepted variant, report-an-issue links, Settings.
 
 **Exit:** a learner in Local mode can finish a topic and unlock the next; all Sprint 3 cards Done.
 

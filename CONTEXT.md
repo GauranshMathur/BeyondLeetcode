@@ -65,6 +65,9 @@ The Learner has reached the end of the Chapter.
 Every Chapter in the Topic is Read and every Core Problem is Solved.
 _Avoid_: Done, finished, mastered
 
+**Attempted** (Problem):
+The Learner has at least one Submission for the Problem but it is not yet Solved.
+
 **Solved** (Problem):
 The Learner has at least one Accepted Submission for the Problem.
 
