@@ -60,3 +60,14 @@ jobs:
       - run: bunx playwright install --with-deps chromium
       # The Playwright webServer builds the app and serves it under Bun.
       - run: bun run test:e2e
+
+  sandbox:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile
+      # Real Docker on the runner: the Sandbox tests start containers.
+      - run: bun run test:sandbox
