@@ -51,12 +51,11 @@ export function mapView(
 	}
 
 	const topics = summaries.map(({ id, title, prerequisites }): MapTopic => {
-		// Complete wins: a Prerequisite added by a content upgrade never re-locks finished work.
-		const state: TopicState = complete.has(id)
-			? 'complete'
-			: prerequisites.every((p) => complete.has(p))
-				? 'unlocked'
-				: 'locked';
+		const state: TopicState = !prerequisites.every((p) => complete.has(p))
+			? 'locked'
+			: complete.has(id)
+				? 'complete'
+				: 'unlocked';
 		return {
 			id,
 			title,

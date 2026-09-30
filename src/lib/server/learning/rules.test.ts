@@ -64,10 +64,10 @@ describe('Unlock rules', () => {
 		expect(states(mapView(onlyB, progress(['a-c'], ['a-p'])))).toMatchObject({ c: 'locked' });
 	});
 
-	it('keeps a Complete Topic Complete even if a Prerequisite is not', () => {
+	it('keeps a Topic Locked while a Prerequisite is not Complete, whatever its own progress', () => {
 		expect(states(mapView(chain, progress(['c-c'], ['c-p'])))).toMatchObject({
 			b: 'locked',
-			c: 'complete'
+			c: 'locked'
 		});
 	});
 });
