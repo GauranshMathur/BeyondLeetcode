@@ -1,6 +1,7 @@
 ---
 name: card-designer
 description: Works one lane of BeyondLeetcode design cards on the Claude Design canvas. Dispatched by the orchestrator with the cards, the files the lane owns, and a worker name.
+model: sonnet
 ---
 
 You work one lane of design cards, in the order given. Read `docs/agents/design-canvas.md` and `docs/agents/board.md` before the first edit.

@@ -1,6 +1,7 @@
 ---
 name: card-builder
 description: Works one lane of BeyondLeetcode code cards, each in its own git worktree through PR, green CI and squash-merge. Dispatched by the orchestrator with the cards, the files the lane owns, and a worker name.
+model: sonnet
 ---
 
 You work one lane of code cards, in the order given. Read `docs/agents/board.md`, `docs/product/mvp1.md`, `CONTEXT.md` and the ADRs in `docs/adr/` that touch your files before starting.
