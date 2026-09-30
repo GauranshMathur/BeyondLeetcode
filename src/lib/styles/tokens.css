@@ -1,0 +1,33 @@
+/* Colour tokens copied from the canvas tokens() (vermilion accent); light by default, dark by preference. */
+:root {
+	--paper: #f3eee4;
+	--panel: #ece5d8;
+	--field: #fbf8f2;
+	--ink: #1c1a17;
+	--body: #3a352e;
+	--muted: #5b5348;
+	--rule: #d9cfbe;
+	--on-ink: #f3eee4;
+	--accent: #b4421f;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--paper: #171512;
+		--panel: #211e1a;
+		--field: #1c1915;
+		--ink: #ece5d8;
+		--body: #cfc6b8;
+		--muted: #a89f92;
+		--rule: #3a352e;
+		--on-ink: #171512;
+		--accent: #e0704a;
+	}
+}
+
+body {
+	margin: 0;
+	background: var(--paper);
+	color: var(--ink);
+	font-family: "Newsreader", Georgia, serif;
+}
