@@ -19,7 +19,9 @@ const schemaSql = Object.keys(migrations)
 // An in-memory database lives only on the connection that opened it, so Prisma
 // must reuse the client the migrations ran on instead of opening its own.
 // `createClient` is the adapter's public hook for this; test-db.test.ts fails
-// with "no such table" if Prisma ever opens a second connection.
+// with "no such table" if Prisma ever opens a second connection. The one
+// connection also means a query outside an open interactive transaction fails
+// with TRANSACTION_ACTIVE here where a file database would allow it.
 class PrismaLibSqlOnClient extends PrismaLibSql {
 	readonly #client: Client;
 
