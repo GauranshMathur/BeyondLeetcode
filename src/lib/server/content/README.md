@@ -34,7 +34,8 @@ The content catalogue (`loadCatalogue(dir)`) reads one content folder. Real cont
 - **Hints** are numbered `1.md` to `n.md` with no gaps.
 - **Solution** is `solution.md` plus the Reference Code after the Problem, which the format does not duplicate.
 - **Reference Code** is required in every Language (`python`, `typescript`, `go`), and each folder must hold at least one file. No other Language folders are allowed. The empty Build before a Topic's first Problem is implied and not stored.
-- JSON manifests reject unknown keys.
+- JSON manifests reject unknown keys. Dotfiles (such as `.DS_Store`) are ignored everywhere.
+- Loading reports every issue it finds at once, each one prefixed with its path.
 
 ## Fixture
 

@@ -320,6 +320,20 @@ describe('malformed content', () => {
 		);
 	});
 
+	it('ignores dotfiles such as .DS_Store', async () => {
+		const catalogue = await loadBroken((dir) =>
+			Promise.all(
+				['', 'hints', 'tests/example', 'reference', 'reference/python'].map((sub) =>
+					writeFile(join(pushProblem(dir), sub, '.DS_Store'), '')
+				)
+			)
+		);
+
+		expect(Object.keys(catalogue.problem('stacks-push')?.referenceCode.python ?? {})).toEqual([
+			'main.py'
+		]);
+	});
+
 	it('reports every problem at once, as a ContentError', async () => {
 		const error = await loadBroken(async (dir) => {
 			await writeFile(join(stacks(dir), 'topic.json'), '{');

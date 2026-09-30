@@ -318,21 +318,24 @@ function checkPrerequisites(
 	for (const id of topics.keys()) visit(id, []);
 }
 
-/** Names of the subfolders of `dir`; empty when `dir` does not exist. */
+/** Dotfiles (such as .DS_Store) are never content. */
+const isHidden = (path: string) => path.split(sep).some((part) => part.startsWith('.'));
+
+/** Names of the subfolders of `dir`, dotfiles skipped; empty when `dir` does not exist. */
 async function listDirs(dir: string): Promise<string[]> {
 	try {
 		const entries = await readdir(dir, { withFileTypes: true });
-		return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+		return entries.filter((e) => e.isDirectory() && !isHidden(e.name)).map((e) => e.name);
 	} catch {
 		return [];
 	}
 }
 
-/** Relative paths of the regular files in `dir`; empty when `dir` does not exist. */
+/** Relative paths of the regular files in `dir`, dotfiles skipped; empty when `dir` does not exist. */
 async function listFiles(dir: string, recursive = false): Promise<string[]> {
 	let entries: string[];
 	try {
-		entries = await readdir(dir, { recursive });
+		entries = (await readdir(dir, { recursive })).filter((e) => !isHidden(e));
 	} catch {
 		return [];
 	}
