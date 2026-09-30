@@ -1,0 +1,14 @@
+generator client {
+  provider = "prisma-client"
+  output   = "./generated"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// A person working through the Topic Map, in either mode (CONTEXT.md).
+model Learner {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,5 @@
+# Written by `prisma generate` on install
+generated/
+# Local databases from DATABASE_URL
+*.db
+*.db-journal
