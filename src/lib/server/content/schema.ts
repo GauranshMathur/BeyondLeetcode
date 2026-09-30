@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import type { Language } from '../runner/port.ts';
 
 /** The on-disk manifests of a content folder. The format is described in README.md. */
 
-export const LANGUAGES = ['python', 'typescript', 'go'] as const;
-export type Language = (typeof LANGUAGES)[number];
+/** Every Language the Runner supports (`Language` in runner/port.ts, the one source of truth). */
+export const LANGUAGES = ['python', 'typescript', 'go'] as const satisfies readonly Language[];
 
 const id = z
 	.string()

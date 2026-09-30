@@ -1,16 +1,16 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
+import type { Language } from '../runner/port.ts';
 import {
 	chapterManifest,
 	contentManifest,
 	LANGUAGES,
-	type Language,
 	problemManifest,
 	topicManifest
 } from './schema.ts';
 
-export { LANGUAGES, type Language };
+export type { Language };
 
 export interface TopicSummary {
 	readonly id: string;
@@ -106,6 +106,13 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		}
 	}
 
+	/** Markdown prose: must exist and say something. */
+	async function readMarkdown(path: string): Promise<string> {
+		const text = await readText(path);
+		if (text !== '' && text.trim() === '') report(path, 'must not be empty');
+		return text;
+	}
+
 	async function readJson<T>(path: string, schema: z.ZodType<T>): Promise<T | undefined> {
 		let json: unknown;
 		try {
@@ -122,6 +129,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	async function readTests(problemDir: string, problemId: string, kind: Test['kind']) {
 		const testDir = join(problemDir, 'tests', kind);
 		const names = new Set<string>();
+		reportFolders(testDir, await listDirs(testDir));
 		for (const file of await listFiles(testDir)) {
 			const match = /^(.+)\.(in|out)$/.exec(file);
 			if (match) names.add(match[1]);
@@ -141,17 +149,26 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	}
 
 	async function readHints(hintDir: string): Promise<string[]> {
+		reportFolders(hintDir, await listDirs(hintDir));
 		const files = await listFiles(hintDir);
-		const expected = files.map((_, i) => `${i + 1}.md`);
-		if (!expected.every((f) => files.includes(f))) {
-			const found = files.sort((x, y) => x.localeCompare(y, 'en', { numeric: true }));
+		const numbered = files.filter((f) => /^\d+\.md$/.test(f));
+		for (const file of files.filter((f) => !numbered.includes(f))) {
+			report(join(hintDir, file), 'expected a numbered Hint like 1.md');
+		}
+		const expected = numbered.map((_, i) => `${i + 1}.md`);
+		if (!expected.every((f) => numbered.includes(f))) {
+			const found = [...numbered].sort((x, y) => x.localeCompare(y, 'en', { numeric: true }));
 			report(
 				hintDir,
-				`Hints must be 1.md to ${files.length}.md in order, found ${found.join(', ')}`
+				`Hints must be 1.md to ${numbered.length}.md in order, found ${found.join(', ')}`
 			);
 			return [];
 		}
-		return Promise.all(expected.map((f) => readText(join(hintDir, f))));
+		return Promise.all(expected.map((f) => readMarkdown(join(hintDir, f))));
+	}
+
+	function reportFolders(parentDir: string, folders: readonly string[]) {
+		for (const folder of folders) report(parentDir, `unexpected folder "${folder}"`);
 	}
 
 	async function readReferenceCode(referenceDir: string) {
@@ -205,6 +222,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		await checkListed(join(topicDir, 'chapters'), topic.chapters, 'topic.json');
 		const topicChapters: Chapter[] = [];
 		const coreSoFar = new Set<string>();
+		const unreadable = new Set<string>();
 
 		for (const chapterId of topic.chapters) {
 			const chapterDir = join(topicDir, 'chapters', chapterId);
@@ -218,9 +236,12 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 				const problemDir = join(chapterDir, 'problems', problemId);
 				claimId(problemId, problemDir);
 				const manifest = await readJson(join(problemDir, 'problem.json'), problemManifest);
-				if (!manifest) continue;
+				if (!manifest) {
+					unreadable.add(problemId);
+					continue;
+				}
 				if (manifest.kind === 'core') coreSoFar.add(problemId);
-				else if (!coreSoFar.has(manifest.parent)) {
+				else if (!coreSoFar.has(manifest.parent) && !unreadable.has(manifest.parent)) {
 					report(
 						join(problemDir, 'problem.json'),
 						`parent "${manifest.parent}" is not a Core Problem before it in Topic "${topicId}"`
@@ -232,10 +253,10 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 					...manifest,
 					topicId,
 					chapterId,
-					statement: await readText(join(problemDir, 'statement.md')),
+					statement: await readMarkdown(join(problemDir, 'statement.md')),
 					exampleTests: await readTests(problemDir, problemId, 'example'),
 					hints: await readHints(join(problemDir, 'hints')),
-					solution: await readText(join(problemDir, 'solution.md')),
+					solution: await readMarkdown(join(problemDir, 'solution.md')),
 					referenceCode: await readReferenceCode(join(problemDir, 'reference'))
 				});
 				hidden.set(problemId, await readTests(problemDir, problemId, 'hidden'));
@@ -245,7 +266,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 				id: chapterId,
 				topicId,
 				title: chapter.title,
-				body: await readText(join(chapterDir, 'chapter.md')),
+				body: await readMarkdown(join(chapterDir, 'chapter.md')),
 				problems: summaries
 			};
 			chapters.set(chapterId, loaded);
@@ -319,26 +340,27 @@ function checkPrerequisites(
 }
 
 /** Dotfiles (such as .DS_Store) are never content. */
-const isHidden = (path: string) => path.split(sep).some((part) => part.startsWith('.'));
+const isDotfile = (path: string) => path.split(sep).some((part) => part.startsWith('.'));
+
+/** A folder that is not there reads as empty; any other failure (permissions, I/O) is real. */
+function ifMissing<T>(fallback: T) {
+	return (error: unknown): T => {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === 'ENOENT' || code === 'ENOTDIR') return fallback;
+		throw error;
+	};
+}
 
 /** Names of the subfolders of `dir`, dotfiles skipped; empty when `dir` does not exist. */
 async function listDirs(dir: string): Promise<string[]> {
-	try {
-		const entries = await readdir(dir, { withFileTypes: true });
-		return entries.filter((e) => e.isDirectory() && !isHidden(e.name)).map((e) => e.name);
-	} catch {
-		return [];
-	}
+	const entries = await readdir(dir, { withFileTypes: true }).catch(ifMissing([]));
+	return entries.filter((e) => e.isDirectory() && !isDotfile(e.name)).map((e) => e.name);
 }
 
 /** Relative paths of the regular files in `dir`, dotfiles skipped; empty when `dir` does not exist. */
 async function listFiles(dir: string, recursive = false): Promise<string[]> {
-	let entries: string[];
-	try {
-		entries = (await readdir(dir, { recursive })).filter((e) => !isHidden(e));
-	} catch {
-		return [];
-	}
+	const all = await readdir(dir, { recursive }).catch(ifMissing([] as string[]));
+	const entries = all.filter((e) => !isDotfile(e));
 	const isFile = await Promise.all(entries.map(async (e) => (await stat(join(dir, e))).isFile()));
 	return entries.filter((_, i) => isFile[i]);
 }

@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -318,6 +318,102 @@ describe('malformed content', () => {
 		await expect(loadBroken((dir) => setParent(dir, 'stacks-peek'))).rejects.toThrow(
 			/parent "stacks-peek" is not a Core Problem before it/
 		);
+	});
+
+	it.each([
+		['chapter.md', 'topics/stacks/chapters/stacks-undo-log/chapter.md'],
+		['statement.md', 'topics/stacks/chapters/stacks-undo-log/problems/stacks-push/statement.md'],
+		['solution.md', 'topics/stacks/chapters/stacks-undo-log/problems/stacks-push/solution.md'],
+		['a Hint', 'topics/stacks/chapters/stacks-undo-log/problems/stacks-push/hints/2.md']
+	])('rejects a blank %s', async (_name, path) => {
+		await expect(loadBroken((dir) => writeFile(join(dir, path), ' \n'))).rejects.toThrow(
+			new RegExp(`${path.replace(/[.]/g, '\\.')}: must not be empty`)
+		);
+	});
+
+	it('allows a Test with empty input and empty expected output', async () => {
+		const catalogue = await loadBroken(async (dir) => {
+			await writeFile(join(pushProblem(dir), 'tests/hidden/02.in'), '');
+			await writeFile(join(pushProblem(dir), 'tests/hidden/02.out'), '');
+		});
+
+		expect(catalogue.hiddenTests('stacks-push')?.map((t) => t.id)).toContain(
+			'stacks-push/hidden/02'
+		);
+	});
+
+	it('rejects a folder among the Tests or Hints', async () => {
+		await expect(
+			loadBroken((dir) => mkdir(join(pushProblem(dir), 'tests/example/extra')))
+		).rejects.toThrow(/stacks-push\/tests\/example: unexpected folder "extra"/);
+		await expect(loadBroken((dir) => mkdir(join(pushProblem(dir), 'hints/extra')))).rejects.toThrow(
+			/stacks-push\/hints: unexpected folder "extra"/
+		);
+	});
+
+	it('names a stray file among the Hints', async () => {
+		await expect(
+			loadBroken((dir) => writeFile(join(pushProblem(dir), 'hints/notes.txt'), 'x'))
+		).rejects.toThrow(/stacks-push\/hints\/notes\.txt: expected a numbered Hint like 1\.md/);
+	});
+
+	it('does not blame an Extra for its parent when the parent failed to load', async () => {
+		const error = await loadBroken((dir) =>
+			writeFile(join(pushProblem(dir), 'problem.json'), '{')
+		).catch((e: unknown) => e);
+
+		expect((error as ContentError).issues).toHaveLength(1);
+		expect((error as ContentError).issues[0]).toMatch(/stacks-push\/problem\.json: not valid JSON/);
+	});
+
+	it('accepts an Extra that branches from an older Core Problem', async () => {
+		const catalogue = await loadBroken(async (dir) => {
+			// Move the Extra after the second Core Problem, still branching from the first.
+			const extra = 'topics/stacks/chapters/stacks-undo-log/problems/stacks-peek';
+			const later = 'topics/stacks/chapters/stacks-call-frames/problems/stacks-peek';
+			await rename(join(dir, extra), join(dir, later));
+			await editJson(join(dir, 'topics/stacks/chapters/stacks-undo-log/chapter.json'), (c) => {
+				c.problems = ['stacks-push'];
+			});
+			await editJson(join(dir, 'topics/stacks/chapters/stacks-call-frames/chapter.json'), (c) => {
+				c.problems = ['stacks-pop', 'stacks-peek'];
+			});
+		});
+
+		expect(catalogue.topic('stacks')?.mainLine).toEqual(['stacks-push', 'stacks-pop']);
+		expect(catalogue.problem('stacks-peek')).toMatchObject({
+			chapterId: 'stacks-call-frames',
+			parent: 'stacks-push'
+		});
+	});
+
+	it('keeps nested Reference Code files under `/` paths', async () => {
+		const catalogue = await loadBroken(async (dir) => {
+			const nested = join(pushProblem(dir), 'reference/python/lib');
+			await mkdir(nested);
+			await writeFile(join(nested, 'util.py'), 'x = 1\n');
+		});
+
+		expect(
+			Object.keys(catalogue.problem('stacks-push')?.referenceCode.python ?? {}).sort()
+		).toEqual(['lib/util.py', 'main.py']);
+	});
+
+	it('rejects ids that are not slugs at Chapter and Problem level', async () => {
+		await expect(
+			loadBroken((dir) =>
+				editJson(join(stacks(dir), 'topic.json'), (t) => {
+					t.chapters = ['stacks-undo-log', 'Call_Frames'];
+				})
+			)
+		).rejects.toThrow(/topics\/stacks\/topic\.json: .*lowercase slug/);
+		await expect(
+			loadBroken((dir) =>
+				editJson(join(stacks(dir), 'chapters/stacks-call-frames/chapter.json'), (c) => {
+					c.problems = ['Pop'];
+				})
+			)
+		).rejects.toThrow(/stacks-call-frames\/chapter\.json: .*lowercase slug/);
 	});
 
 	it('ignores dotfiles such as .DS_Store', async () => {
