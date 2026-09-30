@@ -17,7 +17,11 @@ export type Files = Record<string, string>;
 /** One Test as the Runner sees it: an id and the input, nothing else. */
 export type TestInput = { id: string; input: string };
 
-/** Per-run limits (ADR 0002): wall-clock timeout per Test and memory cap. */
+/**
+ * Per-run limits (ADR 0002): wall-clock timeout per Test, counted from the Test's start (not
+ * container start-up or compilation), and a memory cap. CPU and pids limits are fixed by the
+ * Runner, not sent per request.
+ */
 export type Limits = { timeoutMs: number; memoryMb: number };
 
 export type ExecuteRequest = {

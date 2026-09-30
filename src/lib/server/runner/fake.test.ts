@@ -1,20 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { type ContractSubject, runnerContract } from './contract';
-import { createScriptedRunner, type ScriptedTest } from './fake';
+import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
+import { createScriptedRunner, type RunnerScript } from './fake';
 import type { ExecuteRequest, TestInput } from './port';
 
-const scripted: ContractSubject = (kind, tests) => {
-	const script: Record<string, ScriptedTest> = {};
-	for (const t of tests) {
-		if (kind === 'echo') script[t.id] = { status: 'ok', stdout: t.input };
-		if (kind === 'crash') script[t.id] = { status: 'runtimeError', stderr: 'boom' };
-		if (kind === 'hang') script[t.id] = { status: 'timeout' };
+/** The scripted equivalent of each contract fixture, keyed by the Test ids the suite sends. */
+function scriptFor(kind: ProgramKind): RunnerScript {
+	switch (kind) {
+		case 'doesNotCompile':
+			return { compileError: 'SyntaxError' };
+		case 'unavailable':
+			return { unavailable: true };
+		case 'hang':
+			return { tests: { first: { status: 'timeout' } } };
+		case 'mixed':
+			return {
+				tests: {
+					fine: { status: 'ok', stdout: 'ok\n' },
+					boom: { status: 'runtimeError', stderr: 'boom' },
+					stuck: { status: 'timeout' },
+					'fine-again': { status: 'ok', stdout: 'ok again\n' }
+				}
+			};
+		case 'echo':
+			return {
+				tests: {
+					first: { status: 'ok', stdout: '1 2\n' },
+					second: { status: 'ok', stdout: 'hello\n' },
+					third: { status: 'ok', stdout: '' }
+				}
+			};
 	}
-	const runner = createScriptedRunner(
-		kind === 'doesNotCompile' ? { compileError: 'SyntaxError' } : { tests: script }
-	);
-	return { runner, language: 'python', files: { 'main.py': '' } };
-};
+}
+
+const scripted: ContractSubject = (kind) => ({
+	runner: createScriptedRunner(scriptFor(kind)),
+	language: 'python',
+	files: { 'main.py': '' }
+});
 
 runnerContract('scripted fake', scripted);
 
@@ -41,12 +63,6 @@ describe('scripted fake runner', () => {
 		await runner.execute(sent);
 
 		expect(runner.calls).toEqual([sent]);
-	});
-
-	it('rejects when scripted as unavailable', async () => {
-		const runner = createScriptedRunner({ unavailable: true });
-
-		await expect(runner.execute(request([]))).rejects.toThrow();
 	});
 
 	it('has no field for an expected output in a Test', () => {
