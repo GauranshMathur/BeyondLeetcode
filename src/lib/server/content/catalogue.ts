@@ -156,26 +156,48 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		return code;
 	}
 
+	const owners = new Map<string, string>();
+	/** Ids are unique across Topics, Chapters and Problems. */
+	function claimId(id: string, path: string) {
+		const owner = owners.get(id);
+		if (owner === undefined) owners.set(id, path);
+		else report(path, `id "${id}" is already used by ${relative(dir, owner).split(sep).join('/')}`);
+	}
+
+	/** A manifest lists exactly the folders beside it. */
+	async function checkListed(parentDir: string, listed: readonly string[], manifest: string) {
+		for (const folder of await listDirs(parentDir)) {
+			if (!listed.includes(folder))
+				report(parentDir, `folder "${folder}" is not listed in ${manifest}`);
+		}
+	}
+
 	const topics = new Map<string, Topic>();
 	const chapters = new Map<string, Chapter>();
 	const problems = new Map<string, Problem>();
 	const hidden = new Map<string, Test[]>();
 
 	const content = await readJson(join(dir, 'content.json'), contentManifest);
+	if (content) await checkListed(join(dir, 'topics'), content.topics, 'content.json');
 	for (const topicId of content?.topics ?? []) {
 		const topicDir = join(dir, 'topics', topicId);
+		claimId(topicId, topicDir);
 		const topic = await readJson(join(topicDir, 'topic.json'), topicManifest);
 		if (!topic) continue;
+		await checkListed(join(topicDir, 'chapters'), topic.chapters, 'topic.json');
 		const topicChapters: Chapter[] = [];
 
 		for (const chapterId of topic.chapters) {
 			const chapterDir = join(topicDir, 'chapters', chapterId);
+			claimId(chapterId, chapterDir);
 			const chapter = await readJson(join(chapterDir, 'chapter.json'), chapterManifest);
 			if (!chapter) continue;
+			await checkListed(join(chapterDir, 'problems'), chapter.problems, 'chapter.json');
 			const summaries: ProblemSummary[] = [];
 
 			for (const problemId of chapter.problems) {
 				const problemDir = join(chapterDir, 'problems', problemId);
+				claimId(problemId, problemDir);
 				const manifest = await readJson(join(problemDir, 'problem.json'), problemManifest);
 				if (!manifest) continue;
 				summaries.push({ id: problemId, ...manifest });
@@ -233,6 +255,16 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		problem: (id) => problems.get(id),
 		hiddenTests: (problemId) => hidden.get(problemId)
 	};
+}
+
+/** Names of the subfolders of `dir`; empty when `dir` does not exist. */
+async function listDirs(dir: string): Promise<string[]> {
+	try {
+		const entries = await readdir(dir, { withFileTypes: true });
+		return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+	} catch {
+		return [];
+	}
 }
 
 /** Relative paths of the regular files in `dir`; empty when `dir` does not exist. */

@@ -169,6 +169,54 @@ describe('malformed content', () => {
 		).rejects.toThrow(/content\.json: .*lowercase slug/);
 	});
 
+	it('rejects a manifest listing an id with no folder', async () => {
+		await expect(
+			loadBroken((dir) =>
+				editJson(join(stacks(dir), 'topic.json'), (t) => {
+					t.chapters = ['stacks-undo-log', 'stacks-call-frames', 'stacks-ghost'];
+				})
+			)
+		).rejects.toThrow(/topics\/stacks\/chapters\/stacks-ghost\/chapter\.json: missing file/);
+	});
+
+	it('rejects a folder its manifest does not list', async () => {
+		await expect(
+			loadBroken((dir) =>
+				editJson(join(stacks(dir), 'chapters/stacks-undo-log/chapter.json'), (c) => {
+					c.problems = ['stacks-push'];
+				})
+			)
+		).rejects.toThrow(
+			/stacks-undo-log\/problems: folder "stacks-peek" is not listed in chapter\.json/
+		);
+	});
+
+	it('rejects an id used twice', async () => {
+		await expect(
+			loadBroken((dir) =>
+				cp(
+					join(stacks(dir), 'chapters/stacks-undo-log'),
+					join(dir, 'topics/queues/chapters/stacks-undo-log'),
+					{
+						recursive: true
+					}
+				).then(() =>
+					editJson(join(dir, 'topics/queues/topic.json'), (t) => {
+						t.chapters = ['queues-print-spooler', 'stacks-undo-log'];
+					})
+				)
+			)
+		).rejects.toThrow(
+			/topics\/queues\/chapters\/stacks-undo-log: id "stacks-undo-log" is already used/
+		);
+	});
+
+	it('rejects a Problem without a Solution', async () => {
+		await expect(loadBroken((dir) => rm(join(pushProblem(dir), 'solution.md')))).rejects.toThrow(
+			/stacks-push\/solution\.md: missing file/
+		);
+	});
+
 	it('reports every problem at once, as a ContentError', async () => {
 		const error = await loadBroken(async (dir) => {
 			await writeFile(join(stacks(dir), 'topic.json'), '{');
