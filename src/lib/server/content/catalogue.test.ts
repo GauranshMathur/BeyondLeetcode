@@ -1,6 +1,9 @@
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
-import { loadCatalogue } from './catalogue.ts';
+import { afterAll, describe, expect, it } from 'vitest';
+import { type Catalogue, ContentError, loadCatalogue } from './catalogue.ts';
 
 const fixtureDir = fileURLToPath(new URL('./fixture', import.meta.url));
 
@@ -108,5 +111,71 @@ describe('fixture content', () => {
 			hints.push('extra');
 		}).toThrow(TypeError);
 		expect(catalogue.problem('stacks-pop')?.hints).toHaveLength(2);
+	});
+});
+
+describe('malformed content', () => {
+	const copies: string[] = [];
+	afterAll(() => Promise.all(copies.map((d) => rm(d, { recursive: true, force: true }))));
+
+	/** A fresh copy of the fixture, broken by `mutate`, then loaded. */
+	async function loadBroken(mutate: (dir: string) => Promise<unknown>): Promise<Catalogue> {
+		const dir = await mkdtemp(join(tmpdir(), 'content-'));
+		copies.push(dir);
+		await cp(fixtureDir, dir, { recursive: true });
+		await mutate(dir);
+		return loadCatalogue(dir);
+	}
+
+	async function editJson(path: string, edit: (json: Record<string, unknown>) => void) {
+		const json = JSON.parse(await readFile(path, 'utf8'));
+		edit(json);
+		await writeFile(path, JSON.stringify(json));
+	}
+
+	const stacks = (dir: string) => join(dir, 'topics/stacks');
+	const pushProblem = (dir: string) =>
+		join(stacks(dir), 'chapters/stacks-undo-log/problems/stacks-push');
+
+	it('rejects a manifest that is not JSON', async () => {
+		await expect(
+			loadBroken((dir) => writeFile(join(stacks(dir), 'topic.json'), '{ "title": '))
+		).rejects.toThrow(/topics\/stacks\/topic\.json: not valid JSON/);
+	});
+
+	it('rejects a manifest missing a field', async () => {
+		await expect(
+			loadBroken((dir) => editJson(join(stacks(dir), 'topic.json'), (t) => delete t.title))
+		).rejects.toThrow(/topics\/stacks\/topic\.json: .*expected string.*\n.*at title/);
+	});
+
+	it('rejects a manifest with an unknown key', async () => {
+		await expect(
+			loadBroken((dir) =>
+				editJson(join(pushProblem(dir), 'problem.json'), (p) => {
+					p.difficulty = 'easy';
+				})
+			)
+		).rejects.toThrow(/stacks-push\/problem\.json: .*Unrecognized key: "difficulty"/);
+	});
+
+	it('rejects an id that is not a slug', async () => {
+		await expect(
+			loadBroken((dir) =>
+				editJson(join(dir, 'content.json'), (c) => {
+					c.topics = ['stacks', 'queues', 'heaps', 'Bad Id'];
+				})
+			)
+		).rejects.toThrow(/content\.json: .*lowercase slug/);
+	});
+
+	it('reports every problem at once, as a ContentError', async () => {
+		const error = await loadBroken(async (dir) => {
+			await writeFile(join(stacks(dir), 'topic.json'), '{');
+			await writeFile(join(dir, 'topics/queues/topic.json'), '{');
+		}).catch((e: unknown) => e);
+
+		expect(error).toBeInstanceOf(ContentError);
+		expect((error as ContentError).issues).toHaveLength(2);
 	});
 });

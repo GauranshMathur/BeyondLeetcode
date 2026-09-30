@@ -1,6 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, sep } from 'node:path';
-import type { z } from 'zod';
+import { join, relative, sep } from 'node:path';
+import { z } from 'zod';
 import {
 	chapterManifest,
 	contentManifest,
@@ -83,36 +83,111 @@ export interface Catalogue {
 	hiddenTests(problemId: string): readonly Test[] | undefined;
 }
 
+/** Content failed validation. `issues` lists every problem found, each prefixed with its path. */
+export class ContentError extends Error {
+	constructor(readonly issues: readonly string[]) {
+		super(`Invalid content, ${issues.length} issue(s):\n${issues.map((i) => `- ${i}`).join('\n')}`);
+		this.name = 'ContentError';
+	}
+}
+
+/** Loads and validates the content folder at `dir`, or throws a ContentError. */
 export async function loadCatalogue(dir: string): Promise<Catalogue> {
-	const content = await readJson(join(dir, 'content.json'), contentManifest);
+	const issues: string[] = [];
+	const report = (path: string, message: string) =>
+		issues.push(`${relative(dir, path).split(sep).join('/')}: ${message}`);
+
+	async function readText(path: string): Promise<string> {
+		try {
+			return await readFile(path, 'utf8');
+		} catch {
+			report(path, 'missing file');
+			return '';
+		}
+	}
+
+	async function readJson<T>(path: string, schema: z.ZodType<T>): Promise<T | undefined> {
+		let json: unknown;
+		try {
+			json = JSON.parse(await readFile(path, 'utf8'));
+		} catch (error) {
+			report(path, error instanceof SyntaxError ? 'not valid JSON' : 'missing file');
+			return undefined;
+		}
+		const result = schema.safeParse(json);
+		if (!result.success) report(path, z.prettifyError(result.error));
+		return result.data;
+	}
+
+	async function readTests(problemDir: string, problemId: string, kind: Test['kind']) {
+		const testDir = join(problemDir, 'tests', kind);
+		const names = (await listFiles(testDir))
+			.filter((f) => f.endsWith('.in'))
+			.map((f) => f.slice(0, -'.in'.length))
+			.sort();
+		return Promise.all(
+			names.map(
+				async (name): Promise<Test> => ({
+					id: `${problemId}/${kind}/${name}`,
+					kind,
+					input: await readText(join(testDir, `${name}.in`)),
+					expected: await readText(join(testDir, `${name}.out`))
+				})
+			)
+		);
+	}
+
+	async function readHints(hintDir: string): Promise<string[]> {
+		const numbers = (await listFiles(hintDir)).map((f) => Number(f.slice(0, -'.md'.length)));
+		numbers.sort((a, b) => a - b);
+		return Promise.all(numbers.map((n) => readText(join(hintDir, `${n}.md`))));
+	}
+
+	async function readReferenceCode(referenceDir: string) {
+		const code = {} as Record<Language, BuildFiles>;
+		for (const language of LANGUAGES) {
+			const languageDir = join(referenceDir, language);
+			const files: Record<string, string> = {};
+			for (const path of (await listFiles(languageDir, true)).sort()) {
+				files[path.split(sep).join('/')] = await readText(join(languageDir, path));
+			}
+			code[language] = files;
+		}
+		return code;
+	}
+
 	const topics = new Map<string, Topic>();
 	const chapters = new Map<string, Chapter>();
 	const problems = new Map<string, Problem>();
 	const hidden = new Map<string, Test[]>();
 
-	for (const topicId of content.topics) {
+	const content = await readJson(join(dir, 'content.json'), contentManifest);
+	for (const topicId of content?.topics ?? []) {
 		const topicDir = join(dir, 'topics', topicId);
 		const topic = await readJson(join(topicDir, 'topic.json'), topicManifest);
+		if (!topic) continue;
 		const topicChapters: Chapter[] = [];
 
 		for (const chapterId of topic.chapters) {
 			const chapterDir = join(topicDir, 'chapters', chapterId);
 			const chapter = await readJson(join(chapterDir, 'chapter.json'), chapterManifest);
+			if (!chapter) continue;
 			const summaries: ProblemSummary[] = [];
 
 			for (const problemId of chapter.problems) {
 				const problemDir = join(chapterDir, 'problems', problemId);
 				const manifest = await readJson(join(problemDir, 'problem.json'), problemManifest);
+				if (!manifest) continue;
 				summaries.push({ id: problemId, ...manifest });
 				problems.set(problemId, {
 					id: problemId,
 					...manifest,
 					topicId,
 					chapterId,
-					statement: await readFile(join(problemDir, 'statement.md'), 'utf8'),
+					statement: await readText(join(problemDir, 'statement.md')),
 					exampleTests: await readTests(problemDir, problemId, 'example'),
 					hints: await readHints(join(problemDir, 'hints')),
-					solution: await readFile(join(problemDir, 'solution.md'), 'utf8'),
+					solution: await readText(join(problemDir, 'solution.md')),
 					referenceCode: await readReferenceCode(join(problemDir, 'reference'))
 				});
 				hidden.set(problemId, await readTests(problemDir, problemId, 'hidden'));
@@ -122,7 +197,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 				id: chapterId,
 				topicId,
 				title: chapter.title,
-				body: await readFile(join(chapterDir, 'chapter.md'), 'utf8'),
+				body: await readText(join(chapterDir, 'chapter.md')),
 				problems: summaries
 			};
 			chapters.set(chapterId, loaded);
@@ -141,6 +216,8 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		});
 	}
 
+	if (issues.length > 0) throw new ContentError(issues);
+
 	const topicMap = [...topics.values()].map(({ id, title, summary, prerequisites }) => ({
 		id,
 		title,
@@ -156,49 +233,6 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		problem: (id) => problems.get(id),
 		hiddenTests: (problemId) => hidden.get(problemId)
 	};
-}
-
-async function readJson<T>(path: string, schema: z.ZodType<T>): Promise<T> {
-	return schema.parse(JSON.parse(await readFile(path, 'utf8')));
-}
-
-async function readTests(
-	problemDir: string,
-	problemId: string,
-	kind: Test['kind']
-): Promise<Test[]> {
-	const testDir = join(problemDir, 'tests', kind);
-	const names = (await listFiles(testDir))
-		.filter((f) => f.endsWith('.in'))
-		.map((f) => f.slice(0, -'.in'.length))
-		.sort();
-	return Promise.all(
-		names.map(async (name) => ({
-			id: `${problemId}/${kind}/${name}`,
-			kind,
-			input: await readFile(join(testDir, `${name}.in`), 'utf8'),
-			expected: await readFile(join(testDir, `${name}.out`), 'utf8')
-		}))
-	);
-}
-
-async function readHints(hintDir: string): Promise<string[]> {
-	const numbers = (await listFiles(hintDir)).map((f) => Number(f.slice(0, -'.md'.length)));
-	numbers.sort((a, b) => a - b);
-	return Promise.all(numbers.map((n) => readFile(join(hintDir, `${n}.md`), 'utf8')));
-}
-
-async function readReferenceCode(referenceDir: string): Promise<Record<Language, BuildFiles>> {
-	const code = {} as Record<Language, BuildFiles>;
-	for (const language of LANGUAGES) {
-		const languageDir = join(referenceDir, language);
-		const files: Record<string, string> = {};
-		for (const path of (await listFiles(languageDir, true)).sort()) {
-			files[path.split(sep).join('/')] = await readFile(join(languageDir, path), 'utf8');
-		}
-		code[language] = files;
-	}
-	return code;
 }
 
 /** Relative paths of the regular files in `dir`; empty when `dir` does not exist. */
