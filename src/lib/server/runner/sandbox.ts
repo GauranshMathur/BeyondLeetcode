@@ -128,7 +128,7 @@ async function execute(engine: Engine, request: ExecuteRequest): Promise<Execute
 	}
 	const byIndex = new Map<number, Omit<TestResult, 'id'>>();
 	for (const line of lines) {
-		if ('i' in line) byIndex.set(line.i, line);
+		if ('i' in line && !byIndex.has(line.i)) byIndex.set(line.i, line);
 	}
 	const results = request.tests.map(({ id: testId }, i): TestResult => {
 		const found = byIndex.get(i);

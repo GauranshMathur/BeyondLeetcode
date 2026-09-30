@@ -207,6 +207,26 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 		]);
 	});
 
+	it('keeps learner code away from the harness result channel', async () => {
+		const probe = [
+			'import os, signal',
+			'try:',
+			'    open("/proc/1/fd/1", "w")',
+			'    print("forgeable")',
+			'except OSError:',
+			'    print("protected")',
+			'os.kill(1, signal.SIGINT)',
+			'print("harness alive")',
+			''
+		].join('\n');
+
+		const result = await run({ 'main.py': probe });
+
+		expect(result.results).toEqual([
+			{ id: 't', status: 'ok', stdout: 'protected\nharness alive\n', stderr: '' }
+		]);
+	});
+
 	it('caps stdout and marks it truncated', async () => {
 		const result = await run({ 'main.py': 'print("x" * 500000)\n' });
 

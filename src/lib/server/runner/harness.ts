@@ -9,7 +9,12 @@
  * Env: RUNNER_TEST_COUNT, RUNNER_TEST_TIMEOUT_MS, RUNNER_OUTPUT_CAP.
  */
 export const harnessScript = String.raw`
-import io, json, os, signal, subprocess, sys, tarfile, threading
+import ctypes, io, json, os, signal, subprocess, sys, tarfile, threading
+
+# Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
+# read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
+ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)
+signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 COUNT = int(os.environ["RUNNER_TEST_COUNT"])
 TIMEOUT = int(os.environ["RUNNER_TEST_TIMEOUT_MS"]) / 1000
