@@ -96,7 +96,8 @@ function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
 		fill: var(--ink);
 	}
 	.box.locked {
-		fill: none;
+		/* Opaque, so a line to a Topic further down passes behind this node, not through it. */
+		fill: var(--paper);
 		stroke: var(--muted);
 		stroke-dasharray: 5 4;
 	}
