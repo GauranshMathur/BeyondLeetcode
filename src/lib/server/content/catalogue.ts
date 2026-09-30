@@ -204,6 +204,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		if (!topic) continue;
 		await checkListed(join(topicDir, 'chapters'), topic.chapters, 'topic.json');
 		const topicChapters: Chapter[] = [];
+		const coreSoFar = new Set<string>();
 
 		for (const chapterId of topic.chapters) {
 			const chapterDir = join(topicDir, 'chapters', chapterId);
@@ -218,6 +219,13 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 				claimId(problemId, problemDir);
 				const manifest = await readJson(join(problemDir, 'problem.json'), problemManifest);
 				if (!manifest) continue;
+				if (manifest.kind === 'core') coreSoFar.add(problemId);
+				else if (!coreSoFar.has(manifest.parent)) {
+					report(
+						join(problemDir, 'problem.json'),
+						`parent "${manifest.parent}" is not a Core Problem before it in Topic "${topicId}"`
+					);
+				}
 				summaries.push({ id: problemId, ...manifest });
 				problems.set(problemId, {
 					id: problemId,
@@ -256,6 +264,10 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		});
 	}
 
+	checkPrerequisites(topics, new Set(content?.topics), (topicId, message) =>
+		report(join(dir, 'topics', topicId, 'topic.json'), message)
+	);
+
 	if (issues.length > 0) throw new ContentError(issues);
 
 	const topicMap = [...topics.values()].map(({ id, title, summary, prerequisites }) => ({
@@ -273,6 +285,37 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		problem: (id) => problems.get(id),
 		hiddenTests: (problemId) => hidden.get(problemId)
 	};
+}
+
+/** Every Prerequisite is a Topic, and Prerequisites never form a cycle. */
+function checkPrerequisites(
+	topics: ReadonlyMap<string, Topic>,
+	topicIds: ReadonlySet<string>,
+	report: (topicId: string, message: string) => void
+) {
+	for (const topic of topics.values()) {
+		for (const prerequisite of topic.prerequisites) {
+			if (!topicIds.has(prerequisite)) {
+				report(topic.id, `Prerequisite "${prerequisite}" is not a Topic`);
+			}
+		}
+	}
+
+	const state = new Map<string, 'visiting' | 'done'>();
+	const visit = (id: string, path: string[]) => {
+		if (state.get(id) === 'done') return;
+		if (state.get(id) === 'visiting') {
+			const cycle = [...path.slice(path.indexOf(id)), id];
+			report(id, `Prerequisites form a cycle: ${cycle.join(' -> ')}`);
+			return;
+		}
+		state.set(id, 'visiting');
+		for (const prerequisite of topics.get(id)?.prerequisites ?? []) {
+			visit(prerequisite, [...path, id]);
+		}
+		state.set(id, 'done');
+	};
+	for (const id of topics.keys()) visit(id, []);
 }
 
 /** Names of the subfolders of `dir`; empty when `dir` does not exist. */

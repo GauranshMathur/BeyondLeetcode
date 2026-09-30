@@ -265,6 +265,61 @@ describe('malformed content', () => {
 		);
 	});
 
+	const setPrerequisites = (dir: string, topicId: string, prerequisites: string[]) =>
+		editJson(join(dir, 'topics', topicId, 'topic.json'), (t) => {
+			t.prerequisites = prerequisites;
+		});
+
+	it('rejects a Prerequisite that is not a Topic', async () => {
+		await expect(
+			loadBroken((dir) => setPrerequisites(dir, 'queues', ['stacks', 'tries']))
+		).rejects.toThrow(/topics\/queues\/topic\.json: Prerequisite "tries" is not a Topic/);
+	});
+
+	it('rejects a Topic that is its own Prerequisite', async () => {
+		await expect(loadBroken((dir) => setPrerequisites(dir, 'stacks', ['stacks']))).rejects.toThrow(
+			/Prerequisites form a cycle: stacks -> stacks/
+		);
+	});
+
+	it('rejects cyclic Prerequisites', async () => {
+		await expect(loadBroken((dir) => setPrerequisites(dir, 'stacks', ['heaps']))).rejects.toThrow(
+			/Prerequisites form a cycle: stacks -> heaps -> (queues -> )?stacks/
+		);
+	});
+
+	const setParent = (dir: string, parent: string) =>
+		editJson(
+			join(stacks(dir), 'chapters/stacks-undo-log/problems/stacks-peek/problem.json'),
+			(p) => {
+				p.parent = parent;
+			}
+		);
+
+	it('rejects an Extra whose parent is not a Problem', async () => {
+		await expect(loadBroken((dir) => setParent(dir, 'stacks-ghost'))).rejects.toThrow(
+			/stacks-peek\/problem\.json: parent "stacks-ghost" is not a Core Problem before it in Topic "stacks"/
+		);
+	});
+
+	it('rejects an Extra whose parent is in another Topic', async () => {
+		await expect(loadBroken((dir) => setParent(dir, 'queues-enqueue'))).rejects.toThrow(
+			/parent "queues-enqueue" is not a Core Problem before it in Topic "stacks"/
+		);
+	});
+
+	it('rejects an Extra whose parent comes after it', async () => {
+		await expect(loadBroken((dir) => setParent(dir, 'stacks-pop'))).rejects.toThrow(
+			/parent "stacks-pop" is not a Core Problem before it/
+		);
+	});
+
+	it('rejects an Extra whose parent is an Extra', async () => {
+		await expect(loadBroken((dir) => setParent(dir, 'stacks-peek'))).rejects.toThrow(
+			/parent "stacks-peek" is not a Core Problem before it/
+		);
+	});
+
 	it('reports every problem at once, as a ContentError', async () => {
 		const error = await loadBroken(async (dir) => {
 			await writeFile(join(stacks(dir), 'topic.json'), '{');
