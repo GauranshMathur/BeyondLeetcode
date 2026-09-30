@@ -1,0 +1,6 @@
+{
+	"title": "Stacks",
+	"summary": "Placeholder fixture text for tests. Not learner content.",
+	"prerequisites": [],
+	"chapters": ["stacks-undo-log", "stacks-call-frames"]
+}

@@ -1,0 +1,6 @@
+{
+	"title": "Heaps",
+	"summary": "Placeholder fixture text for tests. Not learner content.",
+	"prerequisites": ["stacks", "queues"],
+	"chapters": ["heaps-timer-queue"]
+}

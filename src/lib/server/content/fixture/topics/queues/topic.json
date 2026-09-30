@@ -1,0 +1,6 @@
+{
+	"title": "Queues",
+	"summary": "Placeholder fixture text for tests. Not learner content.",
+	"prerequisites": ["stacks"],
+	"chapters": ["queues-print-spooler"]
+}
