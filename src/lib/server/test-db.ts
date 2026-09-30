@@ -4,6 +4,8 @@ import { onTestFinished } from 'vitest';
 import { PrismaClient } from '../../../prisma/generated/client';
 import type { Db } from './db';
 
+// Replays the migration SQL directly (no _prisma_migrations table); db.test.ts
+// covers the real `prisma migrate deploy` path on a file database.
 const migrations = import.meta.glob<string>('/prisma/migrations/*/migration.sql', {
 	query: '?raw',
 	import: 'default',
@@ -16,7 +18,9 @@ const schemaSql = Object.keys(migrations)
 
 // An in-memory database lives only on the connection that opened it, so Prisma
 // must reuse the client the migrations ran on instead of opening its own.
-class ExistingClient extends PrismaLibSql {
+// `createClient` is the adapter's public hook for this; test-db.test.ts fails
+// with "no such table" if Prisma ever opens a second connection.
+class PrismaLibSqlOnClient extends PrismaLibSql {
 	readonly #client: Client;
 
 	constructor(client: Client) {
@@ -32,8 +36,15 @@ class ExistingClient extends PrismaLibSql {
 /** A fresh in-memory SQLite database with every migration applied, closed when the test ends. */
 export async function createTestDb(): Promise<Db> {
 	const client = createClient({ url: ':memory:' });
+	const db = new PrismaClient({ adapter: new PrismaLibSqlOnClient(client) });
+	onTestFinished(async () => {
+		try {
+			await db.$disconnect();
+		} finally {
+			// $disconnect closes the client only if Prisma ever connected.
+			if (!client.closed) client.close();
+		}
+	});
 	await client.executeMultiple(schemaSql);
-	const db = new PrismaClient({ adapter: new ExistingClient(client) });
-	onTestFinished(() => db.$disconnect());
 	return db;
 }
