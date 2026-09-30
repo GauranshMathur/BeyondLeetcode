@@ -217,6 +217,54 @@ describe('malformed content', () => {
 		);
 	});
 
+	it('rejects a Test input with no expected output', async () => {
+		await expect(
+			loadBroken((dir) => rm(join(pushProblem(dir), 'tests/hidden/01.out')))
+		).rejects.toThrow(/stacks-push\/tests\/hidden\/01\.out: missing file/);
+	});
+
+	it('rejects an expected output with no Test input', async () => {
+		await expect(
+			loadBroken((dir) => writeFile(join(pushProblem(dir), 'tests/example/02.out'), '1\n'))
+		).rejects.toThrow(/stacks-push\/tests\/example\/02\.in: missing file/);
+	});
+
+	it('rejects a stray file among the Tests', async () => {
+		await expect(
+			loadBroken((dir) => writeFile(join(pushProblem(dir), 'tests/example/notes.txt'), ''))
+		).rejects.toThrow(/stacks-push\/tests\/example\/notes\.txt: expected a \.in or \.out file/);
+	});
+
+	it('rejects a Problem with no Example Test', async () => {
+		await expect(
+			loadBroken((dir) => rm(join(pushProblem(dir), 'tests/example'), { recursive: true }))
+		).rejects.toThrow(/stacks-push\/tests\/example: needs at least one Example Test/);
+	});
+
+	it('rejects Hints that skip a number', async () => {
+		await expect(loadBroken((dir) => rm(join(pushProblem(dir), 'hints/1.md')))).rejects.toThrow(
+			/stacks-push\/hints: Hints must be 1\.md to 1\.md in order, found 2\.md/
+		);
+	});
+
+	it('rejects a Language missing Reference Code', async () => {
+		await expect(
+			loadBroken((dir) => rm(join(pushProblem(dir), 'reference/go'), { recursive: true }))
+		).rejects.toThrow(/stacks-push\/reference\/go: missing Reference Code/);
+	});
+
+	it('rejects Reference Code for an unknown Language', async () => {
+		await expect(
+			loadBroken((dir) =>
+				cp(join(pushProblem(dir), 'reference/go'), join(pushProblem(dir), 'reference/rust'), {
+					recursive: true
+				})
+			)
+		).rejects.toThrow(
+			/stacks-push\/reference: "rust" is not a Language \(python, typescript, go\)/
+		);
+	});
+
 	it('reports every problem at once, as a ContentError', async () => {
 		const error = await loadBroken(async (dir) => {
 			await writeFile(join(stacks(dir), 'topic.json'), '{');

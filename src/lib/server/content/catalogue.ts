@@ -121,12 +121,15 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 
 	async function readTests(problemDir: string, problemId: string, kind: Test['kind']) {
 		const testDir = join(problemDir, 'tests', kind);
-		const names = (await listFiles(testDir))
-			.filter((f) => f.endsWith('.in'))
-			.map((f) => f.slice(0, -'.in'.length))
-			.sort();
+		const names = new Set<string>();
+		for (const file of await listFiles(testDir)) {
+			const match = /^(.+)\.(in|out)$/.exec(file);
+			if (match) names.add(match[1]);
+			else report(join(testDir, file), 'expected a .in or .out file');
+		}
+		if (kind === 'example' && names.size === 0) report(testDir, 'needs at least one Example Test');
 		return Promise.all(
-			names.map(
+			[...names].sort().map(
 				async (name): Promise<Test> => ({
 					id: `${problemId}/${kind}/${name}`,
 					kind,
@@ -138,17 +141,32 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	}
 
 	async function readHints(hintDir: string): Promise<string[]> {
-		const numbers = (await listFiles(hintDir)).map((f) => Number(f.slice(0, -'.md'.length)));
-		numbers.sort((a, b) => a - b);
-		return Promise.all(numbers.map((n) => readText(join(hintDir, `${n}.md`))));
+		const files = await listFiles(hintDir);
+		const expected = files.map((_, i) => `${i + 1}.md`);
+		if (!expected.every((f) => files.includes(f))) {
+			const found = files.sort((x, y) => x.localeCompare(y, 'en', { numeric: true }));
+			report(
+				hintDir,
+				`Hints must be 1.md to ${files.length}.md in order, found ${found.join(', ')}`
+			);
+			return [];
+		}
+		return Promise.all(expected.map((f) => readText(join(hintDir, f))));
 	}
 
 	async function readReferenceCode(referenceDir: string) {
+		for (const folder of await listDirs(referenceDir)) {
+			if (!(LANGUAGES as readonly string[]).includes(folder)) {
+				report(referenceDir, `"${folder}" is not a Language (${LANGUAGES.join(', ')})`);
+			}
+		}
 		const code = {} as Record<Language, BuildFiles>;
 		for (const language of LANGUAGES) {
 			const languageDir = join(referenceDir, language);
+			const paths = (await listFiles(languageDir, true)).sort();
+			if (paths.length === 0) report(languageDir, 'missing Reference Code');
 			const files: Record<string, string> = {};
-			for (const path of (await listFiles(languageDir, true)).sort()) {
+			for (const path of paths) {
 				files[path.split(sep).join('/')] = await readText(join(languageDir, path));
 			}
 			code[language] = files;
