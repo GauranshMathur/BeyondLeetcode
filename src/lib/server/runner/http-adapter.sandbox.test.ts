@@ -126,6 +126,16 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '42\n' });
 	});
 
+	it('compiles with the real py_compile even if the Build ships a file of that name', async () => {
+		const result = await run({
+			'main.py': 'print("fine")\n',
+			'py_compile.py': 'raise SystemExit("shadowed")\n'
+		});
+
+		expect(result.compileError).toBeUndefined();
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: 'fine\n' });
+	});
+
 	it('times out an infinite loop within the per-Test limit, not the request timeout', async () => {
 		const started = Date.now();
 

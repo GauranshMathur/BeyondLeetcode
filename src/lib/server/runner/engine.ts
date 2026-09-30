@@ -18,6 +18,8 @@ export type AttachedContainer = {
 	destroy(): void;
 };
 
+const engineCallTimeoutMs = 60_000;
+
 type Reply = { status: number; body: string };
 
 export function createEngine(socketPath: string) {
@@ -43,11 +45,14 @@ export function createEngine(socketPath: string) {
 				}
 			);
 			req.on('error', reject);
+			req.setTimeout(engineCallTimeoutMs, () =>
+				req.destroy(new Error(`Docker ${method} ${path} timed out`))
+			);
 			req.end(payload);
 		});
 	}
 
-	async function expect(reply: Reply, what: string, ...ok: number[]): Promise<Reply> {
+	async function assertStatus(reply: Reply, what: string, ...ok: number[]): Promise<Reply> {
 		if (!ok.includes(reply.status)) {
 			throw new Error(`Docker ${what} failed (${reply.status}): ${reply.body.slice(0, 500)}`);
 		}
@@ -60,7 +65,7 @@ export function createEngine(socketPath: string) {
 			'POST',
 			`/images/create?fromImage=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
 		);
-		await expect(reply, `pull ${image}`, 200);
+		await assertStatus(reply, `pull ${image}`, 200);
 		if (/"error"\s*:/.test(reply.body)) throw new Error(`Docker pull ${image} failed`);
 	}
 
@@ -72,7 +77,7 @@ export function createEngine(socketPath: string) {
 				await pull(image);
 				reply = await call('POST', '/containers/create', { Image: image, ...spec });
 			}
-			await expect(reply, 'create', 201);
+			await assertStatus(reply, 'create', 201);
 			return (JSON.parse(reply.body) as { Id: string }).Id;
 		},
 
@@ -100,6 +105,12 @@ export function createEngine(socketPath: string) {
 					if (!settled) {
 						settled = true;
 						reject(error);
+					}
+				});
+				socket.on('close', () => {
+					if (!settled) {
+						settled = true;
+						reject(new Error('Docker attach closed before the stream started'));
 					}
 				});
 				socket.on('connect', () => {
@@ -135,23 +146,28 @@ export function createEngine(socketPath: string) {
 		},
 
 		async start(id: string): Promise<void> {
-			await expect(await call('POST', `/containers/${id}/start`), 'start', 204);
+			await assertStatus(await call('POST', `/containers/${id}/start`), 'start', 204);
 		},
 
 		async kill(id: string): Promise<void> {
 			// 409: the container is already stopped.
-			await expect(await call('POST', `/containers/${id}/kill`), 'kill', 204, 404, 409);
+			await assertStatus(await call('POST', `/containers/${id}/kill`), 'kill', 204, 404, 409);
 		},
 
 		/** Removes the container even if it is running, and its anonymous volumes. */
 		async remove(id: string): Promise<void> {
-			await expect(await call('DELETE', `/containers/${id}?force=true&v=true`), 'remove', 204, 404);
+			await assertStatus(
+				await call('DELETE', `/containers/${id}?force=true&v=true`),
+				'remove',
+				204,
+				404
+			);
 		},
 
 		/** Ids of every container, running or not, that carries `label`. */
 		async listByLabel(label: string): Promise<string[]> {
 			const filters = encodeURIComponent(JSON.stringify({ label: [label] }));
-			const reply = await expect(
+			const reply = await assertStatus(
 				await call('GET', `/containers/json?all=true&filters=${filters}`),
 				'list',
 				200

@@ -46,7 +46,7 @@ sources = []
 for root, _, names in os.walk(BUILD):
     sources += [os.path.join(root, n) for n in names if n.endswith(".py")]
 compiled = subprocess.run(
-    [sys.executable, "-m", "py_compile"] + sorted(sources),
+    [sys.executable, "-I", "-m", "py_compile"] + sorted(sources),
     stdin=subprocess.DEVNULL, capture_output=True, env=CHILD_ENV,
 )
 if compiled.returncode != 0:

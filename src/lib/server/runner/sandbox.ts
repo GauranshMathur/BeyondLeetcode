@@ -104,14 +104,15 @@ async function execute(engine: Engine, request: ExecuteRequest): Promise<Execute
 			}
 		});
 		const conn = attached;
-		await engine.start(id);
+		// The wall clock covers start-up too: it starts before the container does.
 		const hardStop = setTimeout(() => {
 			timedOut = true;
 			engine.kill(id).catch(() => {});
 			conn.destroy();
 		}, sandboxConfig.containerTimeoutMs);
-		conn.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
 		try {
+			await engine.start(id);
+			conn.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
 			await conn.closed;
 		} finally {
 			clearTimeout(hardStop);
