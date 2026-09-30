@@ -5,6 +5,6 @@ import Page from './+page.svelte';
 describe('placeholder page', () => {
 	it('renders the product name as its heading', () => {
 		const { body } = render(Page);
-		expect(body).toMatch(/<h1[^>]*>BeyondLeetcode<\/h1>/);
+		expect(body).toMatch(/<h1[^>]*>DeliberatelyWrong<\/h1>/);
 	});
 });
