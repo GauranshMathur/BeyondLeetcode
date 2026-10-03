@@ -11,11 +11,13 @@
  * RUNNER_DEADLINE_S.
  *
  * This process is PID 1 and shares a uid with learner code, so it never chdirs into /work, reads
- * every Test input before the first learner process starts, and on any unexpected failure exits
+ * every Test input and the Build into memory and deletes /work/tests before the first learner
+ * process starts, wipes /work and restores the Build from memory before every Test (nothing a Test
+ * wrote survives it, so a Hidden Test's input cannot be read back by a later Test), and on any unexpected failure exits
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = String.raw`
-import ctypes, io, json, os, signal, subprocess, sys, tarfile, threading, traceback
+import ctypes, io, json, os, shutil, signal, stat, subprocess, sys, tarfile, threading, traceback
 
 # Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
 # read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
@@ -69,6 +71,39 @@ INPUTS = []
 for n in range(COUNT):
     with open("%s/tests/%d.in" % (WORK, n), "rb") as f:
         INPUTS.append(f.read())
+# Learner code shares our uid and must never see the Test inputs: they only live in our memory now.
+if os.path.isdir(WORK + "/tests"):  # absent when there are no Tests
+    shutil.rmtree(WORK + "/tests")
+BUILD_FILES = []
+for root, _, names in os.walk(BUILD):
+    for name in names:
+        path = os.path.join(root, name)
+        with open(path, "rb") as f:
+            BUILD_FILES.append((os.path.relpath(path, BUILD), f.read()))
+
+
+def wipe(path):
+    # lstat: a symlink is unlinked, never followed. chmod first: learner code may have locked a directory.
+    if stat.S_ISDIR(os.lstat(path).st_mode):
+        os.chmod(path, 0o700)
+        for name in os.listdir(path):
+            wipe(os.path.join(path, name))
+        os.rmdir(path)
+    else:
+        os.unlink(path)
+
+
+def fresh_build():
+    """Everything under /work is gone, then the Build is exactly as it was uploaded."""
+    for name in os.listdir(WORK):
+        wipe(os.path.join(WORK, name))
+    for rel, data in BUILD_FILES:
+        target = os.path.join(BUILD, rel)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as f:
+            f.write(data)
+
+
 CHILD_ENV = {"PATH": os.environ.get("PATH", "")}
 
 sources = []
@@ -125,6 +160,7 @@ def run_tests():
     spent = 0
     for i in range(COUNT):
         cap = CAP if spent < TOTAL_CAP else 0
+        fresh_build()
         proc = subprocess.Popen(
             [sys.executable, "main.py"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -149,9 +185,9 @@ def run_tests():
         except ProcessLookupError:
             pass  # nothing else was left alive
         proc.wait()
-        reap()
         for t in threads:
             t.join(2)
+        reap()
         (o, o_over), (e, e_over) = (out or [(b"", False)])[0], (err or [(b"", False)])[0]
         if cap == 0:
             o_over = e_over = True
