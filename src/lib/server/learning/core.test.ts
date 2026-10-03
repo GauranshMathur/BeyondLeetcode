@@ -861,3 +861,94 @@ describe('learner.submit()', () => {
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 	});
 });
+
+describe('learner.switchLanguage()', () => {
+	async function setup() {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const runner = createScriptedRunner();
+		const db = await createTestDb();
+		const core = createLearningCore({ catalogue, db, runner });
+		return { catalogue, db, runner, learner: core.forLearner('any-learner') };
+	}
+
+	it('starts the first Problem of a Topic empty, with the TypeScript entry file', async () => {
+		const { learner } = await setup();
+
+		await learner.switchLanguage('stacks', 'typescript');
+
+		expect(await learner.problem('stacks-push')).toMatchObject({
+			language: 'typescript',
+			files: { 'main.ts': '' },
+			revision: 0
+		});
+	});
+
+	it("starts a later Problem from the Learner's previous step in that Language, else its Reference Code", async () => {
+		const { learner, catalogue } = await setup();
+		await learner.switchLanguage('stacks', 'typescript');
+
+		expect((await learner.problem('stacks-pop')).files).toEqual(
+			catalogue.problem('stacks-push')?.referenceCode.typescript
+		);
+		await learner.saveCode('stacks-push', { 'main.ts': 'mine' }, 0);
+		expect((await learner.problem('stacks-pop')).files).toEqual({ 'main.ts': 'mine' });
+	});
+
+	it('keeps the old Language Build, and switching back restores its code and revision', async () => {
+		const { learner } = await setup();
+		await learner.saveCode('stacks-push', { 'main.py': 'python code' }, 0);
+
+		await learner.switchLanguage('stacks', 'typescript');
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.ts': '' });
+		await learner.saveCode('stacks-push', { 'main.ts': 'ts code' }, 0);
+		await learner.switchLanguage('stacks', 'python');
+
+		expect(await learner.problem('stacks-push')).toMatchObject({
+			language: 'python',
+			files: { 'main.py': 'python code' },
+			revision: 1
+		});
+		await learner.switchLanguage('stacks', 'typescript');
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.ts': 'ts code' });
+	});
+
+	it('is per Topic and per Learner', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const core = createLearningCore({ catalogue, db: await createTestDb() });
+		const mine = core.forLearner('mine');
+
+		await mine.switchLanguage('stacks', 'typescript');
+
+		expect((await core.forLearner('other').problem('stacks-push')).language).toBe('python');
+		expect((await mine.problem('stacks-push')).language).toBe('typescript');
+	});
+
+	it('runs the Build in the current Language', async () => {
+		const { learner, runner } = await setup();
+		await learner.switchLanguage('stacks', 'typescript');
+
+		await learner.run('stacks-push', { 'main.ts': 'console.log(2)' }, 0);
+
+		expect(runner.calls[0].language).toBe('typescript');
+	});
+
+	it('records a Submission in the current Language', async () => {
+		const { learner, db } = await setup();
+		await learner.switchLanguage('stacks', 'typescript');
+
+		await learner.submit('stacks-push', { 'main.ts': 'console.log(2)' }, 0);
+
+		expect((await db.submission.findFirstOrThrow()).language).toBe('typescript');
+	});
+
+	it('throws NotFound for an unknown Topic and TopicLocked for a Locked one', async () => {
+		const { learner } = await setup();
+
+		await expect(learner.switchLanguage('nope', 'typescript')).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		await expect(learner.switchLanguage('queues', 'typescript')).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+	});
+});

@@ -38,6 +38,16 @@ model BuildStep {
   @@id([learnerId, topicId, language, problemId])
 }
 
+// The Language a Learner is building one Topic in. No row means Python. Switching changes only
+// this row: every Language keeps its own BuildSteps.
+model TopicLanguage {
+  learnerId String
+  topicId   String
+  language  String
+
+  @@id([learnerId, topicId])
+}
+
 // One Submit of a Problem (CONTEXT.md: Submission). A Problem is Solved once any of its
 // Submissions is Accepted, Attempted while it has some but none Accepted.
 model Submission {
