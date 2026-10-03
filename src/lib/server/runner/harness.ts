@@ -21,7 +21,7 @@
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = String.raw`
-import ctypes, io, json, os, shutil, signal, stat, subprocess, sys, tarfile, threading, time, traceback
+import ctypes, io, json, os, re, shutil, signal, stat, subprocess, sys, tarfile, threading, time, traceback
 
 # Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
 # read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
@@ -150,6 +150,7 @@ def fresh_build():
     os.utime(WORK, (0, 0))
 
 
+SYNTAX_LINE = re.compile(rb"^(?:Sorry: )?(?:SyntaxError|IndentationError|TabError|ValueError)\b", re.M)
 CHILD_ENV = {"PATH": os.environ.get("PATH", "")}
 
 sources = []
@@ -160,6 +161,12 @@ compiled = subprocess.run(
     stdin=subprocess.DEVNULL, capture_output=True, env=CHILD_ENV,
 )
 if compiled.returncode != 0:
+    # A Compile Error is py_compile exiting 1 with a syntax-style exception line on stderr
+    # ("SyntaxError: ...", "Sorry: IndentationError: ...", "ValueError: source code string cannot
+    # contain null bytes"). Anything else (a signal, OOM 137, another code) is not the Learner's
+    # code being wrong: exit non-zero without a result and the Runner reports its own failure.
+    if compiled.returncode != 1 or not SYNTAX_LINE.search(compiled.stderr):
+        sys.exit("compile step failed with status %d" % compiled.returncode)
     emit({"compileError": text(compiled.stderr[:CAP], len(compiled.stderr) > CAP)})
     sys.exit(0)
 
