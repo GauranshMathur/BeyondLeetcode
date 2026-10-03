@@ -318,6 +318,13 @@ const label: Record<SaveState, string> = {
 		color: var(--accent);
 	}
 	@media (max-width: 900px) {
+		.workspace-bar {
+			height: auto;
+			min-height: 64px;
+			flex-wrap: wrap;
+			gap: 0 16px;
+			padding: 1px 16px 0;
+		}
 		.grid {
 			grid-template-columns: minmax(0, 1fr);
 		}
