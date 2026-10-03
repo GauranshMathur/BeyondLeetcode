@@ -11,6 +11,7 @@ import { createTar } from './tar';
 
 const nobody = '65534:65534';
 const mib = 1024 * 1024;
+const removeAttempts = 3;
 
 const harnessLine = z.union([
 	z.object({ compileError: z.string() }),
@@ -22,16 +23,18 @@ const harnessLine = z.union([
 	})
 ]);
 
-function containerSpec(testCount: number, testTimeoutMs: number, memoryMb: number) {
+export function containerSpec(testCount: number, testTimeoutMs: number, memoryMb: number) {
 	const memory = memoryMb * mib;
 	return {
-		Cmd: ['python', '-c', harnessScript],
+		Cmd: ['python', '-I', '-c', harnessScript],
 		User: nobody,
 		WorkingDir: '/work',
 		Env: [
 			`RUNNER_TEST_COUNT=${testCount}`,
 			`RUNNER_TEST_TIMEOUT_MS=${testTimeoutMs}`,
-			`RUNNER_OUTPUT_CAP=${sandboxConfig.outputCapBytes}`
+			`RUNNER_OUTPUT_CAP=${sandboxConfig.outputCapBytes}`,
+			`RUNNER_TOTAL_OUTPUT_CAP=${sandboxConfig.totalOutputCapBytes}`,
+			`RUNNER_DEADLINE_S=${sandboxConfig.containerDeadlineS}`
 		],
 		Labels: { [containerLabel]: 'true' },
 		AttachStdin: true,
@@ -42,7 +45,13 @@ function containerSpec(testCount: number, testTimeoutMs: number, memoryMb: numbe
 		Tty: false,
 		NetworkDisabled: true,
 		HostConfig: {
+			// Removed by the daemon on exit too, so a dead Runner leaks nothing.
+			AutoRemove: true,
 			NetworkMode: 'none',
+			// No shared memory between the container and anything else.
+			IpcMode: 'none',
+			// Nothing the container prints is kept by the daemon; the Runner reads it over attach.
+			LogConfig: { Type: 'none' },
 			ReadonlyRootfs: true,
 			Tmpfs: {
 				'/work': `rw,noexec,nosuid,nodev,size=${sandboxConfig.workTmpfsMb}m,uid=65534,gid=65534,mode=0700`
@@ -83,43 +92,55 @@ async function execute(engine: Engine, request: ExecuteRequest): Promise<Execute
 	);
 	let timedOut = false;
 	let attached: AttachedContainer | undefined;
+	// The wall clock covers attach and start-up too: it starts as soon as the container exists.
+	const hardStop = setTimeout(() => {
+		timedOut = true;
+		engine.kill(id).catch(() => {});
+		attached?.destroy();
+	}, sandboxConfig.containerTimeoutMs);
 	try {
-		attached = await engine.attach(id, (stream, payload) => {
-			received += payload.length;
-			if (received > sandboxConfig.containerOutputMaxBytes) {
-				overflow = true;
-				attached?.destroy();
-				return;
+		// Issued before start, so the exit status is ours even if the container removes itself.
+		const exitStatus = engine.wait(id);
+		exitStatus.catch(() => {});
+		attached = await engine.attach(
+			id,
+			(stream, payload) => {
+				received += payload.length;
+				if (received > sandboxConfig.containerOutputMaxBytes) {
+					overflow = true;
+					attached?.destroy();
+					return;
+				}
+				const chunk = decoder.decode(payload, { stream: true });
+				if (stream === 2) {
+					harnessStderr = (harnessStderr + chunk).slice(0, 4096);
+					return;
+				}
+				partial += chunk;
+				for (let end = partial.indexOf('\n'); end >= 0; end = partial.indexOf('\n')) {
+					const parsed = harnessLine.safeParse(safeJson(partial.slice(0, end)));
+					partial = partial.slice(end + 1);
+					if (parsed.success) lines.push(parsed.data);
+				}
+			},
+			sandboxConfig.attachTimeoutMs
+		);
+		if (timedOut) throw new Error('Sandbox start-up exceeded the time limit');
+		await engine.start(id);
+		attached.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
+		await attached.closed;
+		if (!overflow && !timedOut) {
+			// The harness only exits non-zero when something went wrong inside it (or learner code
+			// got to it): whatever it printed cannot be trusted.
+			const code = await within(exitStatus, sandboxConfig.exitStatusTimeoutMs);
+			if (code !== 0) {
+				throw new Error(`Sandbox harness exited with status ${code}: ${harnessStderr}`);
 			}
-			const chunk = decoder.decode(payload, { stream: true });
-			if (stream === 2) {
-				harnessStderr = (harnessStderr + chunk).slice(0, 4096);
-				return;
-			}
-			partial += chunk;
-			for (let end = partial.indexOf('\n'); end >= 0; end = partial.indexOf('\n')) {
-				const parsed = harnessLine.safeParse(safeJson(partial.slice(0, end)));
-				partial = partial.slice(end + 1);
-				if (parsed.success) lines.push(parsed.data);
-			}
-		});
-		const conn = attached;
-		// The wall clock covers start-up too: it starts before the container does.
-		const hardStop = setTimeout(() => {
-			timedOut = true;
-			engine.kill(id).catch(() => {});
-			conn.destroy();
-		}, sandboxConfig.containerTimeoutMs);
-		try {
-			await engine.start(id);
-			conn.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
-			await conn.closed;
-		} finally {
-			clearTimeout(hardStop);
 		}
 	} finally {
+		clearTimeout(hardStop);
 		attached?.destroy();
-		await engine.remove(id);
+		await removeContainer(engine, id);
 	}
 
 	if (overflow) throw new Error('Sandbox produced more output than the Runner allows');
@@ -138,6 +159,48 @@ async function execute(engine: Engine, request: ExecuteRequest): Promise<Execute
 		throw new Error(`Sandbox ended without a result for Test ${testId}: ${harnessStderr}`);
 	});
 	return { results };
+}
+
+function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error('Timed out waiting for the Sandbox exit')), ms);
+		promise.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(error) => {
+				clearTimeout(timer);
+				reject(error);
+			}
+		);
+	});
+}
+
+/** Retries, logs, never throws: it runs while the real error is already on its way. */
+async function removeContainer(engine: Engine, id: string): Promise<void> {
+	for (let attempt = 1; attempt <= removeAttempts; attempt++) {
+		try {
+			await engine.remove(id);
+			return;
+		} catch (error) {
+			console.error(
+				`Could not remove container ${id} (attempt ${attempt}/${removeAttempts})`,
+				error
+			);
+			if (attempt < removeAttempts)
+				await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+		}
+	}
+}
+
+/** At Runner start-up: containers left by a previous Runner that died mid-run. */
+export async function removeStaleContainers(engine: Engine): Promise<void> {
+	try {
+		for (const id of await engine.listByLabel(containerLabel)) await removeContainer(engine, id);
+	} catch (error) {
+		console.error('Could not clean up leftover Sandbox containers', error);
+	}
 }
 
 function safeJson(text: string): unknown {

@@ -82,12 +82,19 @@ export function createEngine(socketPath: string) {
 		},
 
 		/** Opens the hijacked stdin/stdout/stderr stream. Call before `start` so no output is missed. */
-		attach(id: string, onFrame: OutputFrame): Promise<AttachedContainer> {
+		attach(id: string, onFrame: OutputFrame, timeoutMs: number): Promise<AttachedContainer> {
 			return new Promise((resolve, reject) => {
 				const socket = connect({ path: socketPath });
 				let pending: Buffer = Buffer.alloc(0);
 				let upgraded = false;
 				let settled = false;
+				// A stalled daemon must not hang the caller: give up and close the socket.
+				const handshake = setTimeout(() => {
+					if (settled) return;
+					settled = true;
+					socket.destroy();
+					reject(new Error('Docker attach timed out'));
+				}, timeoutMs);
 				const closed = new Promise<void>((done) => socket.once('close', () => done()));
 
 				function frames(): void {
@@ -102,12 +109,14 @@ export function createEngine(socketPath: string) {
 				}
 
 				socket.on('error', (error) => {
+					clearTimeout(handshake);
 					if (!settled) {
 						settled = true;
 						reject(error);
 					}
 				});
 				socket.on('close', () => {
+					clearTimeout(handshake);
 					if (!settled) {
 						settled = true;
 						reject(new Error('Docker attach closed before the stream started'));
@@ -126,6 +135,7 @@ export function createEngine(socketPath: string) {
 						if (end < 0) return;
 						const head = pending.subarray(0, end).toString('latin1');
 						pending = pending.subarray(end + 4);
+						clearTimeout(handshake);
 						if (!/^HTTP\/1\.1 (101|200) /.test(head)) {
 							settled = true;
 							socket.destroy();
@@ -145,6 +155,25 @@ export function createEngine(socketPath: string) {
 			});
 		},
 
+		/**
+		 * Resolves with the exit status at the container's next exit. Issue it before `start`: it
+		 * then also works for a container that removes itself on exit.
+		 */
+		async wait(id: string): Promise<number> {
+			const reply = await assertStatus(
+				await call('POST', `/containers/${id}/wait?condition=next-exit`),
+				'wait',
+				200
+			);
+			return (JSON.parse(reply.body) as { StatusCode: number }).StatusCode;
+		},
+
+		/** The container's configuration as the daemon holds it. */
+		async inspect(id: string): Promise<{ HostConfig: Record<string, unknown> }> {
+			const reply = await assertStatus(await call('GET', `/containers/${id}/json`), 'inspect', 200);
+			return JSON.parse(reply.body);
+		},
+
 		async start(id: string): Promise<void> {
 			await assertStatus(await call('POST', `/containers/${id}/start`), 'start', 204);
 		},
@@ -156,12 +185,16 @@ export function createEngine(socketPath: string) {
 
 		/** Removes the container even if it is running, and its anonymous volumes. */
 		async remove(id: string): Promise<void> {
-			await assertStatus(
-				await call('DELETE', `/containers/${id}?force=true&v=true`),
-				'remove',
-				204,
-				404
-			);
+			const reply = await call('DELETE', `/containers/${id}?force=true&v=true`);
+			if (reply.status === 409 && /already in progress/.test(reply.body)) {
+				// The daemon is already removing it (AutoRemove): wait until it is gone.
+				for (let wait = 0; wait < 50; wait++) {
+					if ((await call('GET', `/containers/${id}/json`)).status === 404) return;
+					await new Promise((resolve) => setTimeout(resolve, 100));
+				}
+				throw new Error(`Docker remove of ${id} is still in progress`);
+			}
+			await assertStatus(reply, 'remove', 204, 404);
 		},
 
 		/** Ids of every container, running or not, that carries `label`. */

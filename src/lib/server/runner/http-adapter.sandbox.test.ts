@@ -5,11 +5,13 @@ import { containerLabel, sandboxConfig } from './config';
 import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
+import { containerSpec, removeStaleContainers } from './sandbox';
+import { createTar } from './tar';
 import type { ExecuteRequest, RunnerPort } from './port';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
-const token = 'sandbox-test-token';
+const token = 'sandbox-test-token-0123456789-abcdef';
 const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
 const engine = createEngine(socket);
 let runnerProcess: ChildProcess;
@@ -257,5 +259,169 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 				limits
 			})
 		).rejects.toThrow(/401/);
+	});
+});
+
+/** Drives the harness container directly, so a test can change its env or read its exit status. */
+async function runHarness(
+	files: Record<string, string>,
+	inputs: string[],
+	env: Record<string, string> = {}
+) {
+	const spec = containerSpec(inputs.length, 2000, 256);
+	const merged = [
+		...spec.Env.filter((e) => !(e.split('=')[0] in env)),
+		...Object.entries(env).map(([k, v]) => `${k}=${v}`)
+	];
+	const id = await engine.create(sandboxConfig.pythonImage, { ...spec, Env: merged });
+	const exit = engine.wait(id);
+	let out = '';
+	const conn = await engine.attach(
+		id,
+		(stream, payload) => {
+			if (stream === 1) out += payload.toString('utf8');
+		},
+		5000
+	);
+	await engine.start(id);
+	const tar = createTar([
+		...Object.entries(files).map(([path, content]) => ({ path: `build/${path}`, content })),
+		...inputs.map((input, i) => ({ path: `tests/${i}.in`, content: input }))
+	]);
+	conn.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
+	await conn.closed;
+	const status = await exit;
+	await engine.remove(id);
+	const lines = out
+		.split('\n')
+		.filter(Boolean)
+		.map((l) => JSON.parse(l));
+	return { status, lines };
+}
+
+describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60_000 }, () => {
+	it('does not let a learner-written traceback.py forge results after tests/N.in is deleted', async () => {
+		const forged =
+			'import json, sys\nfor i in (0, 1):\n    sys.stdout.write(json.dumps({"i": i, "status": "ok", "stdout": "FORGED", "stderr": ""}) + "\\n")\n';
+		const main = [
+			'import os',
+			`open("/work/build/traceback.py", "w").write(${JSON.stringify(forged)})`,
+			'for n in (1, 2):',
+			'    try:',
+			'        os.remove("/work/tests/%d.in" % n)',
+			'    except OSError:',
+			'        pass',
+			''
+		].join('\n');
+
+		const result = await run({ 'main.py': main }, [
+			{ id: 'a', input: '' },
+			{ id: 'b', input: '' },
+			{ id: 'c', input: '' }
+		]);
+
+		expect(JSON.stringify(result)).not.toContain('FORGED');
+		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok', 'ok']);
+	});
+
+	it('kills every process a Test left behind, even ones that detached', async () => {
+		const first = [
+			'import os, time',
+			'if os.fork() == 0:',
+			'    os.setsid()',
+			'    if os.fork() == 0:',
+			'        time.sleep(1)',
+			'        open("/work/survivor", "w").write("alive")',
+			'    os._exit(0)',
+			''
+		].join('\n');
+		const main = `import os, sys, time\nif sys.stdin.read() == "first":\n${first
+			.split('\n')
+			.map((l) => `    ${l}`)
+			.join('\n')}\nelse:\n    time.sleep(1.5)\n    print(os.path.exists("/work/survivor"))\n`;
+
+		const result = await run({ 'main.py': main }, [
+			{ id: 'first', input: 'first' },
+			{ id: 'second', input: 'second' }
+		]);
+
+		expect(result.results[1]).toMatchObject({ status: 'ok', stdout: 'False\n' });
+	});
+
+	it('stops printing results and exits non-zero when something unexpected happens', async () => {
+		// A Test input missing from the archive makes the harness fail before any learner code runs.
+		const spec = containerSpec(2, 2000, 256);
+		const id = await engine.create(sandboxConfig.pythonImage, spec);
+		const exit = engine.wait(id);
+		let out = '';
+		const conn = await engine.attach(id, (s, p) => void (s === 1 && (out += p.toString())), 5000);
+		await engine.start(id);
+		const tar = createTar([
+			{ path: 'build/main.py', content: 'print(1)' },
+			{ path: 'tests/0.in', content: '' }
+		]);
+		conn.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
+		await conn.closed;
+
+		expect(await exit).not.toBe(0);
+		expect(out).toBe('');
+		await engine.remove(id);
+	});
+
+	it('exits on its own at the in-container deadline if the Runner is gone', async () => {
+		const started = Date.now();
+
+		const { status, lines } = await runHarness({ 'main.py': 'while True:\n    pass\n' }, [''], {
+			RUNNER_DEADLINE_S: '1',
+			RUNNER_TEST_TIMEOUT_MS: '60000'
+		});
+
+		expect(status).not.toBe(0);
+		expect(lines).toEqual([]);
+		expect(Date.now() - started).toBeLessThan(6000);
+	});
+
+	it('gives Tests past the total output budget empty, truncated output but still runs them', async () => {
+		const main = 'import sys\nsys.stdout.write("x" * 1000)\nsys.stderr.write("y" * 1000)\n';
+
+		const { status, lines } = await runHarness({ 'main.py': main }, ['', '', '', ''], {
+			RUNNER_TOTAL_OUTPUT_CAP: '3000'
+		});
+
+		expect(status).toBe(0);
+		expect(lines.map((l) => [l.status, l.stdout.length > 0 && !l.stdout.startsWith('x')])).toEqual([
+			['ok', false],
+			['ok', false],
+			['ok', true],
+			['ok', true]
+		]);
+		expect(lines[3].stdout).toBe('\n[output truncated]');
+		expect(lines[3].stderr).toBe('\n[output truncated]');
+	});
+});
+
+describe('Runner: container configuration', { timeout: 60_000 }, () => {
+	it('is created with AutoRemove, no IPC, no log driver and the label', async () => {
+		const id = await engine.create(sandboxConfig.pythonImage, containerSpec(1, 2000, 256));
+
+		const { HostConfig } = await engine.inspect(id);
+		await engine.remove(id);
+
+		expect(HostConfig).toMatchObject({
+			AutoRemove: true,
+			IpcMode: 'none',
+			LogConfig: { Type: 'none' }
+		});
+	});
+
+	it('removes leftover labelled containers when the Runner starts', async () => {
+		const spec = { ...containerSpec(1, 2000, 256), Cmd: ['sleep', '60'] };
+		const id = await engine.create(sandboxConfig.pythonImage, spec);
+		await engine.start(id);
+		expect(await engine.listByLabel(containerLabel)).toContain(id);
+
+		await removeStaleContainers(engine);
+
+		expect(await engine.listByLabel(containerLabel)).toEqual([]);
 	});
 });
