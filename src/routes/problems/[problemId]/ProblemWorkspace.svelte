@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onDestroy, type Snippet } from 'svelte';
 import { deserialize } from '$app/forms';
+import { invalidateAll } from '$app/navigation';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
 import type { ProblemView, RunView, SubmitView } from '$lib/server/learning/core';
 import type { Outcome } from './outcome';
@@ -24,6 +25,14 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
 let dirty = false;
 let outcome = $state<Outcome | undefined>(undefined);
+// The Language picker: a pick waits for the inline confirm; switching saves first, then reloads the Problem.
+const LANGUAGE_NAMES = { python: 'Python', typescript: 'TypeScript', go: 'Go' } as const;
+const PICKABLE = ['python', 'typescript'] as const;
+// svelte-ignore state_referenced_locally
+let choice = $state<string>(problem.language);
+let confirming = $derived(choice !== problem.language);
+let switching = $state(false);
+let switchFailed = $state(false);
 const busy = $derived(outcome?.kind === 'running' || outcome?.kind === 'submitting');
 
 function onchange(next: Record<string, string>) {
@@ -178,6 +187,40 @@ onDestroy(() => {
 	closed = true;
 });
 
+function cancelSwitch() {
+	choice = problem.language;
+}
+
+async function confirmSwitch() {
+	if (busy || switching) return;
+	switching = true;
+	switchFailed = false;
+	// Nothing may save into the new Language's Build afterwards: send what is pending first.
+	clearTimeout(timer);
+	while (inFlight) await new Promise((resolve) => setTimeout(resolve, 25));
+	await save();
+	if (dirty || saveState === 'conflict' || saveState === 'rejected') {
+		switching = false;
+		switchFailed = true;
+		return;
+	}
+	try {
+		const body = new FormData();
+		body.set('language', choice);
+		const response = await fetch(`/problems/${problem.id}?/switchLanguage`, {
+			method: 'POST',
+			body,
+			headers: { 'x-sveltekit-action': 'true' }
+		});
+		if (deserialize(await response.text()).type !== 'success') throw new Error('switch failed');
+		await invalidateAll();
+	} catch {
+		switchFailed = true;
+	} finally {
+		switching = false;
+	}
+}
+
 const label: Record<SaveState, string> = {
 	saved: 'saved',
 	edited: 'edited',
@@ -210,9 +253,30 @@ const label: Record<SaveState, string> = {
 		<div class="pane">
 			<div class="bar">
 				<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
-				<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
+				<div class="bar-right">
+					<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
+					<label class="mono picker">build language
+						<select bind:value={choice} aria-describedby={confirming ? 'switch-note' : undefined} disabled={switching}>
+							{#each PICKABLE as language (language)}
+								<option value={language}>{LANGUAGE_NAMES[language]}</option>
+							{/each}
+						</select>
+					</label>
+				</div>
 			</div>
-			<CodeEditor files={problem.files} {onchange} readonly={saveState === 'conflict'} />
+			{#if confirming}
+				<div class="confirm" role="group" aria-label="Switch build language">
+					<div class="confirm-text">
+						<span class="mono ask">Switch to {LANGUAGE_NAMES[choice as keyof typeof LANGUAGE_NAMES]}?</span>
+						<span id="switch-note" class="note">Starts a new {LANGUAGE_NAMES[choice as keyof typeof LANGUAGE_NAMES]} copy of this build from reference code. Your {LANGUAGE_NAMES[problem.language]} build is kept.{switchFailed ? ' The switch did not go through; try again.' : ''}</span>
+					</div>
+					<div class="confirm-actions">
+						<button type="button" class="cancel mono" onclick={cancelSwitch} disabled={switching}>Cancel</button>
+						<button type="button" class="run mono" onclick={confirmSwitch} disabled={switching || busy}>{switching ? 'Switching…' : 'Switch language'}</button>
+					</div>
+				</div>
+			{/if}
+			<CodeEditor files={problem.files} {onchange} readonly={saveState === 'conflict' || switching} />
 			<ResultsPanel {outcome} />
 		</div>
 	</div>
@@ -280,6 +344,67 @@ const label: Record<SaveState, string> = {
 		height: 48px;
 		border-bottom: 1px solid var(--rule);
 		font-size: 13px;
+	}
+	.bar-right {
+		display: flex;
+		gap: 20px;
+		align-items: center;
+	}
+	.picker {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+		color: var(--muted);
+	}
+	.picker select {
+		height: 32px;
+		padding: 0 10px;
+		background: var(--field);
+		border: 1px solid var(--rule);
+		border-radius: 2px;
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 13px;
+	}
+	.confirm {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 24px;
+		padding: 16px 24px;
+		border-bottom: 1px solid var(--ink);
+	}
+	.confirm-text {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.ask {
+		font-size: 12px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+	.note {
+		font-size: 16px;
+		line-height: 1.5;
+		color: var(--body);
+	}
+	.confirm-actions {
+		display: flex;
+		gap: 20px;
+		align-items: center;
+		flex-shrink: 0;
+	}
+	.cancel {
+		padding: 12px 0;
+		line-height: 20px;
+		background: transparent;
+		border: 0;
+		border-radius: 2px;
+		color: var(--ink);
+		font-size: 14px;
+		cursor: pointer;
 	}
 	.mono {
 		font-family: var(--font-mono);

@@ -87,8 +87,8 @@ for line in sys.stdin.read().splitlines():
         print(len(items))
 `;
 
-async function setCode(page: Page, code: string) {
-	const editor = page.getByLabel('Code: main.py');
+async function setCode(page: Page, code: string, file = 'main.py') {
+	const editor = page.getByLabel(`Code: ${file}`);
 	await editor.click();
 	await expect(editor).toBeFocused();
 	await page.keyboard.press('ControlOrMeta+a');
@@ -185,4 +185,51 @@ test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1
 		expect(barBox.y + barBox.height - (box.y + box.height)).toBeGreaterThanOrEqual(10);
 	}
 	await expect(bar.getByRole('link', { name: 'map' })).toBeVisible();
+});
+
+const correctTypeScript = `import { readFileSync } from 'node:fs';
+
+const items: number[] = [];
+for (const line of readFileSync(0, 'utf8').split('\\n')) {
+	const [command, value] = line.trim().split(/\\s+/);
+	if (command === 'push') items.push(Number(value));
+	else if (command === 'size') console.log(items.length);
+}
+`;
+
+test('switching to TypeScript asks first, keeps the Python build, and Run passes', async ({
+	page
+}) => {
+	await page.goto('/problems/stacks-push');
+	await setCode(page, '# my python build\n');
+	await expect(page.getByRole('status')).toHaveText('saved');
+
+	const picker = page.getByLabel('build language');
+	await expect(picker.locator('option')).toHaveText(['Python', 'TypeScript']);
+
+	// Cancel changes nothing.
+	await picker.selectOption('typescript');
+	const confirm = page.getByRole('group', { name: 'Switch build language' });
+	await expect(confirm).toContainText('Switch to TypeScript?');
+	await expect(confirm).toContainText('Your Python build is kept.');
+	await confirm.getByRole('button', { name: 'Cancel' }).click();
+	await expect(confirm).toHaveCount(0);
+	await expect(picker).toHaveValue('python');
+
+	try {
+		await picker.selectOption('typescript');
+		await confirm.getByRole('button', { name: 'Switch language' }).click();
+		await expect(page.getByLabel('Code: main.ts')).toBeVisible();
+		await expect(picker).toHaveValue('typescript');
+
+		await setCode(page, correctTypeScript, 'main.ts');
+		await page.getByRole('button', { name: 'Run' }).click();
+		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText('pass', {
+			timeout: 60_000
+		});
+	} finally {
+		await page.getByLabel('build language').selectOption('python');
+		await page.getByRole('button', { name: 'Switch language' }).click();
+		await expect(page.getByLabel('Code: main.py')).toContainText('# my python build');
+	}
 });

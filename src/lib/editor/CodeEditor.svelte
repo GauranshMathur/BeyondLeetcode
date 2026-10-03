@@ -56,7 +56,8 @@ function stateFor(path: string, doc: string) {
 		doc,
 		extensions: [
 			basicSetup,
-			python(),
+			// Only Python has a language extension; other files are plain text.
+			...(path.endsWith('.py') ? [python()] : []),
 			theme,
 			syntaxHighlighting(highlight),
 			lock.of(EditorState.readOnly.of(readonly)),
