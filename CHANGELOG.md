@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.12.0...v0.13.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C13b Map, Topic and Chapter match canvas proportions ([#63](https://github.com/GauranshMathur/BeyondLeetcode/issues/63)) ([37b9b2b](https://github.com/GauranshMathur/BeyondLeetcode/commit/37b9b2b99ee53e3230304fcd4f8345511fe43ac9))
+
 ## [0.12.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.11.0...v0.12.0) (2026-10-03)
 
 
