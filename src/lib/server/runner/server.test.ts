@@ -16,7 +16,12 @@ function setup() {
 	});
 	return {
 		runner,
-		handle: createRunnerHandler({ token, runner, maxConcurrent: 4 })
+		handle: createRunnerHandler({
+			token,
+			runner,
+			maxConcurrent: 4,
+			ready: () => true
+		})
 	};
 }
 
@@ -111,7 +116,8 @@ describe('Runner HTTP handler', () => {
 		const handle = createRunnerHandler({
 			token,
 			runner: createScriptedRunner({ unavailable: true }),
-			maxConcurrent: 4
+			maxConcurrent: 4,
+			ready: () => true
 		});
 
 		const res = await handle(post(valid));
@@ -144,7 +150,12 @@ describe('Runner HTTP handler', () => {
 				return { results: [] };
 			}
 		};
-		const handle = createRunnerHandler({ token, runner, maxConcurrent: 2 });
+		const handle = createRunnerHandler({
+			token,
+			runner,
+			maxConcurrent: 2,
+			ready: () => true
+		});
 
 		const first = handle(post({ ...valid, tests: [] }));
 		const second = handle(post({ ...valid, tests: [] }));
@@ -165,5 +176,54 @@ describe('Runner HTTP handler', () => {
 		expect((await handle(new Request('http://runner/execute', { headers: auth }))).status).toBe(
 			405
 		);
+	});
+
+	describe('while the Sandbox images are still being pulled', () => {
+		const auth = { Authorization: `Bearer ${token}` };
+
+		function notReady() {
+			const runner = createScriptedRunner({
+				tests: { a: { status: 'ok', stdout: 'x' } }
+			});
+			let ready = false;
+			const handle = createRunnerHandler({
+				token,
+				runner,
+				maxConcurrent: 4,
+				ready: () => ready
+			});
+			return { runner, handle, becomeReady: () => (ready = true) };
+		}
+
+		it('answers /health 503 {ready:false}, then 200 once ready', async () => {
+			const { handle, becomeReady } = notReady();
+			const health = () => handle(new Request('http://runner/health', { headers: auth }));
+
+			const before = await health();
+			becomeReady();
+			const after = await health();
+
+			expect(before.status).toBe(503);
+			expect(await before.json()).toEqual({ ready: false });
+			expect(after.status).toBe(200);
+		});
+
+		it('answers /execute 503 without running anything, then serves it once ready', async () => {
+			const { handle, runner, becomeReady } = notReady();
+
+			const before = await handle(post(valid));
+			expect(runner.calls).toEqual([]);
+			becomeReady();
+			const after = await handle(post(valid));
+
+			expect(before.status).toBe(503);
+			expect(after.status).toBe(200);
+		});
+
+		it('still answers 401 first to a caller without the token', async () => {
+			const { handle } = notReady();
+
+			expect((await handle(new Request('http://runner/health'))).status).toBe(401);
+		});
 	});
 });

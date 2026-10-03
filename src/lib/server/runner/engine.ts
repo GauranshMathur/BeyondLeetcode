@@ -21,10 +21,18 @@ export type AttachedContainer = {
 /** Longest a lifecycle call (create, start, kill, remove, wait) may wait for the daemon. */
 export const engineCallTimeoutMs = 15_000;
 
+/** Longest an image pull may go without the daemon sending anything. */
+export const pullIdleTimeoutMs = 60_000;
+
 type Reply = { status: number; body: string };
 
 export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeoutMs) {
-	function call(method: string, path: string, json?: unknown): Promise<Reply> {
+	function call(
+		method: string,
+		path: string,
+		json?: unknown,
+		timeoutMs = callTimeoutMs
+	): Promise<Reply> {
 		return new Promise((resolve, reject) => {
 			const payload = json === undefined ? undefined : JSON.stringify(json);
 			const req = request(
@@ -52,9 +60,7 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 				}
 			);
 			req.on('error', reject);
-			req.setTimeout(callTimeoutMs, () =>
-				req.destroy(new Error(`Docker ${method} ${path} timed out`))
-			);
+			req.setTimeout(timeoutMs, () => req.destroy(new Error(`Docker ${method} ${path} timed out`)));
 			req.end(payload);
 		});
 	}
@@ -68,15 +74,32 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 
 	async function pull(image: string): Promise<void> {
 		const [name, tag = 'latest'] = image.split(':');
+		// The daemon streams progress, so this is an idle timeout: a slow pull is fine, a stalled one is not.
 		const reply = await call(
 			'POST',
-			`/images/create?fromImage=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`
+			`/images/create?fromImage=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`,
+			undefined,
+			pullIdleTimeoutMs
 		);
 		await assertStatus(reply, `pull ${image}`, 200);
 		if (/"error"\s*:/.test(reply.body)) throw new Error(`Docker pull ${image} failed`);
 	}
 
 	return {
+		/** Pulls `image` and resolves once the daemon has it. Throws if the pull fails. */
+		pull,
+
+		/** Whether the daemon already holds `image` (inspect answers 404 when it does not). */
+		async hasImage(image: string): Promise<boolean> {
+			const reply = await assertStatus(
+				await call('GET', `/images/${image}/json`),
+				`inspect image ${image}`,
+				200,
+				404
+			);
+			return reply.status === 200;
+		},
+
 		/** Creates a container from `spec`, pulling the image once if the engine does not have it. */
 		async create(image: string, spec: ContainerSpec): Promise<string> {
 			let reply = await call('POST', '/containers/create', {
@@ -241,6 +264,25 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 				throw new Error(`Docker remove of ${id} is still in progress`);
 			}
 			await assertStatus(reply, 'remove', 204, 404);
+		},
+
+		/** Every container, running or not, that carries the label key `label`, with its labels and creation time (Unix seconds). */
+		async listContainers(
+			label: string
+		): Promise<{ id: string; created: number; labels: Record<string, string> }[]> {
+			const filters = encodeURIComponent(JSON.stringify({ label: [label] }));
+			const reply = await assertStatus(
+				await call('GET', `/containers/json?all=true&filters=${filters}`),
+				'list',
+				200
+			);
+			return (
+				JSON.parse(reply.body) as {
+					Id: string;
+					Created: number;
+					Labels: Record<string, string> | null;
+				}[]
+			).map((c) => ({ id: c.Id, created: c.Created, labels: c.Labels ?? {} }));
 		},
 
 		/** Ids of every container, running or not, that carries `label`. */

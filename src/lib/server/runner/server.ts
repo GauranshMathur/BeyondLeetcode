@@ -55,6 +55,8 @@ export function createRunnerHandler(options: {
 	token: string;
 	runner: RunnerPort;
 	maxConcurrent: number;
+	/** False while the Sandbox images are still being pulled. */
+	ready: () => boolean;
 }) {
 	const expected = digest(`Bearer ${options.token}`);
 	let running = 0;
@@ -64,9 +66,12 @@ export function createRunnerHandler(options: {
 		if (!timingSafeEqual(given, expected)) return json(401, { error: 'Unauthorized' });
 
 		const { pathname } = new URL(req.url);
-		if (pathname === '/health' && req.method === 'GET') return json(200, { status: 'ok' });
+		if (pathname === '/health' && req.method === 'GET') {
+			return options.ready() ? json(200, { status: 'ok' }) : json(503, { ready: false });
+		}
 		if (pathname !== '/execute') return json(404, { error: 'Not found' });
 		if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
+		if (!options.ready()) return json(503, { error: 'Runner is not ready' });
 
 		let body: unknown;
 		try {
