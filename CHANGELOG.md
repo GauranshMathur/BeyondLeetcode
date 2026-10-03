@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.11.0...v0.12.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C4d Runner pulls its sandbox images on start ([#64](https://github.com/GauranshMathur/BeyondLeetcode/issues/64)) ([5791ee3](https://github.com/GauranshMathur/BeyondLeetcode/commit/5791ee34f3411bc1e50f5fa773ab6f0e03da121c))
+
 ## [0.11.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.10.0...v0.11.0) (2026-10-03)
 
 
