@@ -113,3 +113,95 @@ describe('learner.topic()', () => {
 		});
 	});
 });
+
+describe('learner.chapter() and learner.reachChapterEnd()', () => {
+	async function setup(clock?: () => Date) {
+		const core = createLearningCore({
+			catalogue: await loadCatalogue(fixtureDir),
+			db: await createTestDb(),
+			clock
+		});
+		return { learner: core.forLearner('any-learner'), core };
+	}
+
+	it('gives a Chapter its rendered body, Topic, Problems and next Chapter', async () => {
+		const { learner } = await setup();
+
+		expect(await learner.chapter('stacks-undo-log')).toEqual({
+			id: 'stacks-undo-log',
+			title: 'An undo log',
+			topicId: 'stacks',
+			topicTitle: 'Stacks',
+			bodyHtml: expect.stringContaining('<h1>An undo log</h1>'),
+			read: false,
+			problems: [
+				{ id: 'stacks-push', title: 'Push and size', kind: 'Core', status: 'Untouched' },
+				{
+					id: 'stacks-peek',
+					title: 'Peek',
+					kind: 'Extra',
+					parentProblemId: 'stacks-push',
+					status: 'Untouched'
+				}
+			],
+			nextChapterId: 'stacks-call-frames'
+		});
+		expect((await learner.chapter('stacks-call-frames')).nextChapterId).toBeUndefined();
+	});
+
+	it('refuses an unknown Chapter and a Chapter in a Locked Topic', async () => {
+		const { learner } = await setup();
+		await expect(learner.chapter('nope')).rejects.toMatchObject({ code: 'NotFound' });
+		await expect(learner.chapter('queues-print-spooler')).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		await expect(learner.reachChapterEnd('nope')).rejects.toMatchObject({ code: 'NotFound' });
+		await expect(learner.reachChapterEnd('queues-print-spooler')).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+	});
+
+	it('marks a Chapter Read on reaching its end, and the Topic shows it', async () => {
+		const { learner } = await setup();
+
+		expect(await learner.reachChapterEnd('stacks-undo-log')).toEqual({
+			read: true,
+			topicCompleted: false,
+			newlyUnlocked: []
+		});
+
+		expect((await learner.chapter('stacks-undo-log')).read).toBe(true);
+		const topic = await learner.topic('stacks');
+		expect(topic.chapters.map((c) => c.read)).toEqual([true, false]);
+		expect(topic.counts.chaptersRead).toBe(1);
+	});
+
+	it('is idempotent: a repeat changes nothing and keeps the first read time', async () => {
+		let t = 1;
+		const { learner, core } = await setup(() => new Date(t++ * 1000));
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.reachChapterEnd('stacks-call-frames');
+
+		expect(await learner.reachChapterEnd('stacks-undo-log')).toEqual({
+			read: true,
+			topicCompleted: false,
+			newlyUnlocked: []
+		});
+		expect((await learner.topic('stacks')).counts.chaptersRead).toBe(2);
+		// The repeat did not make stacks-undo-log the most recent read.
+		expect((await core.forLearner('any-learner').map()).currentTopicId).toBe('stacks');
+	});
+
+	it("keeps each Learner's Read marks to themselves", async () => {
+		const { learner, core } = await setup();
+		await learner.reachChapterEnd('stacks-undo-log');
+		expect((await core.forLearner('someone-else').chapter('stacks-undo-log')).read).toBe(false);
+	});
+
+	it('makes the Topic of the most recent Chapter read the Map current Topic', async () => {
+		const { learner } = await setup();
+		expect((await learner.map()).currentTopicId).toBeUndefined();
+		await learner.reachChapterEnd('stacks-undo-log');
+		expect((await learner.map()).currentTopicId).toBe('stacks');
+	});
+});
