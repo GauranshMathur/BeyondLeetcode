@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.7.0...v0.7.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C12c a Complete Topic is never Locked ([#53](https://github.com/GauranshMathur/BeyondLeetcode/issues/53)) ([507bded](https://github.com/GauranshMathur/BeyondLeetcode/commit/507bded00c8befdcc7cf696be8d000e46b0f413e))
+
 ## [0.7.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.6.1...v0.7.0) (2026-10-03)
 
 
