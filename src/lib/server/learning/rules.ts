@@ -5,8 +5,8 @@ import { LearningError } from './errors.ts';
 export interface Progress {
 	readonly readChapters: ReadonlySet<string>;
 	readonly solvedProblems: ReadonlySet<string>;
-	/** Problems with a Submission but not yet Solved. Treated as none when absent. */
-	readonly attemptedProblems?: ReadonlySet<string>;
+	/** Problems with a Submission but not yet Solved. */
+	readonly attemptedProblems: ReadonlySet<string>;
 	/** The Topic the Learner was last active in, if any. */
 	readonly recentTopicId?: string;
 }
@@ -119,7 +119,6 @@ export function topicView(
 	if (!topic || !mapTopic) throw new LearningError('NotFound');
 	if (mapTopic.state === 'locked') throw new LearningError('TopicLocked');
 
-	const attempted = progress.attemptedProblems ?? new Set<string>();
 	const chapters = topic.chapters.map(
 		(c): TopicChapter => ({
 			id: c.id,
@@ -133,7 +132,7 @@ export function topicView(
 					...(p.parent !== undefined && { parentProblemId: p.parent }),
 					status: progress.solvedProblems.has(p.id)
 						? 'Solved'
-						: attempted.has(p.id)
+						: progress.attemptedProblems.has(p.id)
 							? 'Attempted'
 							: 'Untouched'
 				})

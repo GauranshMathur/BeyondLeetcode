@@ -29,10 +29,15 @@ function catalogueOf(topics: Topic[]): Pick<Catalogue, 'topicMap' | 'topic'> {
 	return { topicMap: () => summaries, topic: (id) => topics.find((t) => t.id === id) };
 }
 
-const none: Progress = { readChapters: new Set(), solvedProblems: new Set() };
+const none: Progress = {
+	readChapters: new Set(),
+	solvedProblems: new Set(),
+	attemptedProblems: new Set()
+};
 const progress = (read: string[], solved: string[], recentTopicId?: string): Progress => ({
 	readChapters: new Set(read),
 	solvedProblems: new Set(solved),
+	attemptedProblems: new Set(),
 	recentTopicId
 });
 const states = (view: ReturnType<typeof mapView>) =>

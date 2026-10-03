@@ -42,5 +42,5 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 
 /** Read marks and Submissions have no tables yet (C3 and C6a add them), so nothing is done yet. */
 async function loadProgress(_db: Db, _learnerId: string): Promise<Progress> {
-	return { readChapters: new Set(), solvedProblems: new Set() };
+	return { readChapters: new Set(), solvedProblems: new Set(), attemptedProblems: new Set() };
 }
