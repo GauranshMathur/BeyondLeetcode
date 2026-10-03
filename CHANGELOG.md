@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.2.0...v0.3.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C3 Chapter screen + Read on reaching the end ([#39](https://github.com/GauranshMathur/BeyondLeetcode/issues/39)) ([13fc36a](https://github.com/GauranshMathur/BeyondLeetcode/commit/13fc36a570bf17d4fc218de404f40b173ee47cae))
+
+## [0.2.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.1.0...v0.2.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C2c Topic screen ([#37](https://github.com/GauranshMathur/BeyondLeetcode/issues/37)) ([2a988ec](https://github.com/GauranshMathur/BeyondLeetcode/commit/2a988ec8cce8d38e20aa8d086809d1215fc9a89d))
+
 ## 0.1.0 (2026-10-03)
 
 
