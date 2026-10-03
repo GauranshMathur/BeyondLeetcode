@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.9.0...v0.10.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C6b Accepted panel ([#59](https://github.com/GauranshMathur/BeyondLeetcode/issues/59)) ([b6bcbbc](https://github.com/GauranshMathur/BeyondLeetcode/commit/b6bcbbcef64eb0b380f3ceaeb896b28f4a6d8bd3))
+
 ## [0.9.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.8.0...v0.9.0) (2026-10-03)
 
 
