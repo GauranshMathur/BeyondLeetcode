@@ -48,7 +48,7 @@ describe('isolationViolations', () => {
 			"const e = require('./runner/sandbox')",
 			"export * from '../../lib/server/runner/engine';",
 			"import { main } from '$lib/server/runner/main';",
-			"import { c } from '$lib/server/runner/config';"
+			"import { c } from '$lib/server/runner/migrate';"
 		]) {
 			expect(isolationViolations(line), line).not.toEqual([]);
 		}
