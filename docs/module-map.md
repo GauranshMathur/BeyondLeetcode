@@ -32,7 +32,7 @@ learner.switchLanguage(topicId, language)
 learner.revealHint(problemId)
 ```
 
-Errors: `NotFound`, `TopicLocked` (anything inside a Locked Topic except the Map), `RevisionConflict` (stale tab or second device), `NoMoreHints`, `RunnerUnavailable`. A Verdict is never an error.
+Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab or second device), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. Routes map codes to statuses through one shared helper.
 
 **Rules the interface guarantees**
 
