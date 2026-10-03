@@ -1,4 +1,9 @@
-export type LearningErrorCode = 'NotFound' | 'TopicLocked' | 'RevisionConflict' | 'InvalidBuild';
+export type LearningErrorCode =
+	| 'NotFound'
+	| 'TopicLocked'
+	| 'RevisionConflict'
+	| 'InvalidBuild'
+	| 'RunnerUnavailable';
 
 /** A refusal from the Learning core (docs/module-map.md). A Verdict is never an error. */
 export class LearningError extends Error {
