@@ -64,5 +64,5 @@ Each run starts a fresh, unprivileged container from the official `python`, `nod
 - One image, `ghcr.io/gauranshmathur/beyondleetcode`, with a `web` role, a `runner` role, and an `init` command that writes `compose.yaml` and `.env` for the operator.
 - `docker compose up` runs everything. SQLite lives on a volume. Only the runner mounts the Docker socket. Content is bundled in the image.
 - Builds for amd64 and arm64.
-- Releases via release-please. GHCR tags: `vX.Y.Z` and `latest` on release, `edge` on every push to `main`.
+- Releases via release-please, fully automatic: every `feat` or `fix` merged to `main` ships a release (the release workflow merges its own release PR, then tags; no token). GHCR tags: `vX.Y.Z` and `latest` on release, `edge` on every push to `main`.
 - CI on every PR: typecheck, Biome, Vitest, build, Playwright, and a Docker build without push.
