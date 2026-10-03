@@ -2,12 +2,13 @@
  * The fixed script that runs inside the Sandbox container (`python -I -c`: isolated, so nothing
  * learner-written in the working directory is ever imported into this process). It reads `<length>\n` and then
  * that many bytes of tar from stdin (the socket is never half-closed: Bun's net does not support it),
- * extracts it into the tmpfs work dir, byte-compiles the Build, then runs each Test in its own
+ * extracts it into the tmpfs work dir, checks the Build (py_compile, or tsc --noEmit for TypeScript), then runs each Test in its own
  * process and prints one JSON line per Test to stdout. Learner code never gets the harness's
  * stdout: it runs as a child with piped stdio.
  *
  * Tar layout: `build/<path>` for the Build's files, `tests/<index>.in` for each Test input.
- * Env: RUNNER_TEST_COUNT, RUNNER_TEST_TIMEOUT_MS, RUNNER_OUTPUT_CAP, RUNNER_TOTAL_OUTPUT_CAP,
+ * Env: RUNNER_LANGUAGE ("python" or "typescript"; the one script serves every Sandbox image),
+ * RUNNER_TEST_COUNT, RUNNER_TEST_TIMEOUT_MS, RUNNER_OUTPUT_CAP, RUNNER_TOTAL_OUTPUT_CAP,
  * RUNNER_DEADLINE_S.
  *
  * Tests in one container are NOT isolated from each other: the harness clears files and IPC objects
@@ -28,6 +29,7 @@ import ctypes, io, json, os, re, shutil, signal, stat, subprocess, sys, tarfile,
 ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)
 signal.signal(signal.SIGINT, signal.SIG_IGN)
 
+LANGUAGE = os.environ["RUNNER_LANGUAGE"]
 COUNT = int(os.environ["RUNNER_TEST_COUNT"])
 TIMEOUT = int(os.environ["RUNNER_TEST_TIMEOUT_MS"]) / 1000
 CAP = int(os.environ["RUNNER_OUTPUT_CAP"])
@@ -151,23 +153,57 @@ def fresh_build():
 
 
 SYNTAX_LINE = re.compile(rb"^(?:Sorry: )?(?:SyntaxError|IndentationError|TabError|ValueError)\b", re.M)
+TSC_DIAGNOSTIC = re.compile(rb"error TS\d+")
 CHILD_ENV = {"PATH": os.environ.get("PATH", "")}
 
-sources = []
-for root, _, names in os.walk(BUILD):
-    sources += [os.path.join(root, n) for n in names if n.endswith(".py")]
-compiled = subprocess.run(
-    [sys.executable, "-I", "-m", "py_compile"] + sorted(sources),
-    stdin=subprocess.DEVNULL, capture_output=True, env=CHILD_ENV,
-)
-if compiled.returncode != 0:
-    # A Compile Error is py_compile exiting 1 with a syntax-style exception line on stderr
-    # ("SyntaxError: ...", "Sorry: IndentationError: ...", "ValueError: source code string cannot
-    # contain null bytes"). Anything else (a signal, OOM 137, another code) is not the Learner's
-    # code being wrong: exit non-zero without a result and the Runner reports its own failure.
-    if compiled.returncode != 1 or not SYNTAX_LINE.search(compiled.stderr):
+# The two places the Language matters: how the Build is checked, and how a Test is run.
+# Everything else (isolation, cleanup, caps, the watchdog) is shared.
+if LANGUAGE == "python":
+    RUN_ARGV = [sys.executable, "main.py"]
+    sources = []
+    for root, _, names in os.walk(BUILD):
+        sources += [os.path.join(root, n) for n in names if n.endswith(".py")]
+    compile_argv = [sys.executable, "-I", "-m", "py_compile"] + sorted(sources) if sources else None
+    compile_cwd = None
+elif LANGUAGE == "typescript":
+    RUN_ARGV = ["node", "main.ts"]
+    sources = []
+    for root, _, names in os.walk(BUILD):
+        sources += ["./" + os.path.relpath(os.path.join(root, n), BUILD) for n in names if n.endswith(".ts")]
+    # Type errors are Compile Errors, as in a normal TypeScript project. erasableSyntaxOnly makes
+    # enums and runtime namespaces (which Node's type stripping cannot run) fail here too.
+    # allowImportingTsExtensions: Node needs "./util.ts" in imports, and tsc only allows that with it.
+    compile_argv = [
+        "tsc", "--noEmit", "--pretty", "false", "--strict", "--target", "ES2023", "--lib", "ES2023",
+        "--module", "nodenext", "--erasableSyntaxOnly", "--allowImportingTsExtensions", "--skipLibCheck",
+        "--typeRoots", "/opt/ts/node_modules/@types", "--types", "node",
+    ] + sorted(sources) if sources else None
+    compile_cwd = BUILD
+else:
+    sys.exit("unknown language " + LANGUAGE)
+
+compiled = None
+if compile_argv:
+    compiled = subprocess.run(
+        compile_argv, stdin=subprocess.DEVNULL, capture_output=True, env=CHILD_ENV, cwd=compile_cwd,
+    )
+if compiled and compiled.returncode != 0:
+    # A Compile Error is the compiler saying the code is wrong. Anything else (a signal, OOM 137,
+    # another code) is not the Learner's code being wrong: exit non-zero without a result and the
+    # Runner reports its own failure.
+    if LANGUAGE == "python":
+        # py_compile exits 1 with a syntax-style exception line on stderr ("SyntaxError: ...",
+        # "Sorry: IndentationError: ...", "ValueError: source code string cannot contain null bytes").
+        diagnostics = compiled.stderr
+        is_compile_error = compiled.returncode == 1 and SYNTAX_LINE.search(diagnostics)
+    else:
+        # tsc exits 2 when it found errors, and prints "error TS<n>" diagnostics to stdout. Exit 1 is
+        # a bad option or other failure of ours, so it is not the Learner's fault.
+        diagnostics = compiled.stdout
+        is_compile_error = compiled.returncode == 2 and TSC_DIAGNOSTIC.search(diagnostics)
+    if not is_compile_error:
         sys.exit("compile step failed with status %d" % compiled.returncode)
-    emit({"compileError": text(compiled.stderr[:CAP], len(compiled.stderr) > CAP)})
+    emit({"compileError": text(diagnostics[:CAP], len(diagnostics) > CAP)})
     sys.exit(0)
 
 
@@ -223,7 +259,7 @@ def run_tests():
         cap = CAP if spent < TOTAL_CAP else 0
         fresh_build()
         proc = subprocess.Popen(
-            [sys.executable, "main.py"],
+            RUN_ARGV,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             bufsize=0, start_new_session=True, env=CHILD_ENV, cwd=BUILD,
         )

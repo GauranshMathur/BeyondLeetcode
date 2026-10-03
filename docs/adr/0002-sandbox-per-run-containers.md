@@ -10,3 +10,7 @@ Every Run and Submission starts a new container from the official `python`, `nod
 ## Consequences
 
 Operators can harden further with rootless Docker/Podman or gVisor without code changes. Container start-up time is paid on every run; k6 tests watch runner throughput. A Kubernetes backend can replace the Runner's engine later behind the same seam.
+
+## Amended 2026-10-04
+
+Sandbox images are the stock `python` image for Python, and our own images for TypeScript (and Go later). Each of ours is `python:3.13-slim` plus the language toolchain, so the one Python harness runs in every image and branches only at compile and run. Images are pinned by tag, and the tag is bumped by hand.

@@ -1,4 +1,5 @@
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
+import { LANGUAGES } from '../content/schema.ts';
 import type { Db } from '../db.ts';
 import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
@@ -86,9 +87,16 @@ export interface Learner {
 	 * RunnerUnavailable when the Runner cannot answer: nothing is recorded, the saved code stays.
 	 */
 	submit(problemId: string, files: BuildFiles, baseRevision: number): Promise<SubmitView>;
+	/**
+	 * Builds the Topic in `language` from now on. Writes only the Learner's choice: a Language's
+	 * steps are created when first saved, seeded like any first touch (the Learner's previous Core
+	 * step in that Language, else its Reference Code; the first Problem empty). Every other
+	 * Language's Builds are kept. Throws NotFound or TopicLocked, InvalidBuild for an unknown Language.
+	 */
+	switchLanguage(topicId: string, language: Language): Promise<void>;
 }
 
-/** Every Build is Python until the Language picker (C7a). */
+/** A Topic is built in Python until the Learner switches it. */
 const DEFAULT_LANGUAGE: Language = 'python';
 
 export interface LearningCore {
@@ -106,13 +114,14 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 		forLearner: (learnerId) => {
 			/** Sends code and Test inputs (never expected outputs) to the Runner; any failure is RunnerUnavailable. */
 			const execute = async (
+				language: Language,
 				files: BuildFiles,
 				tests: readonly { id: string; input: string }[]
 			): Promise<ExecuteResult> => {
 				if (!deps.runner) throw new LearningError('RunnerUnavailable');
 				try {
 					return await deps.runner.execute({
-						language: DEFAULT_LANGUAGE,
+						language,
 						files,
 						tests: tests.map(({ id, input }) => ({ id, input })),
 						limits: { timeoutMs: sandboxConfig.testTimeoutMs, memoryMb: sandboxConfig.memoryMb }
@@ -121,6 +130,8 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					throw new LearningError('RunnerUnavailable');
 				}
 			};
+			const languageOfProblem = async (problemId: string) =>
+				loadLanguage(deps.db, learnerId, deps.catalogue.problem(problemId)?.topicId ?? '');
 			const learner: Learner = {
 				map: async () => mapView(deps.catalogue, await loadProgress(deps, learnerId)),
 				topic: async (topicId) =>
@@ -152,14 +163,17 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				problem: async (problemId) => {
 					const sourceId = seedSourceOf(deps.catalogue, problemId);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
+					const language = await loadLanguage(deps.db, learnerId, topicId);
 					return problemView(
 						deps.catalogue,
 						await loadProgress(deps, learnerId),
 						problemId,
-						DEFAULT_LANGUAGE,
+						language,
 						{
-							own: await loadStep(deps.db, learnerId, topicId, problemId),
-							source: sourceId ? await loadStep(deps.db, learnerId, topicId, sourceId) : undefined
+							own: await loadStep(deps.db, learnerId, topicId, language, problemId),
+							source: sourceId
+								? await loadStep(deps.db, learnerId, topicId, language, sourceId)
+								: undefined
 						},
 						renderMarkdown
 					);
@@ -171,7 +185,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					const key = {
 						learnerId,
 						topicId: view.topicId,
-						language: DEFAULT_LANGUAGE,
+						language: view.language,
 						problemId
 					};
 					if (baseRevision !== view.revision) throw new LearningError('RevisionConflict');
@@ -196,18 +210,32 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				run: async (problemId, files, baseRevision) => {
 					const { revision } = await learner.saveCode(problemId, files, baseRevision);
 					const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
-					return runView(tests, await execute(files, tests), revision);
+					const language = await languageOfProblem(problemId);
+					return runView(tests, await execute(language, files, tests), revision);
+				},
+				switchLanguage: async (topicId, language) => {
+					topicView(deps.catalogue, await loadProgress(deps, learnerId), topicId); // NotFound / TopicLocked
+					if (!LANGUAGES.includes(language)) throw new LearningError('InvalidBuild');
+					await deps.db.topicLanguage.upsert({
+						where: { learnerId_topicId: { learnerId, topicId } },
+						create: { learnerId, topicId, language },
+						update: { language }
+					});
 				},
 				submit: async (problemId, files, baseRevision) => {
 					const { revision } = await learner.saveCode(problemId, files, baseRevision);
+					const language = await languageOfProblem(problemId);
 					// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
 					const plan = submitPlan(deps.catalogue, problemId);
 					const batches = [];
 					if (plan.visible.length > 0) {
-						batches.push({ tests: plan.visible, result: await execute(files, plan.visible) });
+						batches.push({
+							tests: plan.visible,
+							result: await execute(language, files, plan.visible)
+						});
 					}
 					if (!batches[0]?.result.compileError && plan.hidden.length > 0) {
-						const result = await execute(files, plan.hidden);
+						const result = await execute(language, files, plan.hidden);
 						// The code compiled in call 1; a message here is not for the Learner (it ran with Hidden inputs).
 						if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
 						batches.push({ tests: plan.hidden, result });
@@ -224,7 +252,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							learnerId,
 							problemId,
 							topicId,
-							language: DEFAULT_LANGUAGE,
+							language,
 							files,
 							verdict,
 							failingProblemId: failingProblemId ?? null,
@@ -278,11 +306,20 @@ async function loadProgress(deps: LearningCoreDeps, learnerId: string): Promise<
 	};
 }
 
-/** The Learner's stored code for one step, if it was ever saved. */
+/** The Language the Learner builds a Topic in; Python until they switch. */
+async function loadLanguage(db: Db, learnerId: string, topicId: string): Promise<Language> {
+	const row = await db.topicLanguage.findUnique({
+		where: { learnerId_topicId: { learnerId, topicId } }
+	});
+	return LANGUAGES.find((l) => l === row?.language) ?? DEFAULT_LANGUAGE;
+}
+
+/** The Learner's stored code for one step in one Language, if it was ever saved. */
 async function loadStep(
 	db: Db,
 	learnerId: string,
 	topicId: string,
+	language: Language,
 	problemId: string
 ): Promise<SavedStep | undefined> {
 	const row = await db.buildStep.findUnique({
@@ -290,7 +327,7 @@ async function loadStep(
 			learnerId_topicId_language_problemId: {
 				learnerId,
 				topicId,
-				language: DEFAULT_LANGUAGE,
+				language,
 				problemId
 			}
 		}

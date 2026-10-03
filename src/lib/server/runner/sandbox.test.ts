@@ -84,6 +84,31 @@ describe('Sandbox runner: harness exit status', () => {
 	});
 });
 
+describe('Sandbox runner: Language', () => {
+	it('starts TypeScript in its own image with RUNNER_LANGUAGE set, and Python in the stock one', async () => {
+		for (const [language, image] of [
+			['typescript', sandboxConfig.images.typescript],
+			['python', sandboxConfig.images.python]
+		] as const) {
+			const { engine } = fakeEngine({ output: okLine });
+			const create = vi.spyOn(engine, 'create');
+
+			await createSandboxRunner(engine, 'test-instance').execute({ ...request, language });
+
+			expect(create.mock.calls[0][0]).toBe(image);
+			expect(create.mock.calls[0][1].Env).toContain(`RUNNER_LANGUAGE=${language}`);
+		}
+	});
+
+	it('refuses a Language with no image yet', async () => {
+		const { engine } = fakeEngine({});
+
+		await expect(
+			createSandboxRunner(engine, 'test-instance').execute({ ...request, language: 'go' })
+		).rejects.toThrow(/not supported/);
+	});
+});
+
 describe('Sandbox runner: leaks and stalls', () => {
 	it('retries a failing remove three times and does not mask the original error', async () => {
 		const { engine } = fakeEngine({

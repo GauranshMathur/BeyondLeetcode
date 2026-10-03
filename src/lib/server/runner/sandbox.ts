@@ -1,12 +1,12 @@
 /**
  * The Runner's engine room: one fresh, hardened container per request (ADR 0002), removed
- * afterwards whatever happened. Python only for now; Node and Go arrive with their own cards.
+ * afterwards whatever happened. Python and TypeScript; Go arrives with its own card.
  */
 import { z } from 'zod';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
 import type { AttachedContainer, Engine } from './engine';
 import { harnessScript } from './harness';
-import type { ExecuteRequest, ExecuteResult, RunnerPort, TestResult } from './port';
+import type { ExecuteRequest, ExecuteResult, Language, RunnerPort, TestResult } from './port';
 import { createTar } from './tar';
 
 const nobody = '65534:65534';
@@ -25,7 +25,13 @@ const harnessLine = z.union([
 	})
 ]);
 
+/** The Sandbox image for a Language, or undefined where the Runner has none yet. */
+function imageFor(language: Language): string | undefined {
+	return (sandboxConfig.images as Partial<Record<Language, string>>)[language];
+}
+
 export function containerSpec(
+	language: Language,
 	instanceId: string,
 	testCount: number,
 	testTimeoutMs: number,
@@ -37,6 +43,7 @@ export function containerSpec(
 		User: nobody,
 		WorkingDir: '/work',
 		Env: [
+			`RUNNER_LANGUAGE=${language}`,
 			`RUNNER_TEST_COUNT=${testCount}`,
 			`RUNNER_TEST_TIMEOUT_MS=${testTimeoutMs}`,
 			`RUNNER_OUTPUT_CAP=${sandboxConfig.outputCapBytes}`,
@@ -78,7 +85,8 @@ async function execute(
 	instanceId: string,
 	request: ExecuteRequest
 ): Promise<ExecuteResult> {
-	if (request.language !== 'python') {
+	const image = imageFor(request.language);
+	if (!image) {
 		throw new Error(`Language not supported by the Runner yet: ${request.language}`);
 	}
 	// A request may lower the limits, never raise them.
@@ -104,8 +112,8 @@ async function execute(
 	let overflow = false;
 
 	const id = await engine.create(
-		sandboxConfig.pythonImage,
-		containerSpec(instanceId, request.tests.length, testTimeoutMs, memoryMb)
+		image,
+		containerSpec(request.language, instanceId, request.tests.length, testTimeoutMs, memoryMb)
 	);
 	let timedOut = false;
 	let attached: AttachedContainer | undefined;

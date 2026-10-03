@@ -45,7 +45,9 @@ beforeAll(async () => {
 	await waitUntilHealthy(url, token);
 	runner = createHttpRunner({ url, token });
 	// Pull the image now so the first test does not pay for it.
-	await engine.create(sandboxConfig.pythonImage, {}).then((id) => engine.remove(id));
+	for (const image of Object.values(sandboxConfig.images)) {
+		await engine.create(image, {}).then((id) => engine.remove(id));
+	}
 }, 120_000);
 
 afterAll(() => {
@@ -79,6 +81,148 @@ const subject: ContractSubject = (kind) =>
 		: { runner, language: 'python', files: { 'main.py': programs[kind] } };
 
 runnerContract('HTTP adapter + Runner + Docker (python)', subject);
+
+const tsPrograms: Record<Exclude<ProgramKind, 'unavailable'>, string> = {
+	echo: "import { readFileSync } from 'node:fs';\nprocess.stdout.write(readFileSync(0, 'utf8'));\n",
+	mixed: [
+		"import { readFileSync } from 'node:fs';",
+		"const data = readFileSync(0, 'utf8');",
+		"if (data === 'crash') process.exit(1);",
+		"if (data === 'hang') while (true) {}",
+		'process.stdout.write(data);',
+		''
+	].join('\n'),
+	hang: 'while (true) {}\n',
+	doesNotCompile: 'let = ;\n'
+};
+
+runnerContract('HTTP adapter + Runner + Docker (typescript)', (kind) =>
+	kind === 'unavailable'
+		? {
+				runner: createHttpRunner({ url: 'http://127.0.0.1:1', token }),
+				language: 'typescript',
+				files: { 'main.ts': '' }
+			}
+		: {
+				runner,
+				language: 'typescript',
+				files: { 'main.ts': tsPrograms[kind] }
+			}
+);
+
+describe('Runner: typescript in a fresh Sandbox per run', { timeout: 60_000 }, () => {
+	const runTs = (files: Record<string, string>, tests = [{ id: 't', input: '' }]) =>
+		runner.execute({
+			language: 'typescript',
+			files,
+			tests,
+			limits: { timeoutMs: 2000, memoryMb: 256 }
+		});
+
+	it('passes a typed program with no warnings on stderr', async () => {
+		const result = await runTs({
+			'main.ts': "const n: number = Number('2') + 3;\nconsole.log(n);\n"
+		});
+
+		expect(result).toEqual({
+			results: [{ id: 't', status: 'ok', stdout: '5\n', stderr: '' }]
+		});
+	});
+
+	it('reports a wrong answer as ok output for the core to compare', async () => {
+		const result = await runTs({ 'main.ts': 'console.log(99);\n' });
+
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '99\n' });
+	});
+
+	it('reports a thrown error as a runtime error with the message on stderr', async () => {
+		const result = await runTs({ 'main.ts': "throw new Error('boom');\n" });
+
+		expect(result.results[0].status).toBe('runtimeError');
+		expect(result.results[0].stderr).toContain('boom');
+	});
+
+	it('reports a type error as a compile error', async () => {
+		const result = await runTs({
+			'main.ts': 'let x: number = "hi";\nconsole.log(x);\n'
+		});
+
+		expect(result.compileError).toContain('error TS2322');
+		expect(result.results).toEqual([]);
+	});
+
+	it('reports an enum as a compile error, since Node cannot strip it', async () => {
+		const result = await runTs({
+			'main.ts': 'enum E { A }\nconsole.log(E.A);\n'
+		});
+
+		expect(result.compileError).toContain('error TS1294');
+		expect(result.results).toEqual([]);
+	});
+
+	it('runs a Build of several files that import each other with extensions', async () => {
+		const result = await runTs({
+			'main.ts': "import { twice } from './util/helper.ts';\nconsole.log(twice(21));\n",
+			'util/helper.ts': 'export const twice = (n: number): number => n * 2;\n'
+		});
+
+		expect(result.compileError).toBeUndefined();
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '42\n' });
+	});
+
+	it('keeps learner code away from the hidden inputs of other Tests', async () => {
+		const main = [
+			"import { readFileSync, readdirSync, writeFileSync } from 'node:fs';",
+			"const data = readFileSync(0, 'utf8');",
+			'const seen: string[] = [];',
+			'const walk = (dir: string): void => {',
+			'  for (const e of readdirSync(dir, { withFileTypes: true })) {',
+			"    const p = dir + '/' + e.name;",
+			'    if (e.isDirectory()) walk(p);',
+			"    else if (p !== '/work/build/main.ts') seen.push(p + ' ' + readFileSync(p, 'utf8'));",
+			'  }',
+			'};',
+			"walk('/work');",
+			"for (const w of ['/work/stash', '/work/build/stash']) { try { writeFileSync(w, data); } catch {} }",
+			"console.log(seen.join('\\n'));",
+			''
+		].join('\n');
+
+		const result = await runTs({ 'main.ts': main }, [
+			{ id: 'hidden', input: 'SECRET-hidden-input' },
+			{ id: 'example', input: 'SECRET-example' }
+		]);
+
+		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok']);
+		for (const r of result.results) {
+			expect(r.stdout + r.stderr).not.toContain('SECRET');
+			expect(r.stdout).toBe('\n');
+		}
+	});
+
+	it('kills a process a Test left behind, even one that detached', async () => {
+		const main = [
+			"import { spawn } from 'node:child_process';",
+			"import { readFileSync, existsSync } from 'node:fs';",
+			"if (readFileSync(0, 'utf8') === 'first') {",
+			"  spawn('sh', ['-c', 'sleep 1; echo alive > /work/survivor'], { detached: true, stdio: 'ignore' }).unref();",
+			'} else {',
+			"  setTimeout(() => console.log(existsSync('/work/survivor')), 1500);",
+			'}',
+			''
+		].join('\n');
+
+		const result = await runTs({ 'main.ts': main }, [
+			{ id: 'first', input: 'first' },
+			{ id: 'second', input: 'second' }
+		]);
+
+		expect(result.results[1]).toMatchObject({
+			status: 'ok',
+			stdout: 'false\n'
+		});
+	});
+});
 
 const limits = { timeoutMs: 2000, memoryMb: 256 };
 const run = (files: Record<string, string>, tests = [{ id: 't', input: '' }], lim = limits) =>
@@ -291,7 +435,7 @@ async function runHarness(
 	inputs: string[],
 	env: Record<string, string> = {}
 ) {
-	const spec = containerSpec('test-instance', inputs.length, 2000, 256);
+	const spec = containerSpec('python', 'test-instance', inputs.length, 2000, 256);
 	const merged = [
 		...spec.Env.filter((e) => !(e.split('=')[0] in env)),
 		...Object.entries(env).map(([k, v]) => `${k}=${v}`)
@@ -462,7 +606,7 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 
 	it('stops printing results and exits non-zero when something unexpected happens', async () => {
 		// A Test input missing from the archive makes the harness fail before any learner code runs.
-		const spec = containerSpec('test-instance', 2, 2000, 256);
+		const spec = containerSpec('python', 'test-instance', 2, 2000, 256);
 		const id = await engine.create(sandboxConfig.pythonImage, spec);
 		const { status: exit } = await engine.wait(id);
 		let out = '';
@@ -522,7 +666,7 @@ describe('Runner: container configuration', { timeout: 60_000 }, () => {
 	it('is created with AutoRemove, no IPC, no log driver and the label', async () => {
 		const id = await engine.create(
 			sandboxConfig.pythonImage,
-			containerSpec('test-instance', 1, 2000, 256)
+			containerSpec('python', 'test-instance', 1, 2000, 256)
 		);
 
 		const { HostConfig } = await engine.inspect(id);

@@ -10,7 +10,7 @@ const problem = $derived(data.problem);
 	<title>{problem.title} · BeyondLeetcode</title>
 </svelte:head>
 
-{#key problem.id}
+{#key `${problem.id}:${problem.language}`}
 	<ProblemWorkspace {problem}>
 		{#snippet statement()}
 			<section class="statement" aria-label="Problem">
