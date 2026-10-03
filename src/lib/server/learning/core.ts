@@ -5,6 +5,7 @@ import { sandboxConfig } from '../runner/config.ts';
 import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 import {
+	acceptedDiff,
 	type ChapterView,
 	chapterView,
 	judge,
@@ -28,6 +29,7 @@ import {
 
 export { LearningError, type LearningErrorCode } from './errors.ts';
 export type {
+	AcceptedView,
 	ChapterView,
 	MapTopic,
 	MapView,
@@ -216,6 +218,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						(id) => deps.catalogue.problem(id)?.title ?? id
 					);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
+					const before = await loadProgress(deps, learnerId);
 					const { id: submissionId } = await deps.db.submission.create({
 						data: {
 							learnerId,
@@ -234,7 +237,10 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						verdict,
 						...(failure && { failure }),
 						revision,
-						status: progress.solvedProblems.has(problemId) ? 'Solved' : 'Attempted'
+						status: progress.solvedProblems.has(problemId) ? 'Solved' : 'Attempted',
+						...(verdict === 'Accepted' && {
+							accepted: acceptedDiff(deps.catalogue, before, progress, problemId)
+						})
 					};
 				}
 			};

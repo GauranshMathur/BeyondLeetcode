@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Catalogue, Topic, TopicSummary } from '../content/catalogue.ts';
 import { LearningError } from './errors.ts';
 import {
+	acceptedDiff,
 	chapterView,
 	mapView,
 	normaliseOutput,
@@ -376,5 +377,90 @@ describe('runView()', () => {
 		expect(() => runView(tests, { results: [ok('p/example/01', '2')] }, 1)).toThrow(
 			expect.objectContaining({ code: 'RunnerUnavailable' })
 		);
+	});
+});
+
+describe('acceptedDiff()', () => {
+	// a: chapter a-c, Core a-p1, a-p2, Extra a-x (parent a-p1). b needs a. c needs a and b.
+	const topics = [
+		topic('a', [], { core: ['p1', 'p2'] }),
+		topic('b', ['a']),
+		topic('c', ['a', 'b'])
+	];
+	const catalogue = {
+		...catalogueOf(topics),
+		problem: (id: string) => {
+			const topicId = id.split('-')[0] ?? '';
+			if (id === 'a-x') return { id, topicId, kind: 'extra', parent: 'a-p1' } as never;
+			return topics.some((t) => t.mainLine.includes(id))
+				? ({ id, topicId, kind: 'core' } as never)
+				: undefined;
+		}
+	};
+	const solvedP1 = progress(['a-c'], ['a-p1']);
+	const solvedBoth = progress(['a-c'], ['a-p1', 'a-p2']);
+
+	it.each([
+		['a Core Problem mid-Topic: the next Core Problem', none, solvedP1, 'a-p1', 'a-p2', false, []],
+		[
+			'the last Core Problem: no next, Topic completed, dependants Unlocked',
+			solvedP1,
+			solvedBoth,
+			'a-p2',
+			null,
+			true,
+			[{ id: 'b', title: 'B' }]
+		],
+		[
+			'an Extra: the Core Problem after its parent',
+			none,
+			progress(['a-c'], ['a-x']),
+			'a-x',
+			'a-p2',
+			false,
+			[]
+		],
+		[
+			're-solving a Solved Problem: nothing changes',
+			solvedBoth,
+			solvedBoth,
+			'a-p2',
+			null,
+			false,
+			[]
+		],
+		[
+			'the last Problem while chapters are unread: not Complete',
+			none,
+			progress([], ['a-p1', 'a-p2']),
+			'a-p2',
+			null,
+			false,
+			[]
+		],
+		[
+			'a Topic with two Prerequisites: not listed until both are Complete',
+			progress(['a-c'], ['a-p1', 'a-p2']),
+			progress(['a-c', 'b-c'], ['a-p1', 'a-p2', 'b-p']),
+			'b-p',
+			null,
+			true,
+			[{ id: 'c', title: 'C' }]
+		]
+	])('%s', (_name, before, after, problemId, nextProblemId, topicCompleted, newlyUnlocked) => {
+		expect(acceptedDiff(catalogue, before, after, problemId)).toEqual({
+			nextProblemId,
+			topicCompleted,
+			newlyUnlocked
+		});
+	});
+
+	it('does not list a dependant that needs another Prerequisite too', () => {
+		const diff = acceptedDiff(catalogue, none, solvedBoth, 'a-p2');
+		expect(diff.newlyUnlocked.map((t) => t.id)).toEqual(['b']);
+	});
+
+	it('throws NotFound for an unknown Problem', () => {
+		expect(() => acceptedDiff(catalogue, none, none, 'nope')).toThrow(LearningError);
 	});
 });

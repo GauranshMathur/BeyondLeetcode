@@ -474,6 +474,49 @@ export interface SubmitView {
 	readonly revision: number;
 	/** The Problem's status once this Submission is recorded. */
 	readonly status: 'Attempted' | 'Solved';
+	/** Only on an Accepted Verdict: what this Submission changed. */
+	readonly accepted?: AcceptedView;
+}
+
+/** What an Accepted Submission changed, for the Accepted panel. */
+export interface AcceptedView {
+	/** The next Core Problem in the Topic after this one (or after an Extra's parent); null at the end. */
+	readonly nextProblemId: string | null;
+	/** True only when this Submission took the Topic from not Complete to Complete. */
+	readonly topicCompleted: boolean;
+	/** Topics Locked before this Submission and Unlocked after it. */
+	readonly newlyUnlocked: readonly { readonly id: string; readonly title: string }[];
+}
+
+/**
+ * The Accepted panel's content from Progress before and after an Accepted Submission. Pure,
+ * built on mapView so the Unlock and Complete rules live in one place. Re-solving a Solved
+ * Problem changes nothing, so it reports no completion and no new Unlocks. Throws NotFound for
+ * an unknown Problem.
+ */
+export function acceptedDiff(
+	catalogue: Pick<Catalogue, 'topicMap' | 'topic' | 'problem'>,
+	before: Progress,
+	after: Progress,
+	problemId: string
+): AcceptedView {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
+	const anchor = problem.kind === 'extra' ? (problem.parent ?? problemId) : problemId;
+	const next = mainLine[mainLine.indexOf(anchor) + 1];
+
+	const stateBefore = new Map(mapView(catalogue, before).topics.map((t) => [t.id, t.state]));
+	const topicsAfter = mapView(catalogue, after).topics;
+	return {
+		nextProblemId: next ?? null,
+		topicCompleted:
+			stateBefore.get(problem.topicId) !== 'complete' &&
+			topicsAfter.find((t) => t.id === problem.topicId)?.state === 'complete',
+		newlyUnlocked: topicsAfter
+			.filter((t) => stateBefore.get(t.id) === 'locked' && t.state !== 'locked')
+			.map(({ id, title }) => ({ id, title }))
+	};
 }
 
 type SubmitCatalogue = Pick<Catalogue, 'topic' | 'problem' | 'hiddenTests'>;

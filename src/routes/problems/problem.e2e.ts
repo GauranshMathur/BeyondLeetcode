@@ -138,6 +138,12 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await setCode(page, correct);
 	await page.getByRole('button', { name: 'Submit' }).click();
 	await expect(verdict).toContainText('Accepted', { timeout: 60_000 });
+	const panel = page.getByLabel('Accepted panel');
+	await expect(panel.getByRole('link', { name: 'Next problem' })).toHaveAttribute(
+		'href',
+		'/problems/stacks-pop'
+	);
+	await expect(panel).not.toContainText('Topic complete');
 
 	await page.goto('/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('1 of 2');
