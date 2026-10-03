@@ -55,11 +55,11 @@ export function mapView(
 	}
 
 	const topics = summaries.map(({ id, title, prerequisites }): MapTopic => {
-		const state: TopicState = !prerequisites.every((p) => complete.has(p))
-			? 'locked'
-			: complete.has(id)
-				? 'complete'
-				: 'unlocked';
+		const state: TopicState = complete.has(id)
+			? 'complete'
+			: prerequisites.every((p) => complete.has(p))
+				? 'unlocked'
+				: 'locked';
 		return {
 			id,
 			title,
