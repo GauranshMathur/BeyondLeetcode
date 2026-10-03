@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.7.1...v0.8.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C8b init command and compose.yaml ([#54](https://github.com/GauranshMathur/BeyondLeetcode/issues/54)) ([01048f3](https://github.com/GauranshMathur/BeyondLeetcode/commit/01048f333653ef9cfe9e0378f32f94a64af39f6e))
+
 ## [0.7.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.7.0...v0.7.1) (2026-10-03)
 
 
