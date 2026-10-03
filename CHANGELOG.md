@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.13.1...v0.13.2) (2026-10-03)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C4e A crashed compile step is a Runner error ([#68](https://github.com/GauranshMathur/BeyondLeetcode/issues/68)) ([eed78f7](https://github.com/GauranshMathur/BeyondLeetcode/commit/eed78f7d9914318d570da852a020f8f2edc3f096))
+
 ## [0.13.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.13.0...v0.13.1) (2026-10-03)
 
 
