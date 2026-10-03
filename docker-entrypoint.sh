@@ -14,7 +14,8 @@ Roles:
   runner   Run learner code in sandboxes. Needs RUNNER_TOKEN (32+ characters) and the
            container engine socket mounted at DOCKER_SOCKET (default /var/run/docker.sock).
            Listens on RUNNER_PORT (default 8787). Runs as root because the socket needs it.
-  init     Not yet: writing compose.yaml and .env arrives in card C8b.
+  init     Write compose.yaml and .env into /out (mount your folder there):
+           docker run --rm -v "$PWD":/out <image> init --origin https://learn.example.com [--port 3000] [--force]
 USAGE
 }
 
@@ -30,8 +31,8 @@ runner)
 	exec bun src/lib/server/runner/main.ts
 	;;
 init)
-	echo "init is not available yet (card C8b)." >&2
-	exit 2
+	shift
+	exec bun src/lib/server/init/init.ts "$@"
 	;;
 *)
 	usage
