@@ -5,9 +5,9 @@ import { containerLabel, sandboxConfig } from './config';
 import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
+import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec, removeStaleContainers } from './sandbox';
 import { createTar } from './tar';
-import type { ExecuteRequest, RunnerPort } from './port';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
@@ -354,7 +354,13 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 		const id = await engine.create(sandboxConfig.pythonImage, spec);
 		const exit = engine.wait(id);
 		let out = '';
-		const conn = await engine.attach(id, (s, p) => void (s === 1 && (out += p.toString())), 5000);
+		const conn = await engine.attach(
+			id,
+			(s, p) => {
+				if (s === 1) out += p.toString();
+			},
+			5000
+		);
 		await engine.start(id);
 		const tar = createTar([
 			{ path: 'build/main.py', content: 'print(1)' },
