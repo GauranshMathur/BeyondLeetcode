@@ -8,10 +8,6 @@ let { children } = $props();
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
-	<link
-		rel="stylesheet"
-		href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Barlow+Condensed:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
-	/>
 </svelte:head>
 
 <header>
@@ -35,7 +31,7 @@ let { children } = $props();
 	}
 	.brand {
 		color: var(--ink);
-		font-family: 'Barlow Condensed', sans-serif;
+		font-family: var(--font-sans);
 		font-weight: 600;
 		font-size: 22px;
 		letter-spacing: 0.14em;
@@ -46,7 +42,7 @@ let { children } = $props();
 		display: flex;
 		gap: 40px;
 		align-items: center;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 14px;
 	}
 	nav a {

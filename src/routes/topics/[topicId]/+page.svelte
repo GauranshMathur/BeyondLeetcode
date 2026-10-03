@@ -99,7 +99,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 	.crumbs,
 	aside,
 	table {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 	}
 	.muted {
 		color: var(--muted);
@@ -196,7 +196,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		padding-top: 96px;
 	}
 	.num {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 13px;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -272,7 +272,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 	}
 	.ptitle {
 		color: var(--ink);
-		font-family: 'Newsreader', Georgia, serif;
+		font-family: var(--font-serif);
 		font-size: 21px;
 		text-decoration: none;
 	}

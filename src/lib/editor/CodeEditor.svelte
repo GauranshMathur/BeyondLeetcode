@@ -31,7 +31,7 @@ const lock = new Compartment();
 // Colours come from the page's CSS variables (tokens.css), so light and dark follow the theme.
 const theme = EditorView.theme({
 	'&': { backgroundColor: 'var(--panel)', color: 'var(--ink)', height: '100%' },
-	'.cm-scroller': { fontFamily: "'IBM Plex Mono', monospace", fontSize: '14px', lineHeight: '1.8' },
+	'.cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: '14px', lineHeight: '1.8' },
 	'.cm-content': { caretColor: 'var(--accent)', padding: '20px 0' },
 	'.cm-cursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
 	'.cm-gutters': {
@@ -114,7 +114,7 @@ $effect(() => {
 		gap: 24px;
 		padding: 0 24px;
 		border-bottom: 1px solid var(--rule);
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 13px;
 	}
 	.tabs button {

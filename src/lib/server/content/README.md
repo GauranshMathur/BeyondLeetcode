@@ -28,6 +28,7 @@ The content catalogue (`loadCatalogue(dir)`) reads one content folder. Real cont
 - **Ids** are folder names, lowercase slugs (`a-z`, `0-9`, single hyphens), unique across all Topics, Chapters and Problems. Ids are stable: progress is keyed by them, so never rename a published one.
 - **Order** comes from the manifests: `content.json` orders Topics, `topic.json` orders Chapters, `chapter.json` orders Problems. A manifest must list exactly the folders beside it. A missing folder or an unlisted one is an error.
 - **Prerequisites** name existing Topics, never the Topic itself, and never form a cycle.
+- **Topics** list at least one Chapter, and at least one of their Problems is Core. A Chapter may have no Problems.
 - **Main Line** is the Topic's Core Problems in Chapter order, then Problem order.
 - **Extra Problems** name a `parent`: a Core Problem in the same Topic that comes before the Extra. So a Topic's first Problem is always Core.
 - **Tests**: every `.in` has a matching `.out` and vice versa. Each Problem needs at least one Example Test, because Run uses only those. Tests sort by name. The expected output is the `.out` file byte for byte. How output is compared (for example trailing newlines) belongs to the Learning core, not to this format.
