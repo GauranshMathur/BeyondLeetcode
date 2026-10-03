@@ -1,0 +1,312 @@
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
+import { createServer } from 'node:net';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { containerLabel, sandboxConfig } from './config';
+import { createEngine } from './engine';
+import { createHttpRunner } from './http-adapter';
+import type { RunnerPort } from './port';
+
+/**
+ * Seam 2, adversarial: real learner Python through the HTTP adapter and a real Runner process,
+ * against real Docker. Each test asserts only on what the learner's run observably returns.
+ */
+
+const token = 'escape-test-token-0123456789-abcdef';
+const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
+const engine = createEngine(socket);
+let runnerProcess: ChildProcess;
+let runner: RunnerPort;
+let url: string;
+
+async function freePort(): Promise<number> {
+	return new Promise((resolve, reject) => {
+		const server = createServer();
+		server.listen(0, '127.0.0.1', () => {
+			const { port } = server.address() as { port: number };
+			server.close(() => resolve(port));
+		});
+		server.on('error', reject);
+	});
+}
+
+beforeAll(async () => {
+	const port = await freePort();
+	url = `http://127.0.0.1:${port}`;
+	runnerProcess = spawn('bun', ['src/lib/server/runner/main.ts'], {
+		env: {
+			...process.env,
+			RUNNER_PORT: String(port),
+			RUNNER_TOKEN: token,
+			DOCKER_SOCKET: socket
+		},
+		stdio: 'inherit'
+	});
+	for (let attempt = 0; attempt < 100; attempt++) {
+		try {
+			const res = await fetch(`${url}/health`, { headers: { Authorization: `Bearer ${token}` } });
+			if (res.ok) break;
+		} catch {
+			// not listening yet
+		}
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
+	runner = createHttpRunner({ url, token });
+	// Pull the image now so the first test does not pay for it.
+	await engine.create(sandboxConfig.pythonImage, {}).then((id) => engine.remove(id));
+}, 120_000);
+
+afterAll(() => {
+	runnerProcess?.kill();
+});
+
+afterEach(async () => {
+	expect(await engine.listByLabel(containerLabel)).toEqual([]);
+});
+
+const limits = { timeoutMs: 2000, memoryMb: 256 };
+const run = (main: string, lim = limits) =>
+	runner.execute({
+		language: 'python',
+		files: { 'main.py': main },
+		tests: [{ id: 't', input: '' }],
+		limits: lim
+	});
+
+/** The address of the Docker bridge on the host, which is where a container would reach the host. */
+function dockerHostGateway(): string {
+	try {
+		const out = execFileSync(
+			'docker',
+			['network', 'inspect', 'bridge', '--format', '{{(index .IPAM.Config 0).Gateway}}'],
+			{ encoding: 'utf8' }
+		).trim();
+		if (/^\d+\.\d+\.\d+\.\d+$/.test(out)) return out;
+	} catch {
+		// fall back to Docker's default bridge gateway
+	}
+	return '172.17.0.1';
+}
+
+const lines = (s: string) => s.split('\n').filter(Boolean);
+
+describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, () => {
+	it('cannot open a connection to the internet, the Docker host gateway or DNS', async () => {
+		const probe = [
+			'import socket',
+			`targets = [("1.1.1.1", 53), ("${dockerHostGateway()}", 22), ("${dockerHostGateway()}", 2375), ("127.0.0.1", 80)]`,
+			'for host, port in targets:',
+			'    try:',
+			'        socket.create_connection((host, port), timeout=1)',
+			'        print("connected", host, port)',
+			'    except OSError:',
+			'        print("blocked", host, port)',
+			'try:',
+			'    socket.getaddrinfo("example.com", 80)',
+			'    print("dns resolved")',
+			'except OSError:',
+			'    print("dns blocked")',
+			''
+		].join('\n');
+
+		const result = await run(probe);
+
+		expect(result.results[0].stderr).toBe('');
+		expect(lines(result.results[0].stdout)).toEqual([
+			'blocked 1.1.1.1 53',
+			`blocked ${dockerHostGateway()} 22`,
+			`blocked ${dockerHostGateway()} 2375`,
+			'blocked 127.0.0.1 80',
+			'dns blocked'
+		]);
+	});
+
+	it('cannot write anywhere outside /work: /, /tmp, /usr and /etc', async () => {
+		const probe = [
+			'import os',
+			'for path in ("/escape", "/tmp/escape", "/usr/escape", "/etc/escape", "/usr/local/escape", "/proc/escape", "/sys/escape"):',
+			'    try:',
+			'        open(path, "w").write("x")',
+			'        print("wrote", path)',
+			'    except OSError:',
+			'        print("denied", path)',
+			'for path in ("/escape-dir", "/tmp/escape-dir"):',
+			'    try:',
+			'        os.mkdir(path)',
+			'        print("made", path)',
+			'    except OSError:',
+			'        print("denied", path)',
+			''
+		].join('\n');
+
+		const result = await run(probe);
+
+		expect(result.results[0].stderr).toBe('');
+		expect(lines(result.results[0].stdout)).toEqual([
+			'denied /escape',
+			'denied /tmp/escape',
+			'denied /usr/escape',
+			'denied /etc/escape',
+			'denied /usr/local/escape',
+			'denied /proc/escape',
+			'denied /sys/escape',
+			'denied /escape-dir',
+			'denied /tmp/escape-dir'
+		]);
+	});
+
+	it('cannot remount, mount or reach another filesystem to write outside /work', async () => {
+		const probe = [
+			'import ctypes, os',
+			'libc = ctypes.CDLL(None, use_errno=True)',
+			'rc = libc.mount(b"tmpfs", b"/tmp", b"tmpfs", 0, None)',
+			'print("mount", "denied" if rc != 0 else "allowed")',
+			'rc = libc.mount(None, b"/", None, 32 | 1 | 0, None)',
+			'print("remount", "denied" if rc != 0 else "allowed")',
+			'try:',
+			'    os.chroot("/work")',
+			'    print("chroot allowed")',
+			'except OSError:',
+			'    print("chroot denied")',
+			''
+		].join('\n');
+
+		const result = await run(probe);
+
+		expect(lines(result.results[0].stdout)).toEqual([
+			'mount denied',
+			'remount denied',
+			'chroot denied'
+		]);
+	});
+
+	it('runs as uid 65534 with no capabilities and no way to gain any', async () => {
+		const probe = [
+			'import os',
+			'status = dict(l.split(":\\t", 1) for l in open("/proc/self/status").read().splitlines() if ":\\t" in l)',
+			'print("uid", os.getuid(), os.geteuid())',
+			'for key in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"):',
+			'    print(key, status[key].strip())',
+			'print("nnp", status["NoNewPrivs"].strip())',
+			'try:',
+			'    os.setuid(0)',
+			'    print("became root")',
+			'except OSError:',
+			'    print("stayed non-root")',
+			''
+		].join('\n');
+
+		const result = await run(probe);
+
+		expect(result.results[0].stderr).toBe('');
+		expect(lines(result.results[0].stdout)).toEqual([
+			'uid 65534 65534',
+			'CapInh 0000000000000000',
+			'CapPrm 0000000000000000',
+			'CapEff 0000000000000000',
+			'CapBnd 0000000000000000',
+			'CapAmb 0000000000000000',
+			'nnp 1',
+			'stayed non-root'
+		]);
+	});
+
+	it('has no Docker socket inside the container', async () => {
+		const probe = [
+			'import os',
+			'for path in ("/var/run/docker.sock", "/run/docker.sock", "/docker.sock"):',
+			'    print(path, os.path.exists(path))',
+			'mounts = open("/proc/self/mountinfo").read()',
+			'print("mounted", "docker.sock" in mounts)',
+			'print("dockerenv-host", os.environ.get("DOCKER_HOST"))',
+			''
+		].join('\n');
+
+		const result = await run(probe);
+
+		expect(lines(result.results[0].stdout)).toEqual([
+			'/var/run/docker.sock False',
+			'/run/docker.sock False',
+			'/docker.sock False',
+			'mounted False',
+			'dockerenv-host None'
+		]);
+	});
+});
+
+describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
+	const healthy = async () => {
+		const next = await run('print("still serving")\n');
+		expect(next.results).toEqual([
+			{ id: 't', status: 'ok', stdout: 'still serving\n', stderr: '' }
+		]);
+	};
+
+	it('kills a memory hog as a runtime error, not a hang, and serves the next request', async () => {
+		const hog = [
+			'chunks = []',
+			'while True:',
+			'    chunks.append(bytearray(32 * 1024 * 1024))',
+			'    for block in chunks[-1:]:',
+			'        block[::4096] = b"x" * len(block[::4096])',
+			''
+		].join('\n');
+		const started = Date.now();
+
+		const result = await run(hog, { timeoutMs: 8000, memoryMb: 256 });
+
+		expect(result.results[0].status).toBe('runtimeError');
+		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs);
+		await healthy();
+	});
+
+	it('cannot ask for more memory than the Runner allows', async () => {
+		const hog =
+			'data = bytearray(400 * 1024 * 1024)\nfor i in range(0, len(data), 4096):\n    data[i] = 1\nprint("allocated")\n';
+
+		const result = await run(hog, { timeoutMs: 8000, memoryMb: 4096 });
+
+		expect(result.results[0].status).toBe('runtimeError');
+		expect(result.results[0].stdout).toBe('');
+		await healthy();
+	});
+
+	it('stops a fork bomb at the pids limit, within the time limit, and serves the next request', async () => {
+		const bomb = [
+			'import os, time',
+			'children = 0',
+			'try:',
+			'    while True:',
+			'        if os.fork() == 0:',
+			'            time.sleep(30)',
+			'            os._exit(0)',
+			'        children += 1',
+			'except OSError:',
+			'    print("limited", children <= 64, children)',
+			''
+		].join('\n');
+		const started = Date.now();
+
+		const result = await run(bomb);
+
+		expect(result.results[0].stdout).toMatch(/^limited True \d+\n$/);
+		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs);
+		await healthy();
+	});
+
+	it('ends a bomb that forks without bound within the time limit, as a verdict or a refusal', async () => {
+		const bomb = 'import os\nwhile True:\n    os.fork()\n';
+		const started = Date.now();
+
+		// The container may run out of memory before the pids limit bites and take the harness down
+		// with it. The Runner then refuses the request (HTTP 500) rather than trusting the output;
+		// either ending is safe, a hang is not.
+		const outcome = await run(bomb).then(
+			(result) => result.results[0].status,
+			(error: Error) => error.message
+		);
+
+		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
+		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs + 5000);
+		await healthy();
+	});
+});
