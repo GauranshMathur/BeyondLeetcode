@@ -1,0 +1,44 @@
+# BeyondLeetcode, written by `docker run <image> init`. Settings come from the .env next to this file.
+# Start: docker compose up -d. Stop: docker compose down (add -v to delete the database volume too).
+#
+# Until the Runner pulls its own sandbox image (card C4d), pull it once on this machine:
+#   docker pull python:3.13-slim
+
+services:
+  web:
+    image: ${BEYONDLEETCODE_IMAGE}
+    command: web
+    ports:
+      - "${PORT}:3000"
+    environment:
+      ORIGIN: ${ORIGIN:-}
+      # Behind a reverse proxy, empty ORIGIN in .env and set these instead (the proxy must send them):
+      # PROTOCOL_HEADER: x-forwarded-proto
+      # HOST_HEADER: x-forwarded-host
+      RUNNER_URL: http://runner:8787
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
+    volumes:
+      - data:/data
+    depends_on:
+      - runner
+    restart: unless-stopped
+    networks: [default, internal]
+
+  runner:
+    image: ${BEYONDLEETCODE_IMAGE}
+    command: runner
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
+    volumes:
+      # The only container with the engine socket. It runs learner code in sandboxes.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    networks: [internal]
+
+networks:
+  # No route out: the Docker daemon, not this container, pulls the sandbox image.
+  internal:
+    internal: true
+
+volumes:
+  data:

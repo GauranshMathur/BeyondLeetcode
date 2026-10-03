@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
+import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
 import { createTestDb } from '../test-db.ts';
 import { createLearningCore, LearningError } from './core.ts';
 
@@ -368,5 +369,129 @@ describe('learner.problem() and learner.saveCode()', () => {
 		}
 		expect(json).not.toContain('hidden');
 		expect(json).not.toContain('hint');
+	});
+});
+
+describe('learner.run()', () => {
+	const exampleId = 'stacks-push/example/01';
+	async function setup(script: RunnerScript = {}) {
+		const runner = createScriptedRunner(script);
+		const db = await createTestDb();
+		const core = createLearningCore({
+			catalogue: await loadCatalogue(fixtureDir),
+			db,
+			runner
+		});
+		return { runner, db, learner: core.forLearner('any-learner') };
+	}
+
+	it('saves the Build, sends only the Example Test ids and inputs with the files, and compares', async () => {
+		const { runner, learner } = await setup({
+			tests: { [exampleId]: { status: 'ok', stdout: '2\n' } }
+		});
+
+		const view = await learner.run('stacks-push', { 'main.py': 'print(2)' }, 0);
+
+		expect(view).toEqual({
+			revision: 1,
+			tests: [
+				{
+					name: '01',
+					input: 'push 1\npush 2\nsize\n',
+					expected: '2\n',
+					actual: '2\n',
+					stderr: '',
+					passed: true,
+					status: 'passed'
+				}
+			]
+		});
+		expect(await learner.problem('stacks-push')).toMatchObject({
+			files: { 'main.py': 'print(2)' },
+			revision: 1
+		});
+		expect(runner.calls).toHaveLength(1);
+		expect(runner.calls[0]).toMatchObject({
+			language: 'python',
+			files: { 'main.py': 'print(2)' },
+			tests: [{ id: exampleId, input: 'push 1\npush 2\nsize\n' }]
+		});
+		expect(JSON.stringify(runner.calls)).not.toContain('hidden');
+		expect(Object.keys(runner.calls[0]?.tests[0] ?? {}).sort()).toEqual(['id', 'input']);
+	});
+
+	it('shows a wrong answer with the actual output and stderr', async () => {
+		const { learner } = await setup({
+			tests: { [exampleId]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
+		});
+
+		const view = await learner.run('stacks-push', { 'main.py': 'x' }, 0);
+
+		expect(view.tests[0]).toMatchObject({
+			status: 'wrongAnswer',
+			passed: false,
+			actual: '3\n',
+			stderr: 'warn'
+		});
+	});
+
+	it('returns a compile error as one block', async () => {
+		const { learner } = await setup({ compileError: 'SyntaxError: bad' });
+
+		expect(await learner.run('stacks-push', { 'main.py': 'x' }, 0)).toEqual({
+			revision: 1,
+			compileError: 'SyntaxError: bad',
+			tests: []
+		});
+	});
+
+	it('never changes progress: no Read mark, status, Submission or other Problem changes', async () => {
+		const { learner, db } = await setup({
+			tests: { [exampleId]: { status: 'ok', stdout: '2\n' } }
+		});
+		const before = await learner.map();
+
+		await learner.run('stacks-push', { 'main.py': 'print(2)' }, 0);
+
+		expect(await learner.map()).toEqual(before);
+		expect(await learner.topic('stacks')).toMatchObject({
+			chapters: [
+				{ problems: [{ status: 'Untouched' }, { status: 'Untouched' }] },
+				{ problems: [{ status: 'Untouched' }] }
+			]
+		});
+		expect(await db.chapterRead.count()).toBe(0);
+		expect(await db.buildStep.count()).toBe(1);
+	});
+
+	it('applies the saveCode checks first: stale revision, invalid Build, locked or unknown', async () => {
+		const { learner, runner } = await setup();
+		await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0);
+
+		await expect(learner.run('stacks-push', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+			code: 'RevisionConflict'
+		});
+		await expect(learner.run('stacks-push', { '../x': 'b' }, 1)).rejects.toMatchObject({
+			code: 'InvalidBuild'
+		});
+		await expect(learner.run('queues-enqueue', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		await expect(learner.run('nope', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		expect(runner.calls).toHaveLength(0);
+	});
+
+	it('answers RunnerUnavailable when the Runner is down, keeping the saved code and recording nothing else', async () => {
+		const { learner, db } = await setup({ unavailable: true });
+
+		await expect(learner.run('stacks-push', { 'main.py': 'a' }, 0)).rejects.toMatchObject({
+			code: 'RunnerUnavailable'
+		});
+
+		expect(await learner.problem('stacks-push')).toMatchObject({ revision: 1 });
+		expect(await db.buildStep.count()).toBe(1);
+		expect(await db.chapterRead.count()).toBe(0);
 	});
 });

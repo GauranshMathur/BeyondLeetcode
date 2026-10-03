@@ -58,7 +58,9 @@ jobs:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      # The Playwright webServer builds the app and serves it under Bun.
+      # Run goes through the real Runner (started by the Playwright config), which needs the Sandbox image.
+      - run: docker pull python:3.13-slim
+      # The Playwright webServer builds the app, serves it under Bun and starts the Runner.
       - run: bun run test:e2e
 
   sandbox:
@@ -90,7 +92,7 @@ jobs:
       - name: Smoke test, web role serves the Map
         run: |
           docker volume create bl-data
-          docker run -d --name web -p 3000:3000 -e ORIGIN=http://localhost:3000 -v bl-data:/data beyondleetcode:ci web
+          docker run -d --name web -p 3000:3000 -e ORIGIN=http://localhost:3000 -e RUNNER_URL=http://runner:8787 -e RUNNER_TOKEN=ci-web-smoke-token-0123456789abcdef-0123456789 -v bl-data:/data beyondleetcode:ci web
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ || true)
             [ "$code" = 200 ] && exit 0
@@ -109,3 +111,26 @@ jobs:
           done
           docker logs runner
           exit 1
+      - name: Smoke test, init then compose up serves the Map
+        run: |
+          docker rm -f web runner >/dev/null 2>&1 || true
+          docker volume rm bl-data >/dev/null 2>&1 || true
+          mkdir "$RUNNER_TEMP/instance" && cd "$RUNNER_TEMP/instance"
+          docker run --rm -v "$PWD":/out -e BEYONDLEETCODE_IMAGE=beyondleetcode:ci beyondleetcode:ci init --origin http://localhost:3000
+          grep -q '^BEYONDLEETCODE_IMAGE=beyondleetcode:ci$' .env
+          # The Runner does not pull its sandbox image yet (C4d).
+          docker pull python:3.13-slim
+          docker compose up -d
+          ok=
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ || true)
+            [ "$code" = 200 ] && ok=1 && break
+            sleep 2
+          done
+          if [ -z "$ok" ]; then docker compose logs; docker compose down -v; exit 1; fi
+          # Only the runner holds the engine socket.
+          if docker compose exec -T web test -e /var/run/docker.sock; then
+            echo "web container has the Docker socket"; docker compose down -v; exit 1
+          fi
+          docker compose exec -T runner test -S /var/run/docker.sock
+          docker compose down -v

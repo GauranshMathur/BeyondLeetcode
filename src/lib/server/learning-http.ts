@@ -6,7 +6,8 @@ const STATUS: Record<LearningErrorCode, number> = {
 	NotFound: 404,
 	TopicLocked: 403,
 	RevisionConflict: 409,
-	InvalidBuild: 400
+	InvalidBuild: 400,
+	RunnerUnavailable: 503
 };
 
 /** Runs a Learning core call; a LearningError becomes the matching HTTP error, anything else is rethrown. */

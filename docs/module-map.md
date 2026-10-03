@@ -25,7 +25,7 @@ learner.chapter(chapterId)    learner.problem(problemId)
 // Learner actions
 learner.reachChapterEnd(chapterId)                    // → progress change (may Complete a Topic)
 learner.saveCode(problemId, files, baseRevision)      // → new revision, or RevisionConflict
-learner.run(problemId, files, baseRevision)           // Example Tests only; never changes progress
+learner.run(problemId, files, baseRevision)           // → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
 learner.submit(problemId, files, baseRevision)        // saves, runs, returns Verdict + Accepted panel
 learner.startFromReferenceCode(problemId)
 learner.switchLanguage(topicId, language)
@@ -40,7 +40,7 @@ Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic exc
 - A step's code is copied once, when the step is first touched: from the Learner's previous Core step, else from Reference Code. Later edits upstream never change it.
 - The first Problem of a Topic starts from an empty Build. "Start from Reference Code" loads the Reference Code after the *previous* Problem.
 - An Extra Problem works on a Branch copied from its parent Core step; nothing flows back to the Main Line.
-- Submit runs the Problem's Tests plus every earlier Core Problem's Tests (up to the parent step for an Extra). It waits for the result; a Runner outage records nothing.
+- Submit runs the Problem's Tests plus every earlier Core Problem's Tests (up to the parent step for an Extra). It waits for the result; a Runner outage records nothing. It makes two Runner calls, each its own container: the Problem's Example Tests (the only output ever shown), then every other Test (outcomes only). Tests in one container are not isolated from each other: kernel counters survive the harness's cleanup, so a Hidden input must never share a container with a Test whose output is shown.
 - The core, not the Runner, picks the Verdict: Compile Error > Time Limit Exceeded > Runtime Error > Wrong Answer > Accepted.
 - A failing Hidden Test (or earlier step) shows only which Problem failed and the Verdict: no input, expected output or Learner output. Output is shown for failing Example Tests.
 - A Solution's code is the Reference Code after that Problem.

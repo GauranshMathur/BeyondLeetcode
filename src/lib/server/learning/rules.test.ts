@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Catalogue, Topic, TopicSummary } from '../content/catalogue.ts';
 import { LearningError } from './errors.ts';
-import { chapterView, mapView, type Progress, reachChapter, topicView } from './rules.ts';
+import {
+	chapterView,
+	mapView,
+	normaliseOutput,
+	type Progress,
+	reachChapter,
+	runView,
+	topicView
+} from './rules.ts';
 
 /** A Topic with the given Prerequisites, its Chapters and its Core Problems (the Main Line). */
 function topic(
@@ -79,10 +87,17 @@ describe('Unlock rules', () => {
 		expect(states(mapView(onlyB, progress(['a-c'], ['a-p'])))).toMatchObject({ c: 'locked' });
 	});
 
-	it('keeps a Topic Locked while a Prerequisite is not Complete, whatever its own progress', () => {
-		expect(states(mapView(chain, progress(['c-c'], ['c-p'])))).toMatchObject({
+	it('keeps a Topic Locked while a Prerequisite is not Complete, whatever its partial progress', () => {
+		expect(states(mapView(chain, progress(['c-c'], [])))).toMatchObject({
 			b: 'locked',
 			c: 'locked'
+		});
+	});
+
+	it('never Locks a Complete Topic, even with an incomplete Prerequisite', () => {
+		expect(states(mapView(chain, progress(['b-c'], ['b-p'])))).toMatchObject({
+			a: 'unlocked',
+			b: 'complete'
 		});
 	});
 });
@@ -269,5 +284,97 @@ describe('chapterView', () => {
 	it('refuses a Locked Topic and an unknown Chapter', () => {
 		expect(() => chapterView(cat, none, 'b-c1', render)).toThrow(LearningError);
 		expect(() => chapterView(cat, none, 'zzz', render)).toThrow(LearningError);
+	});
+});
+
+describe('normaliseOutput()', () => {
+	it.each([
+		['a\r\nb\r\n', 'a\nb'],
+		['a  \nb\t\n', 'a\nb'],
+		['a\nb\n\n\n', 'a\nb'],
+		['  a\n', '  a'],
+		['a b', 'a b'],
+		['', ''],
+		['a\n\nb', 'a\n\nb']
+	])('turns %j into %j', (raw, expected) => {
+		expect(normaliseOutput(raw)).toBe(expected);
+	});
+});
+
+describe('runView()', () => {
+	const tests = [
+		{ id: 'p/example/01', input: 'in1', expected: '2\n' },
+		{ id: 'p/example/02', input: 'in2', expected: '5\n' }
+	];
+	const ok = (id: string, stdout: string, stderr = '') => ({
+		id,
+		status: 'ok' as const,
+		stdout,
+		stderr
+	});
+
+	it('passes a Test whose output matches after normalising, fails one that does not', () => {
+		const view = runView(
+			tests,
+			{ results: [ok('p/example/01', '2  \r\n\r\n'), ok('p/example/02', '6\n')] },
+			3
+		);
+
+		expect(view).toEqual({
+			revision: 3,
+			tests: [
+				{
+					name: '01',
+					input: 'in1',
+					expected: '2\n',
+					actual: '2  \r\n\r\n',
+					stderr: '',
+					passed: true,
+					status: 'passed'
+				},
+				{
+					name: '02',
+					input: 'in2',
+					expected: '5\n',
+					actual: '6\n',
+					stderr: '',
+					passed: false,
+					status: 'wrongAnswer'
+				}
+			]
+		});
+	});
+
+	it('lets a runtime error or timeout win over a matching output', () => {
+		const view = runView(
+			tests,
+			{
+				results: [
+					{ id: 'p/example/01', status: 'runtimeError', stdout: '2\n', stderr: 'Traceback' },
+					{ id: 'p/example/02', status: 'timeout', stdout: '5\n', stderr: '' }
+				]
+			},
+			1
+		);
+
+		expect(view.tests.map((t) => [t.status, t.passed])).toEqual([
+			['runtimeError', false],
+			['timeout', false]
+		]);
+		expect(view.tests[0]?.stderr).toBe('Traceback');
+	});
+
+	it('reports a compile error with no tests', () => {
+		expect(runView(tests, { compileError: 'bad syntax', results: [] }, 2)).toEqual({
+			revision: 2,
+			compileError: 'bad syntax',
+			tests: []
+		});
+	});
+
+	it('refuses a Runner answer that misses a Test as RunnerUnavailable', () => {
+		expect(() => runView(tests, { results: [ok('p/example/01', '2')] }, 1)).toThrow(
+			expect.objectContaining({ code: 'RunnerUnavailable' })
+		);
 	});
 });

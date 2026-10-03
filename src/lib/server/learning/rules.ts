@@ -1,4 +1,5 @@
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
+import type { ExecuteResult } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 
 /** What a Learner has done: Read marks and Solved Problems, by stable content id. */
@@ -54,11 +55,11 @@ export function mapView(
 	}
 
 	const topics = summaries.map(({ id, title, prerequisites }): MapTopic => {
-		const state: TopicState = !prerequisites.every((p) => complete.has(p))
-			? 'locked'
-			: complete.has(id)
-				? 'complete'
-				: 'unlocked';
+		const state: TopicState = complete.has(id)
+			? 'complete'
+			: prerequisites.every((p) => complete.has(p))
+				? 'unlocked'
+				: 'locked';
 		return {
 			id,
 			title,
@@ -357,4 +358,68 @@ export function validateBuild(files: Readonly<Record<string, unknown>>): BuildFi
 	}
 	if (bytes > MAX_BUILD_BYTES) throw new LearningError('InvalidBuild');
 	return files as BuildFiles;
+}
+
+export type RunTestStatus = 'passed' | 'wrongAnswer' | 'runtimeError' | 'timeout';
+
+/** One Example Test after a Run: visible content, so input, expected and actual are all shown. */
+export interface RunTestView {
+	readonly name: string;
+	readonly input: string;
+	readonly expected: string;
+	readonly actual: string;
+	readonly stderr: string;
+	readonly passed: boolean;
+	readonly status: RunTestStatus;
+}
+
+/** The outcome of Run: the revision it saved and one row per Example Test, or a compile error. */
+export interface RunView {
+	readonly revision: number;
+	readonly compileError?: string;
+	readonly tests: readonly RunTestView[];
+}
+
+/** Outputs match when equal after \r\n becomes \n, each line loses trailing whitespace and trailing newlines go. */
+export function normaliseOutput(output: string): string {
+	return output
+		.replace(/\r\n/g, '\n')
+		.replace(/[^\S\n]+$/gm, '')
+		.replace(/\n+$/, '');
+}
+
+/**
+ * Compares the Runner's raw results with the expected outputs. A runtime error or timeout
+ * wins over the comparison. A Runner answer that misses a Test is a failed Runner.
+ */
+export function runView(
+	tests: readonly { id: string; input: string; expected: string }[],
+	result: ExecuteResult,
+	revision: number
+): RunView {
+	if (result.compileError !== undefined) {
+		return { revision, compileError: result.compileError, tests: [] };
+	}
+	return {
+		revision,
+		tests: tests.map((test) => {
+			const raw = result.results.find((r) => r.id === test.id);
+			if (!raw) throw new LearningError('RunnerUnavailable');
+			const status: RunTestStatus =
+				raw.status === 'ok'
+					? normaliseOutput(raw.stdout) === normaliseOutput(test.expected)
+						? 'passed'
+						: 'wrongAnswer'
+					: raw.status;
+			return {
+				name: test.id.slice(test.id.lastIndexOf('/') + 1),
+				input: test.input,
+				expected: test.expected,
+				actual: raw.stdout,
+				stderr: raw.stderr,
+				passed: status === 'passed',
+				status
+			};
+		})
+	};
 }
