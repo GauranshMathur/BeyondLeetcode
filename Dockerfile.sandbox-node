@@ -1,0 +1,18 @@
+# Sandbox image for TypeScript (C7a1): the Python harness (one script for every language),
+# Node and the TypeScript compiler. Bump the tag in src/lib/server/runner/config.ts when this changes.
+# Every version is pinned exactly. Built as ghcr.io/gauranshmathur/beyondleetcode-sandbox-node:<N>.
+ARG NODE_VERSION=24.21.0
+ARG PYTHON_IMAGE=python:3.13-slim
+
+# The compiler is installed with npm in the official Node image, then only its files are copied over.
+FROM node:${NODE_VERSION}-slim AS tools
+RUN npm install --prefix /opt/ts --save-exact --no-audit --no-fund --ignore-scripts \
+      typescript@6.0.3 @types/node@24.19.1 \
+ && chmod -R a+rX /opt/ts
+
+FROM ${PYTHON_IMAGE}
+# The Node binary only: no npm, no apt, nothing else from the Node image.
+COPY --from=tools /usr/local/bin/node /usr/local/bin/node
+COPY --from=tools /opt/ts /opt/ts
+# `tsc` runs read-only as uid 65534; @types/node lives next to it at /opt/ts/node_modules/@types/node.
+RUN ln -s /opt/ts/node_modules/typescript/bin/tsc /usr/local/bin/tsc
