@@ -285,11 +285,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 			title: topic.title,
 			summary: topic.summary,
 			prerequisites: topic.prerequisites,
-			chapters: topicChapters.map(({ id, title, problems }) => ({
-				id,
-				title,
-				problems
-			})),
+			chapters: topicChapters.map(({ id, title, problems }) => ({ id, title, problems })),
 			mainLine: topicChapters.flatMap((c) =>
 				c.problems.filter((p) => p.kind === 'core').map((p) => p.id)
 			)
