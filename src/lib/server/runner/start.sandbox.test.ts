@@ -30,6 +30,11 @@ describe('Runner start: image pull', { timeout: 180_000 }, () => {
 	let runnerProcess: ChildProcess | undefined;
 	afterEach(() => {
 		runnerProcess?.kill();
+		try {
+			docker('rmi', keeper);
+		} catch {
+			// never tagged
+		}
 	});
 
 	it('reports not-ready, pulls the missing image, then serves a run', async () => {
@@ -81,7 +86,6 @@ describe('Runner start: image pull', { timeout: 180_000 }, () => {
 		expect(result).toMatchObject({
 			results: [{ id: 'a', status: 'ok', stdout: 'hi\n' }]
 		});
-		docker('rmi', keeper);
 	});
 });
 
