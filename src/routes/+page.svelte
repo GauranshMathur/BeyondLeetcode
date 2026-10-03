@@ -40,13 +40,14 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 		padding: 64px clamp(16px, 6.7vw, 96px);
 	}
 	.intro {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-end;
-		gap: 32px;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+		column-gap: 32px;
+		row-gap: 32px;
+		align-items: end;
 	}
 	.lead {
+		grid-column: span 8;
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
@@ -71,14 +72,17 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 	.current {
 		display: flex;
 		flex-direction: column;
+		grid-column: 9 / span 4;
 		gap: 10px;
 		padding: 24px;
-		min-width: 280px;
 		background: var(--panel);
 		border-top: 1px solid var(--ink);
 		border-bottom: 1px solid var(--ink);
 		color: var(--ink);
 		text-decoration: none;
+	}
+	.current .eyebrow {
+		font-size: 12px;
 	}
 	.name {
 		font-size: 30px;
@@ -93,6 +97,7 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 		color: var(--muted);
 	}
 	.go {
+		font-size: 14px;
 		font-weight: 500;
 	}
 	figure {
@@ -110,6 +115,7 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 		display: flex;
 		gap: 20px;
 		align-items: baseline;
+		padding: 0 24px;
 		font-size: 17px;
 		line-height: 1.5;
 		color: var(--body);
@@ -121,5 +127,11 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 		text-transform: uppercase;
 		color: var(--ink);
 		white-space: nowrap;
+	}
+	@media (max-width: 900px) {
+		.lead,
+		.current {
+			grid-column: 1 / -1;
+		}
 	}
 </style>

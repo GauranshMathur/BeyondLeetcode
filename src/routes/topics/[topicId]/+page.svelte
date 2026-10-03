@@ -68,7 +68,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 						<tbody>
 							{#each chapter.problems as problem (problem.id)}
 								<tr>
-									<td><a class="ptitle" href="/problems/{problem.id}">{problem.title}</a></td>
+									<td class="title"><a class="ptitle" href="/problems/{problem.id}">{problem.title}</a></td>
 									<td>
 										{#if problem.kind === 'Core'}
 											<span class="core">core</span>
@@ -118,13 +118,14 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		color: var(--ink);
 	}
 	.head {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-end;
-		gap: 32px;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+		column-gap: 32px;
+		row-gap: 32px;
+		align-items: end;
 	}
 	.lead {
+		grid-column: span 8;
 		display: flex;
 		flex-direction: column;
 		gap: 20px;
@@ -149,9 +150,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		padding-top: 16px;
 		border-top: 1px solid var(--ink);
 		font-size: 13px;
-		min-width: 280px;
-		max-width: 360px;
-		flex: 1;
+		grid-column: 10 / span 3;
 	}
 	.bar-row {
 		display: flex;
@@ -191,9 +190,9 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 	}
 	.chapter {
 		display: grid;
-		grid-template-columns: minmax(48px, 1fr) 10fr;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
 		column-gap: 32px;
-		padding-top: 96px;
+		padding-top: 112px;
 	}
 	.num {
 		font-family: var(--font-mono);
@@ -202,8 +201,10 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		text-transform: uppercase;
 		color: var(--muted);
 		padding-top: 10px;
+		grid-column: span 2;
 	}
 	.body {
+		grid-column: 3 / span 10;
 		display: flex;
 		flex-direction: column;
 		gap: 32px;
@@ -215,13 +216,19 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		align-items: baseline;
 		gap: 32px;
 	}
+	.chapter-head > div {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		max-width: 680px;
+	}
 	.chapter-head .mono {
 		font-size: 13px;
 	}
 	h2 {
-		margin: 14px 0 0;
+		margin: 0;
 		font-weight: 400;
-		font-size: clamp(30px, 3vw, 44px);
+		font-size: clamp(30px, 4vw, 44px);
 		line-height: 1.1;
 	}
 	h2 a {
@@ -266,6 +273,13 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		padding: 20px 16px 20px 0;
 		border-bottom: 1px solid var(--rule);
 	}
+	tr:last-child td {
+		border-bottom-color: var(--ink);
+	}
+	td.title {
+		padding-top: 10px;
+		padding-bottom: 10px;
+	}
 	.status {
 		text-align: right;
 		padding-right: 0;
@@ -275,6 +289,8 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		font-family: var(--font-serif);
 		font-size: 21px;
 		text-decoration: none;
+		display: inline-block;
+		padding: 10px 0;
 	}
 	.core {
 		font-weight: 500;
@@ -283,8 +299,31 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		border-bottom: 2px solid var(--ink);
 		padding-bottom: 2px;
 	}
+	.crumbs a {
+		/* 44px target without growing the row. */
+		display: inline-block;
+		padding: 12px 0;
+		margin: -12px 0;
+		line-height: 20px;
+	}
 	.upper {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
+	}
+	@media (max-width: 900px) {
+		.head,
+		.chapter {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.lead,
+		aside,
+		.num,
+		.body {
+			grid-column: 1 / -1;
+		}
+		.chapter {
+			padding-top: 64px;
+			row-gap: 16px;
+		}
 	}
 </style>
