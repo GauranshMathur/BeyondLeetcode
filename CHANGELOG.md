@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.1.0...v0.2.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C2c Topic screen ([#37](https://github.com/GauranshMathur/BeyondLeetcode/issues/37)) ([2a988ec](https://github.com/GauranshMathur/BeyondLeetcode/commit/2a988ec8cce8d38e20aa8d086809d1215fc9a89d))
+
 ## 0.1.0 (2026-10-03)
 
 
