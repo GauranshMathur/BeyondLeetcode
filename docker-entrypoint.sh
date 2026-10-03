@@ -20,8 +20,8 @@ USAGE
 
 case "${1:-}" in
 web)
-	# /data may be a bind mount owned by someone else.
-	chown bun:bun /data
+	# /data may be a bind mount or restored backup owned by someone else.
+	chown -R bun:bun /data
 	export HOME=/home/bun
 	setpriv --reuid=bun --regid=bun --init-groups bunx prisma migrate deploy
 	exec setpriv --reuid=bun --regid=bun --init-groups bun ./build/index.js
