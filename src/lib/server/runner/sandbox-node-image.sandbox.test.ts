@@ -10,7 +10,7 @@ const image = sandboxConfig.images.typescript;
 
 async function runInImage(cmd: string[]): Promise<{ out: string; status: number }> {
 	const id = await engine.create(image, {
-		...containerSpec('test-instance', 1, 2000, 256),
+		...containerSpec('typescript', 'test-instance', 1, 2000, 256),
 		Cmd: cmd
 	});
 	let out = '';

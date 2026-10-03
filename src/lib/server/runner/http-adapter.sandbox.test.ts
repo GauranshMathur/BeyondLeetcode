@@ -291,7 +291,7 @@ async function runHarness(
 	inputs: string[],
 	env: Record<string, string> = {}
 ) {
-	const spec = containerSpec('test-instance', inputs.length, 2000, 256);
+	const spec = containerSpec('python', 'test-instance', inputs.length, 2000, 256);
 	const merged = [
 		...spec.Env.filter((e) => !(e.split('=')[0] in env)),
 		...Object.entries(env).map(([k, v]) => `${k}=${v}`)
@@ -462,7 +462,7 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 
 	it('stops printing results and exits non-zero when something unexpected happens', async () => {
 		// A Test input missing from the archive makes the harness fail before any learner code runs.
-		const spec = containerSpec('test-instance', 2, 2000, 256);
+		const spec = containerSpec('python', 'test-instance', 2, 2000, 256);
 		const id = await engine.create(sandboxConfig.pythonImage, spec);
 		const { status: exit } = await engine.wait(id);
 		let out = '';
@@ -522,7 +522,7 @@ describe('Runner: container configuration', { timeout: 60_000 }, () => {
 	it('is created with AutoRemove, no IPC, no log driver and the label', async () => {
 		const id = await engine.create(
 			sandboxConfig.pythonImage,
-			containerSpec('test-instance', 1, 2000, 256)
+			containerSpec('python', 'test-instance', 1, 2000, 256)
 		);
 
 		const { HostConfig } = await engine.inspect(id);

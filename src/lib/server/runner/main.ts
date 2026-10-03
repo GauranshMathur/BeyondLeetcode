@@ -46,7 +46,6 @@ console.log(
 
 // A Runner that died mid-run may have left containers behind; a live one's are left alone.
 await removeStaleContainers(engine, instanceId);
-// Python only for now; Node and Go images join this list with their languages.
-await ensureImages(engine, [sandboxConfig.pythonImage]);
+await ensureImages(engine, Object.values(sandboxConfig.images));
 ready = true;
 console.log('Runner ready');
