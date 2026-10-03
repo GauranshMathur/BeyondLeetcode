@@ -31,18 +31,22 @@ WORK = "/work"
 MARK = "\n[output truncated]"
 
 
-def deadline(*_):
+def deadline():
     os._exit(124)
 
 
-# Backstop if the Runner dies: PID 1 leaves on its own. Init ignores signals without a handler.
-signal.signal(signal.SIGALRM, deadline)
-signal.alarm(DEADLINE)
+# Backstop if the Runner dies: PID 1 leaves on its own. A timer thread, not a signal, so learner
+# code cannot trip it early with os.kill(1, ...).
+watchdog = threading.Timer(DEADLINE, deadline)
+watchdog.daemon = True
+watchdog.start()
 
 
 def emit(obj):
-    sys.stdout.write(json.dumps(obj) + "\n")
+    line = json.dumps(obj) + "\n"
+    sys.stdout.write(line)
     sys.stdout.flush()
+    return len(line)
 
 
 def text(data, over):
@@ -151,8 +155,7 @@ def run_tests():
         (o, o_over), (e, e_over) = (out or [(b"", False)])[0], (err or [(b"", False)])[0]
         if cap == 0:
             o_over = e_over = True
-        spent += len(o) + len(e)
-        emit({"i": i, "status": status, "stdout": text(o, o_over), "stderr": text(e, e_over)})
+        spent += emit({"i": i, "status": status, "stdout": text(o, o_over), "stderr": text(e, e_over)})
 
 
 try:

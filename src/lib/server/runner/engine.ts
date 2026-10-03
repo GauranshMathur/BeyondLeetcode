@@ -156,16 +156,34 @@ export function createEngine(socketPath: string) {
 		},
 
 		/**
-		 * Resolves with the exit status at the container's next exit. Issue it before `start`: it
-		 * then also works for a container that removes itself on exit.
+		 * Registers a waiter for the container's next exit and resolves, once the daemon has it, with
+		 * the promise of the exit status. Await the registration before `start`: the status is then
+		 * ours even if the container removes itself on exit.
 		 */
-		async wait(id: string): Promise<number> {
-			const reply = await assertStatus(
-				await call('POST', `/containers/${id}/wait?condition=next-exit`),
-				'wait',
-				200
-			);
-			return (JSON.parse(reply.body) as { StatusCode: number }).StatusCode;
+		wait(id: string): Promise<{ status: Promise<number> }> {
+			return new Promise((resolve, reject) => {
+				const req = request(
+					{ socketPath, method: 'POST', path: `/containers/${id}/wait?condition=next-exit` },
+					(res) => {
+						const chunks: Buffer[] = [];
+						const status = new Promise<number>((done, fail) => {
+							res.on('data', (chunk: Buffer) => chunks.push(chunk));
+							res.on('error', fail);
+							res.on('end', () => {
+								const body = Buffer.concat(chunks).toString('utf8');
+								if (res.statusCode !== 200)
+									fail(new Error(`Docker wait failed (${res.statusCode}): ${body}`));
+								else done((JSON.parse(body) as { StatusCode: number }).StatusCode);
+							});
+						});
+						status.catch(() => {});
+						if (res.statusCode === 200) resolve({ status });
+						else status.then(resolve as never, reject);
+					}
+				);
+				req.on('error', reject);
+				req.end();
+			});
 		},
 
 		/** The container's configuration as the daemon holds it. */
@@ -188,7 +206,7 @@ export function createEngine(socketPath: string) {
 			const reply = await call('DELETE', `/containers/${id}?force=true&v=true`);
 			if (reply.status === 409 && /already in progress/.test(reply.body)) {
 				// The daemon is already removing it (AutoRemove): wait until it is gone.
-				for (let wait = 0; wait < 50; wait++) {
+				for (let poll = 0; poll < 50; poll++) {
 					if ((await call('GET', `/containers/${id}/json`)).status === 404) return;
 					await new Promise((resolve) => setTimeout(resolve, 100));
 				}

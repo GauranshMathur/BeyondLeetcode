@@ -27,7 +27,7 @@ function fakeEngine(options: {
 	});
 	const engine = {
 		create: async () => 'c1',
-		wait: async () => options.exitCode ?? 0,
+		wait: async () => ({ status: Promise.resolve(options.exitCode ?? 0) }),
 		attach: options.attach
 			? options.attach
 			: async (_id: string, onFrame: (s: 1 | 2, p: Buffer) => void) => ({

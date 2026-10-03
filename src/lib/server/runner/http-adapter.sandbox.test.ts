@@ -274,7 +274,7 @@ async function runHarness(
 		...Object.entries(env).map(([k, v]) => `${k}=${v}`)
 	];
 	const id = await engine.create(sandboxConfig.pythonImage, { ...spec, Env: merged });
-	const exit = engine.wait(id);
+	const { status: exit } = await engine.wait(id);
 	let out = '';
 	const conn = await engine.attach(
 		id,
@@ -324,6 +324,14 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok', 'ok']);
 	});
 
+	it('is not aborted by learner code signalling PID 1', async () => {
+		const main = 'import os, signal\nos.kill(1, signal.SIGALRM)\nprint("still here")\n';
+
+		const result = await run({ 'main.py': main });
+
+		expect(result.results).toEqual([{ id: 't', status: 'ok', stdout: 'still here\n', stderr: '' }]);
+	});
+
 	it('kills every process a Test left behind, even ones that detached', async () => {
 		const first = [
 			'import os, time',
@@ -352,7 +360,7 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 		// A Test input missing from the archive makes the harness fail before any learner code runs.
 		const spec = containerSpec(2, 2000, 256);
 		const id = await engine.create(sandboxConfig.pythonImage, spec);
-		const exit = engine.wait(id);
+		const { status: exit } = await engine.wait(id);
 		let out = '';
 		const conn = await engine.attach(
 			id,

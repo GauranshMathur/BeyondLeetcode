@@ -99,9 +99,8 @@ async function execute(engine: Engine, request: ExecuteRequest): Promise<Execute
 		attached?.destroy();
 	}, sandboxConfig.containerTimeoutMs);
 	try {
-		// Issued before start, so the exit status is ours even if the container removes itself.
-		const exitStatus = engine.wait(id);
-		exitStatus.catch(() => {});
+		// Registered before start, so the exit status is ours even if the container removes itself.
+		const { status: exitStatus } = await engine.wait(id);
 		attached = await engine.attach(
 			id,
 			(stream, payload) => {
