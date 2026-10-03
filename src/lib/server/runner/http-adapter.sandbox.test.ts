@@ -356,6 +356,36 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 		expect(result.results[1]).toMatchObject({ status: 'ok', stdout: 'False\n' });
 	});
 
+	it('does not leak any Test input to learner code, not from /work/tests nor via files a Test left behind', async () => {
+		const main = [
+			'import os, sys',
+			'data = sys.stdin.read()',
+			'for root, _, names in os.walk("/work"):',
+			'    for name in names:',
+			'        path = os.path.join(root, name)',
+			'        if path != "/work/build/main.py":',
+			'            print(path, open(path, "rb").read().decode("utf-8", "replace"))',
+			'for where in ("/work/stash", "/work/build/stash", "/work/tests/stash"):',
+			'    try:',
+			'        open(where, "w").write(data)',
+			'    except OSError:',
+			'        pass',
+			''
+		].join('\n');
+
+		const result = await run({ 'main.py': main }, [
+			{ id: 'hidden', input: 'SECRET-hidden-input' },
+			{ id: 'example-1', input: 'SECRET-example-one' },
+			{ id: 'example-2', input: 'SECRET-example-two' }
+		]);
+
+		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok', 'ok']);
+		for (const r of result.results) {
+			expect(r.stdout + r.stderr).not.toContain('SECRET');
+			expect(r.stdout).toBe('');
+		}
+	});
+
 	it('stops printing results and exits non-zero when something unexpected happens', async () => {
 		// A Test input missing from the archive makes the harness fail before any learner code runs.
 		const spec = containerSpec(2, 2000, 256);
