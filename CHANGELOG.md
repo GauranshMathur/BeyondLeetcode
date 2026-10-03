@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.5.1...v0.6.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C8a Image: one image with web and runner roles ([#45](https://github.com/GauranshMathur/BeyondLeetcode/issues/45)) ([7b40e70](https://github.com/GauranshMathur/BeyondLeetcode/commit/7b40e70ef3f9b29da61f0ee8f50a04441f97e1c9))
+
 ## [0.5.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.5.0...v0.5.1) (2026-10-03)
 
 
