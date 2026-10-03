@@ -49,9 +49,8 @@ export const actions: Actions = {
 				return await locals.learning.run(params.problemId, build.files, build.baseRevision);
 			} catch (e) {
 				if (!(e instanceof LearningError) || e.code !== 'RunnerUnavailable') throw e;
-				// The code was saved before the Runner failed: tell the page the new revision.
-				const { revision } = await locals.learning.problem(params.problemId);
-				return fail(503, { message: e.code, revision });
+				// The code was saved before the Runner failed: tell the page the revision this Run saved.
+				return fail(503, { message: e.code, revision: build.baseRevision + 1 });
 			}
 		});
 	}

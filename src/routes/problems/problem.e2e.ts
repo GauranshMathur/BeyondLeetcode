@@ -91,6 +91,8 @@ test('Run shows pass for a correct solution and fail for a wrong one, with no Su
 
 	await setCode(page, 'print(99)\n');
 	await page.keyboard.press('ControlOrMeta+Enter');
+	// The shortcut runs the code; the editor must not insert a blank line.
+	await expect(page.locator('.cm-line')).toHaveCount(2);
 	await expect(row).toContainText('fail · wrong answer', { timeout: 60_000 });
 	await expect(row).toContainText('99');
 	await expect(row).toContainText('expected');

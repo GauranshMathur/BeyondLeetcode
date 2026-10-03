@@ -79,7 +79,7 @@ async function save(keepalive = false) {
 
 /** Edits made while saving, or a transient failure, go out on the next tick. */
 function afterSave(retry: boolean) {
-	if (dirty && !closed && saveState !== 'conflict' && saveState !== 'rejected') {
+	if (dirty && (!closed || !retry) && saveState !== 'conflict' && saveState !== 'rejected') {
 		clearTimeout(timer);
 		timer = setTimeout(save, retry ? RETRY_DELAY_MS : 0);
 	}
@@ -111,30 +111,30 @@ async function run() {
 		if (response.status === 409) {
 			saveState = 'conflict';
 			outcome = undefined;
-		} else if (response.status === 503) {
-			// The Build was saved before the Runner failed.
-			const result = deserialize(await response.text());
-			if (result.type === 'failure' && typeof result.data?.revision === 'number') {
-				revision = result.data.revision;
-			}
-			saveState = dirty ? 'edited' : 'saved';
-			outcome = { kind: 'unavailable' };
 		} else if (response.status >= 400 && response.status < 500) {
 			saveState = 'rejected';
 			outcome = undefined;
 		} else {
 			const result = deserialize(await response.text());
-			if (result.type !== 'success') throw new Error('run failed');
-			const view = result.data as unknown as RunView;
-			revision = view.revision;
-			saveState = dirty ? 'edited' : 'saved';
-			outcome = { kind: 'result', view };
+			if (result.type === 'failure' && result.status === 503) {
+				// The Build was saved before the Runner failed (a failure result comes back as HTTP 200).
+				if (typeof result.data?.revision === 'number') revision = result.data.revision;
+				saveState = dirty ? 'edited' : 'saved';
+				outcome = { kind: 'unavailable' };
+			} else if (result.type === 'success') {
+				const view = result.data as unknown as RunView;
+				revision = view.revision;
+				saveState = dirty ? 'edited' : 'saved';
+				outcome = { kind: 'result', view };
+			} else {
+				throw new Error('run failed');
+			}
 		}
 	} catch {
 		dirty = true;
 		retry = true;
 		saveState = 'failed';
-		outcome = { kind: 'unavailable' };
+		outcome = undefined;
 	} finally {
 		inFlight = false;
 	}
@@ -143,7 +143,9 @@ async function run() {
 
 function onkeydown(event: KeyboardEvent) {
 	if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+		// Capture phase: the editor's own Mod-Enter (insert blank line) must not see it.
 		event.preventDefault();
+		event.stopPropagation();
 		void run();
 	}
 }
@@ -168,7 +170,7 @@ const label: Record<SaveState, string> = {
 };
 </script>
 
-<svelte:window onpagehide={flush} {onkeydown} />
+<svelte:window onpagehide={flush} onkeydowncapture={onkeydown} />
 
 <div class="pane">
 	<div class="bar">
