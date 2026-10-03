@@ -495,3 +495,251 @@ describe('learner.run()', () => {
 		expect(await db.chapterRead.count()).toBe(0);
 	});
 });
+
+describe('learner.submit()', () => {
+	const pushExample = 'stacks-push/example/01';
+	const pushHidden = 'stacks-push/hidden/01';
+	const popExample = 'stacks-pop/example/01';
+	const popHidden = 'stacks-pop/hidden/01';
+	const peekExample = 'stacks-peek/example/01';
+	/** Every Test of the fixture answers correctly unless the script says otherwise. */
+	async function setup(script: RunnerScript = {}) {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const correct: NonNullable<RunnerScript['tests']> = {};
+		for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
+			const tests = [
+				...(catalogue.problem(p)?.exampleTests ?? []),
+				...(catalogue.hiddenTests(p) ?? [])
+			];
+			for (const t of tests) correct[t.id] = { status: 'ok', stdout: t.expected };
+		}
+		const runner = createScriptedRunner({ ...script, tests: { ...correct, ...script.tests } });
+		const db = await createTestDb();
+		const core = createLearningCore({ catalogue, db, runner });
+		return { runner, db, learner: core.forLearner('any-learner'), core };
+	}
+	const wrong = { status: 'ok' as const, stdout: 'WRONG' };
+
+	it('Accepted when every Test passes: records the Submission and Solves the Problem', async () => {
+		const { runner, learner, db } = await setup();
+
+		const view = await learner.submit('stacks-push', { 'main.py': 'print(2)' }, 0);
+
+		expect(view).toMatchObject({ verdict: 'Accepted', revision: 1, status: 'Solved' });
+		expect(view.failure).toBeUndefined();
+		expect(view.submissionId).toEqual(expect.any(String));
+		expect(runner.calls).toHaveLength(1);
+		expect(await db.submission.findFirstOrThrow()).toMatchObject({
+			verdict: 'Accepted',
+			failingProblemId: null,
+			files: { 'main.py': 'print(2)' }
+		});
+	});
+
+	it('Wrong Answer on an Example Test shows input, expected, got and stderr', async () => {
+		const { learner, db } = await setup({
+			tests: { [pushExample]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
+		});
+
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+
+		expect(view).toMatchObject({
+			verdict: 'Wrong Answer',
+			status: 'Attempted',
+			failure: {
+				kind: 'example',
+				name: '01',
+				input: 'push 1\npush 2\nsize\n',
+				expected: '2\n',
+				actual: '3\n',
+				stderr: 'warn'
+			}
+		});
+		const rows = await db.submission.findMany();
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({
+			learnerId: 'any-learner',
+			problemId: 'stacks-push',
+			topicId: 'stacks',
+			language: 'python',
+			files: { 'main.py': 'x' },
+			verdict: 'Wrong Answer',
+			failingProblemId: 'stacks-push'
+		});
+	});
+
+	it.each([
+		['Runtime Error', { status: 'runtimeError' as const, stdout: '', stderr: 'boom' }],
+		['Time Limit Exceeded', { status: 'timeout' as const, stdout: '', stderr: '' }]
+	])('%s on a Test is that Verdict, recorded', async (verdict, scripted) => {
+		const { learner, db } = await setup({ tests: { [pushExample]: scripted } });
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		expect(view.verdict).toBe(verdict);
+		expect(view.failure).toMatchObject({ kind: 'example', stderr: scripted.stderr });
+		expect((await db.submission.findFirstOrThrow()).verdict).toBe(verdict);
+	});
+
+	it('Compile Error is one message, recorded with no failing Problem', async () => {
+		const { learner, db } = await setup({ compileError: 'SyntaxError: bad' });
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		expect(view).toMatchObject({
+			verdict: 'Compile Error',
+			failure: { kind: 'compile', message: 'SyntaxError: bad' },
+			status: 'Attempted'
+		});
+		expect((await db.submission.findFirstOrThrow()).failingProblemId).toBeNull();
+	});
+
+	it('picks the Verdict by precedence: Compile Error > TLE > Runtime Error > Wrong Answer', async () => {
+		const tle = { status: 'timeout' as const };
+		const rte = { status: 'runtimeError' as const };
+		const verdictOf = async (tests: RunnerScript['tests']) =>
+			(await (await setup({ tests })).learner.submit('stacks-push', { 'main.py': 'x' }, 0)).verdict;
+
+		expect(await verdictOf({ [pushExample]: wrong, [pushHidden]: rte })).toBe('Runtime Error');
+		expect(await verdictOf({ [pushExample]: rte, [pushHidden]: tle })).toBe('Time Limit Exceeded');
+		expect(await verdictOf({ [pushExample]: wrong, [pushHidden]: tle, [popExample]: rte })).toBe(
+			'Time Limit Exceeded'
+		);
+		expect(await verdictOf({ [pushExample]: wrong, [pushHidden]: wrong })).toBe('Wrong Answer');
+	});
+
+	it('reports the first failing Test in run order among those with the winning outcome', async () => {
+		const { learner } = await setup({
+			tests: {
+				[pushHidden]: { status: 'runtimeError' },
+				[pushExample]: { status: 'runtimeError', stderr: 'first' }
+			}
+		});
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		expect(view.failure).toMatchObject({ kind: 'example', stderr: 'first' });
+	});
+
+	it('runs all Example Tests before any Hidden Test, and sends only ids and inputs', async () => {
+		const { learner, runner } = await setup();
+		await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+
+		const sent = runner.calls[0]?.tests ?? [];
+		expect(sent.map((t) => t.id)).toEqual([pushExample, popExample, pushHidden, popHidden]);
+		expect(sent.every((t) => Object.keys(t).sort().join() === 'id,input')).toBe(true);
+		expect(runner.calls[0]?.files).toEqual({ 'main.py': 'x' });
+	});
+
+	it('a failing Hidden Test of this Problem reveals only the Problem and the Verdict', async () => {
+		const { learner } = await setup({ tests: { [pushHidden]: wrong } });
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+
+		expect(view.verdict).toBe('Wrong Answer');
+		expect(view.failure).toEqual({ kind: 'hidden', problemId: 'stacks-push' });
+		const json = JSON.stringify(view);
+		expect(json).not.toContain('WRONG');
+		expect(json).not.toContain('push 5');
+	});
+
+	it('a failing earlier Core Problem Test is an earlier-step failure with no Test data', async () => {
+		const { learner, db } = await setup({
+			tests: { [pushExample]: { status: 'ok', stdout: 'WRONG', stderr: 'secret' } }
+		});
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+
+		expect(view.failure).toEqual({
+			kind: 'earlierStep',
+			problemId: 'stacks-push',
+			problemTitle: 'Push and size'
+		});
+		const json = JSON.stringify(view);
+		expect(json).not.toContain('WRONG');
+		expect(json).not.toContain('secret');
+		expect(await db.submission.findFirstOrThrow()).toMatchObject({
+			problemId: 'stacks-pop',
+			failingProblemId: 'stacks-push'
+		});
+		expect(view.status).toBe('Attempted');
+	});
+
+	it('an earlier Hidden Test failure is also an earlier-step failure', async () => {
+		const { learner } = await setup({ tests: { [pushHidden]: wrong } });
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+		expect(view.failure).toMatchObject({ kind: 'earlierStep', problemId: 'stacks-push' });
+	});
+
+	it('an Extra runs its parent and earlier Core Tests, then its own, and never later Core Problems', async () => {
+		const { learner, runner } = await setup();
+		await learner.submit('stacks-peek', { 'main.py': 'x' }, 0);
+		expect((runner.calls[0]?.tests ?? []).map((t) => t.id)).toEqual([
+			pushExample,
+			peekExample,
+			pushHidden
+		]);
+	});
+
+	it('a Runner outage records nothing and leaves the status, keeping the saved code', async () => {
+		const { learner, db } = await setup({ unavailable: true });
+		await expect(learner.submit('stacks-push', { 'main.py': 'a' }, 0)).rejects.toMatchObject({
+			code: 'RunnerUnavailable'
+		});
+		expect(await db.submission.count()).toBe(0);
+		expect(await learner.problem('stacks-push')).toMatchObject({
+			status: 'Untouched',
+			revision: 1,
+			files: { 'main.py': 'a' }
+		});
+	});
+
+	it('applies the saveCode checks first', async () => {
+		const { learner, runner, db } = await setup();
+		await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0);
+		await expect(learner.submit('stacks-push', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+			code: 'RevisionConflict'
+		});
+		await expect(learner.submit('stacks-push', { '../x': 'b' }, 1)).rejects.toMatchObject({
+			code: 'InvalidBuild'
+		});
+		await expect(learner.submit('queues-enqueue', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		await expect(learner.submit('nope', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		expect(runner.calls).toHaveLength(0);
+		expect(await db.submission.count()).toBe(0);
+	});
+
+	it('a Problem stays Solved after a later failing Submission', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('x');
+		await learner.submit('stacks-push', { 'main.py': 'a' }, 0);
+		const ok = await learner.submit('stacks-push', { 'main.py': 'b' }, 1);
+		expect(ok.status).toBe('Solved');
+		expect((await learner.topic('stacks')).chapters[0]?.problems[0]?.status).toBe('Solved');
+	});
+
+	it('Solving the last Core Problem with every Chapter Read completes the Topic', async () => {
+		const { learner } = await setup();
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.reachChapterEnd('stacks-call-frames');
+		await learner.submit('stacks-push', { 'main.py': 'a' }, 0);
+		expect((await learner.map()).topics[0]).toMatchObject({ state: 'unlocked', coreSolved: 1 });
+
+		await learner.submit('stacks-pop', { 'main.py': 'b' }, 0);
+
+		expect((await learner.map()).topics[0]).toMatchObject({ state: 'complete', coreSolved: 2 });
+	});
+
+	it('shows Attempted on the Topic after a failing Submission, and the Topic as current', async () => {
+		const { learner } = await setup({ tests: { [pushExample]: wrong } });
+		await learner.submit('stacks-push', { 'main.py': 'a' }, 0);
+		expect((await learner.topic('stacks')).chapters[0]?.problems[0]?.status).toBe('Attempted');
+		expect((await learner.map()).currentTopicId).toBe('stacks');
+	});
+
+	it('answers RunnerUnavailable when no Runner is configured', async () => {
+		const core = createLearningCore({
+			catalogue: await loadCatalogue(fixtureDir),
+			db: await createTestDb()
+		});
+		await expect(
+			core.forLearner('x').submit('stacks-push', { 'main.py': 'a' }, 0)
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+	});
+});

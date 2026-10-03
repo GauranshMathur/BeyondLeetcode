@@ -37,3 +37,22 @@ model BuildStep {
 
   @@id([learnerId, topicId, language, problemId])
 }
+
+// One Submit of a Problem (CONTEXT.md: Submission). A Problem is Solved once any of its
+// Submissions is Accepted, Attempted while it has some but none Accepted.
+model Submission {
+  id               String   @id @default(cuid())
+  learnerId        String
+  problemId        String
+  topicId          String
+  language         String
+  /// Snapshot of the Build that was submitted: path to file content.
+  files            Json
+  /// Accepted, Wrong Answer, Runtime Error, Time Limit Exceeded or Compile Error.
+  verdict          String
+  /// The Problem whose Test failed first; null when Accepted or on a Compile Error.
+  failingProblemId String?
+  createdAt        DateTime @default(now())
+
+  @@index([learnerId, createdAt])
+}
