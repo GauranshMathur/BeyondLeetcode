@@ -33,6 +33,7 @@
 		"@libsql/client": "^0.18.0",
 		"@prisma/adapter-libsql": "^7.10.0",
 		"@prisma/client": "^7.10.0",
+		"marked": "^18.0.14",
 		"prisma": "^7.10.0",
 		"zod": "^4.6.5"
 	}

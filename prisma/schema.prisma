@@ -12,3 +12,12 @@ model Learner {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 }
+
+// A Learner has reached the end of a Chapter (CONTEXT.md: Read). Keyed by the stable content id.
+model ChapterRead {
+  learnerId String
+  chapterId String
+  readAt    DateTime @default(now())
+
+  @@id([learnerId, chapterId])
+}
