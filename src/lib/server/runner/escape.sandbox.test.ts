@@ -238,7 +238,7 @@ describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, 
 });
 
 describe('Sandbox escapes: one Test to the next', { timeout: 60_000 }, () => {
-	it('cannot carry a hidden Test input to a later Test through System V IPC or shared memory', async () => {
+	it('cannot carry a hidden Test input to a later Test through System V IPC, shared memory or POSIX queues', async () => {
 		const main = [
 			'import ctypes, os, struct, sys',
 			'libc = ctypes.CDLL(None, use_errno=True)',
@@ -247,7 +247,11 @@ describe('Sandbox escapes: one Test to the next', { timeout: 60_000 }, () => {
 			'qid = libc.msgget(KEY, 0o1666)',
 			'if data == "first":',
 			'    buf = ctypes.create_string_buffer(struct.pack("l", 1) + b"SECRET-ipc".ljust(32, b"\\0"))',
-			'    print("msgsnd", libc.msgsnd(qid, buf, 32, 0))',
+			'    libc.msgsnd(qid, buf, 32, 0)',
+			'    sem = libc.semget(KEY, 1, 0o1666 | 0o1000)',
+			'    libc.semctl(sem, 0, 16, ctypes.c_int(7777))',
+			'    mq = libc.mq_open(b"/secret-mq", os.O_CREAT | os.O_RDWR, 0o666, None)',
+			'    libc.mq_send(mq, b"SECRET-mq", 9, 0)',
 			'    shm = libc.shmget(KEY, 4096, 0o1666 | 0o1000)',
 			'    libc.shmat.restype = ctypes.c_void_p',
 			'    addr = libc.shmat(shm, None, 0)',
@@ -263,6 +267,12 @@ describe('Sandbox escapes: one Test to the next', { timeout: 60_000 }, () => {
 			'        libc.shmat.restype = ctypes.c_void_p',
 			'        addr = libc.shmat(shm, None, 0)',
 			'        print("shm data", ctypes.string_at(addr, 10))',
+			'    sem = libc.semget(KEY, 1, 0o666)',
+			'    print("sem", sem, libc.semctl(sem, 0, 12, ctypes.c_int(0)) if sem >= 0 else None)',
+			'    mq = libc.mq_open(b"/secret-mq", os.O_RDWR, 0o666, None)',
+			'    mbuf = ctypes.create_string_buffer(8192)',
+			'    print("mq", mq, libc.mq_receive(mq, mbuf, 8192, None) if mq >= 0 else None, mbuf.value)',
+			'    print("mqueue", os.listdir("/dev/mqueue") if os.path.isdir("/dev/mqueue") else None)',
 			'    for name in os.listdir("/dev/shm") if os.path.isdir("/dev/shm") else []:',
 			'        print("dev/shm", name)',
 			''
@@ -280,6 +290,8 @@ describe('Sandbox escapes: one Test to the next', { timeout: 60_000 }, () => {
 
 		expect(result.results[1].status).toBe('ok');
 		expect(result.results[1].stdout).not.toContain('SECRET');
+		expect(result.results[1].stdout).not.toContain('7777');
+		expect(result.results[1].stdout).not.toContain('secret-mq');
 	});
 });
 

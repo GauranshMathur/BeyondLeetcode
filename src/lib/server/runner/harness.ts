@@ -13,7 +13,7 @@
  * This process is PID 1 and shares a uid with learner code, so it never chdirs into /work, reads
  * every Test input and the Build into memory and deletes /work/tests before the first learner
  * process starts, wipes /work and restores the Build from memory before every Test (nothing a Test
- * wrote survives it, so a Hidden Test's input cannot be read back by a later Test), and on any unexpected failure exits
+ * wrote survives it, IPC objects included, so a Hidden Test's input cannot be read back by a later Test), and on any unexpected failure exits
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = String.raw`
@@ -101,8 +101,38 @@ def wipe_children(root):
         os.rmdir(path)
 
 
+LIBC = ctypes.CDLL(None, use_errno=True)
+
+
+def clear_ipc():
+    # System V queues, semaphores and shared memory, and POSIX queues, outlive the process that
+    # made them: kill(-1) does not touch them, so a Test could pass data to a later one through
+    # them. Learner code shares our uid, so every object is ours to remove.
+    for table, remove in (
+        ("msg", lambda i: LIBC.msgctl(i, 0, None)),
+        ("sem", lambda i: LIBC.semctl(i, 0, 0, ctypes.c_int(0))),
+        ("shm", lambda i: LIBC.shmctl(i, 0, None)),
+    ):
+        try:
+            with open("/proc/sysvipc/" + table) as f:
+                rows = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            fields = row.split()
+            if len(fields) > 1:
+                remove(int(fields[1]))
+    if os.path.isdir("/dev/mqueue"):
+        for name in os.listdir("/dev/mqueue"):
+            try:
+                os.unlink(os.path.join("/dev/mqueue", name))
+            except OSError:
+                pass
+
+
 def fresh_build():
-    # Nothing a Test left in /work survives, its metadata included; the Build is as uploaded.
+    # Nothing a Test left in /work or in IPC survives, its metadata included; the Build is as uploaded.
+    clear_ipc()
     wipe_children(WORK)
     for attr in os.listxattr(WORK):
         os.removexattr(WORK, attr)
