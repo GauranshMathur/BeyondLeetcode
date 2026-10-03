@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.14.0...v0.15.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C7a2 TypeScript Runner support and Language picker ([#74](https://github.com/GauranshMathur/BeyondLeetcode/issues/74)) ([9456d65](https://github.com/GauranshMathur/BeyondLeetcode/commit/9456d65de225e429334b04805a9ed7f0a90029fb))
+
 ## [0.14.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.13.2...v0.14.0) (2026-10-03)
 
 
