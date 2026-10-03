@@ -17,7 +17,7 @@
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = String.raw`
-import ctypes, io, json, os, shutil, signal, stat, subprocess, sys, tarfile, threading, traceback
+import ctypes, io, json, os, shutil, signal, stat, subprocess, sys, tarfile, threading, time, traceback
 
 # Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
 # read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
@@ -104,14 +104,19 @@ def wipe_children(root):
 LIBC = ctypes.CDLL(None, use_errno=True)
 
 
+def removed(result):
+    if result == -1:
+        raise OSError(ctypes.get_errno(), "could not remove an IPC object")
+
+
 def clear_ipc():
     # System V queues, semaphores and shared memory, and POSIX queues, outlive the process that
     # made them: kill(-1) does not touch them, so a Test could pass data to a later one through
     # them. Learner code shares our uid, so every object is ours to remove.
     for table, remove in (
-        ("msg", lambda i: LIBC.msgctl(i, 0, None)),
-        ("sem", lambda i: LIBC.semctl(i, 0, 0, ctypes.c_int(0))),
-        ("shm", lambda i: LIBC.shmctl(i, 0, None)),
+        ("msg", lambda i: removed(LIBC.msgctl(i, 0, None))),
+        ("sem", lambda i: removed(LIBC.semctl(i, 0, 0, ctypes.c_int(0)))),
+        ("shm", lambda i: removed(LIBC.shmctl(i, 0, None))),
     ):
         try:
             with open("/proc/sysvipc/" + table) as f:
@@ -124,10 +129,7 @@ def clear_ipc():
                 remove(int(fields[1]))
     if os.path.isdir("/dev/mqueue"):
         for name in os.listdir("/dev/mqueue"):
-            try:
-                os.unlink(os.path.join("/dev/mqueue", name))
-            except OSError:
-                pass
+            os.unlink(os.path.join("/dev/mqueue", name))
 
 
 def fresh_build():
@@ -188,12 +190,18 @@ def feed(pipe, data):
 
 
 def reap():
-    # Orphans reparented to PID 1 would otherwise stay zombies and eat the pids limit.
-    try:
-        while os.waitpid(-1, os.WNOHANG)[0]:
+    # Orphans reparented to PID 1 would otherwise stay zombies and eat the pids limit. Waits (a
+    # couple of seconds at most) until no other process is left, so none can still be creating
+    # IPC objects while they are cleared.
+    for _ in range(200):
+        try:
+            while os.waitpid(-1, os.WNOHANG)[0]:
+                pass
+        except ChildProcessError:
             pass
-    except ChildProcessError:
-        pass
+        if not [p for p in os.listdir("/proc") if p.isdigit() and p != "1"]:
+            return
+        time.sleep(0.01)
 
 
 def run_tests():
