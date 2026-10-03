@@ -5,6 +5,7 @@ import { containerLabel, sandboxConfig, sweepMinAgeMs } from './config';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import { containerSpec, removeStaleContainers } from './sandbox';
+import { waitUntilHealthy } from './wait-healthy.testutil';
 
 /** Real Docker: what the Runner does at start-up (image pull, sweep). */
 
@@ -55,24 +56,7 @@ describe('Runner start: image pull', { timeout: 180_000 }, () => {
 			},
 			stdio: 'inherit'
 		});
-		const health = async () => {
-			try {
-				return (
-					await fetch(`${url}/health`, {
-						headers: { Authorization: `Bearer ${token}` }
-					})
-				).status;
-			} catch {
-				return undefined; // not listening yet
-			}
-		};
-		const seen: number[] = [];
-		for (let attempt = 0; attempt < 3000; attempt++) {
-			const status = await health();
-			if (status !== undefined) seen.push(status);
-			if (status === 200) break;
-			await new Promise((resolve) => setTimeout(resolve, 20));
-		}
+		const seen = await waitUntilHealthy(url, token, { intervalMs: 20 });
 
 		expect(seen[0]).toBe(503);
 		expect(seen.at(-1)).toBe(200);
