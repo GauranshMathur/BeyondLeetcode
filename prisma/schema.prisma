@@ -21,3 +21,19 @@ model ChapterRead {
 
   @@id([learnerId, chapterId])
 }
+
+// One Learner's code for one Problem in one Topic's Build in one Language. Stored when first
+// saved, so later upstream content edits never change it (docs/module-map.md).
+model BuildStep {
+  learnerId String
+  topicId   String
+  language  String
+  problemId String
+  /// Path (relative to the Build root) to file content.
+  files     Json
+  /// Starts at 1; every save must name the revision it was based on.
+  revision  Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@id([learnerId, topicId, language, problemId])
+}

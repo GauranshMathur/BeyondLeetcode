@@ -214,3 +214,159 @@ describe('learner.chapter() and learner.reachChapterEnd()', () => {
 		expect((await learner.map()).currentTopicId).toBe('stacks');
 	});
 });
+
+describe('learner.problem() and learner.saveCode()', () => {
+	async function setup() {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const core = createLearningCore({ catalogue, db: await createTestDb() });
+		return { catalogue, core, learner: core.forLearner('any-learner') };
+	}
+
+	it('gives the first Problem of a Topic an empty Build with one entry file, revision 0', async () => {
+		const { learner } = await setup();
+
+		expect(await learner.problem('stacks-push')).toEqual({
+			id: 'stacks-push',
+			title: 'Push and size',
+			topicId: 'stacks',
+			topicTitle: 'Stacks',
+			kind: 'Core',
+			statementHtml: expect.stringContaining('Add'),
+			exampleTests: [{ name: '01', input: 'push 1\npush 2\nsize\n', expected: '2\n' }],
+			language: 'python',
+			files: { 'main.py': '' },
+			revision: 0,
+			status: 'Untouched'
+		});
+	});
+
+	it('starts a Core Problem from the Reference Code after the previous Core Problem when nothing was saved', async () => {
+		const { learner, catalogue } = await setup();
+
+		const view = await learner.problem('stacks-pop');
+
+		expect(view.files).toEqual(catalogue.problem('stacks-push')?.referenceCode.python);
+		expect(view.revision).toBe(0);
+	});
+
+	it("starts a Core Problem from the Learner's latest saved code for the previous Core Problem", async () => {
+		const { learner } = await setup();
+		await learner.saveCode('stacks-push', { 'main.py': 'mine v1' }, 0);
+		await learner.saveCode('stacks-push', { 'main.py': 'mine v2', 'util.py': 'x' }, 1);
+
+		expect((await learner.problem('stacks-pop')).files).toEqual({
+			'main.py': 'mine v2',
+			'util.py': 'x'
+		});
+	});
+
+	it('starts an Extra Problem from its parent Core step, saved code first, else Reference Code', async () => {
+		const { learner, catalogue } = await setup();
+		expect((await learner.problem('stacks-peek')).files).toEqual(
+			catalogue.problem('stacks-push')?.referenceCode.python
+		);
+
+		await learner.saveCode('stacks-push', { 'main.py': 'parent code' }, 0);
+		expect((await learner.problem('stacks-peek')).files).toEqual({ 'main.py': 'parent code' });
+	});
+
+	it('copies a step once: once saved, later changes to its source never change it', async () => {
+		const { learner } = await setup();
+		const seeded = (await learner.problem('stacks-pop')).files;
+		await learner.saveCode('stacks-pop', seeded, 0);
+
+		await learner.saveCode('stacks-push', { 'main.py': 'edited after' }, 0);
+
+		expect((await learner.problem('stacks-pop')).files).toEqual(seeded);
+	});
+
+	it('saves code, returns the new revision and shows it again, per Learner', async () => {
+		const { learner, core } = await setup();
+
+		expect(await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0)).toEqual({ revision: 1 });
+		expect(await learner.saveCode('stacks-push', { 'main.py': 'ab' }, 1)).toEqual({ revision: 2 });
+
+		const view = await learner.problem('stacks-push');
+		expect(view.files).toEqual({ 'main.py': 'ab' });
+		expect(view.revision).toBe(2);
+		const other = await core.forLearner('someone-else').problem('stacks-push');
+		expect(other).toMatchObject({ files: { 'main.py': '' }, revision: 0 });
+	});
+
+	it('returns RevisionConflict for a stale revision and keeps the stored code', async () => {
+		const { learner } = await setup();
+		await learner.saveCode('stacks-push', { 'main.py': 'tab one' }, 0);
+
+		await expect(
+			learner.saveCode('stacks-push', { 'main.py': 'tab two' }, 0)
+		).rejects.toMatchObject({
+			code: 'RevisionConflict'
+		});
+		await expect(
+			learner.saveCode('stacks-push', { 'main.py': 'tab two' }, 5)
+		).rejects.toMatchObject({
+			code: 'RevisionConflict'
+		});
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.py': 'tab one' });
+	});
+
+	it('lets only one of two concurrent first saves win', async () => {
+		const { learner } = await setup();
+		const results = await Promise.allSettled([
+			learner.saveCode('stacks-push', { 'main.py': 'a' }, 0),
+			learner.saveCode('stacks-push', { 'main.py': 'b' }, 0)
+		]);
+		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+	});
+
+	it.each([
+		['an absolute path', { '/etc/passwd': 'x' }],
+		['a parent path', { '../x.py': 'x' }],
+		['a nested parent path', { 'a/../../x.py': 'x' }],
+		['a backslash path', { 'a\\b.py': 'x' }],
+		['an empty path', { '': 'x' }],
+		['no files', {}],
+		['too much code', { 'main.py': 'x'.repeat(256 * 1024 + 1) }]
+	])('refuses %s as InvalidBuild and stores nothing', async (_name, files) => {
+		const { learner } = await setup();
+		await expect(learner.saveCode('stacks-push', files, 0)).rejects.toMatchObject({
+			code: 'InvalidBuild'
+		});
+		expect((await learner.problem('stacks-push')).revision).toBe(0);
+	});
+
+	it('accepts nested relative paths and code right at the limit', async () => {
+		const { learner } = await setup();
+		await expect(
+			learner.saveCode(
+				'stacks-push',
+				{ 'pkg/util.py': 'x'.repeat(256 * 1024 - 'pkg/util.py'.length) },
+				0
+			)
+		).resolves.toEqual({ revision: 1 });
+	});
+
+	it('refuses an unknown Problem and one in a Locked Topic', async () => {
+		const { learner } = await setup();
+		await expect(learner.problem('nope')).rejects.toMatchObject({ code: 'NotFound' });
+		await expect(learner.problem('queues-enqueue')).rejects.toMatchObject({ code: 'TopicLocked' });
+		await expect(learner.saveCode('nope', { 'main.py': '' }, 0)).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+	});
+
+	it('never sends Hints, the Solution or Hidden Tests to the browser', async () => {
+		const { learner, catalogue } = await setup();
+		const json = JSON.stringify(await learner.problem('stacks-push'));
+		const problem = catalogue.problem('stacks-push');
+		expect(problem?.hints.length).toBeGreaterThan(0);
+		for (const hint of problem?.hints ?? []) expect(json).not.toContain(hint.trim());
+		expect(json).not.toContain('solution');
+		for (const t of catalogue.hiddenTests('stacks-push') ?? []) {
+			expect(json).not.toContain(JSON.stringify(t.input));
+			expect(json).not.toContain(JSON.stringify(t.expected));
+		}
+		expect(json).not.toContain('hidden');
+		expect(json).not.toContain('hint');
+	});
+});
