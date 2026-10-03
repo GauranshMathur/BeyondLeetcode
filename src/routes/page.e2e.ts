@@ -16,6 +16,10 @@ test('the Map shows Unlocked and Locked Topics from the fixture content', async 
 	await expect(page.getByRole('link', { name: /Queues/ })).toHaveCount(0);
 
 	await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText('Local');
+	await expect(page.getByRole('link', { name: 'Map', exact: true })).toHaveAttribute(
+		'aria-current',
+		'page'
+	);
 });
 
 test('an Unlocked Topic can be reached with the keyboard', async ({ page }) => {
