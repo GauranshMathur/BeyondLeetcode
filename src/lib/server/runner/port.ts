@@ -9,7 +9,7 @@
  * request. The Learning core maps that rejection to `RunnerUnavailable`.
  */
 
-export type Language = 'python' | 'typescript' | 'go';
+export type Language = "python" | "typescript" | "go";
 
 /** A Build's files, keyed by path relative to the Build root. */
 export type Files = Record<string, string>;
@@ -25,15 +25,20 @@ export type TestInput = { id: string; input: string };
 export type Limits = { timeoutMs: number; memoryMb: number };
 
 export type ExecuteRequest = {
-	language: Language;
-	files: Files;
-	tests: TestInput[];
-	limits: Limits;
+  language: Language;
+  files: Files;
+  tests: TestInput[];
+  limits: Limits;
 };
 
-export type TestStatus = 'ok' | 'runtimeError' | 'timeout';
+export type TestStatus = "ok" | "runtimeError" | "timeout";
 
-export type TestResult = { id: string; status: TestStatus; stdout: string; stderr: string };
+export type TestResult = {
+  id: string;
+  status: TestStatus;
+  stdout: string;
+  stderr: string;
+};
 
 /**
  * `compileError` set: the code did not compile and `results` is empty.
@@ -42,5 +47,5 @@ export type TestResult = { id: string; status: TestStatus; stdout: string; stder
 export type ExecuteResult = { compileError?: string; results: TestResult[] };
 
 export interface RunnerPort {
-	execute(request: ExecuteRequest): Promise<ExecuteResult>;
+  execute(request: ExecuteRequest): Promise<ExecuteResult>;
 }
