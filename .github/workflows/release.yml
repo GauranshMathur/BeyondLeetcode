@@ -27,26 +27,40 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Every releasable commit (feat, fix) ships its own release: merge the
-      # release PR as soon as it is opened or refreshed. `pr` is unset when there
-      # was nothing to release, as for docs or ci commits.
-      - name: Merge the release PR
-        if: ${{ steps.release.outputs.pr }}
-        # Step env is evaluated even when `if` skips the step, so fromJSON on an
-        # empty `pr` would fail the job. Parse the PR in the shell instead.
+      # Every releasable commit (feat, fix) ships its own release. Find the
+      # release PR: the one release-please just opened or refreshed, else one
+      # already open and unchanged (release-please leaves `pr` empty then, as
+      # after a failed merge or a docs or ci commit). Empty when none is open.
+      - name: Find the release PR
+        id: find
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_PR: ${{ steps.release.outputs.pr }}
         run: |
-          pr_number="$(jq -r '.number' <<<"$RELEASE_PR")"
-          gh pr merge "$pr_number" --squash --repo "$GITHUB_REPOSITORY"
+          if [ -n "$RELEASE_PR" ]; then
+            number="$(jq -r '.number' <<<"$RELEASE_PR")"
+          else
+            number="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
+              --label "autorelease: pending" --json number --jq '.[0].number // empty')"
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      # Merge it, so a release PR left open by a failed merge is retried on the
+      # next push. Step env is evaluated even when `if` skips the step, so the
+      # number comes from an output, not fromJSON on an empty `pr`.
+      - name: Merge the release PR
+        if: ${{ steps.find.outputs.number }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR_NUMBER: ${{ steps.find.outputs.number }}
+        run: gh pr merge "$RELEASE_PR_NUMBER" --squash --repo "$GITHUB_REPOSITORY"
 
       # A merge made with GITHUB_TOKEN does not trigger this workflow again, so
       # run release-please once more to tag and publish what was just merged.
       # If this misses it, the next push to main releases it instead, since
       # release-please picks up any merged PR still labelled autorelease: pending.
       - name: Tag and publish the release
-        if: ${{ steps.release.outputs.pr }}
+        if: ${{ steps.find.outputs.number }}
         uses: googleapis/release-please-action@v4
         with:
           config-file: release-please-config.json
