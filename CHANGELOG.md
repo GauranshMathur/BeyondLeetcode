@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.8.0...v0.9.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C6a submit with verdicts ([#56](https://github.com/GauranshMathur/BeyondLeetcode/issues/56)) ([fadf436](https://github.com/GauranshMathur/BeyondLeetcode/commit/fadf436ace280b8caf09b5f44f8628e03bafc1f3))
+
 ## [0.8.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.7.1...v0.8.0) (2026-10-03)
 
 
