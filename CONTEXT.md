@@ -62,7 +62,7 @@ A Locked Topic cannot be opened; it becomes Unlocked when all its Prerequisites 
 The Learner has reached the end of the Chapter.
 
 **Complete** (Topic):
-Every Chapter in the Topic is Read and every Core Problem is Solved. Once Complete, a Topic stays Complete.
+Every Chapter in the Topic is Read and every Core Problem is Solved.
 _Avoid_: Done, finished, mastered
 
 **Attempted** (Problem):
