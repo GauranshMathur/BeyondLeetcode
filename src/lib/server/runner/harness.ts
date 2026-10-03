@@ -10,10 +10,14 @@
  * Env: RUNNER_TEST_COUNT, RUNNER_TEST_TIMEOUT_MS, RUNNER_OUTPUT_CAP, RUNNER_TOTAL_OUTPUT_CAP,
  * RUNNER_DEADLINE_S.
  *
+ * Tests in one container are NOT isolated from each other: the harness clears files and IPC objects
+ * but cannot reset kernel counters (pids, inode numbers, IPC ids, cgroup stats), which carry a few
+ * bytes. Keeping Hidden Tests from visible ones is done by running them in separate containers.
+ *
  * This process is PID 1 and shares a uid with learner code, so it never chdirs into /work, reads
  * every Test input and the Build into memory and deletes /work/tests before the first learner
  * process starts, wipes /work and restores the Build from memory before every Test (nothing a Test
- * wrote survives it, IPC objects included, so a Hidden Test's input cannot be read back by a later Test), and on any unexpected failure exits
+ * wrote survives it, IPC objects included), and on any unexpected failure exits
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = String.raw`
@@ -202,6 +206,8 @@ def reap():
         if not [p for p in os.listdir("/proc") if p.isdigit() and p != "1"]:
             return
         time.sleep(0.01)
+    # Something survived SIGKILL (or cannot be reaped): fail closed rather than run on.
+    os._exit(1)
 
 
 def run_tests():

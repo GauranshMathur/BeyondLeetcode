@@ -3,12 +3,15 @@ import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The web role never reaches the Docker socket: only the Runner process may import the engine or
- * the sandbox launcher, or name the socket. (The compose-level check belongs to the deploy card.)
+ * The web role never reaches the Docker socket: only the allow-listed runner modules may be imported
+ * outside the runner module, and nothing may name the socket. (The compose-level check belongs to the deploy card.)
  */
 
 const srcRoot = join(import.meta.dirname, '..', '..', '..');
 const runnerDir = join(srcRoot, 'lib', 'server', 'runner');
+
+/** The only runner modules the web role may import. */
+const allowed = new Set(['http-adapter', 'port', 'fake', 'contract']);
 
 /** Why a file outside the runner module breaks the web role's isolation, if it does. */
 function isolationViolations(source: string): string[] {
@@ -16,7 +19,8 @@ function isolationViolations(source: string): string[] {
 	if (source.includes('docker.sock')) found.push('docker.sock');
 	const specifier = /(?:from|import|require)\s*\(?\s*['"]([^'"]+)['"]/g;
 	for (const match of source.matchAll(specifier)) {
-		if (/(?:^|\/)runner\/(?:engine|sandbox)(?:\.[cm]?[jt]s)?$/.test(match[1])) found.push(match[1]);
+		const module = /(?:^|\/)runner\/([^/]+?)(?:\.[cm]?[jt]s)?$/.exec(match[1]);
+		if (module && !allowed.has(module[1])) found.push(match[1]);
 	}
 	return found;
 }
@@ -33,13 +37,15 @@ function* sourceFiles(dir: string): Generator<string> {
 }
 
 describe('isolationViolations', () => {
-	it('flags imports of the engine or the sandbox, in any import form', () => {
+	it('flags imports of any runner module outside the allow-list, in any import form', () => {
 		for (const line of [
 			"import { createEngine } from '$lib/server/runner/engine';",
 			"import { containerSpec } from '$lib/server/runner/sandbox.ts';",
 			"import('../runner/engine.js')",
 			"const e = require('./runner/sandbox')",
-			"export * from '../../lib/server/runner/engine';"
+			"export * from '../../lib/server/runner/engine';",
+			"import { main } from '$lib/server/runner/main';",
+			"import { c } from '$lib/server/runner/config';"
 		]) {
 			expect(isolationViolations(line), line).not.toEqual([]);
 		}
