@@ -80,12 +80,7 @@ describe('fixture content', () => {
 
 		expect(JSON.stringify(catalogue.problem('stacks-pop'))).not.toContain('push 5');
 		expect(catalogue.hiddenTests('stacks-pop')).toEqual([
-			{
-				id: 'stacks-pop/hidden/01',
-				kind: 'hidden',
-				input: 'push 5\npop\n',
-				expected: '5\n'
-			}
+			{ id: 'stacks-pop/hidden/01', kind: 'hidden', input: 'push 5\npop\n', expected: '5\n' }
 		]);
 		expect(catalogue.hiddenTests('stacks-peek')).toEqual([]);
 	});
