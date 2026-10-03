@@ -1,6 +1,10 @@
 import type { ExecuteRequest, RunnerPort, TestStatus } from './port';
 
-export type ScriptedTest = { status: TestStatus; stdout?: string; stderr?: string };
+export type ScriptedTest = {
+	status: TestStatus;
+	stdout?: string;
+	stderr?: string;
+};
 
 export type RunnerScript = {
 	/** Every execute reports this compile error and no results. */

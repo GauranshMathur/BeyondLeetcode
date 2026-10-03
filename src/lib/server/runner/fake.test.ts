@@ -53,7 +53,9 @@ describe('scripted fake runner', () => {
 
 		const result = await runner.execute(request([{ id: 'a', input: 'x' }]));
 
-		expect(result).toEqual({ results: [{ id: 'a', status: 'ok', stdout: '', stderr: '' }] });
+		expect(result).toEqual({
+			results: [{ id: 'a', status: 'ok', stdout: '', stderr: '' }]
+		});
 	});
 
 	it('records every request it receives', async () => {

@@ -33,7 +33,12 @@ export type ExecuteRequest = {
 
 export type TestStatus = 'ok' | 'runtimeError' | 'timeout';
 
-export type TestResult = { id: string; status: TestStatus; stdout: string; stderr: string };
+export type TestResult = {
+	id: string;
+	status: TestStatus;
+	stdout: string;
+	stderr: string;
+};
 
 /**
  * `compileError` set: the code did not compile and `results` is empty.

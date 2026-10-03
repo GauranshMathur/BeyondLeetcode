@@ -14,6 +14,8 @@
 		"format": "biome check --write .",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"test:sandbox": "vitest run --config vitest.sandbox.config.ts",
+		"runner": "bun src/lib/server/runner/main.ts",
 		"test:e2e": "playwright test"
 	},
 	"devDependencies": {
