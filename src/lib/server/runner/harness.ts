@@ -10,14 +10,18 @@
  * Env: RUNNER_TEST_COUNT, RUNNER_TEST_TIMEOUT_MS, RUNNER_OUTPUT_CAP, RUNNER_TOTAL_OUTPUT_CAP,
  * RUNNER_DEADLINE_S.
  *
+ * Tests in one container are NOT isolated from each other: the harness clears files and IPC objects
+ * but cannot reset kernel counters (pids, inode numbers, IPC ids, cgroup stats), which carry a few
+ * bytes. Keeping Hidden Tests from visible ones is done by running them in separate containers.
+ *
  * This process is PID 1 and shares a uid with learner code, so it never chdirs into /work, reads
  * every Test input and the Build into memory and deletes /work/tests before the first learner
  * process starts, wipes /work and restores the Build from memory before every Test (nothing a Test
- * wrote survives it, so a Hidden Test's input cannot be read back by a later Test), and on any unexpected failure exits
+ * wrote survives it, IPC objects included), and on any unexpected failure exits
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = String.raw`
-import ctypes, io, json, os, shutil, signal, stat, subprocess, sys, tarfile, threading, traceback
+import ctypes, io, json, os, shutil, signal, stat, subprocess, sys, tarfile, threading, time, traceback
 
 # Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
 # read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
@@ -101,8 +105,40 @@ def wipe_children(root):
         os.rmdir(path)
 
 
+LIBC = ctypes.CDLL(None, use_errno=True)
+
+
+def removed(result):
+    if result == -1:
+        raise OSError(ctypes.get_errno(), "could not remove an IPC object")
+
+
+def clear_ipc():
+    # System V queues, semaphores and shared memory, and POSIX queues, outlive the process that
+    # made them: kill(-1) does not touch them, so a Test could pass data to a later one through
+    # them. Learner code shares our uid, so every object is ours to remove.
+    for table, remove in (
+        ("msg", lambda i: removed(LIBC.msgctl(i, 0, None))),
+        ("sem", lambda i: removed(LIBC.semctl(i, 0, 0, ctypes.c_int(0)))),
+        ("shm", lambda i: removed(LIBC.shmctl(i, 0, None))),
+    ):
+        try:
+            with open("/proc/sysvipc/" + table) as f:
+                rows = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            fields = row.split()
+            if len(fields) > 1:
+                remove(int(fields[1]))
+    if os.path.isdir("/dev/mqueue"):
+        for name in os.listdir("/dev/mqueue"):
+            os.unlink(os.path.join("/dev/mqueue", name))
+
+
 def fresh_build():
-    # Nothing a Test left in /work survives, its metadata included; the Build is as uploaded.
+    # Nothing a Test left in /work or in IPC survives, its metadata included; the Build is as uploaded.
+    clear_ipc()
     wipe_children(WORK)
     for attr in os.listxattr(WORK):
         os.removexattr(WORK, attr)
@@ -158,12 +194,20 @@ def feed(pipe, data):
 
 
 def reap():
-    # Orphans reparented to PID 1 would otherwise stay zombies and eat the pids limit.
-    try:
-        while os.waitpid(-1, os.WNOHANG)[0]:
+    # Orphans reparented to PID 1 would otherwise stay zombies and eat the pids limit. Waits (a
+    # couple of seconds at most) until no other process is left, so none can still be creating
+    # IPC objects while they are cleared.
+    for _ in range(200):
+        try:
+            while os.waitpid(-1, os.WNOHANG)[0]:
+                pass
+        except ChildProcessError:
             pass
-    except ChildProcessError:
-        pass
+        if not [p for p in os.listdir("/proc") if p.isdigit() and p != "1"]:
+            return
+        time.sleep(0.01)
+    # Something survived SIGKILL (or cannot be reaped): fail closed rather than run on.
+    os._exit(1)
 
 
 def run_tests():
