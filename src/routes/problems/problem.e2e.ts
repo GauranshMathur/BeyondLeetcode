@@ -149,3 +149,25 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await expect(page.getByText('core solved').locator('..')).toContainText('1 of 2');
 	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
 });
+
+test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1000', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1440, height: 1000 });
+	await page.goto('/problems/stacks-push');
+
+	const bar = page.getByRole('banner');
+	await expect(bar).toHaveCount(1);
+	const barBox = await bar.boundingBox();
+	if (!barBox) throw new Error('workspace bar has no box');
+	expect(barBox.height).toBe(64);
+
+	for (const name of ['Run', 'Submit']) {
+		const box = await page.getByRole('button', { name }).boundingBox();
+		if (!box) throw new Error(`${name} has no box`);
+		expect(box.height).toBe(44);
+		expect(box.y - barBox.y).toBeGreaterThanOrEqual(10);
+		expect(barBox.y + barBox.height - (box.y + box.height)).toBeGreaterThanOrEqual(10);
+	}
+	await expect(bar.getByRole('link', { name: 'map' })).toBeVisible();
+});

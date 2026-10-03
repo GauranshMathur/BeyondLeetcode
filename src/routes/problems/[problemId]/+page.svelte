@@ -10,40 +10,32 @@ const problem = $derived(data.problem);
 	<title>{problem.title} · BeyondLeetcode</title>
 </svelte:head>
 
-<div class="page">
-	<section class="statement" aria-label="Problem">
-		<nav class="crumbs" aria-label="Breadcrumb">
-			<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
-		</nav>
-		<div class="head">
-			<span class="mono muted">{problem.kind === 'Core' ? 'core' : 'extra'} · {problem.topicTitle}</span>
-			<h1>{problem.title}</h1>
-		</div>
-		<div class="prose">{@html problem.statementHtml}</div>
+{#key problem.id}
+	<ProblemWorkspace {problem}>
+		{#snippet statement()}
+			<section class="statement" aria-label="Problem">
+				<div class="head">
+					<span class="mono muted">{problem.kind === 'Core' ? 'core' : 'extra'} · {problem.topicTitle}</span>
+					<h1>{problem.title}</h1>
+				</div>
+				<div class="prose">{@html problem.statementHtml}</div>
 
-		{#each problem.exampleTests as test, i (test.name)}
-			<div class="example">
-				<span class="label mono">Example {i + 1}</span>
-				<pre class="mono"><span class="muted">Input</span>
+				{#each problem.exampleTests as test, i (test.name)}
+					<div class="example">
+						<span class="label mono">Example {i + 1}</span>
+						<pre class="mono"><span class="muted">Input</span>
 {test.input}<span class="muted">Output</span>
 {test.expected}</pre>
-			</div>
-		{/each}
+					</div>
+				{/each}
 
-		<p class="mono muted id">{problem.id}</p>
-	</section>
-
-	{#key problem.id}
-		<ProblemWorkspace {problem} />
-	{/key}
-</div>
+				<p class="mono muted id">{problem.id}</p>
+			</section>
+		{/snippet}
+	</ProblemWorkspace>
+{/key}
 
 <style>
-	.page {
-		display: grid;
-		grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
-		min-height: calc(100vh - 80px);
-	}
 	.statement {
 		box-sizing: border-box;
 		padding: 36px 40px;
@@ -57,16 +49,6 @@ const problem = $derived(data.problem);
 		font-family: var(--font-mono);
 	}
 	.muted {
-		color: var(--muted);
-	}
-	.crumbs {
-		display: flex;
-		gap: 10px;
-		font-family: var(--font-mono);
-		font-size: 13px;
-		color: var(--muted);
-	}
-	.crumbs a {
 		color: var(--muted);
 	}
 	.head {
@@ -131,9 +113,6 @@ const problem = $derived(data.problem);
 		font-size: 13px;
 	}
 	@media (max-width: 900px) {
-		.page {
-			grid-template-columns: minmax(0, 1fr);
-		}
 		.statement {
 			border-right: 0;
 			border-bottom: 1px solid var(--ink);
