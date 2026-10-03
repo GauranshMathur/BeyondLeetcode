@@ -1,9 +1,10 @@
 import type { Catalogue } from '../content/catalogue.ts';
 import type { Db } from '../db.ts';
 import type { RunnerPort } from '../runner/port.ts';
-import { type MapView, mapView, type Progress } from './rules.ts';
+import { type MapView, mapView, type Progress, type TopicView, topicView } from './rules.ts';
 
-export type { MapTopic, MapView, TopicState } from './rules.ts';
+export { LearningError, type LearningErrorCode } from './errors.ts';
+export type { MapTopic, MapView, TopicState, TopicView } from './rules.ts';
 
 export interface LearningCoreDeps {
 	catalogue: Catalogue;
@@ -16,6 +17,8 @@ export interface LearningCoreDeps {
 export interface Learner {
 	/** The Topic Map with every Topic's state and Core solved count. Never writes. */
 	map(): Promise<MapView>;
+	/** One Topic's Chapters and Problems. Throws LearningError NotFound or TopicLocked. Never writes. */
+	topic(topicId: string): Promise<TopicView>;
 }
 
 export interface LearningCore {
@@ -30,7 +33,9 @@ export interface LearningCore {
 export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 	return {
 		forLearner: (learnerId) => ({
-			map: async () => mapView(deps.catalogue, await loadProgress(deps.db, learnerId))
+			map: async () => mapView(deps.catalogue, await loadProgress(deps.db, learnerId)),
+			topic: async (topicId) =>
+				topicView(deps.catalogue, await loadProgress(deps.db, learnerId), topicId)
 		})
 	};
 }

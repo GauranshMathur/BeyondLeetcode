@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Catalogue, Topic, TopicSummary } from '../content/catalogue.ts';
-import { mapView, type Progress } from './rules.ts';
+import { LearningError } from './errors.ts';
+import { mapView, type Progress, topicView } from './rules.ts';
 
 /** A Topic with the given Prerequisites, its Chapters and its Core Problems (the Main Line). */
 function topic(
@@ -112,5 +113,60 @@ describe('map counts and current Topic', () => {
 	it('has no current Topic without activity, else the most recently active one', () => {
 		expect(mapView(cat, none).currentTopicId).toBeUndefined();
 		expect(mapView(cat, progress([], [], 'a')).currentTopicId).toBe('a');
+	});
+});
+
+describe('topicView', () => {
+	const t = {
+		...topic('a', [], { chapters: ['c1', 'c2'], core: ['p1', 'p2'] }),
+		chapters: [
+			{
+				id: 'a-c1',
+				title: 'c1',
+				problems: [
+					{ id: 'a-p1', title: 'P1', kind: 'core' as const },
+					{ id: 'a-x1', title: 'X1', kind: 'extra' as const, parent: 'a-p1' }
+				]
+			},
+			{ id: 'a-c2', title: 'c2', problems: [{ id: 'a-p2', title: 'P2', kind: 'core' as const }] }
+		]
+	};
+	const cat = catalogueOf([t]);
+
+	it('reads Read, Solved and Attempted from Progress and counts them', () => {
+		const view = topicView(
+			cat,
+			{
+				...progress(['a-c1'], ['a-p1', 'a-x1']),
+				attemptedProblems: new Set(['a-p2'])
+			},
+			'a'
+		);
+		expect(view.chapters.map((c) => c.read)).toEqual([true, false]);
+		expect(view.chapters.flatMap((c) => c.problems.map((p) => p.status))).toEqual([
+			'Solved',
+			'Solved',
+			'Attempted'
+		]);
+		expect(view.counts).toEqual({
+			chaptersRead: 1,
+			chaptersTotal: 2,
+			coreSolved: 1,
+			coreTotal: 2,
+			extraSolved: 1,
+			extraTotal: 1
+		});
+	});
+
+	it('is Complete when every Chapter is read and every Core Problem Solved', () => {
+		expect(topicView(cat, progress(['a-c1', 'a-c2'], ['a-p1', 'a-p2']), 'a').state).toBe(
+			'complete'
+		);
+	});
+
+	it('refuses a Locked Topic and an unknown one', () => {
+		const both = catalogueOf([topic('a', []), topic('b', ['a'])]);
+		expect(() => topicView(both, none, 'b')).toThrow(LearningError);
+		expect(() => topicView(both, none, 'zzz')).toThrow(LearningError);
 	});
 });

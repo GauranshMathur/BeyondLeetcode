@@ -1,4 +1,5 @@
 <script lang="ts">
+import { page } from '$app/state';
 import favicon from '$lib/assets/favicon.svg';
 import '$lib/styles/tokens.css';
 
@@ -16,7 +17,7 @@ let { children } = $props();
 <header>
 	<a class="brand" href="/">Beyond Leetcode</a>
 	<nav aria-label="Primary">
-		<a href="/" aria-current="page">Map</a>
+		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
 		<!-- Local Mode has no username: the canvas nav shows "Local" (S1). -->
 		<span class="who">Local</span>
 	</nav>
