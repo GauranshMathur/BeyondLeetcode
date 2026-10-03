@@ -128,6 +128,23 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 		expect(result.results).toEqual([]);
 	});
 
+	it('reports a null byte in the source as a compile error', async () => {
+		const result = await run({ 'main.py': 'x = 1\0\n' });
+
+		expect(result.compileError).toContain('null bytes');
+		expect(result.results).toEqual([]);
+	});
+
+	it('fails the run as a Runner error, not a compile error, when the compile step is killed', async () => {
+		// Valid code whose parse tree outgrows the memory limit: the kernel kills py_compile, not
+		// the harness. A huge literal needs no test-only knob, so nothing learner code could reach.
+		const huge = `x = (${'1,'.repeat(700_000)})\n`;
+
+		await expect(
+			run({ 'main.py': huge }, undefined, { timeoutMs: 2000, memoryMb: 48 })
+		).rejects.toThrow(/Runner responded 500/);
+	});
+
 	it('runs a Build of several files', async () => {
 		const result = await run({
 			'main.py': 'from util.helper import twice\nprint(twice(21))\n',
