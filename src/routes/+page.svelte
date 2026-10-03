@@ -52,7 +52,7 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 		gap: 20px;
 	}
 	.eyebrow {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 13px;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -86,7 +86,7 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 	}
 	.muted,
 	.go {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 13px;
 	}
 	.muted {
@@ -115,7 +115,7 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 		color: var(--body);
 	}
 	.fig {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 13px;
 		letter-spacing: 0.06em;
 		text-transform: uppercase;

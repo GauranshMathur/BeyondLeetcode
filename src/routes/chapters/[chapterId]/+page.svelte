@@ -103,7 +103,7 @@ $effect(() => {
 	.mono,
 	.crumbs,
 	table {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 	}
 	.muted {
 		color: var(--muted);
@@ -230,14 +230,14 @@ $effect(() => {
 		background: var(--panel);
 		border-top: 1px solid var(--ink);
 		border-bottom: 1px solid var(--ink);
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 14px;
 		line-height: 1.7;
 		color: var(--ink);
 		overflow-x: auto;
 	}
 	.prose :global(code) {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.85em;
 	}
 	.prose :global(pre code) {
@@ -283,7 +283,7 @@ $effect(() => {
 	}
 	.ptitle {
 		color: var(--ink);
-		font-family: 'Newsreader', Georgia, serif;
+		font-family: var(--font-serif);
 		font-size: 21px;
 		text-decoration: none;
 	}
