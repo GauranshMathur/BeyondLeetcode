@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.13.0...v0.13.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C13c error pages under /problems keep the site header ([#67](https://github.com/GauranshMathur/BeyondLeetcode/issues/67)) ([2fbb325](https://github.com/GauranshMathur/BeyondLeetcode/commit/2fbb325d5fe4ebdc5aaa2d4fadbd9e5bcaac205b))
+
 ## [0.13.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.12.0...v0.13.0) (2026-10-03)
 
 
