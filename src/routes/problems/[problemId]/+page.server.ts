@@ -53,5 +53,20 @@ export const actions: Actions = {
 				return fail(503, { message: e.code, revision: build.baseRevision + 1 });
 			}
 		});
+	},
+
+	/** Submit: saves, runs every Test, records the Submission. Hidden Test data never leaves the server. */
+	submit: async ({ locals, params, request }) => {
+		const build = await readBuild(request);
+		if (build.failure) return build.failure;
+		return withLearningErrors(async () => {
+			try {
+				return await locals.learning.submit(params.problemId, build.files, build.baseRevision);
+			} catch (e) {
+				if (!(e instanceof LearningError) || e.code !== 'RunnerUnavailable') throw e;
+				// Nothing was recorded, but the code was saved before the Runner failed.
+				return fail(503, { message: e.code, revision: build.baseRevision + 1 });
+			}
+		});
 	}
 };

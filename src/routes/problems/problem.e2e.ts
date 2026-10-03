@@ -81,11 +81,8 @@ async function setCode(page: Page, code: string) {
 	await page.keyboard.insertText(code);
 }
 
-test('Run shows pass for a correct solution and fail for a wrong one, with no Submit', async ({
-	page
-}) => {
+test('Run shows pass for a correct solution and fail for a wrong one', async ({ page }) => {
 	await page.goto('/problems/stacks-push');
-	await expect(page.getByRole('button', { name: 'Submit' })).toHaveCount(0);
 
 	await setCode(page, correct);
 	await page.getByRole('button', { name: 'Run' }).click();
@@ -120,4 +117,28 @@ test('Run shows a runtime error and a compile error block', async ({ page }) => 
 	await setCode(page, 'def (:\n');
 	await page.getByRole('button', { name: 'Run' }).click();
 	await expect(page.getByLabel('Compile error')).toContainText('SyntaxError', { timeout: 60_000 });
+});
+
+test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code is Accepted and Solved', async ({
+	page
+}) => {
+	await page.goto('/problems/stacks-push');
+
+	await setCode(page, 'print(99)\n');
+	await page.getByRole('button', { name: 'Submit' }).click();
+	const verdict = page.getByLabel('Verdict');
+	await expect(verdict).toHaveText('Wrong Answer', { timeout: 60_000 });
+	await expect(page.getByLabel('Failed Example Test 01')).toContainText('99');
+	await expect(page.getByRole('button', { name: 'Submit' })).toBeEnabled();
+
+	await page.goto('/topics/stacks');
+	await expect(page.getByText('core solved').locator('..')).toContainText('0 of 2');
+
+	await page.goto('/problems/stacks-push');
+	await setCode(page, correct);
+	await page.getByRole('button', { name: 'Submit' }).click();
+	await expect(verdict).toContainText('Accepted', { timeout: 60_000 });
+
+	await page.goto('/topics/stacks');
+	await expect(page.getByText('core solved').locator('..')).toContainText('1 of 2');
 });

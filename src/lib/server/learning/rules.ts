@@ -478,67 +478,80 @@ export interface SubmitView {
 
 type SubmitCatalogue = Pick<Catalogue, 'topic' | 'problem' | 'hiddenTests'>;
 
+/** The Tests of a Submission, split by what the Runner may do with them. */
+export interface SubmitPlan {
+	/** This Problem's Example Tests: the only Tests whose output is ever shown. Run in their own container. */
+	readonly visible: readonly SubmitTest[];
+	/** Every other Test, in a second container; only per-Test outcomes are read from it, never its output. */
+	readonly hidden: readonly SubmitTest[];
+}
+
 /**
- * Every Test a Submission runs. A Core Problem runs every earlier Core Problem's Tests then its
- * own; an Extra runs the Core Problems up to and including its parent, then its own. All Example
- * Tests come before all Hidden Tests, so no Example output is produced once learner code has
- * seen a Hidden input. Throws NotFound for an unknown Problem.
+ * The Tests a Submission runs. A Core Problem runs every earlier Core Problem's Tests then its
+ * own; an Extra runs the Core Problems up to and including its parent, then its own. This
+ * Problem's Example Tests go in `visible`, everything else in `hidden`, so no Hidden input ever
+ * shares a container with a Test whose output is shown. Throws NotFound for an unknown Problem.
  */
-export function submitTests(catalogue: SubmitCatalogue, problemId: string): SubmitTest[] {
+export function submitPlan(catalogue: SubmitCatalogue, problemId: string): SubmitPlan {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
 	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
 	const anchor = problem.kind === 'extra' ? (problem.parent ?? problemId) : problemId;
 	const scope = mainLine.slice(0, mainLine.indexOf(anchor) + 1);
 	if (problem.kind === 'extra') scope.push(problemId);
-	const pick = (kind: SubmitTest['kind']) =>
-		scope.flatMap((id) => {
-			const tests =
-				kind === 'example' ? catalogue.problem(id)?.exampleTests : catalogue.hiddenTests(id);
-			return (tests ?? []).map(
-				({ id: testId, input, expected }): SubmitTest => ({
-					id: testId,
-					input,
-					expected,
-					problemId: id,
-					kind
-				})
-			);
-		});
-	return [...pick('example'), ...pick('hidden')];
+	const testsOf = (id: string, kind: SubmitTest['kind']): SubmitTest[] =>
+		(
+			(kind === 'example' ? catalogue.problem(id)?.exampleTests : catalogue.hiddenTests(id)) ?? []
+		).map(({ id: testId, input, expected }) => ({
+			id: testId,
+			input,
+			expected,
+			problemId: id,
+			kind
+		}));
+	return {
+		visible: testsOf(problemId, 'example'),
+		hidden: scope.flatMap((id) => [
+			...(id === problemId ? [] : testsOf(id, 'example')),
+			...testsOf(id, 'hidden')
+		])
+	};
 }
 
 /**
- * Picks the Verdict from the Runner's raw results. Pure. Compile Error beats Time Limit
- * Exceeded beats Runtime Error beats Wrong Answer beats Accepted; the failure shown is the first
- * Test, in run order, with the winning outcome. A Runner answer that misses a Test is a failed
- * Runner (RunnerUnavailable).
+ * Picks the Verdict from the Runner's raw results, one batch per Runner call, in run order.
+ * Pure. Compile Error beats Time Limit Exceeded beats Runtime Error beats Wrong Answer beats
+ * Accepted; the failure shown is the first Test, in run order, with the winning outcome. A
+ * Runner answer that misses a Test is a failed Runner (RunnerUnavailable).
  */
 export function judge(
-	tests: readonly SubmitTest[],
-	result: ExecuteResult,
+	batches: readonly { tests: readonly SubmitTest[]; result: ExecuteResult }[],
 	problemId: string,
 	titleOf: (problemId: string) => string
 ): { verdict: Verdict; failure?: SubmitFailure; failingProblemId?: string } {
-	if (result.compileError !== undefined) {
-		return {
-			verdict: 'Compile Error',
-			failure: { kind: 'compile', message: result.compileError }
-		};
+	for (const { result } of batches) {
+		if (result.compileError !== undefined) {
+			return {
+				verdict: 'Compile Error',
+				failure: { kind: 'compile', message: result.compileError }
+			};
+		}
 	}
-	const outcomes = tests.map((test) => {
-		const raw = result.results.find((r) => r.id === test.id);
-		if (!raw) throw new LearningError('RunnerUnavailable');
-		const verdict: Verdict =
-			raw.status === 'timeout'
-				? 'Time Limit Exceeded'
-				: raw.status === 'runtimeError'
-					? 'Runtime Error'
-					: normaliseOutput(raw.stdout) === normaliseOutput(test.expected)
-						? 'Accepted'
-						: 'Wrong Answer';
-		return { test, raw, verdict };
-	});
+	const outcomes = batches.flatMap(({ tests, result }) =>
+		tests.map((test) => {
+			const raw = result.results.find((r) => r.id === test.id);
+			if (!raw) throw new LearningError('RunnerUnavailable');
+			const verdict: Verdict =
+				raw.status === 'timeout'
+					? 'Time Limit Exceeded'
+					: raw.status === 'runtimeError'
+						? 'Runtime Error'
+						: normaliseOutput(raw.stdout) === normaliseOutput(test.expected)
+							? 'Accepted'
+							: 'Wrong Answer';
+			return { test, raw, verdict };
+		})
+	);
 	for (const verdict of VERDICT_PRECEDENCE) {
 		const first = outcomes.find((o) => o.verdict === verdict);
 		if (!first) continue;

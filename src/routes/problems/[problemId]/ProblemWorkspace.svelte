@@ -2,7 +2,7 @@
 import { onDestroy } from 'svelte';
 import { deserialize } from '$app/forms';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
-import type { ProblemView, RunView } from '$lib/server/learning/core';
+import type { ProblemView, RunView, SubmitView } from '$lib/server/learning/core';
 import type { Outcome } from './outcome';
 import ResultsPanel from './ResultsPanel.svelte';
 
@@ -24,7 +24,7 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
 let dirty = false;
 let outcome = $state<Outcome | undefined>(undefined);
-const running = $derived(outcome?.kind === 'running');
+const busy = $derived(outcome?.kind === 'running' || outcome?.kind === 'submitting');
 
 function onchange(next: Record<string, string>) {
 	if (saveState === 'conflict') return;
@@ -87,11 +87,17 @@ function afterSave(retry: boolean) {
 
 // svelte-ignore state_referenced_locally
 const runUrl = `/problems/${problem.id}?/run`;
+// svelte-ignore state_referenced_locally
+const submitUrl = `/problems/${problem.id}?/submit`;
 
-/** Run saves the Build itself, so it waits for an autosave in flight and holds the next one off. */
-async function run() {
-	if (running || saveState === 'conflict' || saveState === 'rejected') return;
-	outcome = { kind: 'running' };
+/** Run and Submit save the Build themselves, so they wait for an autosave in flight and hold the next one off. */
+async function send(
+	url: string,
+	pending: Outcome,
+	done: (data: Record<string, unknown>) => Outcome & { revision: number }
+) {
+	if (busy || saveState === 'conflict' || saveState === 'rejected') return;
+	outcome = pending;
 	clearTimeout(timer);
 	while (inFlight) await new Promise((resolve) => setTimeout(resolve, 25));
 	inFlight = true;
@@ -103,7 +109,7 @@ async function run() {
 		const body = new FormData();
 		body.set('files', JSON.stringify(sent));
 		body.set('baseRevision', String(revision));
-		const response = await fetch(runUrl, {
+		const response = await fetch(url, {
 			method: 'POST',
 			body,
 			headers: { 'x-sveltekit-action': 'true' }
@@ -122,12 +128,12 @@ async function run() {
 				saveState = dirty ? 'edited' : 'saved';
 				outcome = { kind: 'unavailable' };
 			} else if (result.type === 'success') {
-				const view = result.data as unknown as RunView;
-				revision = view.revision;
+				const next = done(result.data as Record<string, unknown>);
+				revision = next.revision;
 				saveState = dirty ? 'edited' : 'saved';
-				outcome = { kind: 'result', view };
+				outcome = next;
 			} else {
-				throw new Error('run failed');
+				throw new Error('request failed');
 			}
 		}
 	} catch {
@@ -140,6 +146,18 @@ async function run() {
 	}
 	afterSave(retry);
 }
+
+const run = () =>
+	send(runUrl, { kind: 'running' }, (data) => {
+		const view = data as unknown as RunView;
+		return { kind: 'result', view, revision: view.revision };
+	});
+
+const submit = () =>
+	send(submitUrl, { kind: 'submitting' }, (data) => {
+		const view = data as unknown as SubmitView;
+		return { kind: 'verdict', view, revision: view.revision };
+	});
 
 function onkeydown(event: KeyboardEvent) {
 	if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -176,7 +194,10 @@ const label: Record<SaveState, string> = {
 	<div class="bar">
 		<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
 		<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
-		<button type="button" class="run mono" disabled={running} onclick={run}>{running ? 'Running…' : 'Run'}</button>
+		<div class="actions">
+			<button type="button" class="run mono" disabled={busy} onclick={run}>{outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
+			<button type="button" class="run submit mono" disabled={busy} onclick={submit}>{outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
+		</div>
 	</div>
 	<CodeEditor files={problem.files} {onchange} readonly={saveState === 'conflict'} />
 	<ResultsPanel {outcome} />
@@ -203,6 +224,14 @@ const label: Record<SaveState, string> = {
 	}
 	.status {
 		color: var(--muted);
+	}
+	.actions {
+		display: flex;
+		gap: 12px;
+	}
+	.submit:not(:disabled) {
+		background: var(--ink);
+		color: var(--paper);
 	}
 	.run {
 		height: 44px;

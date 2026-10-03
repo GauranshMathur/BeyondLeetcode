@@ -20,7 +20,7 @@ import {
 	type SavedStep,
 	type SubmitView,
 	seedSourceOf,
-	submitTests,
+	submitPlan,
 	type TopicView,
 	topicView,
 	validateBuild
@@ -198,11 +198,17 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				},
 				submit: async (problemId, files, baseRevision) => {
 					const { revision } = await learner.saveCode(problemId, files, baseRevision);
-					const tests = submitTests(deps.catalogue, problemId);
-					const result = await execute(files, tests);
+					// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
+					const plan = submitPlan(deps.catalogue, problemId);
+					const batches = [];
+					if (plan.visible.length > 0) {
+						batches.push({ tests: plan.visible, result: await execute(files, plan.visible) });
+					}
+					if (!batches[0]?.result.compileError) {
+						batches.push({ tests: plan.hidden, result: await execute(files, plan.hidden) });
+					}
 					const { verdict, failure, failingProblemId } = judge(
-						tests,
-						result,
+						batches,
 						problemId,
 						(id) => deps.catalogue.problem(id)?.title ?? id
 					);

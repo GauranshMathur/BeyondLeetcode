@@ -516,7 +516,7 @@ describe('learner.submit()', () => {
 		const runner = createScriptedRunner({ ...script, tests: { ...correct, ...script.tests } });
 		const db = await createTestDb();
 		const core = createLearningCore({ catalogue, db, runner });
-		return { runner, db, learner: core.forLearner('any-learner'), core };
+		return { runner, db, catalogue, learner: core.forLearner('any-learner'), core };
 	}
 	const wrong = { status: 'ok' as const, stdout: 'WRONG' };
 
@@ -528,7 +528,7 @@ describe('learner.submit()', () => {
 		expect(view).toMatchObject({ verdict: 'Accepted', revision: 1, status: 'Solved' });
 		expect(view.failure).toBeUndefined();
 		expect(view.submissionId).toEqual(expect.any(String));
-		expect(runner.calls).toHaveLength(1);
+		expect(runner.calls).toHaveLength(2);
 		expect(await db.submission.findFirstOrThrow()).toMatchObject({
 			verdict: 'Accepted',
 			failingProblemId: null,
@@ -615,14 +615,59 @@ describe('learner.submit()', () => {
 		expect(view.failure).toMatchObject({ kind: 'example', stderr: 'first' });
 	});
 
-	it('runs all Example Tests before any Hidden Test, and sends only ids and inputs', async () => {
+	it("runs this Problem's Example Tests in one Runner call and every other Test in a second, ids and inputs only", async () => {
 		const { learner, runner } = await setup();
 		await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
 
-		const sent = runner.calls[0]?.tests ?? [];
-		expect(sent.map((t) => t.id)).toEqual([pushExample, popExample, pushHidden, popHidden]);
-		expect(sent.every((t) => Object.keys(t).sort().join() === 'id,input')).toBe(true);
-		expect(runner.calls[0]?.files).toEqual({ 'main.py': 'x' });
+		expect(runner.calls.map((c) => c.tests.map((t) => t.id))).toEqual([
+			[popExample],
+			[pushExample, pushHidden, popHidden]
+		]);
+		expect(
+			runner.calls.flatMap((c) => c.tests).every((t) => Object.keys(t).sort().join() === 'id,input')
+		).toBe(true);
+		expect(runner.calls.every((c) => c.files['main.py'] === 'x')).toBe(true);
+	});
+
+	it('never puts a Hidden input in the same Runner call as a visible Example Test', async () => {
+		const { learner, runner, catalogue } = await setup();
+		for (const id of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
+			runner.calls.length = 0;
+			await learner.submit(id, { 'main.py': id }, (await learner.problem(id)).revision);
+			const visible = catalogue.problem(id)?.exampleTests.map((t) => t.id) ?? [];
+			for (const call of runner.calls) {
+				const ids = call.tests.map((t) => t.id);
+				if (ids.some((t) => visible.includes(t))) expect(ids).toEqual(visible);
+			}
+			expect(runner.calls).toHaveLength(2);
+		}
+	});
+
+	it('a Compile Error from the first call is the Verdict and the second call is skipped', async () => {
+		const { learner, runner } = await setup({ compileError: 'SyntaxError: bad' });
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		expect(view.verdict).toBe('Compile Error');
+		expect(runner.calls).toHaveLength(1);
+	});
+
+	it('either Runner call failing is RunnerUnavailable and records nothing', async () => {
+		const { learner, db, catalogue } = await setup();
+		let calls = 0;
+		const core = createLearningCore({
+			catalogue,
+			db,
+			runner: {
+				execute: async () => {
+					if (++calls === 2) throw new Error('down');
+					return { results: [{ id: pushExample, status: 'ok', stdout: '2\n', stderr: '' }] };
+				}
+			}
+		});
+		await expect(
+			core.forLearner('y').submit('stacks-push', { 'main.py': 'x' }, 0)
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+		expect(await db.submission.count()).toBe(0);
+		void learner;
 	});
 
 	it('a failing Hidden Test of this Problem reveals only the Problem and the Verdict', async () => {
@@ -663,13 +708,12 @@ describe('learner.submit()', () => {
 		expect(view.failure).toMatchObject({ kind: 'earlierStep', problemId: 'stacks-push' });
 	});
 
-	it('an Extra runs its parent and earlier Core Tests, then its own, and never later Core Problems', async () => {
+	it('an Extra runs its own Example Tests first, then its parent and earlier Core Tests, never later Core Problems', async () => {
 		const { learner, runner } = await setup();
 		await learner.submit('stacks-peek', { 'main.py': 'x' }, 0);
-		expect((runner.calls[0]?.tests ?? []).map((t) => t.id)).toEqual([
-			pushExample,
-			peekExample,
-			pushHidden
+		expect(runner.calls.map((c) => c.tests.map((t) => t.id))).toEqual([
+			[peekExample],
+			[pushExample, pushHidden]
 		]);
 	});
 
