@@ -10,7 +10,7 @@ let { children } = $props();
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{#if !page.url.pathname.startsWith('/problems/')}
+{#if !(page.route.id === '/problems/[problemId]' && !page.error)}
 <header>
 	<a class="brand" href="/">Beyond Leetcode</a>
 	<nav aria-label="Primary">

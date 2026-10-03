@@ -49,6 +49,21 @@ test('a Problem in a Locked Topic returns 403 and an unknown one 404', async ({ 
 	expect((await page.goto('/problems/nope'))?.status()).toBe(404);
 });
 
+test('error pages under /problems keep the site header, a Problem page does not', async ({
+	page
+}) => {
+	const siteNav = page.getByRole('navigation', { name: 'Primary' });
+	for (const path of ['/problems/queues-enqueue', '/problems/nope']) {
+		await page.goto(path);
+		await expect(siteNav.getByRole('link', { name: 'Map' })).toBeVisible();
+	}
+
+	await page.goto('/problems/stacks-push');
+	await expect(siteNav).toHaveCount(0);
+	await expect(page.locator('header')).toHaveCount(1);
+	await expect(page.locator('header.workspace-bar')).toBeVisible();
+});
+
 test('edits typed just before leaving are still saved', async ({ page }) => {
 	await page.goto('/problems/stacks-peek');
 	await typeInEditor(page, '# last second');
