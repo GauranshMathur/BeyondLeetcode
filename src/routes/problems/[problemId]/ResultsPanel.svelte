@@ -134,7 +134,7 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		padding: 0;
 	}
 	.mono {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 13px;
 	}
 	.muted {
@@ -185,6 +185,8 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 	}
 	.next {
 		font-family: var(--font-mono);
+		width: 200px;
+		justify-content: center;
 		height: 44px;
 		box-sizing: border-box;
 		display: flex;

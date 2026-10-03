@@ -1,12 +1,12 @@
 <script lang="ts">
-import { onDestroy } from 'svelte';
+import { onDestroy, type Snippet } from 'svelte';
 import { deserialize } from '$app/forms';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
 import type { ProblemView, RunView, SubmitView } from '$lib/server/learning/core';
 import type { Outcome } from './outcome';
 import ResultsPanel from './ResultsPanel.svelte';
 
-let { problem }: { problem: ProblemView } = $props();
+let { problem, statement }: { problem: ProblemView; statement: Snippet } = $props();
 
 const SAVE_DELAY_MS = 1000;
 type SaveState = 'saved' | 'edited' | 'saving' | 'failed' | 'rejected' | 'conflict';
@@ -190,20 +190,82 @@ const label: Record<SaveState, string> = {
 
 <svelte:window onpagehide={flush} onkeydowncapture={onkeydown} />
 
-<div class="pane">
-	<div class="bar">
-		<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
-		<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
+<div class="page">
+	<header class="workspace-bar">
+		<div class="left">
+			<a class="brand" href="/">BLC</a>
+			<nav class="crumbs" aria-label="Breadcrumb">
+				<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
+			</nav>
+		</div>
 		<div class="actions">
 			<button type="button" class="run mono" disabled={busy} onclick={run}>{outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
 			<button type="button" class="run submit mono" disabled={busy} onclick={submit}>{outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
 		</div>
+	</header>
+
+	<div class="grid">
+		{@render statement()}
+
+		<div class="pane">
+			<div class="bar">
+				<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
+				<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
+			</div>
+			<CodeEditor files={problem.files} {onchange} readonly={saveState === 'conflict'} />
+			<ResultsPanel {outcome} />
+		</div>
 	</div>
-	<CodeEditor files={problem.files} {onchange} readonly={saveState === 'conflict'} />
-	<ResultsPanel {outcome} />
 </div>
 
 <style>
+	.page {
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
+	}
+	.workspace-bar {
+		height: 64px;
+		flex-shrink: 0;
+		box-sizing: border-box;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		/* The 1px top padding offsets the bottom border so the 44px buttons clear the 64px bar by 10px each side. */
+		padding: 1px 32px 0;
+		border-bottom: 1px solid var(--ink);
+	}
+	.left {
+		display: flex;
+		gap: 28px;
+		align-items: center;
+	}
+	.brand {
+		color: var(--ink);
+		font-family: var(--font-sans);
+		font-weight: 600;
+		font-size: 18px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		text-decoration: none;
+		padding: 10px 0;
+	}
+	.crumbs {
+		display: flex;
+		gap: 10px;
+		font-family: var(--font-mono);
+		font-size: 13px;
+		color: var(--muted);
+	}
+	.crumbs a {
+		color: var(--muted);
+	}
+	.grid {
+		flex-grow: 1;
+		display: grid;
+		grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
+		min-height: 0;
+	}
 	.pane {
 		display: flex;
 		flex-direction: column;
@@ -221,6 +283,9 @@ const label: Record<SaveState, string> = {
 	}
 	.mono {
 		font-family: var(--font-mono);
+	}
+	.file {
+		color: var(--ink);
 	}
 	.status {
 		color: var(--muted);
@@ -251,5 +316,10 @@ const label: Record<SaveState, string> = {
 	}
 	.status.warn {
 		color: var(--accent);
+	}
+	@media (max-width: 900px) {
+		.grid {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 </style>
