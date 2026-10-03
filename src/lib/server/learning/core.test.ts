@@ -192,6 +192,15 @@ describe('learner.chapter() and learner.reachChapterEnd()', () => {
 		expect((await core.forLearner('any-learner').map()).currentTopicId).toBe('stacks');
 	});
 
+	it('survives two concurrent reads of the same Chapter', async () => {
+		const { learner } = await setup();
+		await Promise.all([
+			learner.reachChapterEnd('stacks-undo-log'),
+			learner.reachChapterEnd('stacks-undo-log')
+		]);
+		expect((await learner.topic('stacks')).counts.chaptersRead).toBe(1);
+	});
+
 	it("keeps each Learner's Read marks to themselves", async () => {
 		const { learner, core } = await setup();
 		await learner.reachChapterEnd('stacks-undo-log');

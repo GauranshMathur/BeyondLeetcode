@@ -189,6 +189,7 @@ export function chapterView(
 	if (!chapter) throw new LearningError('NotFound');
 	const topic = topicView(catalogue, progress, chapter.topicId);
 	const index = topic.chapters.findIndex((c) => c.id === chapterId);
+	const own = topic.chapters[index] as TopicChapter; // the catalogue puts every Chapter in its Topic
 	const next = topic.chapters[index + 1];
 	return {
 		id: chapter.id,
@@ -196,8 +197,8 @@ export function chapterView(
 		topicId: topic.id,
 		topicTitle: topic.title,
 		bodyHtml: renderMarkdown(chapter.body),
-		read: topic.chapters[index]?.read ?? false,
-		problems: topic.chapters[index]?.problems ?? [],
+		read: own.read,
+		problems: own.problems,
 		...(next && { nextChapterId: next.id })
 	};
 }
@@ -231,13 +232,13 @@ export function reachChapter(
 		readChapters: new Set([...before.readChapters, chapterId]),
 		recentTopicId: chapter.topicId
 	};
-	const was = new Map(mapView(catalogue, before).topics.map((t) => [t.id, t.state]));
-	const now = mapView(catalogue, after).topics;
+	const stateBefore = new Map(mapView(catalogue, before).topics.map((t) => [t.id, t.state]));
+	const topicsAfter = mapView(catalogue, after).topics;
 	return {
 		read: true,
-		topicCompleted: now.some((t) => t.id === chapter.topicId && t.state === 'complete'),
-		newlyUnlocked: now
-			.filter((t) => was.get(t.id) === 'locked' && t.state !== 'locked')
+		topicCompleted: topicsAfter.some((t) => t.id === chapter.topicId && t.state === 'complete'),
+		newlyUnlocked: topicsAfter
+			.filter((t) => stateBefore.get(t.id) === 'locked' && t.state !== 'locked')
 			.map(({ id, title }) => ({ id, title }))
 	};
 }

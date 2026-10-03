@@ -62,14 +62,21 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 			chapter: async (chapterId) =>
 				chapterView(deps.catalogue, await loadProgress(deps, learnerId), chapterId, renderMarkdown),
 			reachChapterEnd: async (chapterId) => {
-				const change = reachChapter(deps.catalogue, await loadProgress(deps, learnerId), chapterId);
-				// Upsert with nothing to update keeps the first readAt, so a repeat or a race is harmless.
-				await deps.db.chapterRead.upsert({
-					where: { learnerId_chapterId: { learnerId, chapterId } },
-					create: { learnerId, chapterId, readAt: now() },
-					update: {}
-				});
-				return change;
+				const before = await loadProgress(deps, learnerId);
+				const change = reachChapter(deps.catalogue, before, chapterId); // NotFound / TopicLocked
+				if (before.readChapters.has(chapterId)) return change;
+				// Only the call that inserts the mark reports the change; a concurrent repeat gets none.
+				try {
+					await deps.db.chapterRead.create({ data: { learnerId, chapterId, readAt: now() } });
+				} catch (e) {
+					if ((e as { code?: string }).code !== 'P2002') throw e;
+					return reachChapter(deps.catalogue, await loadProgress(deps, learnerId), chapterId);
+				}
+				// Diff against the state without this mark, so a concurrent read cannot hide the effect.
+				const after = await loadProgress(deps, learnerId);
+				const readChapters = new Set(after.readChapters);
+				readChapters.delete(chapterId);
+				return reachChapter(deps.catalogue, { ...after, readChapters }, chapterId);
 			}
 		})
 	};

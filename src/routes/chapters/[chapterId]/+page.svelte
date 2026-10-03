@@ -1,9 +1,17 @@
 <script lang="ts">
+import type { SubmitFunction } from '@sveltejs/kit';
 import { enhance } from '$app/forms';
 import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();
 const chapter = $derived(data.chapter);
+
+// A failed save must not replace the Chapter with an error page; reopening the Chapter retries.
+const saveRead: SubmitFunction =
+	() =>
+	async ({ result, update }) => {
+		if (result.type === 'success') await update();
+	};
 
 let endForm = $state<HTMLFormElement>();
 let sentinel = $state<HTMLElement>();
@@ -32,7 +40,7 @@ $effect(() => {
 <div class="page">
 	<aside>
 		<nav class="crumbs" aria-label="Breadcrumb">
-			<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{chapter.topicId}">{chapter.topicId}</a>
+			<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{chapter.topicId}">{chapter.topicTitle}</a>
 		</nav>
 		<div class="which">
 			<span class="mono muted">Chapter</span>
@@ -58,7 +66,7 @@ $effect(() => {
 		<article class="prose">{@html chapter.bodyHtml}</article>
 
 		<div bind:this={sentinel} aria-hidden="true"></div>
-		<form method="POST" action="?/reachEnd" use:enhance bind:this={endForm} hidden></form>
+		<form method="POST" action="?/reachEnd" use:enhance={saveRead} bind:this={endForm} hidden></form>
 
 		{#if chapter.problems.length > 0}
 			<section aria-labelledby="problems">
@@ -84,9 +92,6 @@ $effect(() => {
 			</section>
 		{/if}
 
-		{#if chapter.nextChapterId}
-			<a class="next mono" href="/chapters/{chapter.nextChapterId}">Next chapter →</a>
-		{/if}
 	</main>
 </div>
 
@@ -154,14 +159,12 @@ $effect(() => {
 		gap: 10px;
 		font-size: 13px;
 	}
-	.links a,
-	.next {
+	.links a {
 		color: var(--ink);
 		text-decoration: none;
 		padding: 6px 0;
 	}
-	.links a:hover,
-	.next:hover {
+	.links a:hover {
 		text-decoration: underline;
 		text-decoration-color: var(--accent);
 		text-underline-offset: 6px;
