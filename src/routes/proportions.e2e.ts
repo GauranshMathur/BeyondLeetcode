@@ -30,8 +30,11 @@ test('Map: header, heading and Topic nodes match the Map board', async ({ page }
 			.locator('rect')
 			.first()
 	);
-	// The bounding box includes the 1.25px stroke.
-	expect([Math.round(node.width - 1.25), Math.round(node.height - 1.25)]).toEqual([200, 64]);
+	// The bounding box adds the stroke, whose rounding varies by browser build.
+	expect(node.width).toBeGreaterThanOrEqual(200);
+	expect(node.width).toBeLessThanOrEqual(202);
+	expect(node.height).toBeGreaterThanOrEqual(64);
+	expect(node.height).toBeLessThanOrEqual(66);
 });
 
 test('Topic: header, title, progress and problem links match the Topic board', async ({ page }) => {
