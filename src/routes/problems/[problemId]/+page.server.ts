@@ -16,7 +16,9 @@ export const actions: Actions = {
 		} catch {
 			return fail(400, { message: 'files must be JSON' });
 		}
-		const baseRevision = Number(form.get('baseRevision'));
+		const rawRevision = form.get('baseRevision');
+		const baseRevision =
+			typeof rawRevision === 'string' && rawRevision !== '' ? Number(rawRevision) : Number.NaN;
 		if (
 			typeof files !== 'object' ||
 			files === null ||

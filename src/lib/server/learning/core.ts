@@ -97,7 +97,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					try {
 						await deps.db.chapterRead.create({ data: { learnerId, chapterId, readAt: now() } });
 					} catch (e) {
-						if ((e as { code?: string }).code !== 'P2002') throw e;
+						if (!isUniqueViolation(e)) throw e;
 						return reachChapter(deps.catalogue, await loadProgress(deps, learnerId), chapterId);
 					}
 					// Diff against the state without this mark, so a concurrent read cannot hide the effect.
@@ -189,4 +189,9 @@ async function loadStep(
 		}
 	});
 	return row ? { files: row.files as BuildFiles, revision: row.revision } : undefined;
+}
+
+/** Prisma's error code for a second row with the same unique key. */
+function isUniqueViolation(e: unknown): boolean {
+	return (e as { code?: string } | null)?.code === 'P2002';
 }

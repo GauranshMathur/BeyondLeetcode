@@ -43,3 +43,13 @@ test('a Problem in a Locked Topic returns 403 and an unknown one 404', async ({ 
 	expect((await page.goto('/problems/queues-enqueue'))?.status()).toBe(403);
 	expect((await page.goto('/problems/nope'))?.status()).toBe(404);
 });
+
+test('edits typed just before leaving are still saved', async ({ page }) => {
+	await page.goto('/problems/stacks-peek');
+	await page.getByLabel('Code: main.py').click();
+	await page.keyboard.type('# last second');
+	await page.goto('/');
+
+	await page.goto('/problems/stacks-peek');
+	await expect(page.getByLabel('Code: main.py')).toContainText('# last second');
+});
