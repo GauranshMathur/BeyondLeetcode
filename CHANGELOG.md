@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.5.0...v0.5.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C12a use system fonts ([#47](https://github.com/GauranshMathur/BeyondLeetcode/issues/47)) ([179c82e](https://github.com/GauranshMathur/BeyondLeetcode/commit/179c82e3714eabacc17f73c06193f6333e1ab2d2))
+
 ## [0.5.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.4.0...v0.5.0) (2026-10-03)
 
 
