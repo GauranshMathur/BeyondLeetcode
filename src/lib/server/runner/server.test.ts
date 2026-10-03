@@ -12,7 +12,7 @@ const valid = {
 
 function setup() {
 	const runner = createScriptedRunner({ tests: { a: { status: 'ok', stdout: 'x' } } });
-	return { runner, handle: createRunnerHandler({ token, runner }) };
+	return { runner, handle: createRunnerHandler({ token, runner, maxConcurrent: 4 }) };
 }
 
 const post = (body: unknown, auth: string | null = `Bearer ${token}`) =>
@@ -75,6 +75,20 @@ describe('Runner HTTP handler', () => {
 		['an unknown language', { ...valid, language: 'ruby' }],
 		['a file path that escapes the build', { ...valid, files: { '../evil': '' } }],
 		['an absolute file path', { ...valid, files: { '/etc/x': '' } }],
+		[
+			'more than 200 Tests',
+			{ ...valid, tests: Array.from({ length: 201 }, () => ({ id: 'a', input: '' })) }
+		],
+		[
+			'more than 64 files',
+			{
+				...valid,
+				files: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`f${i}.py`, '']))
+			}
+		],
+		['a memory limit under 32 MiB', { ...valid, limits: { timeoutMs: 1000, memoryMb: 31 } }],
+		['a file that is also a directory', { ...valid, files: { 'a/b': '', a: '' } }],
+		['a file under a file deeper down', { ...valid, files: { 'a/b/c': '', 'a/b': '' } }],
 		['a file path too long for the archive', { ...valid, files: { [`${'a'.repeat(95)}`]: '' } }]
 	])('answers 400 for %s', async (_name, body) => {
 		const { handle, runner } = setup();
@@ -86,13 +100,51 @@ describe('Runner HTTP handler', () => {
 	it('answers 500 without details when the runner throws', async () => {
 		const handle = createRunnerHandler({
 			token,
-			runner: createScriptedRunner({ unavailable: true })
+			runner: createScriptedRunner({ unavailable: true }),
+			maxConcurrent: 4
 		});
 
 		const res = await handle(post(valid));
 
 		expect(res.status).toBe(500);
 		expect(JSON.stringify(await res.json())).not.toContain('scripted');
+	});
+
+	it('accepts the largest request the limits allow', async () => {
+		const { handle, runner } = setup();
+		const body = {
+			...valid,
+			files: Object.fromEntries(Array.from({ length: 64 }, (_, i) => [`f${i}.py`, ''])),
+			tests: Array.from({ length: 200 }, () => ({ id: 'a', input: '' })),
+			limits: { timeoutMs: 1000, memoryMb: 32 }
+		};
+
+		expect((await handle(post(body))).status).toBe(200);
+		expect(runner.calls).toHaveLength(1);
+	});
+
+	it('answers 503 at once when the runs in flight are at the limit, and recovers after', async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const runner = {
+			async execute() {
+				await gate;
+				return { results: [] };
+			}
+		};
+		const handle = createRunnerHandler({ token, runner, maxConcurrent: 2 });
+
+		const first = handle(post({ ...valid, tests: [] }));
+		const second = handle(post({ ...valid, tests: [] }));
+		const refused = await handle(post({ ...valid, tests: [] }));
+		release();
+		await Promise.all([first, second]);
+		const after = await handle(post({ ...valid, tests: [] }));
+
+		expect(refused.status).toBe(503);
+		expect(after.status).toBe(200);
 	});
 
 	it('answers 404 and 405 for unknown routes and methods', async () => {

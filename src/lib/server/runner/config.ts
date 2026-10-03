@@ -24,6 +24,11 @@ export const sandboxConfig = {
 	attachTimeoutMs: 5_000,
 	/** How long the Runner waits for the exit status of a container whose output has ended. */
 	exitStatusTimeoutMs: 5_000,
+	/** Most Tests and most Build files in one request. */
+	maxTests: 200,
+	maxFiles: 64,
+	/** Smallest memory limit a request may ask for, in MiB. */
+	minMemoryMb: 32,
 	/** Largest request body the Runner accepts. */
 	requestBodyMaxBytes: 2 * 1024 * 1024,
 	/** Most bytes the Runner reads back from one container before it kills it. */
@@ -32,5 +37,39 @@ export const sandboxConfig = {
 	adapterTimeoutMs: 30_000
 } as const;
 
+/** Shortest bearer token the Runner starts with. */
+export const minTokenLength = 32;
+
 /** Set on every container the Runner starts, so leftovers can be found. */
 export const containerLabel = 'beyondleetcode.runner';
+
+/** The Runner process's own settings, from its environment. Throws a message fit for the log. */
+export function readRunnerEnv(
+	env: Record<string, string | undefined>,
+	defaultConcurrency: number
+): { token: string; port: number; host: string; maxConcurrent: number; dockerSocket: string } {
+	const token = env.RUNNER_TOKEN;
+	if (!token) {
+		throw new Error('RUNNER_TOKEN is not set. Every request must present it as a bearer token.');
+	}
+	if (token.length < minTokenLength) {
+		throw new Error(`RUNNER_TOKEN must be at least ${minTokenLength} characters.`);
+	}
+	const port = Number(env.RUNNER_PORT);
+	if (!env.RUNNER_PORT || !Number.isInteger(port) || port < 1 || port > 65535) {
+		throw new Error('RUNNER_PORT is not set to a port number.');
+	}
+	const maxConcurrent = env.RUNNER_MAX_CONCURRENT
+		? Number(env.RUNNER_MAX_CONCURRENT)
+		: defaultConcurrency;
+	if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1) {
+		throw new Error('RUNNER_MAX_CONCURRENT must be a positive whole number.');
+	}
+	return {
+		token,
+		port,
+		host: env.RUNNER_HOST || '0.0.0.0',
+		maxConcurrent,
+		dockerSocket: env.DOCKER_SOCKET ?? '/var/run/docker.sock'
+	};
+}

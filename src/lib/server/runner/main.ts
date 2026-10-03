@@ -1,35 +1,41 @@
-/** Entry point of the `runner` role: `bun src/lib/server/runner/main.ts`. Env: RUNNER_PORT, RUNNER_TOKEN, DOCKER_SOCKET. */
-import { sandboxConfig } from './config';
+/**
+ * Entry point of the `runner` role: `bun src/lib/server/runner/main.ts`.
+ * Env: RUNNER_PORT, RUNNER_TOKEN (32+ characters), RUNNER_HOST, RUNNER_MAX_CONCURRENT, DOCKER_SOCKET.
+ */
+import { availableParallelism } from 'node:os';
+import { readRunnerEnv, sandboxConfig } from './config';
 import { createEngine } from './engine';
-import { createSandboxRunner } from './sandbox';
+import { createSandboxRunner, removeStaleContainers } from './sandbox';
 import { createRunnerHandler } from './server';
 
 declare const Bun: {
 	serve(options: {
 		port: number;
+		hostname: string;
 		maxRequestBodySize: number;
 		fetch: (req: Request) => Promise<Response>;
 	}): { port: number };
 };
 
-function fail(message: string): never {
-	console.error(`Runner cannot start: ${message}`);
+let env: ReturnType<typeof readRunnerEnv>;
+try {
+	env = readRunnerEnv(process.env, availableParallelism());
+} catch (error) {
+	console.error(`Runner cannot start: ${(error as Error).message}`);
 	process.exit(1);
 }
 
-const token = process.env.RUNNER_TOKEN;
-if (!token) fail('RUNNER_TOKEN is not set. Every request must present it as a bearer token.');
-const port = Number(process.env.RUNNER_PORT);
-if (!process.env.RUNNER_PORT || !Number.isInteger(port) || port < 1 || port > 65535) {
-	fail('RUNNER_PORT is not set to a port number.');
-}
-
-const runner = createSandboxRunner(
-	createEngine(process.env.DOCKER_SOCKET ?? '/var/run/docker.sock')
-);
+const engine = createEngine(env.dockerSocket);
+// A Runner that died mid-run may have left containers behind.
+await removeStaleContainers(engine);
 const server = Bun.serve({
-	port,
+	port: env.port,
+	hostname: env.host,
 	maxRequestBodySize: sandboxConfig.requestBodyMaxBytes,
-	fetch: createRunnerHandler({ token, runner })
+	fetch: createRunnerHandler({
+		token: env.token,
+		runner: createSandboxRunner(engine),
+		maxConcurrent: env.maxConcurrent
+	})
 });
-console.log(`Runner listening on port ${server.port}`);
+console.log(`Runner listening on ${env.host}:${server.port}`);
