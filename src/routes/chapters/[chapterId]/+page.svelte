@@ -82,7 +82,7 @@ $effect(() => {
 					<tbody>
 						{#each chapter.problems as problem (problem.id)}
 							<tr>
-								<td><a class="ptitle" href="/problems/{problem.id}">{problem.title}</a></td>
+								<td class="title"><a class="ptitle" href="/problems/{problem.id}">{problem.title}</a></td>
 								<td><span class={problem.kind === 'Core' ? 'core' : 'muted upper'}>{problem.kind.toLowerCase()}</span></td>
 								<td class="status muted">{problem.status === 'Untouched' ? '—' : problem.status.toLowerCase()}</td>
 							</tr>
@@ -112,7 +112,7 @@ $effect(() => {
 		width: 320px;
 		flex-shrink: 0;
 		box-sizing: border-box;
-		padding: 32px;
+		padding: 32px 32px 48px;
 		background: var(--panel);
 		border-right: 1px solid var(--ink);
 		display: flex;
@@ -125,18 +125,27 @@ $effect(() => {
 		font-size: 13px;
 		color: var(--muted);
 	}
+	.crumbs {
+		align-items: baseline;
+	}
 	.crumbs a {
 		color: var(--muted);
+		padding: 12px 0;
+		line-height: 20px;
 	}
 	.which {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 12px;
 		font-size: 13px;
+	}
+	.which > .mono {
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
 	}
 	.stitle {
 		font-size: 24px;
-		line-height: 1.2;
+		line-height: 1.25;
 	}
 	.read {
 		display: flex;
@@ -173,7 +182,7 @@ $effect(() => {
 		flex-grow: 1;
 		min-width: 0;
 		box-sizing: border-box;
-		padding: 80px clamp(16px, 5.5vw, 80px) 96px;
+		padding: 80px clamp(16px, 6vw, 80px) 96px;
 		display: flex;
 		flex-direction: column;
 		gap: 56px;
@@ -184,10 +193,13 @@ $effect(() => {
 		gap: 24px;
 		max-width: 800px;
 	}
+	header .mono {
+		font-size: 14px;
+	}
 	h1 {
 		margin: 0;
 		font-weight: 400;
-		font-size: clamp(36px, 4.4vw, 64px);
+		font-size: clamp(36px, 5vw, 64px);
 		line-height: 1.04;
 		letter-spacing: -0.015em;
 	}
@@ -200,10 +212,10 @@ $effect(() => {
 	.prose :global(h1),
 	.prose :global(h2) {
 		font-weight: 400;
-		font-size: 30px;
+		font-size: 36px;
 		line-height: 1.15;
 		color: var(--ink);
-		margin: 1.6em 0 0.6em;
+		margin: 1.6em 0 20px;
 	}
 	.prose :global(h3) {
 		font-weight: 400;
@@ -217,7 +229,7 @@ $effect(() => {
 	.prose :global(p),
 	.prose :global(ul),
 	.prose :global(ol) {
-		margin: 0 0 1.2em;
+		margin: 0 0 20px;
 	}
 	.prose :global(a) {
 		color: var(--ink);
@@ -277,6 +289,13 @@ $effect(() => {
 		padding: 20px 16px 20px 0;
 		border-bottom: 1px solid var(--rule);
 	}
+	tr:last-child td {
+		border-bottom-color: var(--ink);
+	}
+	td.title {
+		padding-top: 10px;
+		padding-bottom: 10px;
+	}
 	.status {
 		text-align: right;
 		padding-right: 0;
@@ -286,6 +305,8 @@ $effect(() => {
 		font-family: var(--font-serif);
 		font-size: 21px;
 		text-decoration: none;
+		display: inline-block;
+		padding: 10px 0;
 	}
 	.ptitle:hover {
 		text-decoration: underline;

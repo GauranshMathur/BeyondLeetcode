@@ -48,6 +48,7 @@ let { children } = $props();
 	nav a {
 		color: var(--ink);
 		padding: 12px 0;
+		line-height: 20px;
 		text-decoration: underline;
 		text-decoration-color: var(--accent);
 		text-decoration-thickness: 2px;
@@ -55,5 +56,6 @@ let { children } = $props();
 	}
 	.who {
 		padding: 12px 0;
+		line-height: 20px;
 	}
 </style>
