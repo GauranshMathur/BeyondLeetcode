@@ -26,7 +26,7 @@ learner.chapter(chapterId)    learner.problem(problemId)
 learner.reachChapterEnd(chapterId)                    // → progress change (may Complete a Topic)
 learner.saveCode(problemId, files, baseRevision)      // → new revision, or RevisionConflict
 learner.run(problemId, files, baseRevision)           // → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
-learner.submit(problemId, files, baseRevision)        // saves, runs, returns Verdict + Accepted panel
+learner.submit(problemId, files, baseRevision)        // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
 learner.startFromReferenceCode(problemId)
 learner.switchLanguage(topicId, language)
 learner.revealHint(problemId)

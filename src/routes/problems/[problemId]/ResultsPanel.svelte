@@ -42,6 +42,33 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 				<span>{verdict}</span>
 				{#if verdict === 'Accepted'}<span class="muted">all tests passed</span>{/if}
 			</div>
+			{#if outcome.view.accepted}
+				{@const { accepted } = outcome.view}
+				<div class="accepted" aria-label="Accepted panel">
+					{#if accepted.topicCompleted}
+						<div class="complete">
+							<span class="mono label">Topic complete</span>
+							{#if accepted.newlyUnlocked.length > 0}
+								<span class="unlocks">
+									It unlocks
+									{#each accepted.newlyUnlocked as topic, i (topic.id)}{i > 0 ? ', ' : ''}<a class="topic-link" href="/topics/{topic.id}">{topic.title}</a>{/each}
+									on the map.
+								</span>
+							{/if}
+						</div>
+					{:else if accepted.newlyUnlocked.length > 0}
+						<div class="complete">
+							<span class="mono label">Unlocked</span>
+							<span class="unlocks">
+								{#each accepted.newlyUnlocked as topic, i (topic.id)}{i > 0 ? ', ' : ''}<a class="topic-link" href="/topics/{topic.id}">{topic.title}</a>{/each}
+							</span>
+						</div>
+					{/if}
+					{#if accepted.nextProblemId}
+						<a class="next mono" href="/problems/{accepted.nextProblemId}">Next problem →</a>
+					{/if}
+				</div>
+			{/if}
 			{#if failure?.kind === 'compile'}
 				<pre class="mono block" aria-label="Compile error">{failure.message}</pre>
 			{:else if failure?.kind === 'example'}
@@ -133,6 +160,46 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 	a {
 		color: var(--ink);
 		text-underline-offset: 4px;
+	}
+	.accepted {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 16px;
+		padding-bottom: 16px;
+	}
+	.complete {
+		display: flex;
+		gap: 16px;
+		align-items: baseline;
+	}
+	.label {
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+	.unlocks {
+		font-family: 'Newsreader', Georgia, serif;
+		font-size: 20px;
+		line-height: 1.4;
+		color: var(--body);
+	}
+	.topic-link {
+		color: var(--accent);
+		text-underline-offset: 5px;
+	}
+	.next {
+		height: 44px;
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		padding: 0 22px;
+		background: var(--ink);
+		color: var(--paper);
+		border-radius: 2px;
+		font-size: 14px;
+		font-weight: 500;
+		text-decoration: none;
 	}
 	.block {
 		margin: 0;

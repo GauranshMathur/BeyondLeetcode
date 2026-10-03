@@ -536,6 +536,56 @@ describe('learner.submit()', () => {
 		});
 	});
 
+	it('Accepted carries the next Core Problem, and no Topic completion mid-Topic', async () => {
+		const { learner } = await setup();
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		expect(view.accepted).toEqual({
+			nextProblemId: 'stacks-pop',
+			topicCompleted: false,
+			newlyUnlocked: []
+		});
+	});
+
+	it('the last Core Problem completes the Topic and lists only Topics it alone Unlocks', async () => {
+		const { learner } = await setup();
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.reachChapterEnd('stacks-call-frames');
+		await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+		// Queues needs only stacks; heaps also needs queues, so it stays out.
+		expect(view.accepted).toEqual({
+			nextProblemId: null,
+			topicCompleted: true,
+			newlyUnlocked: [{ id: 'queues', title: 'Queues' }]
+		});
+	});
+
+	it('re-solving a Solved Problem reports no completion and nothing newly Unlocked', async () => {
+		const { learner } = await setup();
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.reachChapterEnd('stacks-call-frames');
+		await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 1);
+		expect(view.accepted).toEqual({
+			nextProblemId: null,
+			topicCompleted: false,
+			newlyUnlocked: []
+		});
+	});
+
+	it("an Extra's next is the Core Problem after its parent", async () => {
+		const { learner } = await setup();
+		const view = await learner.submit('stacks-peek', { 'main.py': 'x' }, 0);
+		expect(view.accepted?.nextProblemId).toBe('stacks-pop');
+	});
+
+	it('a Verdict other than Accepted has no accepted', async () => {
+		const { learner } = await setup({ tests: { [pushExample]: wrong } });
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		expect(view.accepted).toBeUndefined();
+	});
+
 	it('Wrong Answer on an Example Test shows input, expected, got and stderr', async () => {
 		const { learner, db } = await setup({
 			tests: { [pushExample]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
