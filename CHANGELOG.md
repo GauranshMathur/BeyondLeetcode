@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.4.0...v0.5.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C5a Problem screen: statement, Example Tests, editor, autosave ([#41](https://github.com/GauranshMathur/BeyondLeetcode/issues/41)) ([481a7ab](https://github.com/GauranshMathur/BeyondLeetcode/commit/481a7ab923ae4e40ac82fbf97acd712bcca371a7))
+
 ## [0.4.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.3.0...v0.4.0) (2026-10-03)
 
 
