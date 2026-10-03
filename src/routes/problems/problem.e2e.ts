@@ -1,4 +1,13 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
+
+// Click into the editor, wait until CodeMirror has focus, then type at a human pace. Typing with
+// no delay straight after the click races CodeMirror's selection sync and can move the cursor.
+async function typeInEditor(page: Page, text: string) {
+	const editor = page.getByLabel('Code: main.py');
+	await editor.click();
+	await expect(editor).toBeFocused();
+	await page.keyboard.type(text, { delay: 25 });
+}
 
 test('a Problem shows its statement and Example Tests, and typed code survives a reload', async ({
 	page
@@ -12,9 +21,7 @@ test('a Problem shows its statement and Example Tests, and typed code survives a
 	await expect(page.locator('pre').filter({ hasText: 'push 1' })).toContainText('Output');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
-	const editor = page.getByLabel('Code: main.py');
-	await editor.click();
-	await page.keyboard.type('print(42)');
+	await typeInEditor(page, 'print(42)');
 	await expect(page.getByRole('status')).toHaveText('edited');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
@@ -27,12 +34,10 @@ test('a second tab with a stale revision is told to reload', async ({ page, cont
 	const other = await context.newPage();
 	await other.goto('/problems/stacks-pop');
 
-	await page.getByLabel('Code: main.py').click();
-	await page.keyboard.type('# one');
+	await typeInEditor(page, '# one');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
-	await other.getByLabel('Code: main.py').click();
-	await other.keyboard.type('# two');
+	await typeInEditor(other, '# two');
 	await expect(other.getByRole('status')).toHaveText('edited elsewhere — reload');
 
 	await other.reload();
@@ -46,8 +51,7 @@ test('a Problem in a Locked Topic returns 403 and an unknown one 404', async ({ 
 
 test('edits typed just before leaving are still saved', async ({ page }) => {
 	await page.goto('/problems/stacks-peek');
-	await page.getByLabel('Code: main.py').click();
-	await page.keyboard.type('# last second');
+	await typeInEditor(page, '# last second');
 	await page.goto('/');
 
 	await page.goto('/problems/stacks-peek');
