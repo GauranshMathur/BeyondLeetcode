@@ -182,8 +182,9 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 						path: `/containers/${id}/wait?condition=next-exit`
 					},
 					(res) => {
-						// The daemon answered: the status itself comes at exit, which the hard stop bounds.
-						req.setTimeout(0);
+						// Registered: the status itself comes at exit, which the hard stop bounds. An error
+						// reply keeps the timeout, so a stalled error body cannot hold the caller either.
+						if (res.statusCode === 200) req.setTimeout(0);
 						const chunks: Buffer[] = [];
 						const status = new Promise<number>((done, fail) => {
 							res.on('data', (chunk: Buffer) => chunks.push(chunk));

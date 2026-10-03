@@ -82,26 +82,36 @@ for root, _, names in os.walk(BUILD):
             BUILD_FILES.append((os.path.relpath(path, BUILD), f.read()))
 
 
-def wipe(path):
-    # lstat: a symlink is unlinked, never followed. chmod first: learner code may have locked a directory.
-    if stat.S_ISDIR(os.lstat(path).st_mode):
-        os.chmod(path, 0o700)
-        for name in os.listdir(path):
-            wipe(os.path.join(path, name))
+def wipe_children(root):
+    # Empties root without recursion (a deeply nested tree cannot overflow the stack). lstat: a
+    # symlink is unlinked, never followed. chmod first: learner code may have locked a directory.
+    dirs = []
+    stack = [root]
+    while stack:
+        here = stack.pop()
+        os.chmod(here, 0o700)
+        for name in os.listdir(here):
+            path = os.path.join(here, name)
+            if stat.S_ISDIR(os.lstat(path).st_mode):
+                dirs.append(path)
+                stack.append(path)
+            else:
+                os.unlink(path)
+    for path in reversed(dirs):
         os.rmdir(path)
-    else:
-        os.unlink(path)
 
 
 def fresh_build():
-    """Everything under /work is gone, then the Build is exactly as it was uploaded."""
-    for name in os.listdir(WORK):
-        wipe(os.path.join(WORK, name))
+    # Nothing a Test left in /work survives, its metadata included; the Build is as uploaded.
+    wipe_children(WORK)
+    for attr in os.listxattr(WORK):
+        os.removexattr(WORK, attr)
     for rel, data in BUILD_FILES:
         target = os.path.join(BUILD, rel)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "wb") as f:
             f.write(data)
+    os.utime(WORK, (0, 0))
 
 
 CHILD_ENV = {"PATH": os.environ.get("PATH", "")}

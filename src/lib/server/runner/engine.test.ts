@@ -59,6 +59,23 @@ describe('Engine attach', () => {
 		expect(await status).toBe(137);
 	});
 
+	it('does not wait forever on an error reply whose body never ends', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'engine-'));
+		const socketPath = join(dir, 'docker.sock');
+		const server = createServer((socket) => {
+			socket.once('data', () => {
+				socket.write('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 100\r\n\r\npartial');
+			});
+		}).listen(socketPath);
+		cleanup.push(() => {
+			server.close();
+			rmSync(dir, { recursive: true, force: true });
+		});
+		await new Promise((resolve) => server.once('listening', resolve));
+
+		await expect(createEngine(socketPath, 100).wait('c1')).rejects.toThrow();
+	});
+
 	it('fails a lifecycle call after 15 s by default', () => {
 		expect(engineCallTimeoutMs).toBe(15_000);
 	});

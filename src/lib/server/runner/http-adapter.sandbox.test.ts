@@ -415,6 +415,48 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 		}
 	});
 
+	it('survives learner code that locks /work or nests directories deeply, and carries nothing over in /work metadata', async () => {
+		const main = [
+			'import os, sys',
+			'data = sys.stdin.read()',
+			'seen = []',
+			'try:',
+			'    seen.append(str(os.stat("/work").st_mtime))',
+			'    seen.append(repr(os.listxattr("/work")))',
+			'    seen.append(oct(os.stat("/work").st_mode & 0o777))',
+			'except OSError as e:',
+			'    seen.append("err")',
+			'print(*seen)',
+			'os.makedirs("/work/deep", exist_ok=True)',
+			'os.chdir("/work/deep")',
+			'for _ in range(1500):',
+			'    os.mkdir("a")',
+			'    os.chdir("a")',
+			'os.chdir("/")',
+			'try:',
+			'    os.setxattr("/work", "user.stash", data.encode())',
+			'except OSError:',
+			'    pass',
+			'os.utime("/work", (int(data[-3:]) if data[-3:].isdigit() else 7, 123456789))',
+			'os.chmod("/work", 0)',
+			''
+		].join('\n');
+
+		const result = await run({ 'main.py': main }, [
+			{ id: 'a', input: 'SECRET-111' },
+			{ id: 'b', input: 'SECRET-222' },
+			{ id: 'c', input: 'SECRET-333' }
+		]);
+
+		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok', 'ok']);
+		const outputs = result.results.map((r) => r.stdout);
+		expect(outputs[1]).toBe(outputs[0]);
+		expect(outputs[2]).toBe(outputs[0]);
+		expect(outputs[0]).not.toContain('user.stash');
+		expect(outputs[0]).not.toContain('123456789');
+		expect(outputs[0]).toContain('0o700');
+	});
+
 	it('stops printing results and exits non-zero when something unexpected happens', async () => {
 		// A Test input missing from the archive makes the harness fail before any learner code runs.
 		const spec = containerSpec(2, 2000, 256);
