@@ -211,6 +211,28 @@ describe('malformed content', () => {
 		);
 	});
 
+	it('rejects a Topic with no Chapters', async () => {
+		await expect(
+			loadBroken((dir) =>
+				editJson(join(stacks(dir), 'topic.json'), (t) => {
+					t.chapters = [];
+				})
+			)
+		).rejects.toThrow(/topics\/stacks\/topic\.json: a Topic needs at least one Chapter/);
+	});
+
+	it('rejects a Topic with no Core Problem', async () => {
+		await expect(
+			loadBroken(async (dir) => {
+				for (const chapter of ['stacks-undo-log', 'stacks-call-frames']) {
+					await editJson(join(stacks(dir), 'chapters', chapter, 'chapter.json'), (c) => {
+						c.problems = [];
+					});
+				}
+			})
+		).rejects.toThrow(/topics\/stacks\/topic\.json: a Topic needs at least one Core Problem/);
+	});
+
 	it('rejects a Problem without a Solution', async () => {
 		await expect(loadBroken((dir) => rm(join(pushProblem(dir), 'solution.md')))).rejects.toThrow(
 			/stacks-push\/solution\.md: missing file/

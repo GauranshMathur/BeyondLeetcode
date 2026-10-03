@@ -273,6 +273,13 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 			topicChapters.push(loaded);
 		}
 
+		if (topic.chapters.length === 0) {
+			report(join(topicDir, 'topic.json'), 'a Topic needs at least one Chapter');
+		} else if (unreadable.size === 0 && topicChapters.length === topic.chapters.length) {
+			const hasCore = topicChapters.some((c) => c.problems.some((p) => p.kind === 'core'));
+			if (!hasCore) report(join(topicDir, 'topic.json'), 'a Topic needs at least one Core Problem');
+		}
+
 		topics.set(topicId, {
 			id: topicId,
 			title: topic.title,
