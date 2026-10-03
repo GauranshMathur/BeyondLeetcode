@@ -118,8 +118,6 @@ jobs:
           mkdir "$RUNNER_TEMP/instance" && cd "$RUNNER_TEMP/instance"
           docker run --rm -v "$PWD":/out -e BEYONDLEETCODE_IMAGE=beyondleetcode:ci beyondleetcode:ci init --origin http://localhost:3000
           grep -q '^BEYONDLEETCODE_IMAGE=beyondleetcode:ci$' .env
-          # The Runner does not pull its sandbox image yet (C4d).
-          docker pull python:3.13-slim
           docker compose up -d
           ok=
           for i in $(seq 1 30); do

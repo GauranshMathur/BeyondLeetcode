@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { sandboxConfig } from './config';
+import { containerLabel, sandboxConfig, sweepMinAgeMs } from './config';
 import type { Engine } from './engine';
-import { createSandboxRunner } from './sandbox';
+import { createSandboxRunner, ensureImages, removeStaleContainers } from './sandbox';
 
 const request = {
 	language: 'python' as const,
@@ -54,7 +54,7 @@ describe('Sandbox runner: harness exit status', () => {
 	it('returns the results when the harness exits 0', async () => {
 		const { engine } = fakeEngine({ output: okLine });
 
-		const result = await createSandboxRunner(engine).execute(request);
+		const result = await createSandboxRunner(engine, 'test-instance').execute(request);
 
 		expect(result.results).toEqual([{ id: 'a', status: 'ok', stdout: 'hi', stderr: '' }]);
 	});
@@ -62,7 +62,7 @@ describe('Sandbox runner: harness exit status', () => {
 	it('discards the results and fails when the harness exits non-zero', async () => {
 		const { engine } = fakeEngine({ output: okLine, exitCode: 1 });
 
-		await expect(createSandboxRunner(engine).execute(request)).rejects.toThrow(
+		await expect(createSandboxRunner(engine, 'test-instance').execute(request)).rejects.toThrow(
 			/exited with status 1/
 		);
 	});
@@ -71,7 +71,7 @@ describe('Sandbox runner: harness exit status', () => {
 		vi.useFakeTimers();
 		try {
 			const { engine, calls } = fakeEngine({ neverEnds: true, exitCode: 137 });
-			const pending = createSandboxRunner(engine).execute(request);
+			const pending = createSandboxRunner(engine, 'test-instance').execute(request);
 
 			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
 			const result = await pending;
@@ -93,7 +93,7 @@ describe('Sandbox runner: leaks and stalls', () => {
 		});
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		await expect(createSandboxRunner(engine).execute(request)).rejects.toThrow(
+		await expect(createSandboxRunner(engine, 'test-instance').execute(request)).rejects.toThrow(
 			/exited with status 2/
 		);
 
@@ -107,7 +107,7 @@ describe('Sandbox runner: leaks and stalls', () => {
 			const { engine } = fakeEngine({ output: okLine });
 			engine.remove = vi.fn(() => new Promise<void>(() => {}));
 			const started = Date.now();
-			const pending = createSandboxRunner(engine).execute(request);
+			const pending = createSandboxRunner(engine, 'test-instance').execute(request);
 			const outcome = pending.then(
 				() => 'done',
 				() => 'failed'
@@ -133,7 +133,7 @@ describe('Sandbox runner: leaks and stalls', () => {
 						stalled = reject;
 					})
 			});
-			const pending = createSandboxRunner(engine).execute(request);
+			const pending = createSandboxRunner(engine, 'test-instance').execute(request);
 			const outcome = expect(pending).rejects.toThrow();
 
 			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
@@ -145,5 +145,108 @@ describe('Sandbox runner: leaks and stalls', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+type Listed = { id: string; created: number; labels: Record<string, string> };
+
+describe('Sandbox runner: start-up sweep', () => {
+	const nowMs = 1_000_000_000_000;
+	const agoS = (ms: number) => (nowMs - ms) / 1000;
+
+	async function sweep(listed: Listed[]) {
+		const removed: string[] = [];
+		const engine = {
+			listContainers: async () => listed,
+			remove: async (id: string) => void removed.push(id)
+		} as unknown as Engine;
+		await removeStaleContainers(engine, 'me', nowMs);
+		return removed;
+	}
+
+	it('keeps another instance’s young container and its own', async () => {
+		const removed = await sweep([
+			{
+				id: 'young',
+				created: agoS(sweepMinAgeMs - 1000),
+				labels: { [containerLabel]: 'other' }
+			},
+			{
+				id: 'mine',
+				created: agoS(sweepMinAgeMs * 10),
+				labels: { [containerLabel]: 'me' }
+			}
+		]);
+
+		expect(removed).toEqual([]);
+	});
+
+	it('removes another instance’s container past the hard wall clock plus margin', async () => {
+		const removed = await sweep([
+			{
+				id: 'old',
+				created: agoS(sweepMinAgeMs + 1000),
+				labels: { [containerLabel]: 'other' }
+			}
+		]);
+
+		expect(removed).toEqual(['old']);
+	});
+
+	it('removes a container from before instance ids whatever its age', async () => {
+		const removed = await sweep([
+			{ id: 'legacy', created: agoS(0), labels: { [containerLabel]: 'true' } }
+		]);
+
+		expect(removed).toEqual(['legacy']);
+	});
+});
+
+describe('Sandbox runner: ensureImages', () => {
+	function imageEngine(present: Set<string>, failPulls = 0) {
+		const pulled: string[] = [];
+		let failures = failPulls;
+		const engine = {
+			hasImage: async (image: string) => present.has(image),
+			pull: async (image: string) => {
+				if (failures-- > 0) throw new Error('registry down');
+				pulled.push(image);
+				present.add(image);
+			}
+		} as unknown as Engine;
+		return { engine, pulled };
+	}
+
+	it('pulls only the images the engine lacks', async () => {
+		const { engine, pulled } = imageEngine(new Set(['a:1']));
+
+		await ensureImages(engine, ['a:1', 'b:2']);
+
+		expect(pulled).toEqual(['b:2']);
+	});
+
+	it('retries a failed pull with a growing pause and never gives up', async () => {
+		const { engine, pulled } = imageEngine(new Set(), 3);
+		const pauses: number[] = [];
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await ensureImages(engine, ['a:1'], async (ms) => void pauses.push(ms));
+
+		expect(pulled).toEqual(['a:1']);
+		expect(pauses).toEqual([1000, 2000, 4000]);
+		vi.restoreAllMocks();
+	});
+
+	it('logs the start and finish of each pull', async () => {
+		const { engine } = imageEngine(new Set());
+		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+		await ensureImages(engine, ['a:1']);
+
+		expect(log.mock.calls.map(([line]) => line)).toEqual([
+			'Pulling Sandbox image a:1',
+			'Pulled Sandbox image a:1'
+		]);
+		vi.restoreAllMocks();
 	});
 });

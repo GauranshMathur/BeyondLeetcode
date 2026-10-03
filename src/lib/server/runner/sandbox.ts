@@ -3,7 +3,7 @@
  * afterwards whatever happened. Python only for now; Node and Go arrive with their own cards.
  */
 import { z } from 'zod';
-import { containerLabel, sandboxConfig } from './config';
+import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
 import type { AttachedContainer, Engine } from './engine';
 import { harnessScript } from './harness';
 import type { ExecuteRequest, ExecuteResult, RunnerPort, TestResult } from './port';
@@ -25,7 +25,12 @@ const harnessLine = z.union([
 	})
 ]);
 
-export function containerSpec(testCount: number, testTimeoutMs: number, memoryMb: number) {
+export function containerSpec(
+	instanceId: string,
+	testCount: number,
+	testTimeoutMs: number,
+	memoryMb: number
+) {
 	const memory = memoryMb * mib;
 	return {
 		Cmd: ['python', '-I', '-c', harnessScript],
@@ -38,7 +43,7 @@ export function containerSpec(testCount: number, testTimeoutMs: number, memoryMb
 			`RUNNER_TOTAL_OUTPUT_CAP=${sandboxConfig.totalOutputCapBytes}`,
 			`RUNNER_DEADLINE_S=${sandboxConfig.containerDeadlineS}`
 		],
-		Labels: { [containerLabel]: 'true' },
+		Labels: { [containerLabel]: instanceId },
 		AttachStdin: true,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -68,7 +73,11 @@ export function containerSpec(testCount: number, testTimeoutMs: number, memoryMb
 	};
 }
 
-async function execute(engine: Engine, request: ExecuteRequest): Promise<ExecuteResult> {
+async function execute(
+	engine: Engine,
+	instanceId: string,
+	request: ExecuteRequest
+): Promise<ExecuteResult> {
 	if (request.language !== 'python') {
 		throw new Error(`Language not supported by the Runner yet: ${request.language}`);
 	}
@@ -96,7 +105,7 @@ async function execute(engine: Engine, request: ExecuteRequest): Promise<Execute
 
 	const id = await engine.create(
 		sandboxConfig.pythonImage,
-		containerSpec(request.tests.length, testTimeoutMs, memoryMb)
+		containerSpec(instanceId, request.tests.length, testTimeoutMs, memoryMb)
 	);
 	let timedOut = false;
 	let attached: AttachedContainer | undefined;
@@ -206,12 +215,53 @@ async function removeContainer(engine: Engine, id: string): Promise<void> {
 	}
 }
 
-/** At Runner start-up: containers left by a previous Runner that died mid-run. */
-export async function removeStaleContainers(engine: Engine): Promise<void> {
+/**
+ * At Runner start-up: containers left by a Runner that died mid-run. Another live Runner's
+ * in-flight run is never touched, so a container is removed only if it predates instance ids, or
+ * belongs to another instance and is older than `sweepMinAgeMs`. Age is the only liveness test.
+ */
+export async function removeStaleContainers(
+	engine: Engine,
+	instanceId: string,
+	now = Date.now()
+): Promise<void> {
 	try {
-		for (const id of await engine.listByLabel(containerLabel)) await removeContainer(engine, id);
+		for (const { id, created, labels } of await engine.listContainers(containerLabel)) {
+			const owner = labels[containerLabel];
+			if (owner === instanceId) continue;
+			const legacy = owner === legacyContainerLabelValue;
+			if (legacy || now - created * 1000 > sweepMinAgeMs) await removeContainer(engine, id);
+		}
 	} catch (error) {
 		console.error('Could not clean up leftover Sandbox containers', error);
+	}
+}
+
+const pullRetryMinMs = 1_000;
+const pullRetryMaxMs = 30_000;
+
+/**
+ * Makes sure the engine holds every image, pulling those it lacks. A failed pull is logged and
+ * retried with a growing pause, forever: the Runner stays not-ready rather than exiting.
+ */
+export async function ensureImages(
+	engine: Engine,
+	images: readonly string[],
+	sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+): Promise<void> {
+	for (const image of images) {
+		for (let pause = pullRetryMinMs; ; pause = Math.min(pause * 2, pullRetryMaxMs)) {
+			try {
+				if (await engine.hasImage(image)) break;
+				console.log(`Pulling Sandbox image ${image}`);
+				await engine.pull(image);
+				console.log(`Pulled Sandbox image ${image}`);
+				break;
+			} catch (error) {
+				console.error(`Could not pull Sandbox image ${image}, retrying in ${pause} ms`, error);
+				await sleep(pause);
+			}
+		}
 	}
 }
 
@@ -223,6 +273,6 @@ function safeJson(text: string): unknown {
 	}
 }
 
-export function createSandboxRunner(engine: Engine): RunnerPort {
-	return { execute: (request) => execute(engine, request) };
+export function createSandboxRunner(engine: Engine, instanceId: string): RunnerPort {
+	return { execute: (request) => execute(engine, instanceId, request) };
 }

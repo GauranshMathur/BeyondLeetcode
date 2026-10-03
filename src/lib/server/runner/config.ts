@@ -40,8 +40,20 @@ export const sandboxConfig = {
 /** Shortest bearer token the Runner starts with. */
 export const minTokenLength = 32;
 
-/** Set on every container the Runner starts, so leftovers can be found. */
+/**
+ * Set on every container the Runner starts, so leftovers can be found. The value is the starting
+ * Runner process's instance id; containers from before instance ids carry the value `true`.
+ */
 export const containerLabel = 'beyondleetcode.runner';
+
+/** The `containerLabel` value of containers made before instance ids existed. */
+export const legacyContainerLabelValue = 'true';
+
+/**
+ * A start-up sweep removes another instance's container only once it is older than this: past the
+ * hard wall clock (`containerTimeoutMs`) plus a margin, so no live Runner's in-flight run is touched.
+ */
+export const sweepMinAgeMs = sandboxConfig.containerTimeoutMs + 5_000;
 
 /** The Runner process's own settings, from its environment. Throws a message fit for the log. */
 export function readRunnerEnv(

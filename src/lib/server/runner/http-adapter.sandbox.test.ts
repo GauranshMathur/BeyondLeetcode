@@ -6,7 +6,7 @@ import { type ContractSubject, type ProgramKind, runnerContract } from './contra
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
-import { containerSpec, removeStaleContainers } from './sandbox';
+import { containerSpec } from './sandbox';
 import { createTar } from './tar';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
@@ -288,7 +288,7 @@ async function runHarness(
 	inputs: string[],
 	env: Record<string, string> = {}
 ) {
-	const spec = containerSpec(inputs.length, 2000, 256);
+	const spec = containerSpec('test-instance', inputs.length, 2000, 256);
 	const merged = [
 		...spec.Env.filter((e) => !(e.split('=')[0] in env)),
 		...Object.entries(env).map(([k, v]) => `${k}=${v}`)
@@ -459,7 +459,7 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 
 	it('stops printing results and exits non-zero when something unexpected happens', async () => {
 		// A Test input missing from the archive makes the harness fail before any learner code runs.
-		const spec = containerSpec(2, 2000, 256);
+		const spec = containerSpec('test-instance', 2, 2000, 256);
 		const id = await engine.create(sandboxConfig.pythonImage, spec);
 		const { status: exit } = await engine.wait(id);
 		let out = '';
@@ -517,7 +517,10 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 
 describe('Runner: container configuration', { timeout: 60_000 }, () => {
 	it('is created with AutoRemove, no IPC, no log driver and the label', async () => {
-		const id = await engine.create(sandboxConfig.pythonImage, containerSpec(1, 2000, 256));
+		const id = await engine.create(
+			sandboxConfig.pythonImage,
+			containerSpec('test-instance', 1, 2000, 256)
+		);
 
 		const { HostConfig } = await engine.inspect(id);
 		await engine.remove(id);
@@ -527,16 +530,5 @@ describe('Runner: container configuration', { timeout: 60_000 }, () => {
 			IpcMode: 'none',
 			LogConfig: { Type: 'none' }
 		});
-	});
-
-	it('removes leftover labelled containers when the Runner starts', async () => {
-		const spec = { ...containerSpec(1, 2000, 256), Cmd: ['sleep', '60'] };
-		const id = await engine.create(sandboxConfig.pythonImage, spec);
-		await engine.start(id);
-		expect(await engine.listByLabel(containerLabel)).toContain(id);
-
-		await removeStaleContainers(engine);
-
-		expect(await engine.listByLabel(containerLabel)).toEqual([]);
 	});
 });
