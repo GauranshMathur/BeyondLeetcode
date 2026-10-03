@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.6.0...v0.6.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C12b reject empty Topics ([#48](https://github.com/GauranshMathur/BeyondLeetcode/issues/48)) ([fbcdca1](https://github.com/GauranshMathur/BeyondLeetcode/commit/fbcdca10db0a87c4239053ab6032083aa465b611))
+
+## [0.6.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.5.1...v0.6.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C8a Image: one image with web and runner roles ([#45](https://github.com/GauranshMathur/BeyondLeetcode/issues/45)) ([7b40e70](https://github.com/GauranshMathur/BeyondLeetcode/commit/7b40e70ef3f9b29da61f0ee8f50a04441f97e1c9))
+
+## [0.5.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.5.0...v0.5.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C12a use system fonts ([#47](https://github.com/GauranshMathur/BeyondLeetcode/issues/47)) ([179c82e](https://github.com/GauranshMathur/BeyondLeetcode/commit/179c82e3714eabacc17f73c06193f6333e1ab2d2))
+
 ## [0.5.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.4.0...v0.5.0) (2026-10-03)
 
 

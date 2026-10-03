@@ -199,7 +199,7 @@ const label: Record<SaveState, string> = {
 		font-size: 13px;
 	}
 	.mono {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 	}
 	.status {
 		color: var(--muted);

@@ -54,7 +54,7 @@ const problem = $derived(data.problem);
 		min-width: 0;
 	}
 	.mono {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 	}
 	.muted {
 		color: var(--muted);
@@ -62,7 +62,7 @@ const problem = $derived(data.problem);
 	.crumbs {
 		display: flex;
 		gap: 10px;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 13px;
 		color: var(--muted);
 	}
@@ -90,7 +90,7 @@ const problem = $derived(data.problem);
 		margin: 0 0 1em;
 	}
 	.prose :global(code) {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 		font-size: 0.85em;
 	}
 	.prose :global(pre) {

@@ -56,7 +56,7 @@ _Avoid_: Editorial, answer
 A Topic that must be Complete before another Topic Unlocks.
 
 **Locked** / **Unlocked** (Topic):
-A Locked Topic cannot be opened; it becomes Unlocked when all its Prerequisites are Complete.
+A Locked Topic cannot be opened; it becomes Unlocked when all its Prerequisites are Complete. A Complete Topic is never Locked, even if new content later gives it an unfinished Prerequisite.
 
 **Read** (Chapter):
 The Learner has reached the end of the Chapter.

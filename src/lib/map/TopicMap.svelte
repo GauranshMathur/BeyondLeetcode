@@ -77,7 +77,7 @@ function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
 	svg {
 		display: block;
 		margin: 0 auto;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: var(--font-mono);
 	}
 	.edge {
 		stroke: var(--ink);

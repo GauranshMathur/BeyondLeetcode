@@ -1,0 +1,12 @@
+node_modules
+build
+.svelte-kit
+.git
+prisma/*.db
+prisma/generated
+.env
+.env.*
+!.env.example
+.serena
+test-results
+playwright-report
