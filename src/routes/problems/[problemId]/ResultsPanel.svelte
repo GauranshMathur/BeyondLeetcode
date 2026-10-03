@@ -46,8 +46,8 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 				{@const { accepted } = outcome.view}
 				<div class="accepted" aria-label="Accepted panel">
 					{#if accepted.topicCompleted}
-						<div class="complete">
-							<span class="mono label">Topic complete</span>
+						<div class="unlock-note">
+							<span class="label">Topic complete</span>
 							{#if accepted.newlyUnlocked.length > 0}
 								<span class="unlocks">
 									It unlocks
@@ -56,16 +56,9 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 								</span>
 							{/if}
 						</div>
-					{:else if accepted.newlyUnlocked.length > 0}
-						<div class="complete">
-							<span class="mono label">Unlocked</span>
-							<span class="unlocks">
-								{#each accepted.newlyUnlocked as topic, i (topic.id)}{i > 0 ? ', ' : ''}<a class="topic-link" href="/topics/{topic.id}">{topic.title}</a>{/each}
-							</span>
-						</div>
 					{/if}
 					{#if accepted.nextProblemId}
-						<a class="next mono" href="/problems/{accepted.nextProblemId}">Next problem →</a>
+						<a class="next" href="/problems/{accepted.nextProblemId}">Next problem →</a>
 					{/if}
 				</div>
 			{/if}
@@ -168,18 +161,20 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		gap: 16px;
 		padding-bottom: 16px;
 	}
-	.complete {
+	.unlock-note {
 		display: flex;
 		gap: 16px;
 		align-items: baseline;
 	}
 	.label {
+		font-family: var(--font-mono);
+		font-size: 13px;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		white-space: nowrap;
 	}
 	.unlocks {
-		font-family: 'Newsreader', Georgia, serif;
+		font-family: var(--font-serif);
 		font-size: 20px;
 		line-height: 1.4;
 		color: var(--body);
@@ -189,13 +184,14 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		text-underline-offset: 5px;
 	}
 	.next {
+		font-family: var(--font-mono);
 		height: 44px;
 		box-sizing: border-box;
 		display: flex;
 		align-items: center;
 		padding: 0 22px;
 		background: var(--ink);
-		color: var(--paper);
+		color: var(--on-ink);
 		border-radius: 2px;
 		font-size: 14px;
 		font-weight: 500;
