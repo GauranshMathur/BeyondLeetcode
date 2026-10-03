@@ -11,8 +11,8 @@ services:
     ports:
       - "${PORT}:3000"
     environment:
-      ORIGIN: ${ORIGIN:?set ORIGIN in .env}
-      # Behind a reverse proxy, drop ORIGIN and set these instead (the proxy must send them):
+      ORIGIN: ${ORIGIN:-}
+      # Behind a reverse proxy, empty ORIGIN in .env and set these instead (the proxy must send them):
       # PROTOCOL_HEADER: x-forwarded-proto
       # HOST_HEADER: x-forwarded-host
       RUNNER_URL: http://runner:8787

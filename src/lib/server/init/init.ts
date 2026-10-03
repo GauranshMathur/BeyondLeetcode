@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { chown, copyFile, stat, writeFile } from 'node:fs/promises';
+import { chmod, chown, copyFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** `init` role (ADR 0004): writes compose.yaml and .env for the operator into the mounted folder. */
@@ -103,6 +103,7 @@ export async function runInit(
 	}
 	await copyFile(COMPOSE_TEMPLATE, composePath);
 	await writeFile(envPath, envFile(options, image), { mode: 0o600 });
+	await chmod(envPath, 0o600); // `mode` above only applies to a new file; --force may overwrite one.
 	// Run as root in the container: hand the files to whoever owns the mounted folder.
 	const { uid, gid } = await stat(outDir);
 	for (const path of [composePath, envPath]) await chown(path, uid, gid).catch(() => {});

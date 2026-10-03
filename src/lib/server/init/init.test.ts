@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -47,13 +47,14 @@ describe('init', () => {
 	});
 
 	it('refuses to overwrite either file unless --force', async () => {
-		await writeFile(join(dir, '.env'), 'KEEP=1\n');
+		await writeFile(join(dir, '.env'), 'KEEP=1\n', { mode: 0o644 });
 		await expect(runInit(['--origin', 'http://a.io'], dir)).rejects.toThrow(/already exists/);
 		expect(await read('.env')).toBe('KEEP=1\n');
 		await expect(read('compose.yaml')).rejects.toThrow();
 
 		await runInit(['--origin', 'http://a.io', '--force'], dir);
 		expect(envValue(await read('.env'), 'ORIGIN')).toBe('http://a.io');
+		expect((await stat(join(dir, '.env'))).mode & 0o777).toBe(0o600);
 	});
 
 	it('generates a different token each time', () => {
