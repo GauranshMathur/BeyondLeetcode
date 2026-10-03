@@ -650,6 +650,25 @@ describe('learner.submit()', () => {
 		expect(runner.calls).toHaveLength(1);
 	});
 
+	it('a compile error only in the second Runner call is never shown: RunnerUnavailable, nothing recorded', async () => {
+		const { db, catalogue } = await setup();
+		let calls = 0;
+		const core = createLearningCore({
+			catalogue,
+			db,
+			runner: {
+				execute: async () =>
+					++calls === 1
+						? { results: [{ id: pushExample, status: 'ok', stdout: '2\n', stderr: '' }] }
+						: { compileError: 'PRIVATE', results: [] }
+			}
+		});
+		await expect(
+			core.forLearner('y').submit('stacks-push', { 'main.py': 'x' }, 0)
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+		expect(await db.submission.count()).toBe(0);
+	});
+
 	it('either Runner call failing is RunnerUnavailable and records nothing', async () => {
 		const { learner, db, catalogue } = await setup();
 		let calls = 0;

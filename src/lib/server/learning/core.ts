@@ -205,7 +205,10 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						batches.push({ tests: plan.visible, result: await execute(files, plan.visible) });
 					}
 					if (!batches[0]?.result.compileError) {
-						batches.push({ tests: plan.hidden, result: await execute(files, plan.hidden) });
+						const result = await execute(files, plan.hidden);
+						// The code compiled in call 1; a message here is not for the Learner (it ran with Hidden inputs).
+						if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
+						batches.push({ tests: plan.hidden, result });
 					}
 					const { verdict, failure, failingProblemId } = judge(
 						batches,
