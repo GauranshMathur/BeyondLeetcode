@@ -64,7 +64,7 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 - Design: P2 Map, P4 Topic, R2 Chapter, P10 Problem (tabs), A2 Sign in.
 - Build: those layouts, following the F3 rules already applied since Sprint 2.
 
-**Exit:** Playwright mobile-viewport runs pass for each of those screens; MVP1 as written in `docs/product/mvp1.md` is live in a tagged release.
+**Exit:** Playwright mobile-viewport runs pass for each of those screens; MVP1 as written in `docs/product/mvp1.md` ships as release `v1.0.0`: the last commit of the sprint carries a `Release-As: 1.0.0` footer, so release-please makes it the first major release. Until then every release stays `0.x`.
 
 ## After each build sprint
 
