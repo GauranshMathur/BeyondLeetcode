@@ -1,4 +1,4 @@
-import type { Catalogue } from '../content/catalogue.ts';
+import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import { LearningError } from './errors.ts';
 
 /** What a Learner has done: Read marks and Solved Problems, by stable content id. */
@@ -241,4 +241,120 @@ export function reachChapter(
 			.filter((t) => stateBefore.get(t.id) === 'locked' && t.state !== 'locked')
 			.map(({ id, title }) => ({ id, title }))
 	};
+}
+
+/** The entry file of a Build that has not been started, by Language. */
+const ENTRY_FILE: Record<Language, string> = {
+	python: 'main.py',
+	typescript: 'main.ts',
+	go: 'main.go'
+};
+
+/** A Problem as the Problem screen needs it. Never carries Hints, a Solution or Hidden Tests. */
+export interface ProblemView {
+	readonly id: string;
+	readonly title: string;
+	readonly topicId: string;
+	readonly topicTitle: string;
+	readonly kind: 'Core' | 'Extra';
+	/** For an Extra Problem: the Core Problem it branches off. */
+	readonly parentProblemId?: string;
+	readonly statementHtml: string;
+	readonly exampleTests: readonly { name: string; input: string; expected: string }[];
+	readonly language: Language;
+	/** The Learner's code: stored if saved, otherwise what the step would start from. */
+	readonly files: BuildFiles;
+	/** 0 until the step is first saved. */
+	readonly revision: number;
+	readonly status: ProblemStatus;
+}
+
+/** Code the Learner has stored for a step. */
+export interface SavedStep {
+	readonly files: BuildFiles;
+	readonly revision: number;
+}
+
+type ProblemCatalogue = Pick<Catalogue, 'topicMap' | 'topic' | 'chapter' | 'problem'>;
+
+/**
+ * The Problem whose Build a step starts from: the previous Core Problem on the Main Line, or
+ * for an Extra its parent Core Problem. None for a Topic's first Problem (an empty Build).
+ */
+export function seedSourceOf(
+	catalogue: Pick<Catalogue, 'topic' | 'problem'>,
+	problemId: string
+): string | undefined {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	if (problem.kind === 'extra') return problem.parent;
+	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
+	return mainLine[mainLine.indexOf(problemId) - 1];
+}
+
+/**
+ * One Problem for one Learner. Pure. `own` is the step's stored code and `source` the stored
+ * code of the step it seeds from. An unsaved step shows its starting code without writing it:
+ * the source's saved code, else the Reference Code after the source, else an empty Build.
+ */
+export function problemView(
+	catalogue: ProblemCatalogue,
+	progress: Progress,
+	problemId: string,
+	language: Language,
+	saved: { own?: SavedStep; source?: SavedStep },
+	renderMarkdown: (markdown: string) => string
+): ProblemView {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	const topic = topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	const listed = topic.chapters.flatMap((c) => c.problems).find((p) => p.id === problemId);
+	const sourceId = seedSourceOf(catalogue, problemId);
+	const start: BuildFiles = sourceId
+		? (saved.source?.files ?? catalogue.problem(sourceId)?.referenceCode[language] ?? {})
+		: { [ENTRY_FILE[language]]: '' };
+	return {
+		id: problem.id,
+		title: problem.title,
+		topicId: topic.id,
+		topicTitle: topic.title,
+		kind: problem.kind === 'core' ? 'Core' : 'Extra',
+		...(problem.parent !== undefined && { parentProblemId: problem.parent }),
+		statementHtml: renderMarkdown(problem.statement),
+		exampleTests: problem.exampleTests.map((t) => ({
+			name: t.id.slice(t.id.lastIndexOf('/') + 1),
+			input: t.input,
+			expected: t.expected
+		})),
+		language,
+		files: saved.own?.files ?? start,
+		revision: saved.own?.revision ?? 0,
+		status: listed?.status ?? 'Untouched'
+	};
+}
+
+/** The most code one Build may hold, in UTF-8 bytes of paths and contents together. */
+export const MAX_BUILD_BYTES = 256 * 1024;
+
+/** Checks a Build the Learner sends: relative `/`-separated paths with no `..`, within the size limit. */
+export function validateBuild(files: Readonly<Record<string, unknown>>): BuildFiles {
+	const encoder = new TextEncoder();
+	let bytes = 0;
+	const paths = Object.keys(files);
+	if (paths.length === 0) throw new LearningError('InvalidBuild');
+	for (const path of paths) {
+		const content = files[path];
+		const segments = path.split('/');
+		if (
+			typeof content !== 'string' ||
+			path.includes('\\') ||
+			path.startsWith('/') ||
+			segments.some((s) => s === '' || s === '.' || s === '..')
+		) {
+			throw new LearningError('InvalidBuild');
+		}
+		bytes += encoder.encode(path).length + encoder.encode(content).length;
+	}
+	if (bytes > MAX_BUILD_BYTES) throw new LearningError('InvalidBuild');
+	return files as BuildFiles;
 }
