@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.6.0...v0.6.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C12b reject empty Topics ([#48](https://github.com/GauranshMathur/BeyondLeetcode/issues/48)) ([fbcdca1](https://github.com/GauranshMathur/BeyondLeetcode/commit/fbcdca10db0a87c4239053ab6032083aa465b611))
+
 ## [0.6.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.5.1...v0.6.0) (2026-10-03)
 
 
