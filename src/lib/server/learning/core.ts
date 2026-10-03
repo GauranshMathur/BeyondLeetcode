@@ -1,7 +1,8 @@
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import type { Db } from '../db.ts';
 import { renderMarkdown } from '../markdown.ts';
-import type { RunnerPort } from '../runner/port.ts';
+import { sandboxConfig } from '../runner/config.ts';
+import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 import {
 	type ChapterView,
@@ -12,7 +13,9 @@ import {
 	type Progress,
 	type ProgressChange,
 	problemView,
+	type RunView,
 	reachChapter,
+	runView,
 	type SavedStep,
 	seedSourceOf,
 	type TopicView,
@@ -27,6 +30,9 @@ export type {
 	MapView,
 	ProblemView,
 	ProgressChange,
+	RunTestStatus,
+	RunTestView,
+	RunView,
 	TopicState,
 	TopicView
 } from './rules.ts';
@@ -34,7 +40,7 @@ export type {
 export interface LearningCoreDeps {
 	catalogue: Catalogue;
 	db: Db;
-	/** Needed from C5b (Run and Submit); not used by the Map. */
+	/** Needed by Run (and Submit); without it Run answers RunnerUnavailable. */
 	runner?: RunnerPort;
 	clock?: () => Date;
 }
@@ -60,6 +66,12 @@ export interface Learner {
 		files: BuildFiles,
 		baseRevision: number
 	): Promise<{ revision: number }>;
+	/**
+	 * Saves like saveCode (same errors), then runs the Problem's Example Tests only and compares
+	 * the outputs. Writes nothing else: never a Submission, status or progress change. Throws
+	 * RunnerUnavailable when the Runner cannot answer; the saved code stays.
+	 */
+	run(problemId: string, files: BuildFiles, baseRevision: number): Promise<RunView>;
 }
 
 /** Every Build is Python until the Language picker (C7a). */
@@ -149,6 +161,23 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							throw new LearningError('RevisionConflict');
 						throw e;
 					}
+				},
+				run: async (problemId, files, baseRevision) => {
+					const { revision } = await learner.saveCode(problemId, files, baseRevision);
+					const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
+					if (!deps.runner) throw new LearningError('RunnerUnavailable');
+					let result: ExecuteResult;
+					try {
+						result = await deps.runner.execute({
+							language: DEFAULT_LANGUAGE,
+							files,
+							tests: tests.map(({ id, input }) => ({ id, input })),
+							limits: { timeoutMs: sandboxConfig.testTimeoutMs, memoryMb: sandboxConfig.memoryMb }
+						});
+					} catch {
+						throw new LearningError('RunnerUnavailable');
+					}
+					return runView(tests, result, revision);
 				}
 			};
 			return learner;

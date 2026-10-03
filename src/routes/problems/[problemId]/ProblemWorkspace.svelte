@@ -2,7 +2,9 @@
 import { onDestroy } from 'svelte';
 import { deserialize } from '$app/forms';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
-import type { ProblemView } from '$lib/server/learning/core';
+import type { ProblemView, RunView } from '$lib/server/learning/core';
+import type { Outcome } from './outcome';
+import ResultsPanel from './ResultsPanel.svelte';
 
 let { problem }: { problem: ProblemView } = $props();
 
@@ -17,16 +19,18 @@ const paths = Object.keys(problem.files);
 let files = { ...problem.files };
 // svelte-ignore state_referenced_locally
 let revision = problem.revision;
-let state = $state<SaveState>('saved');
+let saveState = $state<SaveState>('saved');
 let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
 let dirty = false;
+let outcome = $state<Outcome | undefined>(undefined);
+const running = $derived(outcome?.kind === 'running');
 
 function onchange(next: Record<string, string>) {
-	if (state === 'conflict') return;
+	if (saveState === 'conflict') return;
 	files = next;
 	dirty = true;
-	state = 'edited';
+	saveState = 'edited';
 	clearTimeout(timer);
 	timer = setTimeout(save, SAVE_DELAY_MS);
 }
@@ -37,10 +41,10 @@ const saveUrl = `/problems/${problem.id}?/save`;
 let closed = false;
 
 async function save(keepalive = false) {
-	if (inFlight || !dirty || state === 'conflict') return;
+	if (inFlight || !dirty || saveState === 'conflict') return;
 	inFlight = true;
 	dirty = false;
-	state = 'saving';
+	saveState = 'saving';
 	let retry = false;
 	try {
 		const body = new FormData();
@@ -53,27 +57,94 @@ async function save(keepalive = false) {
 			headers: { 'x-sveltekit-action': 'true' }
 		});
 		if (response.status === 409) {
-			state = 'conflict';
+			saveState = 'conflict';
 		} else if (response.status >= 400 && response.status < 500) {
 			// The server will never accept this Build (too large, bad path): retrying cannot help.
-			state = 'rejected';
+			saveState = 'rejected';
 		} else {
 			const result = deserialize(await response.text());
 			if (result.type !== 'success') throw new Error('save failed');
 			revision = (result.data as { revision: number }).revision;
-			state = dirty ? 'edited' : 'saved';
+			saveState = dirty ? 'edited' : 'saved';
 		}
 	} catch {
 		dirty = true;
 		retry = true;
-		state = 'failed';
+		saveState = 'failed';
 	} finally {
 		inFlight = false;
 	}
-	// Edits made while saving, or a transient failure, go out on the next tick.
-	if (dirty && !closed && state !== 'conflict' && state !== 'rejected') {
+	afterSave(retry);
+}
+
+/** Edits made while saving, or a transient failure, go out on the next tick. */
+function afterSave(retry: boolean) {
+	if (dirty && !closed && saveState !== 'conflict' && saveState !== 'rejected') {
 		clearTimeout(timer);
 		timer = setTimeout(save, retry ? RETRY_DELAY_MS : 0);
+	}
+}
+
+// svelte-ignore state_referenced_locally
+const runUrl = `/problems/${problem.id}?/run`;
+
+/** Run saves the Build itself, so it waits for an autosave in flight and holds the next one off. */
+async function run() {
+	if (running || saveState === 'conflict' || saveState === 'rejected') return;
+	outcome = { kind: 'running' };
+	clearTimeout(timer);
+	while (inFlight) await new Promise((resolve) => setTimeout(resolve, 25));
+	inFlight = true;
+	const sent = files;
+	dirty = false;
+	saveState = 'saving';
+	let retry = false;
+	try {
+		const body = new FormData();
+		body.set('files', JSON.stringify(sent));
+		body.set('baseRevision', String(revision));
+		const response = await fetch(runUrl, {
+			method: 'POST',
+			body,
+			headers: { 'x-sveltekit-action': 'true' }
+		});
+		if (response.status === 409) {
+			saveState = 'conflict';
+			outcome = undefined;
+		} else if (response.status === 503) {
+			// The Build was saved before the Runner failed.
+			const result = deserialize(await response.text());
+			if (result.type === 'failure' && typeof result.data?.revision === 'number') {
+				revision = result.data.revision;
+			}
+			saveState = dirty ? 'edited' : 'saved';
+			outcome = { kind: 'unavailable' };
+		} else if (response.status >= 400 && response.status < 500) {
+			saveState = 'rejected';
+			outcome = undefined;
+		} else {
+			const result = deserialize(await response.text());
+			if (result.type !== 'success') throw new Error('run failed');
+			const view = result.data as unknown as RunView;
+			revision = view.revision;
+			saveState = dirty ? 'edited' : 'saved';
+			outcome = { kind: 'result', view };
+		}
+	} catch {
+		dirty = true;
+		retry = true;
+		saveState = 'failed';
+		outcome = { kind: 'unavailable' };
+	} finally {
+		inFlight = false;
+	}
+	afterSave(retry);
+}
+
+function onkeydown(event: KeyboardEvent) {
+	if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+		event.preventDefault();
+		void run();
 	}
 }
 
@@ -97,14 +168,16 @@ const label: Record<SaveState, string> = {
 };
 </script>
 
-<svelte:window onpagehide={flush} />
+<svelte:window onpagehide={flush} {onkeydown} />
 
 <div class="pane">
 	<div class="bar">
 		<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
-		<span class="mono status" class:warn={state === 'conflict' || state === 'failed' || state === 'rejected'} role="status">{label[state]}</span>
+		<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
+		<button type="button" class="run mono" disabled={running} onclick={run}>{running ? 'Running…' : 'Run'}</button>
 	</div>
-	<CodeEditor files={problem.files} {onchange} readonly={state === 'conflict'} />
+	<CodeEditor files={problem.files} {onchange} readonly={saveState === 'conflict'} />
+	<ResultsPanel {outcome} />
 </div>
 
 <style>
@@ -128,6 +201,22 @@ const label: Record<SaveState, string> = {
 	}
 	.status {
 		color: var(--muted);
+	}
+	.run {
+		height: 44px;
+		padding: 0 22px;
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
+		border-radius: 2px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+	}
+	.run:disabled {
+		color: var(--muted);
+		border-color: var(--muted);
+		cursor: default;
 	}
 	.status.warn {
 		color: var(--accent);

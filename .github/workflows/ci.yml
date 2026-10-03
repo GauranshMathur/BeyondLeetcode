@@ -58,7 +58,9 @@ jobs:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
       - run: bunx playwright install --with-deps chromium
-      # The Playwright webServer builds the app and serves it under Bun.
+      # Run goes through the real Runner (started by the Playwright config), which needs the Sandbox image.
+      - run: docker pull python:3.13-slim
+      # The Playwright webServer builds the app, serves it under Bun and starts the Runner.
       - run: bun run test:e2e
 
   sandbox:

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 
 test('a Problem shows its statement and Example Tests, and typed code survives a reload', async ({
 	page
@@ -52,4 +52,65 @@ test('edits typed just before leaving are still saved', async ({ page }) => {
 
 	await page.goto('/problems/stacks-peek');
 	await expect(page.getByLabel('Code: main.py')).toContainText('# last second');
+});
+
+// The solution for stacks-push: the fixture's Reference Code, which passes its Example Test.
+const correct = `import sys
+
+items = []
+for line in sys.stdin.read().splitlines():
+    parts = line.split()
+    if not parts:
+        continue
+    if parts[0] == "push":
+        items.append(int(parts[1]))
+    elif parts[0] == "size":
+        print(len(items))
+`;
+
+async function setCode(page: Page, code: string) {
+	const editor = page.getByLabel('Code: main.py');
+	await editor.click();
+	await page.keyboard.press('ControlOrMeta+a');
+	await page.keyboard.press('Backspace');
+	await page.keyboard.insertText(code);
+}
+
+test('Run shows pass for a correct solution and fail for a wrong one, with no Submit', async ({
+	page
+}) => {
+	await page.goto('/problems/stacks-push');
+	await expect(page.getByRole('button', { name: 'Submit' })).toHaveCount(0);
+
+	await setCode(page, correct);
+	await page.getByRole('button', { name: 'Run' }).click();
+	const row = page.getByRole('listitem', { name: 'Example Test 01' });
+	await expect(row).toContainText('pass', { timeout: 60_000 });
+	await expect(page.getByText('1 of 1 passed')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
+
+	await setCode(page, 'print(99)\n');
+	await page.keyboard.press('ControlOrMeta+Enter');
+	await expect(row).toContainText('fail · wrong answer', { timeout: 60_000 });
+	await expect(row).toContainText('99');
+	await expect(row).toContainText('expected');
+	await expect(page.getByText('0 of 1 passed')).toBeVisible();
+
+	// Run never changes progress: the Problem is not Solved.
+	await page.goto('/topics/stacks');
+	await expect(page.getByText('core solved').locator('..')).toContainText('0 of 2');
+});
+
+test('Run shows a runtime error and a compile error block', async ({ page }) => {
+	await page.goto('/problems/stacks-push');
+
+	await setCode(page, 'raise ValueError("boom")\n');
+	await page.getByRole('button', { name: 'Run' }).click();
+	const row = page.getByRole('listitem', { name: 'Example Test 01' });
+	await expect(row).toContainText('fail · runtime error', { timeout: 60_000 });
+	await expect(row).toContainText('ValueError: boom');
+
+	await setCode(page, 'def (:\n');
+	await page.getByRole('button', { name: 'Run' }).click();
+	await expect(page.getByLabel('Compile error')).toContainText('SyntaxError', { timeout: 60_000 });
 });
