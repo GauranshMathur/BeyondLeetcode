@@ -670,7 +670,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('either Runner call failing is RunnerUnavailable and records nothing', async () => {
-		const { learner, db, catalogue } = await setup();
+		const { db, catalogue } = await setup();
 		let calls = 0;
 		const core = createLearningCore({
 			catalogue,
@@ -686,7 +686,6 @@ describe('learner.submit()', () => {
 			core.forLearner('y').submit('stacks-push', { 'main.py': 'x' }, 0)
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 		expect(await db.submission.count()).toBe(0);
-		void learner;
 	});
 
 	it('a failing Hidden Test of this Problem reveals only the Problem and the Verdict', async () => {
