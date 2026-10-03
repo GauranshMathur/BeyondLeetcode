@@ -295,6 +295,18 @@ describe('Sandbox escapes: one Test to the next', { timeout: 60_000 }, () => {
 	});
 });
 
+describe('Runner: repeated runs', { timeout: 120_000 }, () => {
+	it('answers 40 sequential runtime-error requests with a verdict each, never a 500', async () => {
+		const statuses: string[] = [];
+		for (let i = 0; i < 40; i++) {
+			const result = await run('raise ValueError("boom")\n').catch((e: Error) => e.message);
+			statuses.push(typeof result === 'string' ? result : result.results[0].status);
+		}
+
+		expect(statuses).toEqual(Array(40).fill('runtimeError'));
+	});
+});
+
 describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 	const healthy = async () => {
 		const next = await run('print("still serving")\n');
