@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.3.0...v0.4.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C4b Runner process: Python in a fresh Sandbox per run ([#34](https://github.com/GauranshMathur/BeyondLeetcode/issues/34)) ([26b73b9](https://github.com/GauranshMathur/BeyondLeetcode/commit/26b73b99568f1ca1b2302bd06604d98581b39c33))
+
 ## [0.3.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.2.0...v0.3.0) (2026-10-03)
 
 
