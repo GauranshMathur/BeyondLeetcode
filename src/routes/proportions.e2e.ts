@@ -14,7 +14,9 @@ async function expectHeader(page: Page) {
 	expect((await box(page.locator('header'))).height).toBe(93);
 	const nav = page.getByRole('navigation', { name: 'Primary' });
 	expect((await box(nav.getByRole('link', { name: 'Map', exact: true }))).height).toBe(44);
-	expect((await box(page.locator('header .brand'))).x).toBe(96);
+	const brand = await box(page.locator('header .brand'));
+	expect(brand.x).toBe(96);
+	expect(brand.height).toBe(44);
 }
 
 test('Map: header, heading and Topic nodes match the Map board', async ({ page }) => {
@@ -58,7 +60,11 @@ test('Chapter: sidebar, title and links match the Chapter board', async ({ page 
 	await expect(page.locator('main')).toHaveCSS('padding-left', '80px');
 	const aside = page.locator('.page > aside');
 	expect((await box(aside)).width).toBe(320);
+	for (const name of ['← Stacks'])
+		expect((await box(aside.getByRole('link', { name }))).height).toBeGreaterThanOrEqual(44);
 	const crumb = aside.getByRole('link', { name: 'map', exact: true });
 	expect((await box(crumb)).height).toBeGreaterThanOrEqual(44);
-	expect((await box(page.getByRole('link', { name: 'Pop' }))).height).toBeGreaterThanOrEqual(44);
+	expect(
+		(await box(page.getByRole('link', { name: 'Pop', exact: true }))).height
+	).toBeGreaterThanOrEqual(44);
 });

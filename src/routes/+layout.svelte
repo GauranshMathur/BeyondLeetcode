@@ -37,6 +37,9 @@ let { children } = $props();
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		text-decoration: none;
+		display: inline-block;
+		padding: 10px 0;
+		line-height: 24px;
 	}
 	nav {
 		display: flex;
@@ -49,6 +52,9 @@ let { children } = $props();
 		color: var(--ink);
 		padding: 12px 0;
 		line-height: 20px;
+		text-decoration: none;
+	}
+	nav a[aria-current='page'] {
 		text-decoration: underline;
 		text-decoration-color: var(--accent);
 		text-decoration-thickness: 2px;

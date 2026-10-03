@@ -310,4 +310,20 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
+	@media (max-width: 900px) {
+		.head,
+		.chapter {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.lead,
+		aside,
+		.num,
+		.body {
+			grid-column: 1 / -1;
+		}
+		.chapter {
+			padding-top: 64px;
+			row-gap: 16px;
+		}
+	}
 </style>

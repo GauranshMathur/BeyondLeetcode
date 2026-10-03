@@ -98,7 +98,7 @@ $effect(() => {
 <style>
 	.page {
 		display: flex;
-		min-height: calc(100vh - 80px);
+		min-height: calc(100vh - 93px);
 	}
 	.mono,
 	.crumbs,
@@ -120,13 +120,14 @@ $effect(() => {
 		gap: 40px;
 	}
 	.crumbs {
+		align-items: baseline;
 		display: flex;
 		gap: 10px;
 		font-size: 13px;
 		color: var(--muted);
 	}
-	.crumbs {
-		align-items: baseline;
+	.crumbs a:last-child {
+		color: var(--ink);
 	}
 	.crumbs a {
 		color: var(--muted);
@@ -165,13 +166,14 @@ $effect(() => {
 	.links {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: 0;
 		font-size: 13px;
 	}
 	.links a {
 		color: var(--ink);
 		text-decoration: none;
-		padding: 6px 0;
+		padding: 12px 0;
+		line-height: 20px;
 	}
 	.links a:hover {
 		text-decoration: underline;
