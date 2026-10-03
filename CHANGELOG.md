@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.10.0...v0.11.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C13a Problem screen matches canvas proportions ([#61](https://github.com/GauranshMathur/BeyondLeetcode/issues/61)) ([2d5adba](https://github.com/GauranshMathur/BeyondLeetcode/commit/2d5adba606c85bb5ca85ae20c2b98e83dda42155))
+
 ## [0.10.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.9.0...v0.10.0) (2026-10-03)
 
 
