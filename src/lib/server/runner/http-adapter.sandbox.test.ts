@@ -142,7 +142,7 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 
 		await expect(
 			run({ 'main.py': huge }, undefined, { timeoutMs: 2000, memoryMb: 48 })
-		).rejects.toThrow(/compile step failed with status/);
+		).rejects.toThrow(/Runner responded 500/);
 	});
 
 	it('runs a Build of several files', async () => {
