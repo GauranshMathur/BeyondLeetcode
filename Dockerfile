@@ -17,12 +17,15 @@ COPY prisma ./prisma
 RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:${BUN_VERSION}
+# The reference `init` writes into .env; the publish workflow passes the tag it builds.
+ARG IMAGE_REF=ghcr.io/gauranshmathur/beyondleetcode:latest
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY package.json prisma.config.ts ./
 COPY prisma ./prisma
 COPY src/lib/server/runner ./src/lib/server/runner
+COPY src/lib/server/init ./src/lib/server/init
 # C10b: switch this line to `COPY content /app/content` once the repo's content/ folder exists.
 COPY src/lib/server/content/fixture /app/content
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -31,7 +34,8 @@ ENV NODE_ENV=production \
     PORT=3000 \
     DATABASE_URL=file:/data/beyondleetcode.db \
     CONTENT_DIR=/app/content \
-    RUNNER_PORT=8787
+    RUNNER_PORT=8787 \
+    BEYONDLEETCODE_IMAGE=${IMAGE_REF}
 RUN mkdir -p /data && chown bun:bun /data
 VOLUME /data
 EXPOSE 3000 8787

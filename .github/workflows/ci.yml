@@ -111,3 +111,26 @@ jobs:
           done
           docker logs runner
           exit 1
+      - name: Smoke test, init then compose up serves the Map
+        run: |
+          docker rm -f web runner >/dev/null 2>&1 || true
+          docker volume rm bl-data >/dev/null 2>&1 || true
+          mkdir "$RUNNER_TEMP/instance" && cd "$RUNNER_TEMP/instance"
+          docker run --rm -v "$PWD":/out -e BEYONDLEETCODE_IMAGE=beyondleetcode:ci beyondleetcode:ci init --origin http://localhost:3000
+          grep -q '^BEYONDLEETCODE_IMAGE=beyondleetcode:ci$' .env
+          # The Runner does not pull its sandbox image yet (C4d).
+          docker pull python:3.13-slim
+          docker compose up -d
+          ok=
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/ || true)
+            [ "$code" = 200 ] && ok=1 && break
+            sleep 2
+          done
+          if [ -z "$ok" ]; then docker compose logs; docker compose down -v; exit 1; fi
+          # Only the runner holds the engine socket.
+          if docker compose exec -T web test -e /var/run/docker.sock; then
+            echo "web container has the Docker socket"; docker compose down -v; exit 1
+          fi
+          docker compose exec -T runner test -S /var/run/docker.sock
+          docker compose down -v
