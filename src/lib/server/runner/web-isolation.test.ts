@@ -10,8 +10,11 @@ import { describe, expect, it } from 'vitest';
 const srcRoot = join(import.meta.dirname, '..', '..', '..');
 const runnerDir = join(srcRoot, 'lib', 'server', 'runner');
 
-/** The only runner modules the web role may import. */
-const allowed = new Set(['http-adapter', 'port', 'fake', 'contract']);
+/** The only runner modules the web role may import (`config` is constants: Sandbox limits). */
+const allowed = new Set(['http-adapter', 'port', 'fake', 'contract', 'config']);
+
+/** Names the socket on purpose: asserts the compose file keeps it away from the web role. */
+const namesSocketOnPurpose = new Set(['lib/server/init/init.test.ts']);
 
 /** Why a file outside the runner module breaks the web role's isolation, if it does. */
 function isolationViolations(source: string): string[] {
@@ -70,11 +73,12 @@ describe('isolationViolations', () => {
 describe('the web role', () => {
 	it('never imports the Runner engine or sandbox, nor names the Docker socket', () => {
 		const files = [...sourceFiles(srcRoot)];
-		const offenders = files.flatMap((file) =>
-			isolationViolations(readFileSync(file, 'utf8')).map(
-				(why) => `${relative(srcRoot, file).split(sep).join('/')}: ${why}`
-			)
-		);
+		const offenders = files.flatMap((file) => {
+			const name = relative(srcRoot, file).split(sep).join('/');
+			return isolationViolations(readFileSync(file, 'utf8'))
+				.filter((why) => !(why === 'docker.sock' && namesSocketOnPurpose.has(name)))
+				.map((why) => `${name}: ${why}`);
+		});
 
 		expect(files.length).toBeGreaterThan(0);
 		expect(offenders).toEqual([]);
