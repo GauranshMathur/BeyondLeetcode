@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.13.2...v0.14.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C7a1 TypeScript sandbox image (Node, tsc, Python harness) ([#72](https://github.com/GauranshMathur/BeyondLeetcode/issues/72)) ([33e6e6d](https://github.com/GauranshMathur/BeyondLeetcode/commit/33e6e6d06d7377297b57ec81d6311522f5688c0c))
+
 ## [0.13.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.13.1...v0.13.2) (2026-10-03)
 
 
