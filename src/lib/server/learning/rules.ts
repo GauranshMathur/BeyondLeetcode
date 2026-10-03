@@ -423,3 +423,153 @@ export function runView(
 		})
 	};
 }
+
+export type Verdict =
+	| 'Accepted'
+	| 'Wrong Answer'
+	| 'Runtime Error'
+	| 'Time Limit Exceeded'
+	| 'Compile Error';
+
+/** Worst first: the Verdict of a Submission is the first of these any Test produced. */
+const VERDICT_PRECEDENCE: readonly Exclude<Verdict, 'Accepted'>[] = [
+	'Compile Error',
+	'Time Limit Exceeded',
+	'Runtime Error',
+	'Wrong Answer'
+];
+
+/** One Test of a Submission, with what only the server may know. */
+export interface SubmitTest {
+	readonly id: string;
+	readonly input: string;
+	readonly expected: string;
+	/** The Problem this Test belongs to. */
+	readonly problemId: string;
+	readonly kind: 'example' | 'hidden';
+}
+
+/**
+ * Why a Submission was not Accepted, as much as the Learner may see: an Example Test of this
+ * Problem shows everything, a Hidden Test only that it failed, an earlier step only which one.
+ */
+export type SubmitFailure =
+	| { readonly kind: 'compile'; readonly message: string }
+	| {
+			readonly kind: 'example';
+			readonly name: string;
+			readonly input: string;
+			readonly expected: string;
+			readonly actual: string;
+			readonly stderr: string;
+	  }
+	| { readonly kind: 'hidden'; readonly problemId: string }
+	| { readonly kind: 'earlierStep'; readonly problemId: string; readonly problemTitle: string };
+
+/** The outcome of Submit as the browser sees it. */
+export interface SubmitView {
+	readonly submissionId: string;
+	readonly verdict: Verdict;
+	readonly failure?: SubmitFailure;
+	readonly revision: number;
+	/** The Problem's status once this Submission is recorded. */
+	readonly status: 'Attempted' | 'Solved';
+}
+
+type SubmitCatalogue = Pick<Catalogue, 'topic' | 'problem' | 'hiddenTests'>;
+
+/** The Tests of a Submission, split by what the Runner may do with them. */
+export interface SubmitPlan {
+	/** This Problem's Example Tests: the only Tests whose output is ever shown. Run in their own container. */
+	readonly visible: readonly SubmitTest[];
+	/** Every other Test, in a second container; only per-Test outcomes are read from it, never its output. */
+	readonly hidden: readonly SubmitTest[];
+}
+
+/**
+ * The Tests a Submission runs. A Core Problem runs every earlier Core Problem's Tests then its
+ * own; an Extra runs the Core Problems up to and including its parent, then its own. This
+ * Problem's Example Tests go in `visible`, everything else in `hidden`, so no Hidden input ever
+ * shares a container with a Test whose output is shown. Throws NotFound for an unknown Problem.
+ */
+export function submitPlan(catalogue: SubmitCatalogue, problemId: string): SubmitPlan {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
+	const anchor = problem.kind === 'extra' ? (problem.parent ?? problemId) : problemId;
+	const scope = mainLine.slice(0, mainLine.indexOf(anchor) + 1);
+	if (problem.kind === 'extra') scope.push(problemId);
+	const testsOf = (id: string, kind: SubmitTest['kind']): SubmitTest[] =>
+		(
+			(kind === 'example' ? catalogue.problem(id)?.exampleTests : catalogue.hiddenTests(id)) ?? []
+		).map(({ id: testId, input, expected }) => ({
+			id: testId,
+			input,
+			expected,
+			problemId: id,
+			kind
+		}));
+	return {
+		visible: testsOf(problemId, 'example'),
+		hidden: scope.flatMap((id) => [
+			...(id === problemId ? [] : testsOf(id, 'example')),
+			...testsOf(id, 'hidden')
+		])
+	};
+}
+
+/**
+ * Picks the Verdict from the Runner's raw results, one batch per Runner call, in run order.
+ * Pure. Compile Error beats Time Limit Exceeded beats Runtime Error beats Wrong Answer beats
+ * Accepted; the failure shown is the first Test, in run order, with the winning outcome. A
+ * Runner answer that misses a Test is a failed Runner (RunnerUnavailable).
+ */
+export function judge(
+	batches: readonly { tests: readonly SubmitTest[]; result: ExecuteResult }[],
+	problemId: string,
+	titleOf: (problemId: string) => string
+): { verdict: Verdict; failure?: SubmitFailure; failingProblemId?: string } {
+	for (const { result } of batches) {
+		if (result.compileError !== undefined) {
+			return {
+				verdict: 'Compile Error',
+				failure: { kind: 'compile', message: result.compileError }
+			};
+		}
+	}
+	const outcomes = batches.flatMap(({ tests, result }) =>
+		tests.map((test) => {
+			const raw = result.results.find((r) => r.id === test.id);
+			if (!raw) throw new LearningError('RunnerUnavailable');
+			const verdict: Verdict =
+				raw.status === 'timeout'
+					? 'Time Limit Exceeded'
+					: raw.status === 'runtimeError'
+						? 'Runtime Error'
+						: normaliseOutput(raw.stdout) === normaliseOutput(test.expected)
+							? 'Accepted'
+							: 'Wrong Answer';
+			return { test, raw, verdict };
+		})
+	);
+	for (const verdict of VERDICT_PRECEDENCE) {
+		const first = outcomes.find((o) => o.verdict === verdict);
+		if (!first) continue;
+		const { test, raw } = first;
+		const failure: SubmitFailure =
+			test.problemId !== problemId
+				? { kind: 'earlierStep', problemId: test.problemId, problemTitle: titleOf(test.problemId) }
+				: test.kind === 'hidden'
+					? { kind: 'hidden', problemId }
+					: {
+							kind: 'example',
+							name: test.id.slice(test.id.lastIndexOf('/') + 1),
+							input: test.input,
+							expected: test.expected,
+							actual: raw.stdout,
+							stderr: raw.stderr
+						};
+		return { verdict, failure, failingProblemId: test.problemId };
+	}
+	return { verdict: 'Accepted' };
+}

@@ -7,6 +7,7 @@ import { LearningError } from './errors.ts';
 import {
 	type ChapterView,
 	chapterView,
+	judge,
 	type MapView,
 	mapView,
 	type ProblemView,
@@ -17,7 +18,9 @@ import {
 	reachChapter,
 	runView,
 	type SavedStep,
+	type SubmitView,
 	seedSourceOf,
+	submitPlan,
 	type TopicView,
 	topicView,
 	validateBuild
@@ -33,8 +36,11 @@ export type {
 	RunTestStatus,
 	RunTestView,
 	RunView,
+	SubmitFailure,
+	SubmitView,
 	TopicState,
-	TopicView
+	TopicView,
+	Verdict
 } from './rules.ts';
 
 export interface LearningCoreDeps {
@@ -72,6 +78,12 @@ export interface Learner {
 	 * RunnerUnavailable when the Runner cannot answer; the saved code stays.
 	 */
 	run(problemId: string, files: BuildFiles, baseRevision: number): Promise<RunView>;
+	/**
+	 * Saves like saveCode (same errors), runs every Test of the Problem and of the earlier Core
+	 * Problems it builds on, picks the Verdict and records the Submission. Throws
+	 * RunnerUnavailable when the Runner cannot answer: nothing is recorded, the saved code stays.
+	 */
+	submit(problemId: string, files: BuildFiles, baseRevision: number): Promise<SubmitView>;
 }
 
 /** Every Build is Python until the Language picker (C7a). */
@@ -90,6 +102,23 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 	const now = () => (deps.clock ?? (() => new Date()))();
 	return {
 		forLearner: (learnerId) => {
+			/** Sends code and Test inputs (never expected outputs) to the Runner; any failure is RunnerUnavailable. */
+			const execute = async (
+				files: BuildFiles,
+				tests: readonly { id: string; input: string }[]
+			): Promise<ExecuteResult> => {
+				if (!deps.runner) throw new LearningError('RunnerUnavailable');
+				try {
+					return await deps.runner.execute({
+						language: DEFAULT_LANGUAGE,
+						files,
+						tests: tests.map(({ id, input }) => ({ id, input })),
+						limits: { timeoutMs: sandboxConfig.testTimeoutMs, memoryMb: sandboxConfig.memoryMb }
+					});
+				} catch {
+					throw new LearningError('RunnerUnavailable');
+				}
+			};
 			const learner: Learner = {
 				map: async () => mapView(deps.catalogue, await loadProgress(deps, learnerId)),
 				topic: async (topicId) =>
@@ -165,19 +194,48 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				run: async (problemId, files, baseRevision) => {
 					const { revision } = await learner.saveCode(problemId, files, baseRevision);
 					const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
-					if (!deps.runner) throw new LearningError('RunnerUnavailable');
-					let result: ExecuteResult;
-					try {
-						result = await deps.runner.execute({
+					return runView(tests, await execute(files, tests), revision);
+				},
+				submit: async (problemId, files, baseRevision) => {
+					const { revision } = await learner.saveCode(problemId, files, baseRevision);
+					// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
+					const plan = submitPlan(deps.catalogue, problemId);
+					const batches = [];
+					if (plan.visible.length > 0) {
+						batches.push({ tests: plan.visible, result: await execute(files, plan.visible) });
+					}
+					if (!batches[0]?.result.compileError && plan.hidden.length > 0) {
+						const result = await execute(files, plan.hidden);
+						// The code compiled in call 1; a message here is not for the Learner (it ran with Hidden inputs).
+						if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
+						batches.push({ tests: plan.hidden, result });
+					}
+					const { verdict, failure, failingProblemId } = judge(
+						batches,
+						problemId,
+						(id) => deps.catalogue.problem(id)?.title ?? id
+					);
+					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
+					const { id: submissionId } = await deps.db.submission.create({
+						data: {
+							learnerId,
+							problemId,
+							topicId,
 							language: DEFAULT_LANGUAGE,
 							files,
-							tests: tests.map(({ id, input }) => ({ id, input })),
-							limits: { timeoutMs: sandboxConfig.testTimeoutMs, memoryMb: sandboxConfig.memoryMb }
-						});
-					} catch {
-						throw new LearningError('RunnerUnavailable');
-					}
-					return runView(tests, result, revision);
+							verdict,
+							failingProblemId: failingProblemId ?? null,
+							createdAt: now()
+						}
+					});
+					const progress = await loadProgress(deps, learnerId);
+					return {
+						submissionId,
+						verdict,
+						...(failure && { failure }),
+						revision,
+						status: progress.solvedProblems.has(problemId) ? 'Solved' : 'Attempted'
+					};
 				}
 			};
 			return learner;
@@ -185,18 +243,32 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 	};
 }
 
-/** Solved and Attempted have no table until C6a adds Submissions. */
+/** Read marks and Submissions give every status; the Topic of the latest activity is the current one. */
 async function loadProgress(deps: LearningCoreDeps, learnerId: string): Promise<Progress> {
 	const reads = await deps.db.chapterRead.findMany({
 		where: { learnerId },
 		orderBy: { readAt: 'desc' }
 	});
-	const recentChapter = reads[0] && deps.catalogue.chapter(reads[0].chapterId);
+	const submissions = await deps.db.submission.findMany({
+		where: { learnerId },
+		orderBy: { createdAt: 'desc' },
+		select: { problemId: true, topicId: true, verdict: true, createdAt: true }
+	});
+	const solved = new Set(
+		submissions.filter((s) => s.verdict === 'Accepted').map((s) => s.problemId)
+	);
+	const attempted = new Set(submissions.map((s) => s.problemId).filter((id) => !solved.has(id)));
+	const recentRead = reads[0];
+	const recentSubmission = submissions[0];
+	const recentTopicId =
+		recentSubmission && (!recentRead || recentSubmission.createdAt >= recentRead.readAt)
+			? recentSubmission.topicId
+			: recentRead && deps.catalogue.chapter(recentRead.chapterId)?.topicId;
 	return {
 		readChapters: new Set(reads.map((r) => r.chapterId)),
-		solvedProblems: new Set(),
-		attemptedProblems: new Set(),
-		...(recentChapter && { recentTopicId: recentChapter.topicId })
+		solvedProblems: solved,
+		attemptedProblems: attempted,
+		...(recentTopicId && { recentTopicId })
 	};
 }
 

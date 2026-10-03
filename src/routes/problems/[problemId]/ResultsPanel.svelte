@@ -26,14 +26,39 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 			<span class="mono fail" role="status">no tests ran</span>
 		{:else if outcome?.kind === 'running'}
 			<span class="mono muted" role="status">Running</span>
+		{:else if outcome?.kind === 'submitting'}
+			<span class="mono muted" role="status">Submitting</span>
 		{/if}
 	</div>
 
 	<div class="body">
 		{#if !outcome}
 			<p class="muted mono">Run your code to see how it does on the Example Tests.</p>
-		{:else if outcome.kind === 'running'}
+		{:else if outcome.kind === 'running' || outcome.kind === 'submitting'}
 			<p class="muted mono">Waiting for the runner…</p>
+		{:else if outcome.kind === 'verdict'}
+			{@const { verdict, failure } = outcome.view}
+			<div class="state mono" class:fail={verdict !== 'Accepted'} aria-label="Verdict">
+				<span>{verdict}</span>
+				{#if verdict === 'Accepted'}<span class="muted">all tests passed</span>{/if}
+			</div>
+			{#if failure?.kind === 'compile'}
+				<pre class="mono block" aria-label="Compile error">{failure.message}</pre>
+			{:else if failure?.kind === 'example'}
+				<pre class="mono block" aria-label="Failed Example Test {failure.name}"><span class="muted">case</span>
+{failure.name}<span class="muted">input</span>
+{failure.input}<span class="muted">expected</span>
+{failure.expected}<span class="muted">got</span>
+<span class="fail">{failure.actual}</span>{#if failure.stderr}<span class="muted">stderr</span>
+<span class="fail">{failure.stderr}</span>{/if}</pre>
+			{:else if failure?.kind === 'hidden'}
+				<p class="mono block">Failed a hidden test</p>
+			{:else if failure?.kind === 'earlierStep'}
+				<p class="mono block">
+					Your change broke an earlier step:
+					<a href="/problems/{failure.problemId}">{failure.problemTitle} →</a>
+				</p>
+			{/if}
 		{:else if outcome.kind === 'unavailable'}
 			<p class="mono fail" role="alert">The runner is unavailable. Try again.</p>
 		{:else if outcome.view.compileError}
@@ -104,6 +129,10 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		padding: 16px 0;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
+	}
+	a {
+		color: var(--ink);
+		text-underline-offset: 4px;
 	}
 	.block {
 		margin: 0;
