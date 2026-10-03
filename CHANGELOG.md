@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.6.1...v0.7.0) (2026-10-03)
+
+
+### Features
+
+* **beyondleetcode:** C5b Run: Example Tests and result states ([#46](https://github.com/GauranshMathur/BeyondLeetcode/issues/46)) ([5aee8cd](https://github.com/GauranshMathur/BeyondLeetcode/commit/5aee8cdb775fe76aa5fea340b4ba8713b8d733fe))
+
 ## [0.6.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.6.0...v0.6.1) (2026-10-03)
 
 
