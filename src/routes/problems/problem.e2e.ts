@@ -141,4 +141,5 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 
 	await page.goto('/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('1 of 2');
+	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
 });

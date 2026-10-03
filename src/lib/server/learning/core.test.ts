@@ -769,12 +769,18 @@ describe('learner.submit()', () => {
 	});
 
 	it('a Problem stays Solved after a later failing Submission', async () => {
-		const { core } = await setup();
-		const learner = core.forLearner('x');
-		await learner.submit('stacks-push', { 'main.py': 'a' }, 0);
-		const ok = await learner.submit('stacks-push', { 'main.py': 'b' }, 1);
-		expect(ok.status).toBe('Solved');
-		expect((await learner.topic('stacks')).chapters[0]?.problems[0]?.status).toBe('Solved');
+		const { db, catalogue, learner } = await setup();
+		expect((await learner.submit('stacks-push', { 'main.py': 'a' }, 0)).status).toBe('Solved');
+
+		const failing = createLearningCore({
+			catalogue,
+			db,
+			runner: createScriptedRunner({ tests: { [pushExample]: wrong } })
+		}).forLearner('any-learner');
+		const view = await failing.submit('stacks-push', { 'main.py': 'b' }, 1);
+
+		expect(view).toMatchObject({ verdict: 'Wrong Answer', status: 'Solved' });
+		expect((await failing.topic('stacks')).chapters[0]?.problems[0]?.status).toBe('Solved');
 	});
 
 	it('Solving the last Core Problem with every Chapter Read completes the Topic', async () => {
