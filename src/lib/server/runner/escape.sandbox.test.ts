@@ -71,6 +71,7 @@ const run = (main: string, lim = limits) =>
 		tests: [{ id: 't', input: '' }],
 		limits: lim
 	});
+const gateway = dockerHostGateway();
 
 /** The address of the Docker bridge on the host, which is where a container would reach the host. */
 function dockerHostGateway(): string {
@@ -93,7 +94,7 @@ describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, 
 	it('cannot open a connection to the internet, the Docker host gateway or DNS', async () => {
 		const probe = [
 			'import socket',
-			`targets = [("1.1.1.1", 53), ("${dockerHostGateway()}", 22), ("${dockerHostGateway()}", 2375), ("127.0.0.1", 80)]`,
+			`targets = [("1.1.1.1", 53), ("${gateway}", 22), ("${gateway}", 2375), ("127.0.0.1", 80)]`,
 			'for host, port in targets:',
 			'    try:',
 			'        socket.create_connection((host, port), timeout=1)',
@@ -113,8 +114,8 @@ describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, 
 		expect(result.results[0].stderr).toBe('');
 		expect(lines(result.results[0].stdout)).toEqual([
 			'blocked 1.1.1.1 53',
-			`blocked ${dockerHostGateway()} 22`,
-			`blocked ${dockerHostGateway()} 2375`,
+			`blocked ${gateway} 22`,
+			`blocked ${gateway} 2375`,
 			'blocked 127.0.0.1 80',
 			'dns blocked'
 		]);
@@ -129,6 +130,8 @@ describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, 
 			'        print("wrote", path)',
 			'    except OSError:',
 			'        print("denied", path)',
+			'open("/work/control", "w").write("x")',
+			'print("wrote /work/control")',
 			'for path in ("/escape-dir", "/tmp/escape-dir"):',
 			'    try:',
 			'        os.mkdir(path)',
@@ -149,18 +152,19 @@ describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, 
 			'denied /usr/local/escape',
 			'denied /proc/escape',
 			'denied /sys/escape',
+			'wrote /work/control',
 			'denied /escape-dir',
 			'denied /tmp/escape-dir'
 		]);
 	});
 
-	it('cannot remount, mount or reach another filesystem to write outside /work', async () => {
+	it('cannot mount a filesystem, remount the root writable or chroot', async () => {
 		const probe = [
 			'import ctypes, os',
 			'libc = ctypes.CDLL(None, use_errno=True)',
 			'rc = libc.mount(b"tmpfs", b"/tmp", b"tmpfs", 0, None)',
 			'print("mount", "denied" if rc != 0 else "allowed")',
-			'rc = libc.mount(None, b"/", None, 32 | 1 | 0, None)',
+			'rc = libc.mount(None, b"/", None, 32, None)',
 			'print("remount", "denied" if rc != 0 else "allowed")',
 			'try:',
 			'    os.chroot("/work")',
@@ -217,7 +221,7 @@ describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, 
 			'    print(path, os.path.exists(path))',
 			'mounts = open("/proc/self/mountinfo").read()',
 			'print("mounted", "docker.sock" in mounts)',
-			'print("dockerenv-host", os.environ.get("DOCKER_HOST"))',
+			'print("DOCKER_HOST", os.environ.get("DOCKER_HOST"))',
 			''
 		].join('\n');
 
@@ -228,8 +232,54 @@ describe('Sandbox escapes: network, filesystem, identity', { timeout: 60_000 }, 
 			'/run/docker.sock False',
 			'/docker.sock False',
 			'mounted False',
-			'dockerenv-host None'
+			'DOCKER_HOST None'
 		]);
+	});
+});
+
+describe('Sandbox escapes: one Test to the next', { timeout: 60_000 }, () => {
+	it('cannot carry a hidden Test input to a later Test through System V IPC or shared memory', async () => {
+		const main = [
+			'import ctypes, os, struct, sys',
+			'libc = ctypes.CDLL(None, use_errno=True)',
+			'data = sys.stdin.read()',
+			'KEY = 0x5ec2e7',
+			'qid = libc.msgget(KEY, 0o1666)',
+			'if data == "first":',
+			'    buf = ctypes.create_string_buffer(struct.pack("l", 1) + b"SECRET-ipc".ljust(32, b"\\0"))',
+			'    print("msgsnd", libc.msgsnd(qid, buf, 32, 0))',
+			'    shm = libc.shmget(KEY, 4096, 0o1666 | 0o1000)',
+			'    libc.shmat.restype = ctypes.c_void_p',
+			'    addr = libc.shmat(shm, None, 0)',
+			'    if shm >= 0 and addr:',
+			'        ctypes.memmove(addr, b"SECRET-shm", 10)',
+			'else:',
+			'    buf = ctypes.create_string_buffer(8 + 32)',
+			'    got = libc.msgrcv(qid, buf, 32, 0, 0o4000)',
+			'    print("queue", got, buf.raw[8:18])',
+			'    shm = libc.shmget(KEY, 4096, 0o1666)',
+			'    print("shm", shm)',
+			'    if shm >= 0:',
+			'        libc.shmat.restype = ctypes.c_void_p',
+			'        addr = libc.shmat(shm, None, 0)',
+			'        print("shm data", ctypes.string_at(addr, 10))',
+			'    for name in os.listdir("/dev/shm") if os.path.isdir("/dev/shm") else []:',
+			'        print("dev/shm", name)',
+			''
+		].join('\n');
+
+		const result = await runner.execute({
+			language: 'python',
+			files: { 'main.py': main },
+			tests: [
+				{ id: 'first', input: 'first' },
+				{ id: 'second', input: 'second' }
+			],
+			limits
+		});
+
+		expect(result.results[1].status).toBe('ok');
+		expect(result.results[1].stdout).not.toContain('SECRET');
 	});
 });
 
@@ -246,13 +296,13 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 			'chunks = []',
 			'while True:',
 			'    chunks.append(bytearray(32 * 1024 * 1024))',
-			'    for block in chunks[-1:]:',
-			'        block[::4096] = b"x" * len(block[::4096])',
+			// Touch every page so the memory is really committed.
+			'    chunks[-1][::4096] = b"x" * len(chunks[-1][::4096])',
 			''
 		].join('\n');
 		const started = Date.now();
 
-		const result = await run(hog, { timeoutMs: 8000, memoryMb: 256 });
+		const result = await run(hog, limits);
 
 		expect(result.results[0].status).toBe('runtimeError');
 		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs);
@@ -263,7 +313,7 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		const hog =
 			'data = bytearray(400 * 1024 * 1024)\nfor i in range(0, len(data), 4096):\n    data[i] = 1\nprint("allocated")\n';
 
-		const result = await run(hog, { timeoutMs: 8000, memoryMb: 4096 });
+		const result = await run(hog, { timeoutMs: 2000, memoryMb: 4096 });
 
 		expect(result.results[0].status).toBe('runtimeError');
 		expect(result.results[0].stdout).toBe('');
@@ -281,14 +331,16 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 			'            os._exit(0)',
 			'        children += 1',
 			'except OSError:',
-			'    print("limited", children <= 64, children)',
+			`    print("limited", children <= ${sandboxConfig.pidsLimit}, children)`,
 			''
 		].join('\n');
 		const started = Date.now();
 
 		const result = await run(bomb);
 
-		expect(result.results[0].stdout).toMatch(/^limited True \d+\n$/);
+		const [, withinLimit, forked] = result.results[0].stdout.trim().split(' ');
+		expect(withinLimit).toBe('True');
+		expect(Number(forked)).toBeGreaterThan(10);
 		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs);
 		await healthy();
 	});
