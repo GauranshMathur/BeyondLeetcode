@@ -8,6 +8,7 @@ import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
 import { createTar } from './tar';
+import { waitUntilHealthy } from './wait-healthy.testutil';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
@@ -29,21 +30,6 @@ async function freePort(): Promise<number> {
 	});
 }
 
-async function waitUntilHealthy(): Promise<void> {
-	for (let attempt = 0; attempt < 100; attempt++) {
-		try {
-			const res = await fetch(`${url}/health`, {
-				headers: { Authorization: `Bearer ${token}` }
-			});
-			if (res.ok) return;
-		} catch {
-			// not listening yet
-		}
-		await new Promise((resolve) => setTimeout(resolve, 100));
-	}
-	throw new Error('Runner process did not become healthy');
-}
-
 beforeAll(async () => {
 	const port = await freePort();
 	url = `http://127.0.0.1:${port}`;
@@ -56,7 +42,7 @@ beforeAll(async () => {
 		},
 		stdio: 'inherit'
 	});
-	await waitUntilHealthy();
+	await waitUntilHealthy(url, token);
 	runner = createHttpRunner({ url, token });
 	// Pull the image now so the first test does not pay for it.
 	await engine.create(sandboxConfig.pythonImage, {}).then((id) => engine.remove(id));

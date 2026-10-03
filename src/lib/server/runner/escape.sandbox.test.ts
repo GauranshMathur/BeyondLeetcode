@@ -5,6 +5,7 @@ import { containerLabel, sandboxConfig } from './config';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import type { RunnerPort } from './port';
+import { waitUntilHealthy } from './wait-healthy.testutil';
 
 /**
  * Seam 2, adversarial: real learner Python through the HTTP adapter and a real Runner process,
@@ -41,15 +42,7 @@ beforeAll(async () => {
 		},
 		stdio: 'inherit'
 	});
-	for (let attempt = 0; attempt < 100; attempt++) {
-		try {
-			const res = await fetch(`${url}/health`, { headers: { Authorization: `Bearer ${token}` } });
-			if (res.ok) break;
-		} catch {
-			// not listening yet
-		}
-		await new Promise((resolve) => setTimeout(resolve, 100));
-	}
+	await waitUntilHealthy(url, token);
 	runner = createHttpRunner({ url, token });
 	// Pull the image now so the first test does not pay for it.
 	await engine.create(sandboxConfig.pythonImage, {}).then((id) => engine.remove(id));
