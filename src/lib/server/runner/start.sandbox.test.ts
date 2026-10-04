@@ -38,7 +38,7 @@ describe('Runner start: image pull', { timeout: 180_000 }, () => {
 		}
 	});
 
-	it('reports not-ready, pulls the missing image, then serves a run', async () => {
+	it('pulls the missing image, reports Python ready, then serves a run', async () => {
 		if (!(await engine.hasImage(image))) docker('pull', image);
 		// Untag instead of deleting: a second tag keeps the layers, so the pull below downloads nothing.
 		docker('tag', image, keeper);
@@ -58,7 +58,7 @@ describe('Runner start: image pull', { timeout: 180_000 }, () => {
 		});
 		const seen = await waitUntilHealthy(url, token, { intervalMs: 20, languages: ['python'] });
 
-		expect(seen[0]).toBe(503);
+		// The other Languages' images may already be present, so /health can be 200 before Python's is.
 		expect(seen.at(-1)).toBe(200);
 		expect(await engine.hasImage(image)).toBe(true);
 		const result = await createHttpRunner({ url, token }).execute({
