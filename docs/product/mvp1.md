@@ -51,7 +51,7 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 
 ## Code runner
 
-Each run starts a fresh, unprivileged container from the official `python`, `node` or `golang` image and removes it when done:
+Each run starts a fresh, unprivileged container and removes it when done. Python runs in the official `python` image; TypeScript and Go run in our own images (the same `python` base plus the Node or Go toolchain, built in this repo and published to GHCR), so one harness runs every Language:
 
 `--network none`, `--read-only` root with a tmpfs work dir, non-root user, `--cap-drop ALL`, `--security-opt no-new-privileges`, memory / CPU / pids limits, a wall-clock timeout, `--rm`.
 
