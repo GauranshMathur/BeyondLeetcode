@@ -249,6 +249,27 @@ export async function removeStaleContainers(
 	}
 }
 
+/** Once the grace period has passed, plus a margin: every container the first sweep skipped as too young is old enough. */
+export const secondSweepDelayMs = sweepMinAgeMs + 2_000;
+
+/**
+ * One more `removeStaleContainers` after `secondSweepDelayMs`, for a container the start-up sweep
+ * skipped as too young (a Runner died after creating it but before starting it, so neither
+ * AutoRemove nor the watchdog will ever fire). Same rules as the first sweep; not periodic.
+ * Resolves when that sweep is done.
+ */
+export async function scheduleDelayedSweep(
+	engine: Engine,
+	instanceId: string,
+	clock: { sleep?: (ms: number) => Promise<void>; now?: () => number } = {}
+): Promise<void> {
+	const sleep =
+		clock.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+	const now = clock.now ?? Date.now;
+	await sleep(secondSweepDelayMs);
+	await removeStaleContainers(engine, instanceId, now());
+}
+
 const pullRetryMinMs = 1_000;
 const pullRetryMaxMs = 30_000;
 
