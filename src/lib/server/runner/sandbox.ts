@@ -253,28 +253,39 @@ const pullRetryMinMs = 1_000;
 const pullRetryMaxMs = 30_000;
 
 /**
- * Makes sure the engine holds every image, pulling those it lacks. A failed pull is logged and
- * retried with a growing pause, forever: the Runner stays not-ready rather than exiting.
+ * Makes sure the engine holds every image, pulling those it lacks. Each image has its own loop, so
+ * one slow or failing pull never holds up another. A failed pull is logged and retried with a
+ * growing pause, forever. `onReady(language)` fires as soon as that Language's image is present;
+ * the promise resolves once all are.
  */
 export async function ensureImages(
 	engine: Engine,
-	images: readonly string[],
-	sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+	images: Readonly<Record<string, string>>,
+	options: {
+		onReady?: (language: string) => void;
+		sleep?: (ms: number) => Promise<void>;
+	} = {}
 ): Promise<void> {
-	for (const image of images) {
-		for (let pause = pullRetryMinMs; ; pause = Math.min(pause * 2, pullRetryMaxMs)) {
-			try {
-				if (await engine.hasImage(image)) break;
-				console.log(`Pulling Sandbox image ${image}`);
-				await engine.pull(image);
-				console.log(`Pulled Sandbox image ${image}`);
-				break;
-			} catch (error) {
-				console.error(`Could not pull Sandbox image ${image}, retrying in ${pause} ms`, error);
-				await sleep(pause);
+	const { onReady, sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)) } =
+		options;
+	await Promise.all(
+		Object.entries(images).map(async ([language, image]) => {
+			for (let pause = pullRetryMinMs; ; pause = Math.min(pause * 2, pullRetryMaxMs)) {
+				try {
+					if (!(await engine.hasImage(image))) {
+						console.log(`Pulling Sandbox image ${image}`);
+						await engine.pull(image);
+						console.log(`Pulled Sandbox image ${image}`);
+					}
+					onReady?.(language);
+					return;
+				} catch (error) {
+					console.error(`Could not pull Sandbox image ${image}, retrying in ${pause} ms`, error);
+					await sleep(pause);
+				}
 			}
-		}
-	}
+		})
+	);
 }
 
 function safeJson(text: string): unknown {

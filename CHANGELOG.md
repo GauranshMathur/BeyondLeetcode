@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.17.0...v0.18.0) (2026-10-04)
+
+
+### Features
+
+* **beyondleetcode:** C9b publish multi-arch image to GHCR ([#86](https://github.com/GauranshMathur/BeyondLeetcode/issues/86)) ([71dbbcc](https://github.com/GauranshMathur/BeyondLeetcode/commit/71dbbcc426e8980837d12e5784d657fd2e19121e))
+
 ## [0.17.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.2...v0.17.0) (2026-10-04)
 
 
