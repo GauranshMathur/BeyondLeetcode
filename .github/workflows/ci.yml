@@ -186,6 +186,9 @@ jobs:
           done
           docker logs web
           exit 1
+      # The runner pulls every Sandbox image at start-up; the Go tag is only published once this reaches main.
+      - name: Build the Go Sandbox image
+        run: docker build -f Dockerfile.sandbox-go -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" .
       - name: Smoke test, runner role answers its health check
         run: |
           token=$(openssl rand -hex 24)
