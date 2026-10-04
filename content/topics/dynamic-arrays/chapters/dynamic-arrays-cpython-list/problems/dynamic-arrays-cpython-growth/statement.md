@@ -10,6 +10,8 @@ When `append` finds the block full, let `n` be the length the list is about to h
 
 The other rules and all earlier commands keep working as before.
 
+Under `cpython`, `fill N X` has `N` at most 200,000.
+
 ## Example
 
 Input:

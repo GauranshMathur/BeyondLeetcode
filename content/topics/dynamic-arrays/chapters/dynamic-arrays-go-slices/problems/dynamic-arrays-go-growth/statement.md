@@ -7,6 +7,8 @@ When `append` finds the block full:
 
 `pop` never changes the capacity under `go`.
 
+Under `go`, `fill N X` has `N` at most 200,000.
+
 ## Example
 
 Input:
