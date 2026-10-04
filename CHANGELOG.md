@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.20.1...v0.21.0) (2026-10-04)
+
+
+### Features
+
+* **beyondleetcode:** C9d CI: one sandbox-image build script, one published check ([#92](https://github.com/GauranshMathur/BeyondLeetcode/issues/92)) ([e4de926](https://github.com/GauranshMathur/BeyondLeetcode/commit/e4de9264cedeec5ec7d59854528d6cd9f432ab43))
+
 ## [0.20.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.20.0...v0.20.1) (2026-10-04)
 
 
