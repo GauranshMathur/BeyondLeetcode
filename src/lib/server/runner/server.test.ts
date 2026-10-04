@@ -20,7 +20,7 @@ function setup() {
 			token,
 			runner,
 			maxConcurrent: 4,
-			ready: () => true
+			readyLanguages: () => ['python', 'typescript', 'go']
 		})
 	};
 }
@@ -58,7 +58,10 @@ describe('Runner HTTP handler', () => {
 		);
 
 		expect(res.status).toBe(200);
-		expect(await res.json()).toEqual({ status: 'ok' });
+		expect(await res.json()).toEqual({
+			ready: true,
+			languages: ['python', 'typescript', 'go']
+		});
 	});
 
 	it('executes a valid request through the runner and returns its result', async () => {
@@ -117,7 +120,7 @@ describe('Runner HTTP handler', () => {
 			token,
 			runner: createScriptedRunner({ unavailable: true }),
 			maxConcurrent: 4,
-			ready: () => true
+			readyLanguages: () => ['python', 'typescript', 'go']
 		});
 
 		const res = await handle(post(valid));
@@ -154,7 +157,7 @@ describe('Runner HTTP handler', () => {
 			token,
 			runner,
 			maxConcurrent: 2,
-			ready: () => true
+			readyLanguages: () => ['python', 'typescript', 'go']
 		});
 
 		const first = handle(post({ ...valid, tests: [] }));
@@ -180,48 +183,80 @@ describe('Runner HTTP handler', () => {
 
 	describe('while the Sandbox images are still being pulled', () => {
 		const auth = { Authorization: `Bearer ${token}` };
+		const typescript = {
+			...valid,
+			language: 'typescript',
+			files: { 'main.ts': '' }
+		};
 
-		function notReady() {
+		function pulling() {
 			const runner = createScriptedRunner({
 				tests: { a: { status: 'ok', stdout: 'x' } }
 			});
-			let ready = false;
+			const ready: string[] = [];
 			const handle = createRunnerHandler({
 				token,
 				runner,
 				maxConcurrent: 4,
-				ready: () => ready
+				readyLanguages: () => ready
 			});
-			return { runner, handle, becomeReady: () => (ready = true) };
+			const health = () => handle(new Request('http://runner/health', { headers: auth }));
+			return {
+				runner,
+				handle,
+				health,
+				becomeReady: (language: string) => ready.push(language)
+			};
 		}
 
-		it('answers /health 503 {ready:false}, then 200 once ready', async () => {
-			const { handle, becomeReady } = notReady();
-			const health = () => handle(new Request('http://runner/health', { headers: auth }));
+		it('answers /health 503 {ready:false}, then 200 listing the ready Languages', async () => {
+			const { health, becomeReady } = pulling();
 
 			const before = await health();
-			becomeReady();
-			const after = await health();
+			becomeReady('python');
+			const afterPython = await health();
+			becomeReady('typescript');
+			const afterBoth = await health();
 
 			expect(before.status).toBe(503);
 			expect(await before.json()).toEqual({ ready: false });
-			expect(after.status).toBe(200);
+			expect(afterPython.status).toBe(200);
+			expect(await afterPython.json()).toEqual({
+				ready: true,
+				languages: ['python']
+			});
+			expect(await afterBoth.json()).toEqual({
+				ready: true,
+				languages: ['python', 'typescript']
+			});
 		});
 
-		it('answers /execute 503 without running anything, then serves it once ready', async () => {
-			const { handle, runner, becomeReady } = notReady();
+		it('runs Python while TypeScript is pulling, answers TypeScript 503, then serves it', async () => {
+			const { handle, runner, becomeReady } = pulling();
 
-			const before = await handle(post(valid));
-			expect(runner.calls).toEqual([]);
-			becomeReady();
-			const after = await handle(post(valid));
+			becomeReady('python');
+			const python = await handle(post(valid));
+			const missing = await handle(post(typescript));
+			expect(runner.calls).toHaveLength(1);
+			becomeReady('typescript');
+			const after = await handle(post(typescript));
 
-			expect(before.status).toBe(503);
+			expect(python.status).toBe(200);
+			expect(missing.status).toBe(503);
+			expect(await missing.json()).toEqual({ error: 'Runner is not ready' });
 			expect(after.status).toBe(200);
+			expect(runner.calls).toHaveLength(2);
+		});
+
+		it('answers /execute 503 while no image is ready', async () => {
+			const { handle, runner } = pulling();
+
+			expect((await handle(post(valid))).status).toBe(503);
+			expect(runner.calls).toEqual([]);
 		});
 
 		it('still answers 401 first to a caller without the token', async () => {
-			const { handle } = notReady();
+			const { handle } = pulling();
 
 			expect((await handle(new Request('http://runner/health'))).status).toBe(401);
 		});

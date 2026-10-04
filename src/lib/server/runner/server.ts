@@ -55,8 +55,8 @@ export function createRunnerHandler(options: {
 	token: string;
 	runner: RunnerPort;
 	maxConcurrent: number;
-	/** False while the Sandbox images are still being pulled. */
-	ready: () => boolean;
+	/** Languages whose Sandbox image is present; the rest are still being pulled. */
+	readyLanguages: () => readonly string[];
 }) {
 	const expected = digest(`Bearer ${options.token}`);
 	let running = 0;
@@ -67,11 +67,13 @@ export function createRunnerHandler(options: {
 
 		const { pathname } = new URL(req.url);
 		if (pathname === '/health' && req.method === 'GET') {
-			return options.ready() ? json(200, { status: 'ok' }) : json(503, { ready: false });
+			const languages = options.readyLanguages();
+			return languages.length > 0
+				? json(200, { ready: true, languages })
+				: json(503, { ready: false });
 		}
 		if (pathname !== '/execute') return json(404, { error: 'Not found' });
 		if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
-		if (!options.ready()) return json(503, { error: 'Runner is not ready' });
 
 		let body: unknown;
 		try {
@@ -81,6 +83,8 @@ export function createRunnerHandler(options: {
 		}
 		const parsed = executeRequest.safeParse(body);
 		if (!parsed.success) return json(400, { error: 'Invalid request' });
+		if (!options.readyLanguages().includes(parsed.data.language))
+			return json(503, { error: 'Runner is not ready' });
 
 		// No queue: a full Runner says so at once and the caller reports it as unavailable.
 		if (running >= options.maxConcurrent) return json(503, { error: 'Runner is busy' });

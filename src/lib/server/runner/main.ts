@@ -28,7 +28,7 @@ try {
 
 const engine = createEngine(env.dockerSocket);
 const instanceId = randomBytes(8).toString('hex');
-let ready = false;
+const readyLanguages: string[] = [];
 const server = Bun.serve({
 	port: env.port,
 	hostname: env.host,
@@ -37,15 +37,18 @@ const server = Bun.serve({
 		token: env.token,
 		runner: createSandboxRunner(engine, instanceId),
 		maxConcurrent: env.maxConcurrent,
-		ready: () => ready
+		readyLanguages: () => readyLanguages
 	})
 });
 console.log(
-	`Runner ${instanceId} listening on ${env.host}:${server.port}, not ready until its images are pulled`
+	`Runner ${instanceId} listening on ${env.host}:${server.port}, ready once an image is pulled`
 );
 
 // A Runner that died mid-run may have left containers behind; a live one's are left alone.
 await removeStaleContainers(engine, instanceId);
-await ensureImages(engine, Object.values(sandboxConfig.images));
-ready = true;
-console.log('Runner ready');
+await ensureImages(engine, sandboxConfig.images, {
+	onReady: (language) => {
+		readyLanguages.push(language);
+		console.log(`Runner ready for ${language}`);
+	}
+});

@@ -94,7 +94,10 @@ describe('Sandbox runner: Language', () => {
 			const { engine } = fakeEngine({ output: okLine });
 			const create = vi.spyOn(engine, 'create');
 
-			await createSandboxRunner(engine, 'test-instance').execute({ ...request, language });
+			await createSandboxRunner(engine, 'test-instance').execute({
+				...request,
+				language
+			});
 
 			expect(create.mock.calls[0][0]).toBe(image);
 			expect(create.mock.calls[0][1].Env).toContain(`RUNNER_LANGUAGE=${language}`);
@@ -254,7 +257,7 @@ describe('Sandbox runner: ensureImages', () => {
 	it('pulls only the images the engine lacks', async () => {
 		const { engine, pulled } = imageEngine(new Set(['a:1']));
 
-		await ensureImages(engine, ['a:1', 'b:2']);
+		await ensureImages(engine, { a: 'a:1', b: 'b:2' });
 
 		expect(pulled).toEqual(['b:2']);
 	});
@@ -264,7 +267,7 @@ describe('Sandbox runner: ensureImages', () => {
 		const pauses: number[] = [];
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 
-		await ensureImages(engine, ['a:1'], async (ms) => void pauses.push(ms));
+		await ensureImages(engine, { a: 'a:1' }, { sleep: async (ms) => void pauses.push(ms) });
 
 		expect(pulled).toEqual(['a:1']);
 		expect(pauses).toEqual([1000, 2000, 4000]);
@@ -275,12 +278,40 @@ describe('Sandbox runner: ensureImages', () => {
 		const { engine } = imageEngine(new Set());
 		const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-		await ensureImages(engine, ['a:1']);
+		await ensureImages(engine, { a: 'a:1' });
 
 		expect(log.mock.calls.map(([line]) => line)).toEqual([
 			'Pulling Sandbox image a:1',
 			'Pulled Sandbox image a:1'
 		]);
+		vi.restoreAllMocks();
+	});
+	it('marks each Language ready on its own, so one failing pull never blocks another', async () => {
+		const present = new Set(['py:1']);
+		let tsPulls = 0;
+		const engine = {
+			hasImage: async (image: string) => present.has(image),
+			pull: async (image: string) => {
+				if (image === 'ts:1' && tsPulls++ < 2) throw new Error('registry down');
+				present.add(image);
+			}
+		} as unknown as Engine;
+		const ready: string[] = [];
+		let releaseSleep: () => void = () => {};
+		const gate = new Promise<void>((resolve) => (releaseSleep = resolve));
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const done = ensureImages(
+			engine,
+			{ python: 'py:1', typescript: 'ts:1', go: 'go:1' },
+			{ onReady: (language) => ready.push(language), sleep: () => gate }
+		);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(ready.sort()).toEqual(['go', 'python']);
+		releaseSleep();
+		await done;
+		expect(ready.sort()).toEqual(['go', 'python', 'typescript']);
 		vi.restoreAllMocks();
 	});
 });
