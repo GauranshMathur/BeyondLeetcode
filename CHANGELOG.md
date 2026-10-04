@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.0...v0.16.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C7c Save, Run and Submit act on the Build of the Language the tab shows ([#81](https://github.com/GauranshMathur/BeyondLeetcode/issues/81)) ([ec8ccf6](https://github.com/GauranshMathur/BeyondLeetcode/commit/ec8ccf62c02251c78c16801f295283cab4f0ce06))
+
 ## [0.16.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.15.0...v0.16.0) (2026-10-04)
 
 
