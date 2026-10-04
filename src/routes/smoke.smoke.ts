@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 
-// The Reference Code is read from the fixture on disk (the image ships the same fixture), not copied here.
+// The Reference Code is read from the content folder on disk (the image ships the same folder), not copied here.
 const problemDir =
-	'src/lib/server/content/fixture/topics/stacks/chapters/stacks-undo-log/problems/stacks-push';
+	'content/topics/dynamic-arrays/chapters/dynamic-arrays-cpython-list/problems/dynamic-arrays-append';
 
 const languages = [
 	{ id: 'python', label: 'Python', file: 'main.py' },
@@ -27,16 +27,16 @@ test('Map to Topic to Chapter (Read) to Problem, then Run and Submit once per La
 	page
 }) => {
 	await page.goto('/');
-	await page.getByRole('link', { name: /^Stacks, unlocked/ }).click();
-	await expect(page).toHaveURL('/topics/stacks');
+	await page.getByRole('link', { name: /^Dynamic arrays, unlocked/ }).click();
+	await expect(page).toHaveURL('/topics/dynamic-arrays');
 
-	await page.getByRole('link', { name: 'An undo log' }).click();
-	await expect(page).toHaveURL('/chapters/stacks-undo-log');
+	await page.getByRole('link', { name: 'CPython: a list that leaves room' }).click();
+	await expect(page).toHaveURL('/chapters/dynamic-arrays-cpython-list');
 	await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
 	await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
 
-	await page.getByRole('link', { name: 'Push and size' }).click();
-	await expect(page).toHaveURL('/problems/stacks-push');
+	await page.getByRole('link', { name: 'Append, get and length' }).click();
+	await expect(page).toHaveURL('/problems/dynamic-arrays-append');
 
 	for (const language of languages) {
 		if (language.id !== 'python') {
@@ -55,7 +55,7 @@ test('Map to Topic to Chapter (Read) to Problem, then Run and Submit once per La
 			'pass',
 			slow
 		);
-		await expect(page.getByText('1 of 1 passed')).toBeVisible();
+		await expect(page.getByText('2 of 2 passed')).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
 
 		await page.getByRole('button', { name: 'Submit' }).click();
@@ -64,6 +64,6 @@ test('Map to Topic to Chapter (Read) to Problem, then Run and Submit once per La
 		await expect(page.getByRole('button', { name: 'Submit' })).toBeEnabled();
 	}
 
-	await page.goto('/topics/stacks');
-	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
+	await page.goto('/topics/dynamic-arrays');
+	await expect(page.getByRole('row', { name: /^Append, get and length/ })).toContainText('solved');
 });

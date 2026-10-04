@@ -1,0 +1,8 @@
+policy go
+fill 256 1
+cap
+fill 1 1
+cap
+fill 256 1
+cap
+copies

@@ -83,6 +83,11 @@ jobs:
         run: .github/build-sandbox-images.sh
       # Real Docker on the runner: the Sandbox tests start containers.
       - run: bun run test:sandbox
+      # The content check again, on the content the image ships (the run above checks the fixture).
+      - name: Content check on content/
+        run: bunx vitest run --config vitest.sandbox.config.ts src/lib/server/runner/content-check.sandbox.test.ts
+        env:
+          CONTENT_DIR: content
 
   # Publishes the TypeScript Sandbox image to GHCR next to the app image, once per tag number
   # (bumped by hand in config.ts when Dockerfile.sandbox-node changes). Only after the tests passed.

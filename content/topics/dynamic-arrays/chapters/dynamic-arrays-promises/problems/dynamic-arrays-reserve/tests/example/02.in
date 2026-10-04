@@ -1,0 +1,7 @@
+policy double
+fill 5 1
+cap
+shrink
+cap
+copies
+get 4
