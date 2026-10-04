@@ -53,6 +53,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: PROOF ONLY remove the runner
+        working-directory: ${{ runner.temp }}/instance
+        run: docker compose rm -sf runner
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.19
