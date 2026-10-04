@@ -1,0 +1,9 @@
+{
+	"title": "CPython: a list that leaves room",
+	"problems": [
+		"dynamic-arrays-append",
+		"dynamic-arrays-copies",
+		"dynamic-arrays-cpython-growth",
+		"dynamic-arrays-pop"
+	]
+}

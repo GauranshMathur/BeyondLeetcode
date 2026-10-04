@@ -1,0 +1,108 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+var (
+	block  []int // a fixed-size block of slots; its size is the capacity
+	length int   // how many slots are in use
+	policy = "double"
+	copies int
+)
+
+func cpythonCap(size int) int {
+	return (size + (size >> 3) + 6) &^ 3
+}
+
+// nextCap is the capacity of the block that replaces a full one.
+func nextCap() int {
+	c := len(block)
+	if policy == "exact" {
+		return c + 1
+	}
+	if policy == "cpython" {
+		return cpythonCap(length + 1)
+	}
+	if c == 0 {
+		return 1
+	}
+	return c * 2
+}
+
+// moveTo replaces the block with one of c slots, copying the items across.
+func moveTo(c int) {
+	newBlock := make([]int, c)
+	for i := 0; i < length; i++ {
+		newBlock[i] = block[i]
+	}
+	copies += length
+	block = newBlock
+}
+
+func push(value int) {
+	if length == len(block) {
+		moveTo(nextCap())
+	}
+	block[length] = value
+	length++
+}
+
+func main() {
+	out := bufio.NewWriter(os.Stdout)
+	defer out.Flush()
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 {
+			continue
+		}
+		arg := 0
+		if len(fields) > 1 {
+			arg, _ = strconv.Atoi(fields[1])
+		}
+		switch fields[0] {
+		case "append":
+			push(arg)
+		case "get":
+			if arg >= 0 && arg < length {
+				fmt.Fprintln(out, block[arg])
+			} else {
+				fmt.Fprintln(out, "error")
+			}
+		case "len":
+			fmt.Fprintln(out, length)
+		case "policy":
+			policy = fields[1]
+		case "cap":
+			fmt.Fprintln(out, len(block))
+		case "copies":
+			fmt.Fprintln(out, copies)
+		case "fill":
+			value, _ := strconv.Atoi(fields[2])
+			for n := arg; n > 0; n-- {
+				push(value)
+			}
+		case "pop":
+			if length == 0 {
+				fmt.Fprintln(out, "error")
+				continue
+			}
+			length--
+			fmt.Fprintln(out, block[length])
+			if policy == "cpython" && length < len(block)>>1 {
+				c := 0
+				if length > 0 {
+					c = cpythonCap(length)
+				}
+				if c != len(block) {
+					moveTo(c)
+				}
+			}
+		}
+	}
+}
