@@ -88,6 +88,10 @@ jobs:
   # (bumped by hand in config.ts when Dockerfile.sandbox-node changes). Only after the tests passed.
   publish-sandbox-node:
     if: github.event_name == 'push'
+    # Two publish runs never race for the same tag.
+    concurrency:
+      group: publish-sandbox-node
+      cancel-in-progress: false
     needs: sandbox
     runs-on: ubuntu-24.04
     permissions:
@@ -105,10 +109,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Is this tag already published?
         id: exists
-        run: |
-          if docker buildx imagetools inspect "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: .github/published.sh "${{ steps.image.outputs.ref }}" >> "$GITHUB_OUTPUT"
       - if: steps.exists.outputs.published != 'true'
         uses: docker/setup-qemu-action@v4
       - if: steps.exists.outputs.published != 'true'
@@ -126,6 +127,10 @@ jobs:
   # (bumped by hand in config.ts when Dockerfile.sandbox-go changes). Only after the tests passed.
   publish-sandbox-go:
     if: github.event_name == 'push'
+    # Two publish runs never race for the same tag.
+    concurrency:
+      group: publish-sandbox-go
+      cancel-in-progress: false
     needs: sandbox
     runs-on: ubuntu-24.04
     permissions:
@@ -143,10 +148,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Is this tag already published?
         id: exists
-        run: |
-          if docker buildx imagetools inspect "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: .github/published.sh "${{ steps.image.outputs.ref }}" >> "$GITHUB_OUTPUT"
       - if: steps.exists.outputs.published != 'true'
         uses: docker/setup-qemu-action@v4
       - if: steps.exists.outputs.published != 'true'
