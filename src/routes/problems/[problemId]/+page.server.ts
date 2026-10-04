@@ -7,7 +7,7 @@ export const load: PageServerLoad = async ({ locals, params }) => ({
 	problem: await withLearningErrors(() => locals.learning.problem(params.problemId))
 });
 
-/** The picker offers these; Go joins with C7b. */
+/** The Languages the picker offers and the actions accept. */
 const PICKABLE = ['python', 'typescript', 'go'] as const;
 
 /** The page posts the whole Build with the revision it was based on and the Language it showed. */
