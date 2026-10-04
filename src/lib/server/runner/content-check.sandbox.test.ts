@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
 import { judge, submitPlan } from '../learning/rules.ts';
 import { sandboxConfig } from './config.ts';
@@ -27,6 +27,8 @@ const problems = catalogue
 const languages = Object.keys(sandboxConfig.images) as Language[];
 
 describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () => {
+	beforeAll(() => ensureImages(engine, sandboxConfig.images));
+
 	it('has Problems to check', () => {
 		expect(problems.length).toBeGreaterThan(0);
 	});
@@ -34,7 +36,6 @@ describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () =
 	for (const { id: problemId } of problems) {
 		for (const language of languages) {
 			it(`${problemId} / ${language}`, async () => {
-				await ensureImages(engine, [sandboxConfig.images[language]]);
 				const files = catalogue.problem(problemId)?.referenceCode[language];
 				expect(files, `${problemId}: no ${language} Reference Code`).toBeDefined();
 				const plan = submitPlan(catalogue, problemId);
