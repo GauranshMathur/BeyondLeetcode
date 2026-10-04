@@ -19,8 +19,10 @@ jobs:
   release-please:
     runs-on: ubuntu-24.04
     outputs:
-      release_created: ${{ steps.tag.outputs.release_created }}
-      tag_name: ${{ steps.tag.outputs.tag_name }}
+      # Either release-please run can create the release (the first one, when it recovers a release
+      # PR merged earlier), so take whichever did.
+      release_created: ${{ steps.tag.outputs.release_created || steps.release.outputs.release_created }}
+      tag_name: ${{ steps.tag.outputs.tag_name || steps.release.outputs.tag_name }}
     steps:
       # Accumulates conventional commits into a release PR. Merging that PR tags
       # the release and writes CHANGELOG.md.
@@ -71,10 +73,10 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   # Publishes the app image as vX.Y.Z and latest. A tag created with GITHUB_TOKEN triggers no
-  # workflow, so this runs here, in the release run. It waits for the ci run on the commit that
-  # was released (its smoke test included) and publishes only if that run succeeded. The release
-  # PR commit itself only bumps versions and the changelog and gets no ci run of its own, so the
-  # build checks out the tag but the gate watches github.sha.
+  # workflow, so this runs here, in the release run. The release PR commit (the tag) is made by
+  # this workflow and no ci run ever sees it, so the gate runs on the artifact itself: the tag is
+  # checked out, built and smoke-tested (the same .github/smoke.sh as ci), and only then is that
+  # same checkout built again for both architectures and pushed.
   publish-release:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
@@ -82,29 +84,32 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      actions: read
       packages: write
     env:
-      GH_TOKEN: ${{ github.token }}
       IMAGE: ghcr.io/gauranshmathur/beyondleetcode
       TAG: ${{ needs.release-please.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
-      - name: Wait for ci to pass on the released commit
-        run: |
-          # ci starts on the same push as this run, so give it a few minutes to appear.
-          id=
-          for i in $(seq 1 30); do
-            id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" \
-              --event push --json databaseId --jq '.[0].databaseId // empty')"
-            [ -n "$id" ] && break
-            sleep 10
-          done
-          [ -n "$id" ] || { echo "No ci run found for $GITHUB_SHA"; exit 1; }
-          # Bounded: gives up after 40 minutes (a normal run takes well under 15).
-          timeout 2400 gh run watch "$id" --repo "$GITHUB_REPOSITORY" --exit-status
+      - uses: docker/setup-buildx-action@v4
+      # Host architecture only, kept in the local engine for the smoke test.
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: beyondleetcode:ci
+          build-args: IMAGE_REF=${{ env.IMAGE }}:${{ env.TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      - name: Smoke test
+        run: .github/smoke.sh beyondleetcode:ci
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -131,8 +136,6 @@ jobs:
         run: echo "::notice::$IMAGE:$TAG is already published, not overwriting it or moving latest"
       - if: steps.exists.outputs.published != 'true'
         uses: docker/setup-qemu-action@v4
-      - if: steps.exists.outputs.published != 'true'
-        uses: docker/setup-buildx-action@v4
       - if: steps.exists.outputs.published != 'true'
         uses: docker/build-push-action@v7
         with:
