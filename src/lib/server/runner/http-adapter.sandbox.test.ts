@@ -170,6 +170,36 @@ describe('Runner: typescript in a fresh Sandbox per run', { timeout: 60_000 }, (
 		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '42\n' });
 	});
 
+	it('ignores a learner tsconfig.json: the Build still runs with the fixed options', async () => {
+		const result = await runTs({
+			'main.ts': "const n: number = Number('2') + 3;\nconsole.log(n);\n",
+			'tsconfig.json': '{}'
+		});
+
+		expect(result.compileError).toBeUndefined();
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '5\n' });
+	});
+
+	it('still reports a type error as a compile error beside a tsconfig.json', async () => {
+		const result = await runTs({
+			'main.ts': 'let x: number = "hi";\nconsole.log(x);\n',
+			'tsconfig.json': '{}'
+		});
+
+		expect(result.compileError).toContain('error TS2322');
+		expect(result.results).toEqual([]);
+	});
+
+	it('does not let a tsconfig.json loosen the strict checks', async () => {
+		const result = await runTs({
+			'main.ts': 'let x: string = null;\nconsole.log(x);\n',
+			'tsconfig.json': '{"compilerOptions":{"strict":false}}'
+		});
+
+		expect(result.compileError).toContain('error TS2322');
+		expect(result.results).toEqual([]);
+	});
+
 	it('keeps learner code away from the hidden inputs of other Tests', async () => {
 		const main = [
 			"import { readFileSync, readdirSync, writeFileSync } from 'node:fs';",
