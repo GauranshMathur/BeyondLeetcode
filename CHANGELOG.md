@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.15.0...v0.16.0) (2026-10-04)
+
+
+### Features
+
+* **beyondleetcode:** C7b Go Runner support ([#76](https://github.com/GauranshMathur/BeyondLeetcode/issues/76)) ([49a3e7a](https://github.com/GauranshMathur/BeyondLeetcode/commit/49a3e7a07250e41819b85ce8e06cc06e318691ff))
+
 ## [0.15.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.14.0...v0.15.0) (2026-10-03)
 
 
