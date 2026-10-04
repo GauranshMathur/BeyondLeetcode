@@ -28,6 +28,8 @@ jobs:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
       - run: bun run lint
+      - name: Test the published-tag check
+        run: .github/published.test.sh
 
   unit:
     runs-on: ubuntu-24.04
@@ -62,8 +64,8 @@ jobs:
       - run: docker pull python:3.13-slim
       # Built here under the exact name:tag config.ts uses, so the Runner finds it locally and never waits
       # on a pull of a tag that is only published once this change reaches main.
-      - name: Build the Go Sandbox image
-        run: docker build -f Dockerfile.sandbox-go -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" .
+      - name: Build the Sandbox images
+        run: .github/build-sandbox-images.sh
       # The Playwright webServer builds the app, serves it under Bun and starts the Runner.
       - run: bun run test:e2e
 
@@ -75,12 +77,10 @@ jobs:
         with:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
-      # The TypeScript Sandbox image is built here under the exact name:tag config.ts uses, so the tests
+      # Both Sandbox images are built here under the exact name:tag config.ts uses, so the tests
       # find it locally and never pull from GHCR.
-      - name: Build the TypeScript Sandbox image
-        run: docker build -f Dockerfile.sandbox-node -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-node:[0-9]*' src/lib/server/runner/config.ts)" .
-      - name: Build the Go Sandbox image
-        run: docker build -f Dockerfile.sandbox-go -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" .
+      - name: Build the Sandbox images
+        run: .github/build-sandbox-images.sh
       # Real Docker on the runner: the Sandbox tests start containers.
       - run: bun run test:sandbox
 
