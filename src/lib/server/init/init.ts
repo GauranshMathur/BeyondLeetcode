@@ -110,7 +110,6 @@ export async function runInit(
 	return `Wrote compose.yaml and .env.
 
 Next:
-  docker pull python:3.13-slim   # sandbox image; the Runner does not pull it yet
   docker compose up -d
   then open ${options.origin}`;
 }
