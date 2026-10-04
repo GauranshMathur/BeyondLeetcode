@@ -133,7 +133,7 @@ jobs:
           timeout 2400 gh run watch "$id" --repo "$GITHUB_REPOSITORY" --exit-status
 
   # Publishes the app image as vX.Y.Z and latest, once the gate passed. The only job here with a
-  # write permission. It runs no repo script and no test; the only repo content it executes is
+  # write permission. It runs no test; the only repo content it executes is .github/published.sh (from the gated sha) and
   # the Dockerfile build.
   publish-release:
     needs: [release-please, release-gate]
@@ -153,23 +153,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # A published version tag is never overwritten. Same exact-match logic as .github/published.sh
-      # in PR #80: only the registry's definite answer about this ref means "not published"; any
-      # other error fails the job. Output naming a digest is never "not published".
+      # A published version tag is never overwritten; the check is .github/published.sh.
       - name: Is this version tag already published?
         id: exists
-        run: |
-          ref="$IMAGE:$TAG"
-          if output="$(docker buildx imagetools inspect "$ref" 2>&1)"; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          elif [[ "$output" != *@sha256:* ]] &&
-            { grep -qxF "ERROR: $ref: not found" <<<"$output" || grep -qiF 'manifest unknown' <<<"$output"; }; then
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Could not tell whether $ref is published:"
-            echo "$output"
-            exit 1
-          fi
+        run: .github/published.sh "$IMAGE:$TAG" >> "$GITHUB_OUTPUT"
       - if: steps.exists.outputs.published == 'true'
         run: echo "::notice::$IMAGE:$TAG is already published, not overwriting it or moving latest"
       - if: steps.exists.outputs.published != 'true'

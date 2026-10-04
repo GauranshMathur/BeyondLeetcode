@@ -39,8 +39,7 @@ wait_for_200 http://localhost:3000/ || { docker logs web; exit 1; }
 # The runner pulls every Sandbox image at start-up; the tags are only published once this reaches main,
 # so both are built here under the exact name:tag config.ts uses and found locally through the socket.
 echo "== Sandbox images"
-docker build -f Dockerfile.sandbox-node -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-node:[0-9]*' src/lib/server/runner/config.ts)" .
-docker build -f Dockerfile.sandbox-go -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" .
+.github/build-sandbox-images.sh
 
 echo "== runner role answers its health check"
 token="$(openssl rand -hex 24)"
