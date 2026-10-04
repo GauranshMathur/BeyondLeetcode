@@ -7,7 +7,10 @@ export const load: PageServerLoad = async ({ locals, params }) => ({
 	problem: await withLearningErrors(() => locals.learning.problem(params.problemId))
 });
 
-/** The page posts the whole Build with the revision it was based on. */
+/** The picker offers these; Go joins with C7b. */
+const PICKABLE = ['python', 'typescript', 'go'] as const;
+
+/** The page posts the whole Build with the revision it was based on and the Language it showed. */
 async function readBuild(request: Request) {
 	const form = await request.formData();
 	let files: unknown;
@@ -27,11 +30,11 @@ async function readBuild(request: Request) {
 	) {
 		return { failure: fail(400, { message: 'files and baseRevision are required' }) };
 	}
-	return { files: files as Record<string, string>, baseRevision };
+	const language = PICKABLE.find((l) => l === form.get('language'));
+	if (!language)
+		return { failure: fail(400, { message: 'language must be python, typescript or go' }) };
+	return { files: files as Record<string, string>, baseRevision, language };
 }
-
-/** The picker offers these; Go joins with C7b. */
-const PICKABLE = ['python', 'typescript', 'go'] as const;
 
 export const actions: Actions = {
 	/** Language picker: builds this Problem's Topic in another Language, keeping the other Builds. */
@@ -49,7 +52,7 @@ export const actions: Actions = {
 		const build = await readBuild(request);
 		if (build.failure) return build.failure;
 		return withLearningErrors(() =>
-			locals.learning.saveCode(params.problemId, build.files, build.baseRevision)
+			locals.learning.saveCode(params.problemId, build.files, build.baseRevision, build.language)
 		);
 	},
 
@@ -59,7 +62,12 @@ export const actions: Actions = {
 		if (build.failure) return build.failure;
 		return withLearningErrors(async () => {
 			try {
-				return await locals.learning.run(params.problemId, build.files, build.baseRevision);
+				return await locals.learning.run(
+					params.problemId,
+					build.files,
+					build.baseRevision,
+					build.language
+				);
 			} catch (e) {
 				if (!(e instanceof LearningError) || e.code !== 'RunnerUnavailable') throw e;
 				// The code was saved before the Runner failed: tell the page the revision this Run saved.
@@ -74,7 +82,12 @@ export const actions: Actions = {
 		if (build.failure) return build.failure;
 		return withLearningErrors(async () => {
 			try {
-				return await locals.learning.submit(params.problemId, build.files, build.baseRevision);
+				return await locals.learning.submit(
+					params.problemId,
+					build.files,
+					build.baseRevision,
+					build.language
+				);
 			} catch (e) {
 				if (!(e instanceof LearningError) || e.code !== 'RunnerUnavailable') throw e;
 				// Nothing was recorded, but the code was saved before the Runner failed.

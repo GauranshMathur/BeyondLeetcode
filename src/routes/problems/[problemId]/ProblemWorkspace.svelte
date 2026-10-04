@@ -59,6 +59,7 @@ async function save(keepalive = false) {
 		const body = new FormData();
 		body.set('files', JSON.stringify(files));
 		body.set('baseRevision', String(revision));
+		body.set('language', problem.language);
 		const response = await fetch(saveUrl, {
 			method: 'POST',
 			body,
@@ -118,6 +119,7 @@ async function send(
 		const body = new FormData();
 		body.set('files', JSON.stringify(sent));
 		body.set('baseRevision', String(revision));
+		body.set('language', problem.language);
 		const response = await fetch(url, {
 			method: 'POST',
 			body,
