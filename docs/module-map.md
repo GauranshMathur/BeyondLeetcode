@@ -56,6 +56,8 @@ execute({ language, files, tests: { id, input }[], limits })
 
 Expected outputs never go to the Runner: learner code cannot read what is not in its container. The core compares outputs.
 
+**Inside the Runner.** One Python harness runs in every Sandbox image and switches on the Language only to compile (py_compile, `tsc --noEmit`, `go build`) and to run. A learner mistake is a Compile Error; a crashed or killed compile step is a Runner error, never a Verdict. On start the Runner pulls each Language's image and is ready per Language: a Language whose image is not there yet answers 503 while the others run. Its containers carry its instance id, and its start-up sweep removes only containers of other instances older than the hard wall clock.
+
 ## Test seams
 
 1. **Learning core:** Learner actions through `forLearner`, in-memory SQLite, fixture content, scripted Runner. Most tests live here.
