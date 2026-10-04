@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.21.0...v0.21.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C4j sandbox tests only assert on their own Runner's containers ([#96](https://github.com/GauranshMathur/BeyondLeetcode/issues/96)) ([c4af348](https://github.com/GauranshMathur/BeyondLeetcode/commit/c4af348a417e0965d1fcf4df265ba8d268441e93))
+
 ## [0.21.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.20.1...v0.21.0) (2026-10-04)
 
 
