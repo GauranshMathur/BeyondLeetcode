@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.21.1...v0.21.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** init no longer tells users to pull the sandbox image ([#99](https://github.com/GauranshMathur/BeyondLeetcode/issues/99)) ([54a0240](https://github.com/GauranshMathur/BeyondLeetcode/commit/54a0240dff9420a188777b6fa568cc295d64f659))
+
 ## [0.21.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.21.0...v0.21.1) (2026-10-04)
 
 
