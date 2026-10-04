@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.1...v0.16.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C6c Accepted panel credits only its own Submission ([#83](https://github.com/GauranshMathur/BeyondLeetcode/issues/83)) ([399c0a0](https://github.com/GauranshMathur/BeyondLeetcode/commit/399c0a08fa09f7872af693aedb0d5d4a5218cac6))
+
 ## [0.16.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.0...v0.16.1) (2026-10-04)
 
 
