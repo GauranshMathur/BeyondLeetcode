@@ -199,9 +199,10 @@ elif LANGUAGE == "typescript":
         sources += ["./" + os.path.relpath(os.path.join(root, n), BUILD) for n in names if n.endswith(".ts")]
     # Type errors are Compile Errors, as in a normal TypeScript project. erasableSyntaxOnly makes
     # enums and runtime namespaces (which Node's type stripping cannot run) fail here too.
+    # --ignoreConfig: a learner tsconfig.json or jsconfig.json is never read (TS 6 exits 1 with TS5112 when files and a config coexist).
     # allowImportingTsExtensions: Node needs "./util.ts" in imports, and tsc only allows that with it.
     compile_argv = [
-        "tsc", "--noEmit", "--pretty", "false", "--strict", "--target", "ES2023", "--lib", "ES2023",
+        "tsc", "--ignoreConfig", "--noEmit", "--pretty", "false", "--strict", "--target", "ES2023", "--lib", "ES2023",
         "--module", "nodenext", "--erasableSyntaxOnly", "--allowImportingTsExtensions", "--skipLibCheck",
         "--typeRoots", "/opt/ts/node_modules/@types", "--types", "node",
     ] + sorted(sources) if sources else None
