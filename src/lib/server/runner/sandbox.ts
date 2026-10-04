@@ -266,8 +266,12 @@ export async function scheduleDelayedSweep(
 	const sleep =
 		clock.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 	const now = clock.now ?? Date.now;
-	await sleep(secondSweepDelayMs);
-	await removeStaleContainers(engine, instanceId, now());
+	try {
+		await sleep(secondSweepDelayMs);
+		await removeStaleContainers(engine, instanceId, now());
+	} catch (error) {
+		console.error('Delayed Sandbox container sweep failed', error);
+	}
 }
 
 const pullRetryMinMs = 1_000;

@@ -363,7 +363,7 @@ describe('Sandbox runner: delayed second sweep', () => {
 			listContainers: async () => [
 				{
 					id: 'newcomer',
-					created: created(clock + secondSweepDelayMs - 1000),
+					created: created(startMs + secondSweepDelayMs - 1000),
 					labels: { [containerLabel]: 'other-live' }
 				}
 			],
