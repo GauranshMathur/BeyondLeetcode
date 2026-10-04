@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { containerLabel, sandboxConfig, sweepMinAgeMs } from './config';
 import type { Engine } from './engine';
-import { containerSpec, createSandboxRunner, ensureImages, removeStaleContainers } from './sandbox';
+import {
+	containerSpec,
+	createSandboxRunner,
+	ensureImages,
+	removeStaleContainers,
+	scheduleDelayedSweep,
+	secondSweepDelayMs
+} from './sandbox';
 
 const request = {
 	language: 'python' as const,
@@ -313,5 +320,63 @@ describe('Sandbox runner: ensureImages', () => {
 		await done;
 		expect(ready.sort()).toEqual(['go', 'python', 'typescript']);
 		vi.restoreAllMocks();
+	});
+});
+
+describe('Sandbox runner: delayed second sweep', () => {
+	const startMs = 1_000_000_000_000;
+	const created = (atMs: number) => atMs / 1000;
+
+	it('removes a young foreign container the start-up sweep skipped, never an own one', async () => {
+		let clock = startMs;
+		const listed: Listed[] = [
+			{ id: 'young', created: created(startMs - 1000), labels: { [containerLabel]: 'other' } },
+			{ id: 'mine', created: created(startMs - 1000), labels: { [containerLabel]: 'me' } }
+		];
+		const removed: string[] = [];
+		const engine = {
+			listContainers: async () => listed,
+			remove: async (id: string) => void removed.push(id)
+		} as unknown as Engine;
+		const waits: number[] = [];
+
+		await removeStaleContainers(engine, 'me', clock);
+		expect(removed).toEqual([]);
+
+		await scheduleDelayedSweep(engine, 'me', {
+			sleep: async (ms) => {
+				waits.push(ms);
+				clock += ms;
+			},
+			now: () => clock
+		});
+
+		expect(waits).toEqual([secondSweepDelayMs]);
+		expect(secondSweepDelayMs).toBeGreaterThan(sweepMinAgeMs);
+		expect(removed).toEqual(['young']);
+	});
+
+	it('leaves a foreign container that is still young at the second sweep', async () => {
+		let clock = startMs;
+		const removed: string[] = [];
+		const engine = {
+			listContainers: async () => [
+				{
+					id: 'newcomer',
+					created: created(startMs + secondSweepDelayMs - 1000),
+					labels: { [containerLabel]: 'other-live' }
+				}
+			],
+			remove: async (id: string) => void removed.push(id)
+		} as unknown as Engine;
+
+		await scheduleDelayedSweep(engine, 'me', {
+			sleep: async (ms) => {
+				clock += ms;
+			},
+			now: () => clock
+		});
+
+		expect(removed).toEqual([]);
 	});
 });

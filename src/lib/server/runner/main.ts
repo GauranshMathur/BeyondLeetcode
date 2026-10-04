@@ -6,7 +6,12 @@ import { randomBytes } from 'node:crypto';
 import { availableParallelism } from 'node:os';
 import { readRunnerEnv, sandboxConfig } from './config';
 import { createEngine } from './engine';
-import { createSandboxRunner, ensureImages, removeStaleContainers } from './sandbox';
+import {
+	createSandboxRunner,
+	ensureImages,
+	removeStaleContainers,
+	scheduleDelayedSweep
+} from './sandbox';
 import { createRunnerHandler } from './server';
 
 declare const Bun: {
@@ -46,6 +51,8 @@ console.log(
 
 // A Runner that died mid-run may have left containers behind; a live one's are left alone.
 await removeStaleContainers(engine, instanceId);
+// Containers it skipped as too young are checked once more after the grace period.
+void scheduleDelayedSweep(engine, instanceId);
 await ensureImages(engine, sandboxConfig.images, {
 	onReady: (language) => {
 		readyLanguages.push(language);
