@@ -224,6 +224,308 @@ describe('Runner: typescript in a fresh Sandbox per run', { timeout: 60_000 }, (
 	});
 });
 
+const goPrograms: Record<Exclude<ProgramKind, 'unavailable'>, string> = {
+	echo: 'package main\n\nimport (\n\t"io"\n\t"os"\n)\n\nfunc main() {\n\tb, _ := io.ReadAll(os.Stdin)\n\tos.Stdout.Write(b)\n}\n',
+	mixed: [
+		'package main',
+		'',
+		'import (',
+		'\t"io"',
+		'\t"os"',
+		')',
+		'',
+		'func main() {',
+		'\tb, _ := io.ReadAll(os.Stdin)',
+		'\tswitch string(b) {',
+		'\tcase "crash":',
+		'\t\tos.Exit(1)',
+		'\tcase "hang":',
+		'\t\tfor {',
+		'\t\t}',
+		'\t}',
+		'\tos.Stdout.Write(b)',
+		'}',
+		''
+	].join('\n'),
+	hang: 'package main\n\nfunc main() {\n\tfor {\n\t}\n}\n',
+	doesNotCompile: 'package main\n\nfunc main() {\n'
+};
+
+runnerContract('HTTP adapter + Runner + Docker (go)', (kind) =>
+	kind === 'unavailable'
+		? {
+				runner: createHttpRunner({ url: 'http://127.0.0.1:1', token }),
+				language: 'go',
+				files: { 'main.go': '' }
+			}
+		: { runner, language: 'go', files: { 'main.go': goPrograms[kind] } }
+);
+
+describe('Runner: go in a fresh Sandbox per run', { timeout: 60_000 }, () => {
+	const runGo = (
+		files: Record<string, string>,
+		tests = [{ id: 't', input: '' }],
+		lim = { timeoutMs: 2000, memoryMb: 256 }
+	) => runner.execute({ language: 'go', files, tests, limits: lim });
+
+	const sum = [
+		'package main',
+		'',
+		'import (',
+		'\t"bufio"',
+		'\t"fmt"',
+		'\t"os"',
+		')',
+		'',
+		'func main() {',
+		'\tvar a, b int',
+		'\tfmt.Fscan(bufio.NewReader(os.Stdin), &a, &b)',
+		'\tfmt.Println(a + b)',
+		'}',
+		''
+	].join('\n');
+
+	it('passes a correct solution', async () => {
+		const result = await runGo({ 'main.go': sum }, [{ id: 't', input: '2 3\n' }]);
+
+		expect(result).toEqual({
+			results: [{ id: 't', status: 'ok', stdout: '5\n', stderr: '' }]
+		});
+	});
+
+	it('reports a wrong answer as ok output for the core to compare', async () => {
+		const result = await runGo({ 'main.go': sum }, [{ id: 't', input: '2 2\n' }]);
+
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '4\n' });
+	});
+
+	it('reports a panic as a runtime error with the message on stderr', async () => {
+		const result = await runGo({
+			'main.go': 'package main\n\nfunc main() {\n\tvar a []int\n\t_ = a[3]\n}\n'
+		});
+
+		expect(result.results[0].status).toBe('runtimeError');
+		expect(result.results[0].stderr).toContain('index out of range');
+	});
+
+	it('reports a compile error with file:line:col diagnostics and no results', async () => {
+		const result = await runGo({
+			'main.go': 'package main\n\nimport "os"\n\nfunc main() {\n}\n'
+		});
+
+		expect(result.compileError).toMatch(/main\.go:3:8: /);
+		expect(result.compileError).toContain('"os" imported and not used');
+		expect(result.results).toEqual([]);
+	});
+
+	it('runs a Build of several files in package main', async () => {
+		const result = await runGo({
+			'main.go': 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println(twice(21)) }\n',
+			'util.go': 'package main\n\nfunc twice(n int) int { return n * 2 }\n'
+		});
+
+		expect(result.compileError).toBeUndefined();
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '42\n' });
+	});
+
+	it('ignores a learner go.mod: it cannot pick a toolchain or ask for a dependency', async () => {
+		const result = await runGo({
+			'main.go': 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println("fine") }\n',
+			'go.mod': 'module evil\n\ngo 1.99\n\ntoolchain go9.9.9\n\nrequire github.com/x/y v1.0.0\n'
+		});
+
+		expect(result.compileError).toBeUndefined();
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: 'fine\n' });
+	});
+
+	it('reports an import it cannot fetch as a compile error: the Sandbox has no network', async () => {
+		const result = await runGo({
+			'main.go': 'package main\n\nimport _ "github.com/x/y"\n\nfunc main() {}\n'
+		});
+
+		expect(result.compileError).toMatch(/main\.go:3:\d+: /);
+		expect(result.results).toEqual([]);
+	});
+
+	it('compiles a typical solution within the time limit, with the standard packages pre-warmed', async () => {
+		const main = [
+			'package main',
+			'',
+			'import (',
+			'\t"bufio"',
+			'\t"container/heap"',
+			'\t"fmt"',
+			'\t"os"',
+			'\t"slices"',
+			'\t"sort"',
+			'\t"strconv"',
+			'\t"strings"',
+			')',
+			'',
+			'type h []int',
+			'',
+			'func (x h) Len() int           { return len(x) }',
+			'func (x h) Less(i, j int) bool { return x[i] < x[j] }',
+			'func (x h) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }',
+			'func (x *h) Push(v any)        { *x = append(*x, v.(int)) }',
+			'func (x *h) Pop() any          { o := *x; v := o[len(o)-1]; *x = o[:len(o)-1]; return v }',
+			'',
+			'func main() {',
+			'\ts, _ := bufio.NewReader(os.Stdin).ReadString(0)',
+			'\tq := &h{}',
+			'\tfor _, f := range strings.Fields(s) {',
+			'\t\tn, _ := strconv.Atoi(f)',
+			'\t\theap.Push(q, n)',
+			'\t}',
+			'\tout := []int{}',
+			'\tfor q.Len() > 0 {',
+			'\t\tout = append(out, heap.Pop(q).(int))',
+			'\t}',
+			'\tsort.Sort(sort.Reverse(sort.IntSlice(out)))',
+			'\tfmt.Println(slices.Max(out), out)',
+			'}',
+			''
+		].join('\n');
+		const started = Date.now();
+
+		const result = await runGo({ 'main.go': main }, [{ id: 't', input: '3 1 2' }]);
+
+		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '3 [3 2 1]\n' });
+		// The whole request: container start, compile and one Test. Cold, the standard packages alone take longer.
+		expect(Date.now() - started).toBeLessThan(3000);
+	});
+
+	it('fails the run as a Runner error, not a compile error, when the compile step is killed', async () => {
+		// Valid code whose compilation outgrows the memory limit: the kernel kills the compiler, so
+		// go build exits 1 with no file:line:col diagnostic.
+		const huge = `package main\n\nvar x = []int{${'1,'.repeat(900_000)}}\n\nfunc main() { println(len(x)) }\n`;
+
+		await expect(
+			runGo({ 'main.go': huge }, undefined, { timeoutMs: 2000, memoryMb: 48 })
+		).rejects.toThrow(/Runner responded 500/);
+	});
+
+	it('keeps learner code away from the hidden inputs of other Tests', async () => {
+		const main = [
+			'package main',
+			'',
+			'import (',
+			'\t"fmt"',
+			'\t"io"',
+			'\t"io/fs"',
+			'\t"os"',
+			'\t"path/filepath"',
+			'\t"strings"',
+			')',
+			'',
+			'func main() {',
+			'\tdata, _ := io.ReadAll(os.Stdin)',
+			'\tvar seen []string',
+			'\tfilepath.WalkDir("/work", func(p string, d fs.DirEntry, err error) error {',
+			'\t\tif err == nil && !d.IsDir() && p != "/work/build/main.go" {',
+			'\t\t\tb, _ := os.ReadFile(p)',
+			'\t\t\tseen = append(seen, p+" "+string(b))',
+			'\t\t}',
+			'\t\treturn nil',
+			'\t})',
+			'\tfor _, w := range []string{"/work/stash", "/work/build/stash", "/exec/stash"} {',
+			'\t\tos.WriteFile(w, data, 0o600)',
+			'\t}',
+			'\tfmt.Println(strings.Join(seen, "\\n"))',
+			'}',
+			''
+		].join('\n');
+
+		const result = await runGo({ 'main.go': main }, [
+			{ id: 'hidden', input: 'SECRET-hidden-input' },
+			{ id: 'example', input: 'SECRET-example' }
+		]);
+
+		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok']);
+		for (const r of result.results) {
+			expect(r.stdout + r.stderr).not.toContain('SECRET');
+			expect(r.stdout).toBe('\n');
+		}
+	});
+
+	it('kills a process a Test left behind, even one that detached', async () => {
+		const main = [
+			'package main',
+			'',
+			'import (',
+			'\t"fmt"',
+			'\t"io"',
+			'\t"os"',
+			'\t"os/exec"',
+			'\t"syscall"',
+			'\t"time"',
+			')',
+			'',
+			'func main() {',
+			'\tdata, _ := io.ReadAll(os.Stdin)',
+			'\tif string(data) == "first" {',
+			'\t\tc := exec.Command("sh", "-c", "sleep 1; echo alive > /work/survivor")',
+			'\t\tc.SysProcAttr = &syscall.SysProcAttr{Setsid: true}',
+			'\t\tc.Start()',
+			'\t\treturn',
+			'\t}',
+			'\ttime.Sleep(1500 * time.Millisecond)',
+			'\t_, err := os.Stat("/work/survivor")',
+			'\tfmt.Println(err == nil)',
+			'}',
+			''
+		].join('\n');
+
+		const result = await runGo({ 'main.go': main }, [
+			{ id: 'first', input: 'first' },
+			{ id: 'second', input: 'second' }
+		]);
+
+		expect(result.results[1]).toMatchObject({ status: 'ok', stdout: 'false\n' });
+	});
+
+	it('wipes /exec and restores the binary before every Test: what a Test writes there is gone', async () => {
+		const main = [
+			'package main',
+			'',
+			'import (',
+			'\t"fmt"',
+			'\t"io"',
+			'\t"os"',
+			')',
+			'',
+			'func main() {',
+			'\tdata, _ := io.ReadAll(os.Stdin)',
+			'\tif string(data) == "first" {',
+			'\t\tos.WriteFile("/exec/leftover", []byte("SECRET-exec"), 0o700)',
+			'\t\tos.Mkdir("/exec/dir", 0o700)',
+			'\t\tos.WriteFile("/exec/dir/nested", []byte("x"), 0o700)',
+			// Swapping the running binary for another must not reach the next Test either.
+			'\t\tos.Rename("/exec/main", "/exec/old")',
+			'\t\tos.WriteFile("/exec/main", []byte("poison"), 0o700)',
+			'\t\treturn',
+			'\t}',
+			'\tentries, _ := os.ReadDir("/exec")',
+			'\tfor _, e := range entries {',
+			'\t\tinfo, _ := e.Info()',
+			'\t\tfmt.Println(e.Name(), info.Size() > 1000)',
+			'\t}',
+			'}',
+			''
+		].join('\n');
+
+		const result = await runGo({ 'main.go': main }, [
+			{ id: 'first', input: 'first' },
+			{ id: 'second', input: 'second' },
+			{ id: 'third', input: 'second' }
+		]);
+
+		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok', 'ok']);
+		expect(result.results[1].stdout).toBe('main true\n');
+		expect(result.results[2].stdout).toBe('main true\n');
+	});
+});
+
 const limits = { timeoutMs: 2000, memoryMb: 256 };
 const run = (files: Record<string, string>, tests = [{ id: 't', input: '' }], lim = limits) =>
 	runner.execute({

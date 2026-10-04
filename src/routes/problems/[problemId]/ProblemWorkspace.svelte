@@ -27,7 +27,7 @@ let dirty = false;
 let outcome = $state<Outcome | undefined>(undefined);
 // The Language picker: a pick waits for the inline confirm; switching saves first, then reloads the Problem.
 const LANGUAGE_NAMES = { python: 'Python', typescript: 'TypeScript', go: 'Go' } as const;
-const PICKABLE = ['python', 'typescript'] as const;
+const PICKABLE = ['python', 'typescript', 'go'] as const;
 // svelte-ignore state_referenced_locally
 let choice = $state<string>(problem.language);
 let confirming = $derived(choice !== problem.language);

@@ -205,7 +205,7 @@ test('switching to TypeScript asks first, keeps the Python build, and Run passes
 	await expect(page.getByRole('status')).toHaveText('saved');
 
 	const picker = page.getByLabel('build language');
-	await expect(picker.locator('option')).toHaveText(['Python', 'TypeScript']);
+	await expect(picker.locator('option')).toHaveText(['Python', 'TypeScript', 'Go']);
 
 	// Cancel changes nothing.
 	await picker.selectOption('typescript');
@@ -223,6 +223,55 @@ test('switching to TypeScript asks first, keeps the Python build, and Run passes
 		await expect(picker).toHaveValue('typescript');
 
 		await setCode(page, correctTypeScript, 'main.ts');
+		await page.getByRole('button', { name: 'Run' }).click();
+		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText('pass', {
+			timeout: 60_000
+		});
+	} finally {
+		await page.getByLabel('build language').selectOption('python');
+		await page.getByRole('button', { name: 'Switch language' }).click();
+		await expect(page.getByLabel('Code: main.py')).toContainText('# my python build');
+	}
+});
+
+const correctGo = `package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+)
+
+func main() {
+	size := 0
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		switch strings.Fields(scanner.Text() + " -")[0] {
+		case "push":
+			size++
+		case "size":
+			fmt.Println(size)
+		}
+	}
+}
+`;
+
+test('switching to Go keeps the Python build, and Run passes', async ({ page }) => {
+	await page.goto('/problems/stacks-push');
+	await setCode(page, '# my python build\n');
+	await expect(page.getByRole('status')).toHaveText('saved');
+
+	const picker = page.getByLabel('build language');
+	try {
+		await picker.selectOption('go');
+		const confirm = page.getByRole('group', { name: 'Switch build language' });
+		await expect(confirm).toContainText('Switch to Go?');
+		await confirm.getByRole('button', { name: 'Switch language' }).click();
+		await expect(page.getByLabel('Code: main.go')).toBeVisible();
+		await expect(picker).toHaveValue('go');
+
+		await setCode(page, correctGo, 'main.go');
 		await page.getByRole('button', { name: 'Run' }).click();
 		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText('pass', {
 			timeout: 60_000

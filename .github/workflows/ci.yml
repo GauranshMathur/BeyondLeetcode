@@ -60,6 +60,10 @@ jobs:
       - run: bunx playwright install --with-deps chromium
       # Run goes through the real Runner (started by the Playwright config), which needs the Sandbox image.
       - run: docker pull python:3.13-slim
+      # Built here under the exact name:tag config.ts uses, so the Runner finds it locally and never waits
+      # on a pull of a tag that is only published once this change reaches main.
+      - name: Build the Go Sandbox image
+        run: docker build -f Dockerfile.sandbox-go -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" .
       # The Playwright webServer builds the app, serves it under Bun and starts the Runner.
       - run: bun run test:e2e
 
@@ -75,6 +79,8 @@ jobs:
       # find it locally and never pull from GHCR.
       - name: Build the TypeScript Sandbox image
         run: docker build -f Dockerfile.sandbox-node -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-node:[0-9]*' src/lib/server/runner/config.ts)" .
+      - name: Build the Go Sandbox image
+        run: docker build -f Dockerfile.sandbox-go -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" .
       # Real Docker on the runner: the Sandbox tests start containers.
       - run: bun run test:sandbox
 
@@ -112,6 +118,44 @@ jobs:
         with:
           context: .
           file: Dockerfile.sandbox-node
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image.outputs.ref }}
+
+  # Publishes the Go Sandbox image to GHCR next to the app image, once per tag number
+  # (bumped by hand in config.ts when Dockerfile.sandbox-go changes). Only after the tests passed.
+  publish-sandbox-go:
+    if: github.event_name == 'push'
+    needs: sandbox
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the image name:tag from config.ts
+        id: image
+        run: echo "ref=$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Is this tag already published?
+        id: exists
+        run: |
+          if docker buildx imagetools inspect "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.exists.outputs.published != 'true'
+        uses: docker/setup-qemu-action@v4
+      - if: steps.exists.outputs.published != 'true'
+        uses: docker/setup-buildx-action@v4
+      - if: steps.exists.outputs.published != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.sandbox-go
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image.outputs.ref }}
