@@ -1,0 +1,61 @@
+# Sandbox image for Go (C7b): the Python harness (one script for every language) and the Go
+# toolchain, with the Go build cache pre-warmed for the standard packages a DSA solution imports.
+# Bump the tag in src/lib/server/runner/config.ts when this changes.
+# Every version is pinned exactly. Built as ghcr.io/gauranshmathur/beyondleetcode-sandbox-go:<N>.
+ARG GO_VERSION=1.27.1
+ARG PYTHON_IMAGE=python:3.13-slim
+
+# Same Debian release as the python image, so the Go tool's libc needs are met.
+FROM golang:${GO_VERSION}-trixie AS tools
+# These are the flags the harness compiles with (harness.ts), so the cache entries made here are the
+# ones it hits: -trimpath is part of every cache key. No cgo, so no C compiler is ever needed.
+ENV GOCACHE=/opt/gocache GOFLAGS=-trimpath CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOTELEMETRY=off GOENV=off
+COPY <<'WARM' /warm/main.go
+package main
+
+import (
+	"bufio"
+	"container/heap"
+	"container/list"
+	"errors"
+	"fmt"
+	"maps"
+	"math"
+	"os"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+type h []int
+
+func (x h) Len() int           { return len(x) }
+func (x h) Less(i, j int) bool { return x[i] < x[j] }
+func (x h) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
+func (x *h) Push(v any)        { *x = append(*x, v.(int)) }
+func (x *h) Pop() any          { o := *x; v := o[len(o)-1]; *x = o[:len(o)-1]; return v }
+
+func main() {
+	r := bufio.NewReader(os.Stdin)
+	s, _ := r.ReadString('\n')
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	q := &h{3, 1}
+	heap.Init(q)
+	l := list.New()
+	l.PushBack(n)
+	m := map[string]int{"a": 1}
+	k := slices.Sorted(maps.Keys(m))
+	sort.Ints(*q)
+	fmt.Println(n, err, errors.New("x"), math.MaxInt64, k, l.Len())
+}
+WARM
+RUN cd /warm && printf 'module warm\n\ngo 1.27\n' > go.mod \
+ && go build -o /dev/null . \
+ && rm -rf /usr/local/go/test /usr/local/go/doc /usr/local/go/misc \
+ && chmod -R a+rX /opt/gocache /usr/local/go
+
+FROM ${PYTHON_IMAGE}
+COPY --from=tools /usr/local/go /usr/local/go
+COPY --from=tools /opt/gocache /opt/gocache
+ENV PATH=/usr/local/go/bin:$PATH

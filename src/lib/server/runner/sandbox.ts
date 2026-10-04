@@ -1,6 +1,6 @@
 /**
  * The Runner's engine room: one fresh, hardened container per request (ADR 0002), removed
- * afterwards whatever happened. Python and TypeScript; Go arrives with its own card.
+ * afterwards whatever happened. Python, TypeScript and Go.
  */
 import { z } from 'zod';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
@@ -68,7 +68,11 @@ export function containerSpec(
 			LogConfig: { Type: 'none' },
 			ReadonlyRootfs: true,
 			Tmpfs: {
-				'/work': `rw,noexec,nosuid,nodev,size=${sandboxConfig.workTmpfsMb}m,uid=65534,gid=65534,mode=0700`
+				'/work': `rw,noexec,nosuid,nodev,size=${sandboxConfig.workTmpfsMb}m,uid=65534,gid=65534,mode=0700`,
+				// Go only: /work is noexec, so the compiled binary runs from here (ADR 0002).
+				...(language === 'go' && {
+					'/exec': `rw,exec,nosuid,nodev,size=${sandboxConfig.execTmpfsMb}m,uid=65534,gid=65534,mode=0700`
+				})
 			},
 			CapDrop: ['ALL'],
 			SecurityOpt: ['no-new-privileges'],

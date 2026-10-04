@@ -1,13 +1,15 @@
 const pythonImage = 'python:3.13-slim';
 /** Built from Dockerfile.sandbox-node: bump the tag number by hand whenever that file changes. */
 const typescriptImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-node:1';
+/** Built from Dockerfile.sandbox-go: bump the tag number by hand whenever that file changes. */
+const goImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-go:1';
 
 /** Every Sandbox limit lives here (ADR 0002). A request's `limits` may lower them, never raise them. */
 export const sandboxConfig = {
 	/** Pinned by tag, in one place. */
 	pythonImage,
 	/** Language to Sandbox image: the one list the Runner pulls from. */
-	images: { python: pythonImage, typescript: typescriptImage },
+	images: { python: pythonImage, typescript: typescriptImage, go: goImage },
 	/** Wall-clock limit for the whole container; unfinished Tests after it are `timeout`. */
 	containerTimeoutMs: 10_000,
 	/** Per-Test run time. */
@@ -17,6 +19,8 @@ export const sandboxConfig = {
 	nanoCpus: 1_000_000_000,
 	pidsLimit: 64,
 	workTmpfsMb: 64,
+	/** Go only: the exec-allowed tmpfs holding the compiled binary (/work is noexec). */
+	execTmpfsMb: 64,
 	/** Per Test, stdout and stderr each. */
 	outputCapBytes: 64 * 1024,
 	/** Across all Tests of one request, stdout and stderr together; later Tests get empty, truncated output. */
