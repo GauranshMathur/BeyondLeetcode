@@ -82,7 +82,10 @@ A worker moves its own card to Done once the card's type bar is met. Owner stays
 1. **Branch.** If the branch `<code>-<slug>` already exists on origin, you are resuming: check it out and read its draft PR checklist. Otherwise create it: `git worktree add ../BeyondLeetcode.worktrees/<code> -b <code>-<slug> origin/main` (see `superpowers:using-git-worktrees`).
 2. **Draft PR.** On the first commit, push and open `gh pr create --draft` with the card code in the title (`feat(beyondleetcode): P8 run/submit states`) and a checklist of the steps left. Push every commit after that and tick the checklist as you go.
 3. Build test-first with `mattpocock-skills:tdd`.
-4. Review the diff with `mattpocock-skills:code-review` and a Codex second opinion: run only the Codex half of `codex-headless:advise` (read-only `codex exec`), never its Fable subagent, and never wait on a Fable verdict. Fix what they find or record why not in the PR body. Where the Codex CLI is not installed, skip the second opinion and say so in the PR.
+4. Review the diff with `mattpocock-skills:code-review` and a Codex second opinion: run only the Codex half of `codex-headless:advise` (read-only `codex exec`), never its Fable subagent, and never wait on a Fable verdict. Fix what they find or record why not in the PR body. Codex helps; it does not gate: where it is not installed or out of quota, skip it and say so in the PR.
+   - **Skip it for low-risk diffs:** test-only, docs-only or styling-only changes, unless they touch `src/lib/server/runner/`, `src/lib/server/learning/` or `.github/`.
+   - **Send the diff, not the repo:** pipe `git diff origin/main...HEAD` on stdin, with the list of changed files and the three to five rules from the card, `CONTEXT.md` or `docs/module-map.md` that the diff must uphold. Tell Codex to open another file only when a specific finding needs it.
+   - **Fixed answer shape:** one line per finding, `severity · file:line · what goes wrong (inputs → wrong result) · fix`, or `no findings`. Capture only the final message (`-o <file>`).
 5. Mark the PR ready, wait for CI green (`gh pr checks --watch`), squash-merge, remove the worktree (`superpowers:finishing-a-development-branch`), then move the card to Done.
 
 A card touching the code runner or its container flags also gets a `sandbox-security-reviewer` pass before merge.
