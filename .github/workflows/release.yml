@@ -83,6 +83,8 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.release-please.outputs.tag_name }}
@@ -91,20 +93,31 @@ jobs:
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 0
+      # Resolve the tag once. Every check below, and the publish job, use this sha, never the
+      # tag name again, so a tag moved after the checks cannot change what is published.
+      - name: Resolve the tag to a commit
+        id: resolve
+        run: echo "sha=$(git rev-parse "refs/tags/$TAG^{commit}")" >> "$GITHUB_OUTPUT"
       # The release PR commit only bumps versions and the changelog. Anything else differing from
-      # the tested commit means the tag is not what ci tested.
-      - name: The tag differs from the tested commit only in release files
+      # the tested commit means the release is not what ci tested.
+      - name: The release differs from the tested commit only in the version
+        env:
+          RELEASE_SHA: ${{ steps.resolve.outputs.sha }}
         run: |
-          git merge-base --is-ancestor "$GITHUB_SHA" "refs/tags/$TAG" || {
-            echo "$GITHUB_SHA is not an ancestor of $TAG"; exit 1
+          git merge-base --is-ancestor "$GITHUB_SHA" "$RELEASE_SHA" || {
+            echo "$GITHUB_SHA is not an ancestor of $RELEASE_SHA ($TAG)"; exit 1
           }
-          changed="$(git diff --name-only "$GITHUB_SHA" "refs/tags/$TAG")"
-          echo "Files changed between $GITHUB_SHA and $TAG:"
+          changed="$(git diff --name-only "$GITHUB_SHA" "$RELEASE_SHA")"
+          echo "Files changed between $GITHUB_SHA and $RELEASE_SHA ($TAG):"
           echo "$changed"
           other="$(grep -vxE 'CHANGELOG\.md|\.release-please-manifest\.json|package\.json' <<<"$changed" || true)"
           if [ -n "$other" ]; then
             echo "Not release-please files:"; echo "$other"; exit 1
           fi
+          # package.json is executable content: only its version may differ.
+          tested="$(git show "$GITHUB_SHA:package.json" | jq -S 'del(.version)')"
+          released="$(git show "$RELEASE_SHA:package.json" | jq -S 'del(.version)')"
+          [ "$tested" = "$released" ] || { echo "package.json differs beyond .version"; exit 1; }
       - name: Wait for ci to pass on the tested commit
         run: |
           # ci starts on the same push as this run, so give it a few minutes to appear.
@@ -134,7 +147,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-gate.outputs.sha }}
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
