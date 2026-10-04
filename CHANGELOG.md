@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.17.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.2...v0.17.0) (2026-10-04)
+
+
+### Features
+
+* **beyondleetcode:** C8c image smoke test in CI ([#78](https://github.com/GauranshMathur/BeyondLeetcode/issues/78)) ([6171b29](https://github.com/GauranshMathur/BeyondLeetcode/commit/6171b291b2060a7b6843007a57c51b479d278a42))
+
+## [0.16.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.1...v0.16.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C6c Accepted panel credits only its own Submission ([#83](https://github.com/GauranshMathur/BeyondLeetcode/issues/83)) ([399c0a0](https://github.com/GauranshMathur/BeyondLeetcode/commit/399c0a08fa09f7872af693aedb0d5d4a5218cac6))
+
+## [0.16.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.0...v0.16.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C7c Save, Run and Submit act on the Build of the Language the tab shows ([#81](https://github.com/GauranshMathur/BeyondLeetcode/issues/81)) ([ec8ccf6](https://github.com/GauranshMathur/BeyondLeetcode/commit/ec8ccf62c02251c78c16801f295283cab4f0ce06))
+
 ## [0.16.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.15.0...v0.16.0) (2026-10-04)
 
 

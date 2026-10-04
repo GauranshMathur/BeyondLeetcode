@@ -188,7 +188,10 @@ jobs:
           done
           docker logs web
           exit 1
-      # The runner pulls every Sandbox image at start-up; the Go tag is only published once this reaches main.
+      # The runner pulls every Sandbox image at start-up; the tags are only published once this reaches main,
+      # so both are built here under the exact name:tag config.ts uses and found locally through the socket.
+      - name: Build the TypeScript Sandbox image
+        run: docker build -f Dockerfile.sandbox-node -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-node:[0-9]*' src/lib/server/runner/config.ts)" .
       - name: Build the Go Sandbox image
         run: docker build -f Dockerfile.sandbox-go -t "$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" .
       - name: Smoke test, runner role answers its health check
@@ -222,4 +225,31 @@ jobs:
             echo "web container has the Docker socket"; docker compose down -v; exit 1
           fi
           docker compose exec -T runner test -S /var/run/docker.sock
-          docker compose down -v
+      # The stack stays up for the browser smoke test below.
+      - name: Wait for the runner to be ready
+        working-directory: ${{ runner.temp }}/instance
+        run: |
+          for i in $(seq 1 60); do
+            if docker compose exec -T runner bun -e 'const r = await fetch("http://127.0.0.1:8787/health", { headers: { Authorization: `Bearer ${process.env.RUNNER_TOKEN}` } }); process.exit(r.status === 200 ? 0 : 1)'; then exit 0; fi
+            sleep 2
+          done
+          echo "runner never became ready"
+          exit 1
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      # Seam 4: Map, Topic, Chapter, Problem, Run, Submit, Accepted, once per Language, on the composed image.
+      - name: Smoke test, the browser flow on the composed stack
+        env:
+          SMOKE_BASE_URL: http://localhost:3000
+        run: bun run test:smoke
+      - name: Dump compose logs
+        if: failure()
+        working-directory: ${{ runner.temp }}/instance
+        run: docker compose logs
+      - name: Stop the stack
+        if: always()
+        working-directory: ${{ runner.temp }}/instance
+        run: docker compose down -v

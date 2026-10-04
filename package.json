@@ -1,7 +1,7 @@
 {
 	"name": "beyondleetcode",
 	"private": true,
-	"version": "0.16.0",
+	"version": "0.17.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -16,7 +16,8 @@
 		"test:watch": "vitest",
 		"test:sandbox": "vitest run --config vitest.sandbox.config.ts",
 		"runner": "bun src/lib/server/runner/main.ts",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"test:smoke": "playwright test --config playwright.smoke.config.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.14",

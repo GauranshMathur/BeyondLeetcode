@@ -67,26 +67,38 @@ export interface Learner {
 	problem(problemId: string): Promise<ProblemView>;
 	/**
 	 * Stores the Learner's code for a Problem. `baseRevision` is the revision the code was based
-	 * on (0 for a step never saved). Throws RevisionConflict when it is stale, InvalidBuild for
-	 * bad paths or too much code, NotFound or TopicLocked.
+	 * on (0 for a step never saved) and `language` the Language the tab showed (ProblemView.language).
+	 * Throws RevisionConflict when the revision is stale or the Topic is no longer built in
+	 * `language`, InvalidBuild for bad paths or too much code, NotFound or TopicLocked.
 	 */
 	saveCode(
 		problemId: string,
 		files: BuildFiles,
-		baseRevision: number
+		baseRevision: number,
+		language: Language
 	): Promise<{ revision: number }>;
 	/**
 	 * Saves like saveCode (same errors), then runs the Problem's Example Tests only and compares
 	 * the outputs. Writes nothing else: never a Submission, status or progress change. Throws
 	 * RunnerUnavailable when the Runner cannot answer; the saved code stays.
 	 */
-	run(problemId: string, files: BuildFiles, baseRevision: number): Promise<RunView>;
+	run(
+		problemId: string,
+		files: BuildFiles,
+		baseRevision: number,
+		language: Language
+	): Promise<RunView>;
 	/**
 	 * Saves like saveCode (same errors), runs every Test of the Problem and of the earlier Core
 	 * Problems it builds on, picks the Verdict and records the Submission. Throws
 	 * RunnerUnavailable when the Runner cannot answer: nothing is recorded, the saved code stays.
 	 */
-	submit(problemId: string, files: BuildFiles, baseRevision: number): Promise<SubmitView>;
+	submit(
+		problemId: string,
+		files: BuildFiles,
+		baseRevision: number,
+		language: Language
+	): Promise<SubmitView>;
 	/**
 	 * Builds the Topic in `language` from now on. Writes only the Learner's choice: a Language's
 	 * steps are created when first saved, seeded like any first touch (the Learner's previous Core
@@ -130,21 +142,24 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					throw new LearningError('RunnerUnavailable');
 				}
 			};
-			const languageOfProblem = async (problemId: string) =>
-				loadLanguage(deps.db, learnerId, deps.catalogue.problem(problemId)?.topicId ?? '');
 			const learner: Learner = {
-				map: async () => mapView(deps.catalogue, await loadProgress(deps, learnerId)),
+				map: async () =>
+					mapView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId)),
 				topic: async (topicId) =>
-					topicView(deps.catalogue, await loadProgress(deps, learnerId), topicId),
+					topicView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						topicId
+					),
 				chapter: async (chapterId) =>
 					chapterView(
 						deps.catalogue,
-						await loadProgress(deps, learnerId),
+						await loadProgress(deps.catalogue, deps.db, learnerId),
 						chapterId,
 						renderMarkdown
 					),
 				reachChapterEnd: async (chapterId) => {
-					const before = await loadProgress(deps, learnerId);
+					const before = await loadProgress(deps.catalogue, deps.db, learnerId);
 					const change = reachChapter(deps.catalogue, before, chapterId); // NotFound / TopicLocked
 					if (before.readChapters.has(chapterId)) return change;
 					// Only the call that inserts the mark reports the change; a concurrent repeat gets none.
@@ -152,10 +167,14 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						await deps.db.chapterRead.create({ data: { learnerId, chapterId, readAt: now() } });
 					} catch (e) {
 						if (!isUniqueViolation(e)) throw e;
-						return reachChapter(deps.catalogue, await loadProgress(deps, learnerId), chapterId);
+						return reachChapter(
+							deps.catalogue,
+							await loadProgress(deps.catalogue, deps.db, learnerId),
+							chapterId
+						);
 					}
 					// Diff against the state without this mark, so a concurrent read cannot hide the effect.
-					const after = await loadProgress(deps, learnerId);
+					const after = await loadProgress(deps.catalogue, deps.db, learnerId);
 					const readChapters = new Set(after.readChapters);
 					readChapters.delete(chapterId);
 					return reachChapter(deps.catalogue, { ...after, readChapters }, chapterId);
@@ -166,7 +185,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					const language = await loadLanguage(deps.db, learnerId, topicId);
 					return problemView(
 						deps.catalogue,
-						await loadProgress(deps, learnerId),
+						await loadProgress(deps.catalogue, deps.db, learnerId),
 						problemId,
 						language,
 						{
@@ -178,16 +197,15 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						renderMarkdown
 					);
 				},
-				saveCode: async (problemId, files, baseRevision) => {
+				saveCode: async (problemId, files, baseRevision, language) => {
 					// Same checks as the screen read: NotFound, TopicLocked.
 					const view = await learner.problem(problemId);
 					const build = validateBuild(files);
-					const key = {
-						learnerId,
-						topicId: view.topicId,
-						language: view.language,
-						problemId
-					};
+					// A tab showing another Language than the current one is stale (switched elsewhere).
+					if (language !== view.language) throw new LearningError('RevisionConflict');
+					// Every write below is keyed on the tab's Language, so a switchLanguage landing after
+					// this check can only leave the write on the Build the tab was showing.
+					const key = { learnerId, topicId: view.topicId, language, problemId };
 					if (baseRevision !== view.revision) throw new LearningError('RevisionConflict');
 					try {
 						if (view.revision === 0) {
@@ -207,14 +225,17 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						throw e;
 					}
 				},
-				run: async (problemId, files, baseRevision) => {
-					const { revision } = await learner.saveCode(problemId, files, baseRevision);
+				run: async (problemId, files, baseRevision, language) => {
+					const { revision } = await learner.saveCode(problemId, files, baseRevision, language);
 					const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
-					const language = await languageOfProblem(problemId);
 					return runView(tests, await execute(language, files, tests), revision);
 				},
 				switchLanguage: async (topicId, language) => {
-					topicView(deps.catalogue, await loadProgress(deps, learnerId), topicId); // NotFound / TopicLocked
+					topicView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						topicId
+					); // NotFound / TopicLocked
 					if (!LANGUAGES.includes(language)) throw new LearningError('InvalidBuild');
 					await deps.db.topicLanguage.upsert({
 						where: { learnerId_topicId: { learnerId, topicId } },
@@ -222,9 +243,8 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						update: { language }
 					});
 				},
-				submit: async (problemId, files, baseRevision) => {
-					const { revision } = await learner.saveCode(problemId, files, baseRevision);
-					const language = await languageOfProblem(problemId);
+				submit: async (problemId, files, baseRevision, language) => {
+					const { revision } = await learner.saveCode(problemId, files, baseRevision, language);
 					// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
 					const plan = submitPlan(deps.catalogue, problemId);
 					const batches = [];
@@ -246,20 +266,29 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						(id) => deps.catalogue.problem(id)?.title ?? id
 					);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-					const before = await loadProgress(deps, learnerId);
-					const { id: submissionId } = await deps.db.submission.create({
-						data: {
-							learnerId,
-							problemId,
-							topicId,
-							language,
-							files,
-							verdict,
-							failingProblemId: failingProblemId ?? null,
-							createdAt: now()
-						}
+					// The Runner has answered; everything below is one short transaction. The insert comes
+					// first so the transaction takes SQLite's write lock before it reads anything (the
+					// libSQL adapter opens transactions deferred): another submit then waits, and the
+					// reads below see exactly the Submissions committed before this one.
+					const { submissionId, before, progress } = await deps.db.$transaction(async (tx) => {
+						const { id: submissionId } = await tx.submission.create({
+							data: {
+								learnerId,
+								problemId,
+								topicId,
+								language,
+								files,
+								verdict,
+								failingProblemId: failingProblemId ?? null,
+								createdAt: now()
+							}
+						});
+						return {
+							submissionId,
+							before: await loadProgress(deps.catalogue, tx, learnerId, submissionId),
+							progress: await loadProgress(deps.catalogue, tx, learnerId)
+						};
 					});
-					const progress = await loadProgress(deps, learnerId);
 					return {
 						submissionId,
 						verdict,
@@ -278,13 +307,19 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 }
 
 /** Read marks and Submissions give every status; the Topic of the latest activity is the current one. */
-async function loadProgress(deps: LearningCoreDeps, learnerId: string): Promise<Progress> {
-	const reads = await deps.db.chapterRead.findMany({
+async function loadProgress(
+	catalogue: Catalogue,
+	db: Pick<Db, 'chapterRead' | 'submission'>,
+	learnerId: string,
+	/** Leaves this Submission out: the state just before it. */
+	exceptSubmissionId?: string
+): Promise<Progress> {
+	const reads = await db.chapterRead.findMany({
 		where: { learnerId },
 		orderBy: { readAt: 'desc' }
 	});
-	const submissions = await deps.db.submission.findMany({
-		where: { learnerId },
+	const submissions = await db.submission.findMany({
+		where: { learnerId, ...(exceptSubmissionId && { id: { not: exceptSubmissionId } }) },
 		orderBy: { createdAt: 'desc' },
 		select: { problemId: true, topicId: true, verdict: true, createdAt: true }
 	});
@@ -297,7 +332,7 @@ async function loadProgress(deps: LearningCoreDeps, learnerId: string): Promise<
 	const recentTopicId =
 		recentSubmission && (!recentRead || recentSubmission.createdAt >= recentRead.readAt)
 			? recentSubmission.topicId
-			: recentRead && deps.catalogue.chapter(recentRead.chapterId)?.topicId;
+			: recentRead && catalogue.chapter(recentRead.chapterId)?.topicId;
 	return {
 		readChapters: new Set(reads.map((r) => r.chapterId)),
 		solvedProblems: solved,

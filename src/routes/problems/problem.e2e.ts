@@ -234,6 +234,28 @@ test('switching to TypeScript asks first, keeps the Python build, and Run passes
 	}
 });
 
+test('a tab left on one Language is told to reload after another tab switches Language', async ({
+	page,
+	context
+}) => {
+	await page.goto('/problems/stacks-pop');
+	const stale = await context.newPage();
+	await stale.goto('/problems/stacks-pop');
+
+	try {
+		await page.getByLabel('build language').selectOption('typescript');
+		await page.getByRole('button', { name: 'Switch language' }).click();
+		await expect(page.getByLabel('Code: main.ts')).toBeVisible();
+
+		await typeInEditor(stale, '# stale');
+		await expect(stale.getByRole('status')).toHaveText('edited elsewhere — reload');
+	} finally {
+		await page.getByLabel('build language').selectOption('python');
+		await page.getByRole('button', { name: 'Switch language' }).click();
+		await expect(page.getByLabel('Code: main.py')).toBeVisible();
+	}
+});
+
 const correctGo = `package main
 
 import (
