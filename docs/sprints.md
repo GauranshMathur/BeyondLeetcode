@@ -48,6 +48,8 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 - Design: P5 Hints tab, P6 Solution tab (always visible), AC1 Settings (Local variant).
 - Build: topic hard-locks and completion (all chapters read + core problems solved), core/extra problems, hints, the always-visible Solution tab, the topic-complete Accepted variant, report-an-issue links, Settings.
 
+- First, before any feature card (decided 2026-10-04, from the architecture review after Sprint 2): one owner for "what did this action change?" (#103); the Problem screen's single "save, then act" path, its state machine and the rules moved back into the core (#102, #105, #106); one shared list of Languages plus TypeScript and Go highlighting (#101, cut down). #104 and #107 wait until after `v1.0.0`.
+
 **Exit:** a learner in Local mode can finish a topic and unlock the next; all Sprint 3 cards Done.
 
 ## Sprint 4 · Multi-user
