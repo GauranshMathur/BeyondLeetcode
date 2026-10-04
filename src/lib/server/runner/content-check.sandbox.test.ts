@@ -1,11 +1,11 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { loadCatalogue } from '../content/catalogue.ts';
 import { judge, submitPlan } from '../learning/rules.ts';
-import { sandboxConfig } from '../runner/config.ts';
-import { createEngine } from '../runner/engine.ts';
-import type { ExecuteResult, Language } from '../runner/port.ts';
-import { createSandboxRunner, ensureImages } from '../runner/sandbox.ts';
-import { loadCatalogue } from './catalogue.ts';
+import { sandboxConfig } from './config.ts';
+import { createEngine } from './engine.ts';
+import type { ExecuteResult, Language } from './port.ts';
+import { createSandboxRunner, ensureImages } from './sandbox.ts';
 
 /**
  * Seam 3, the content check: every Problem's Reference Code, in every Language, is Accepted by the
