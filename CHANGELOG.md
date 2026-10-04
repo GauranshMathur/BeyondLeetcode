@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.2...v0.17.0) (2026-10-04)
+
+
+### Features
+
+* **beyondleetcode:** C8c image smoke test in CI ([#78](https://github.com/GauranshMathur/BeyondLeetcode/issues/78)) ([6171b29](https://github.com/GauranshMathur/BeyondLeetcode/commit/6171b291b2060a7b6843007a57c51b479d278a42))
+
 ## [0.16.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.16.1...v0.16.2) (2026-10-04)
 
 
