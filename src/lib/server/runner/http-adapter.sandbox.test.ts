@@ -318,6 +318,46 @@ describe('Runner: go in a fresh Sandbox per run', { timeout: 60_000 }, () => {
 		expect(result.results).toEqual([]);
 	});
 
+	it('reports a missing func main as a compile error, from the linker', async () => {
+		const result = await runGo({ 'main.go': 'package main\n' });
+
+		expect(result.compileError).toContain('function main is undeclared in the main package');
+		expect(result.results).toEqual([]);
+	});
+
+	it('reports a package that is not main as a compile error', async () => {
+		const result = await runGo({ 'main.go': 'package foo\n\nfunc F() {}\n' });
+
+		expect(result.compileError).toContain('requires exactly one main package');
+		expect(result.results).toEqual([]);
+	});
+
+	it('reports a Build that mixes packages as a compile error', async () => {
+		const result = await runGo({
+			'main.go': 'package main\n\nfunc main() {}\n',
+			'util.go': 'package util\n'
+		});
+
+		expect(result.compileError).toContain('found packages');
+		expect(result.results).toEqual([]);
+	});
+
+	it('reports a cgo-only file as a compile error: cgo is off', async () => {
+		const result = await runGo({ 'main.go': 'package main\n\nimport "C"\n\nfunc main() {}\n' });
+
+		expect(result.compileError).toContain('build constraints exclude all Go files');
+		expect(result.results).toEqual([]);
+	});
+
+	it('reports a Build with no .go file as a compile error without running go build', async () => {
+		const result = await runGo({ 'main.txt': 'hello' });
+
+		expect(result).toEqual({
+			compileError: 'No .go file in the Build (expected main.go)',
+			results: []
+		});
+	});
+
 	it('runs a Build of several files in package main', async () => {
 		const result = await runGo({
 			'main.go': 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println(twice(21)) }\n',

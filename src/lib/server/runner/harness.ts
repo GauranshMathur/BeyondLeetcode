@@ -166,7 +166,17 @@ def fresh_build():
 
 SYNTAX_LINE = re.compile(rb"^(?:Sorry: )?(?:SyntaxError|IndentationError|TabError|ValueError)\b", re.M)
 TSC_DIAGNOSTIC = re.compile(rb"error TS\d+")
-GO_DIAGNOSTIC = re.compile(rb"^\S+\.go:\d+:\d+: ", re.M)
+# What go build prints, with exit 1, when the Learner's code is wrong: a compiler diagnostic, a
+# linker error under its "# pkg" header (a missing main), a package that is not main (or a Build
+# mixing packages), and cgo-only files (cgo is off). Anything else on exit 1 is the toolchain's.
+GO_COMPILE_ERROR = re.compile(
+    rb"^\S+\.go:\d+:\d+: "
+    rb"|^# \S+\n(?:.*\n)*?[^\n]*function main is undeclared in the main package"
+    rb"|^-buildmode=exe requires exactly one main package"
+    rb"|^found packages \S+ \(\S+\) and \S+ \(\S+\) in "
+    rb"|^package \S+: build constraints exclude all Go files",
+    re.M,
+)
 CHILD_ENV = {"PATH": os.environ.get("PATH", "")}
 EXEC = "/exec"
 GO_BINARY_PATH = EXEC + "/main"
@@ -228,7 +238,10 @@ elif LANGUAGE == "go":
     with open(MODULE + "/go.mod", "w") as f:
         f.write("module solution\n\ngo %s\n" % ".".join(version[2:].split(".")[:2]))
     # -buildmode=exe: a package that is not main is an error, never a library written as the binary.
-    compile_argv = ["go", "build", "-buildmode=exe", "-ldflags=-s -w", "-o", GO_BINARY_PATH, "."] if sources else None
+    if not sources:
+        emit({"compileError": "No .go file in the Build (expected main.go)"})
+        sys.exit(0)
+    compile_argv = ["go", "build", "-buildmode=exe", "-ldflags=-s -w", "-o", GO_BINARY_PATH, "."]
     compile_cwd = MODULE
 else:
     sys.exit("unknown language " + LANGUAGE)
@@ -249,11 +262,11 @@ if compiled and compiled.returncode != 0:
         diagnostics = compiled.stderr
         is_compile_error = compiled.returncode == 1 and SYNTAX_LINE.search(diagnostics)
     elif LANGUAGE == "go":
-        # go build exits 1 for every failure, and prints "file:line:col: message" diagnostics to stderr
-        # when the code is wrong. Without one (a killed compiler, no space, an unbuildable package) it
-        # is not the Learner's code being wrong. Another exit code never is.
+        # go build exits 1 for every failure; stderr tells the Learner's mistakes (GO_COMPILE_ERROR) from
+        # the toolchain's (no space, cache failures, a killed compiler). Another exit code never is a
+        # Compile Error, and an exit 1 matching nothing known fails closed to a Runner error.
         diagnostics = compiled.stderr
-        is_compile_error = compiled.returncode == 1 and GO_DIAGNOSTIC.search(diagnostics)
+        is_compile_error = compiled.returncode == 1 and GO_COMPILE_ERROR.search(diagnostics)
     else:
         # tsc exits 2 when it found errors, and prints "error TS<n>" diagnostics to stdout. Exit 1 is
         # a bad option or other failure of ours, so it is not the Learner's fault.
@@ -264,8 +277,6 @@ if compiled and compiled.returncode != 0:
     emit({"compileError": text(diagnostics[:CAP], len(diagnostics) > CAP)})
     sys.exit(0)
 if LANGUAGE == "go":
-    if compiled is None:
-        sys.exit("no .go files in the Build")
     # The binary is kept in memory and put back before every Test (fresh_build).
     with open(GO_BINARY_PATH, "rb") as f:
         GO_BINARY = f.read()
