@@ -24,15 +24,15 @@ learner.chapter(chapterId)    learner.problem(problemId)
 
 // Learner actions
 learner.reachChapterEnd(chapterId)                    // → progress change (may Complete a Topic)
-learner.saveCode(problemId, files, baseRevision)      // → new revision, or RevisionConflict
-learner.run(problemId, files, baseRevision)           // → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
-learner.submit(problemId, files, baseRevision)        // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
+learner.saveCode(problemId, files, baseRevision, language) // → new revision, or RevisionConflict
+learner.run(problemId, files, baseRevision, language)      // → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
+learner.submit(problemId, files, baseRevision, language)   // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
 learner.startFromReferenceCode(problemId)
 learner.switchLanguage(topicId, language)
 learner.revealHint(problemId)
 ```
 
-Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab or second device), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. Routes map codes to statuses through one shared helper.
+Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab, second device, or a Language switched elsewhere), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. Routes map codes to statuses through one shared helper.
 
 **Rules the interface guarantees**
 

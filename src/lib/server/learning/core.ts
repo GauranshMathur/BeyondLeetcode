@@ -67,26 +67,38 @@ export interface Learner {
 	problem(problemId: string): Promise<ProblemView>;
 	/**
 	 * Stores the Learner's code for a Problem. `baseRevision` is the revision the code was based
-	 * on (0 for a step never saved). Throws RevisionConflict when it is stale, InvalidBuild for
-	 * bad paths or too much code, NotFound or TopicLocked.
+	 * on (0 for a step never saved) and `language` the Language the tab showed (ProblemView.language).
+	 * Throws RevisionConflict when the revision is stale or the Topic is no longer built in
+	 * `language`, InvalidBuild for bad paths or too much code, NotFound or TopicLocked.
 	 */
 	saveCode(
 		problemId: string,
 		files: BuildFiles,
-		baseRevision: number
+		baseRevision: number,
+		language: Language
 	): Promise<{ revision: number }>;
 	/**
 	 * Saves like saveCode (same errors), then runs the Problem's Example Tests only and compares
 	 * the outputs. Writes nothing else: never a Submission, status or progress change. Throws
 	 * RunnerUnavailable when the Runner cannot answer; the saved code stays.
 	 */
-	run(problemId: string, files: BuildFiles, baseRevision: number): Promise<RunView>;
+	run(
+		problemId: string,
+		files: BuildFiles,
+		baseRevision: number,
+		language: Language
+	): Promise<RunView>;
 	/**
 	 * Saves like saveCode (same errors), runs every Test of the Problem and of the earlier Core
 	 * Problems it builds on, picks the Verdict and records the Submission. Throws
 	 * RunnerUnavailable when the Runner cannot answer: nothing is recorded, the saved code stays.
 	 */
-	submit(problemId: string, files: BuildFiles, baseRevision: number): Promise<SubmitView>;
+	submit(
+		problemId: string,
+		files: BuildFiles,
+		baseRevision: number,
+		language: Language
+	): Promise<SubmitView>;
 	/**
 	 * Builds the Topic in `language` from now on. Writes only the Learner's choice: a Language's
 	 * steps are created when first saved, seeded like any first touch (the Learner's previous Core
@@ -130,8 +142,6 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					throw new LearningError('RunnerUnavailable');
 				}
 			};
-			const languageOfProblem = async (problemId: string) =>
-				loadLanguage(deps.db, learnerId, deps.catalogue.problem(problemId)?.topicId ?? '');
 			const learner: Learner = {
 				map: async () => mapView(deps.catalogue, await loadProgress(deps, learnerId)),
 				topic: async (topicId) =>
@@ -178,16 +188,15 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						renderMarkdown
 					);
 				},
-				saveCode: async (problemId, files, baseRevision) => {
+				saveCode: async (problemId, files, baseRevision, language) => {
 					// Same checks as the screen read: NotFound, TopicLocked.
 					const view = await learner.problem(problemId);
 					const build = validateBuild(files);
-					const key = {
-						learnerId,
-						topicId: view.topicId,
-						language: view.language,
-						problemId
-					};
+					// A tab showing another Language than the current one is stale (switched elsewhere).
+					if (language !== view.language) throw new LearningError('RevisionConflict');
+					// Every write below is keyed on the tab's Language, so a switchLanguage landing after
+					// this check can only leave the write on the Build the tab was showing.
+					const key = { learnerId, topicId: view.topicId, language, problemId };
 					if (baseRevision !== view.revision) throw new LearningError('RevisionConflict');
 					try {
 						if (view.revision === 0) {
@@ -207,10 +216,9 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						throw e;
 					}
 				},
-				run: async (problemId, files, baseRevision) => {
-					const { revision } = await learner.saveCode(problemId, files, baseRevision);
+				run: async (problemId, files, baseRevision, language) => {
+					const { revision } = await learner.saveCode(problemId, files, baseRevision, language);
 					const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
-					const language = await languageOfProblem(problemId);
 					return runView(tests, await execute(language, files, tests), revision);
 				},
 				switchLanguage: async (topicId, language) => {
@@ -222,9 +230,8 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						update: { language }
 					});
 				},
-				submit: async (problemId, files, baseRevision) => {
-					const { revision } = await learner.saveCode(problemId, files, baseRevision);
-					const language = await languageOfProblem(problemId);
+				submit: async (problemId, files, baseRevision, language) => {
+					const { revision } = await learner.saveCode(problemId, files, baseRevision, language);
 					// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
 					const plan = submitPlan(deps.catalogue, problemId);
 					const batches = [];

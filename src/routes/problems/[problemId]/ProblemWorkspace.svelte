@@ -20,6 +20,9 @@ const paths = Object.keys(problem.files);
 let files = { ...problem.files };
 // svelte-ignore state_referenced_locally
 let revision = problem.revision;
+// The Language this Build was loaded in: sent with every save, even if `problem` has moved on by then.
+// svelte-ignore state_referenced_locally
+const loadedLanguage = problem.language;
 let saveState = $state<SaveState>('saved');
 let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
@@ -59,6 +62,7 @@ async function save(keepalive = false) {
 		const body = new FormData();
 		body.set('files', JSON.stringify(files));
 		body.set('baseRevision', String(revision));
+		body.set('language', loadedLanguage);
 		const response = await fetch(saveUrl, {
 			method: 'POST',
 			body,
@@ -118,6 +122,7 @@ async function send(
 		const body = new FormData();
 		body.set('files', JSON.stringify(sent));
 		body.set('baseRevision', String(revision));
+		body.set('language', loadedLanguage);
 		const response = await fetch(url, {
 			method: 'POST',
 			body,

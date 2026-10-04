@@ -252,8 +252,8 @@ describe('learner.problem() and learner.saveCode()', () => {
 
 	it("starts a Core Problem from the Learner's latest saved code for the previous Core Problem", async () => {
 		const { learner } = await setup();
-		await learner.saveCode('stacks-push', { 'main.py': 'mine v1' }, 0);
-		await learner.saveCode('stacks-push', { 'main.py': 'mine v2', 'util.py': 'x' }, 1);
+		await learner.saveCode('stacks-push', { 'main.py': 'mine v1' }, 0, 'python');
+		await learner.saveCode('stacks-push', { 'main.py': 'mine v2', 'util.py': 'x' }, 1, 'python');
 
 		expect((await learner.problem('stacks-pop')).files).toEqual({
 			'main.py': 'mine v2',
@@ -267,16 +267,16 @@ describe('learner.problem() and learner.saveCode()', () => {
 			catalogue.problem('stacks-push')?.referenceCode.python
 		);
 
-		await learner.saveCode('stacks-push', { 'main.py': 'parent code' }, 0);
+		await learner.saveCode('stacks-push', { 'main.py': 'parent code' }, 0, 'python');
 		expect((await learner.problem('stacks-peek')).files).toEqual({ 'main.py': 'parent code' });
 	});
 
 	it('copies a step once: once saved, later changes to its source never change it', async () => {
 		const { learner } = await setup();
 		const seeded = (await learner.problem('stacks-pop')).files;
-		await learner.saveCode('stacks-pop', seeded, 0);
+		await learner.saveCode('stacks-pop', seeded, 0, 'python');
 
-		await learner.saveCode('stacks-push', { 'main.py': 'edited after' }, 0);
+		await learner.saveCode('stacks-push', { 'main.py': 'edited after' }, 0, 'python');
 
 		expect((await learner.problem('stacks-pop')).files).toEqual(seeded);
 	});
@@ -284,8 +284,12 @@ describe('learner.problem() and learner.saveCode()', () => {
 	it('saves code, returns the new revision and shows it again, per Learner', async () => {
 		const { learner, core } = await setup();
 
-		expect(await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0)).toEqual({ revision: 1 });
-		expect(await learner.saveCode('stacks-push', { 'main.py': 'ab' }, 1)).toEqual({ revision: 2 });
+		expect(await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0, 'python')).toEqual({
+			revision: 1
+		});
+		expect(await learner.saveCode('stacks-push', { 'main.py': 'ab' }, 1, 'python')).toEqual({
+			revision: 2
+		});
 
 		const view = await learner.problem('stacks-push');
 		expect(view.files).toEqual({ 'main.py': 'ab' });
@@ -296,15 +300,15 @@ describe('learner.problem() and learner.saveCode()', () => {
 
 	it('returns RevisionConflict for a stale revision and keeps the stored code', async () => {
 		const { learner } = await setup();
-		await learner.saveCode('stacks-push', { 'main.py': 'tab one' }, 0);
+		await learner.saveCode('stacks-push', { 'main.py': 'tab one' }, 0, 'python');
 
 		await expect(
-			learner.saveCode('stacks-push', { 'main.py': 'tab two' }, 0)
+			learner.saveCode('stacks-push', { 'main.py': 'tab two' }, 0, 'python')
 		).rejects.toMatchObject({
 			code: 'RevisionConflict'
 		});
 		await expect(
-			learner.saveCode('stacks-push', { 'main.py': 'tab two' }, 5)
+			learner.saveCode('stacks-push', { 'main.py': 'tab two' }, 5, 'python')
 		).rejects.toMatchObject({
 			code: 'RevisionConflict'
 		});
@@ -314,8 +318,8 @@ describe('learner.problem() and learner.saveCode()', () => {
 	it('lets only one of two concurrent first saves win', async () => {
 		const { learner } = await setup();
 		const results = await Promise.allSettled([
-			learner.saveCode('stacks-push', { 'main.py': 'a' }, 0),
-			learner.saveCode('stacks-push', { 'main.py': 'b' }, 0)
+			learner.saveCode('stacks-push', { 'main.py': 'a' }, 0, 'python'),
+			learner.saveCode('stacks-push', { 'main.py': 'b' }, 0, 'python')
 		]);
 		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
 	});
@@ -330,7 +334,7 @@ describe('learner.problem() and learner.saveCode()', () => {
 		['too much code', { 'main.py': 'x'.repeat(256 * 1024 + 1) }]
 	])('refuses %s as InvalidBuild and stores nothing', async (_name, files) => {
 		const { learner } = await setup();
-		await expect(learner.saveCode('stacks-push', files, 0)).rejects.toMatchObject({
+		await expect(learner.saveCode('stacks-push', files, 0, 'python')).rejects.toMatchObject({
 			code: 'InvalidBuild'
 		});
 		expect((await learner.problem('stacks-push')).revision).toBe(0);
@@ -342,7 +346,8 @@ describe('learner.problem() and learner.saveCode()', () => {
 			learner.saveCode(
 				'stacks-push',
 				{ 'pkg/util.py': 'x'.repeat(256 * 1024 - 'pkg/util.py'.length) },
-				0
+				0,
+				'python'
 			)
 		).resolves.toEqual({ revision: 1 });
 	});
@@ -351,7 +356,7 @@ describe('learner.problem() and learner.saveCode()', () => {
 		const { learner } = await setup();
 		await expect(learner.problem('nope')).rejects.toMatchObject({ code: 'NotFound' });
 		await expect(learner.problem('queues-enqueue')).rejects.toMatchObject({ code: 'TopicLocked' });
-		await expect(learner.saveCode('nope', { 'main.py': '' }, 0)).rejects.toMatchObject({
+		await expect(learner.saveCode('nope', { 'main.py': '' }, 0, 'python')).rejects.toMatchObject({
 			code: 'NotFound'
 		});
 	});
@@ -390,7 +395,7 @@ describe('learner.run()', () => {
 			tests: { [exampleId]: { status: 'ok', stdout: '2\n' } }
 		});
 
-		const view = await learner.run('stacks-push', { 'main.py': 'print(2)' }, 0);
+		const view = await learner.run('stacks-push', { 'main.py': 'print(2)' }, 0, 'python');
 
 		expect(view).toEqual({
 			revision: 1,
@@ -425,7 +430,7 @@ describe('learner.run()', () => {
 			tests: { [exampleId]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
 		});
 
-		const view = await learner.run('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.run('stacks-push', { 'main.py': 'x' }, 0, 'python');
 
 		expect(view.tests[0]).toMatchObject({
 			status: 'wrongAnswer',
@@ -438,7 +443,7 @@ describe('learner.run()', () => {
 	it('returns a compile error as one block', async () => {
 		const { learner } = await setup({ compileError: 'SyntaxError: bad' });
 
-		expect(await learner.run('stacks-push', { 'main.py': 'x' }, 0)).toEqual({
+		expect(await learner.run('stacks-push', { 'main.py': 'x' }, 0, 'python')).toEqual({
 			revision: 1,
 			compileError: 'SyntaxError: bad',
 			tests: []
@@ -451,7 +456,7 @@ describe('learner.run()', () => {
 		});
 		const before = await learner.map();
 
-		await learner.run('stacks-push', { 'main.py': 'print(2)' }, 0);
+		await learner.run('stacks-push', { 'main.py': 'print(2)' }, 0, 'python');
 
 		expect(await learner.map()).toEqual(before);
 		expect(await learner.topic('stacks')).toMatchObject({
@@ -466,18 +471,22 @@ describe('learner.run()', () => {
 
 	it('applies the saveCode checks first: stale revision, invalid Build, locked or unknown', async () => {
 		const { learner, runner } = await setup();
-		await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0);
+		await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0, 'python');
 
-		await expect(learner.run('stacks-push', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
-			code: 'RevisionConflict'
-		});
-		await expect(learner.run('stacks-push', { '../x': 'b' }, 1)).rejects.toMatchObject({
+		await expect(learner.run('stacks-push', { 'main.py': 'b' }, 0, 'python')).rejects.toMatchObject(
+			{
+				code: 'RevisionConflict'
+			}
+		);
+		await expect(learner.run('stacks-push', { '../x': 'b' }, 1, 'python')).rejects.toMatchObject({
 			code: 'InvalidBuild'
 		});
-		await expect(learner.run('queues-enqueue', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+		await expect(
+			learner.run('queues-enqueue', { 'main.py': 'b' }, 0, 'python')
+		).rejects.toMatchObject({
 			code: 'TopicLocked'
 		});
-		await expect(learner.run('nope', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+		await expect(learner.run('nope', { 'main.py': 'b' }, 0, 'python')).rejects.toMatchObject({
 			code: 'NotFound'
 		});
 		expect(runner.calls).toHaveLength(0);
@@ -486,9 +495,11 @@ describe('learner.run()', () => {
 	it('answers RunnerUnavailable when the Runner is down, keeping the saved code and recording nothing else', async () => {
 		const { learner, db } = await setup({ unavailable: true });
 
-		await expect(learner.run('stacks-push', { 'main.py': 'a' }, 0)).rejects.toMatchObject({
-			code: 'RunnerUnavailable'
-		});
+		await expect(learner.run('stacks-push', { 'main.py': 'a' }, 0, 'python')).rejects.toMatchObject(
+			{
+				code: 'RunnerUnavailable'
+			}
+		);
 
 		expect(await learner.problem('stacks-push')).toMatchObject({ revision: 1 });
 		expect(await db.buildStep.count()).toBe(1);
@@ -523,7 +534,7 @@ describe('learner.submit()', () => {
 	it('Accepted when every Test passes: records the Submission and Solves the Problem', async () => {
 		const { runner, learner, db } = await setup();
 
-		const view = await learner.submit('stacks-push', { 'main.py': 'print(2)' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'print(2)' }, 0, 'python');
 
 		expect(view).toMatchObject({ verdict: 'Accepted', revision: 1, status: 'Solved' });
 		expect(view.failure).toBeUndefined();
@@ -538,7 +549,7 @@ describe('learner.submit()', () => {
 
 	it('Accepted carries the next Core Problem, and no Topic completion mid-Topic', async () => {
 		const { learner } = await setup();
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 		expect(view.accepted).toEqual({
 			nextProblemId: 'stacks-pop',
 			topicCompleted: false,
@@ -550,8 +561,8 @@ describe('learner.submit()', () => {
 		const { learner } = await setup();
 		await learner.reachChapterEnd('stacks-undo-log');
 		await learner.reachChapterEnd('stacks-call-frames');
-		await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
-		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+		await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python');
 		// Queues needs only stacks; heaps also needs queues, so it stays out.
 		expect(view.accepted).toEqual({
 			nextProblemId: null,
@@ -564,9 +575,9 @@ describe('learner.submit()', () => {
 		const { learner } = await setup();
 		await learner.reachChapterEnd('stacks-undo-log');
 		await learner.reachChapterEnd('stacks-call-frames');
-		await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
-		await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
-		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 1);
+		await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
+		await learner.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python');
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 1, 'python');
 		expect(view.accepted).toEqual({
 			nextProblemId: null,
 			topicCompleted: false,
@@ -576,13 +587,13 @@ describe('learner.submit()', () => {
 
 	it("an Extra's next is the Core Problem after its parent", async () => {
 		const { learner } = await setup();
-		const view = await learner.submit('stacks-peek', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-peek', { 'main.py': 'x' }, 0, 'python');
 		expect(view.accepted?.nextProblemId).toBe('stacks-pop');
 	});
 
 	it('a Verdict other than Accepted has no accepted', async () => {
 		const { learner } = await setup({ tests: { [pushExample]: wrong } });
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 		expect(view.accepted).toBeUndefined();
 	});
 
@@ -591,7 +602,7 @@ describe('learner.submit()', () => {
 			tests: { [pushExample]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
 		});
 
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 
 		expect(view).toMatchObject({
 			verdict: 'Wrong Answer',
@@ -623,7 +634,7 @@ describe('learner.submit()', () => {
 		['Time Limit Exceeded', { status: 'timeout' as const, stdout: '', stderr: '' }]
 	])('%s on a Test is that Verdict, recorded', async (verdict, scripted) => {
 		const { learner, db } = await setup({ tests: { [pushExample]: scripted } });
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 		expect(view.verdict).toBe(verdict);
 		expect(view.failure).toMatchObject({ kind: 'example', stderr: scripted.stderr });
 		expect((await db.submission.findFirstOrThrow()).verdict).toBe(verdict);
@@ -631,7 +642,7 @@ describe('learner.submit()', () => {
 
 	it('Compile Error is one message, recorded with no failing Problem', async () => {
 		const { learner, db } = await setup({ compileError: 'SyntaxError: bad' });
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 		expect(view).toMatchObject({
 			verdict: 'Compile Error',
 			failure: { kind: 'compile', message: 'SyntaxError: bad' },
@@ -644,7 +655,11 @@ describe('learner.submit()', () => {
 		const tle = { status: 'timeout' as const };
 		const rte = { status: 'runtimeError' as const };
 		const verdictOf = async (tests: RunnerScript['tests']) =>
-			(await (await setup({ tests })).learner.submit('stacks-push', { 'main.py': 'x' }, 0)).verdict;
+			(
+				await (
+					await setup({ tests })
+				).learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python')
+			).verdict;
 
 		expect(await verdictOf({ [pushExample]: wrong, [pushHidden]: rte })).toBe('Runtime Error');
 		expect(await verdictOf({ [pushExample]: rte, [pushHidden]: tle })).toBe('Time Limit Exceeded');
@@ -661,13 +676,13 @@ describe('learner.submit()', () => {
 				[pushExample]: { status: 'runtimeError', stderr: 'first' }
 			}
 		});
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 		expect(view.failure).toMatchObject({ kind: 'example', stderr: 'first' });
 	});
 
 	it("runs this Problem's Example Tests in one Runner call and every other Test in a second, ids and inputs only", async () => {
 		const { learner, runner } = await setup();
-		await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+		await learner.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python');
 
 		expect(runner.calls.map((c) => c.tests.map((t) => t.id))).toEqual([
 			[popExample],
@@ -683,7 +698,7 @@ describe('learner.submit()', () => {
 		const { learner, runner, catalogue } = await setup();
 		for (const id of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
 			runner.calls.length = 0;
-			await learner.submit(id, { 'main.py': id }, (await learner.problem(id)).revision);
+			await learner.submit(id, { 'main.py': id }, (await learner.problem(id)).revision, 'python');
 			const visible = catalogue.problem(id)?.exampleTests.map((t) => t.id) ?? [];
 			for (const call of runner.calls) {
 				const ids = call.tests.map((t) => t.id);
@@ -695,7 +710,7 @@ describe('learner.submit()', () => {
 
 	it('a Compile Error from the first call is the Verdict and the second call is skipped', async () => {
 		const { learner, runner } = await setup({ compileError: 'SyntaxError: bad' });
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 		expect(view.verdict).toBe('Compile Error');
 		expect(runner.calls).toHaveLength(1);
 	});
@@ -714,7 +729,7 @@ describe('learner.submit()', () => {
 			}
 		});
 		await expect(
-			core.forLearner('y').submit('stacks-push', { 'main.py': 'x' }, 0)
+			core.forLearner('y').submit('stacks-push', { 'main.py': 'x' }, 0, 'python')
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 		expect(await db.submission.count()).toBe(0);
 	});
@@ -733,14 +748,14 @@ describe('learner.submit()', () => {
 			}
 		});
 		await expect(
-			core.forLearner('y').submit('stacks-push', { 'main.py': 'x' }, 0)
+			core.forLearner('y').submit('stacks-push', { 'main.py': 'x' }, 0, 'python')
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 		expect(await db.submission.count()).toBe(0);
 	});
 
 	it('a failing Hidden Test of this Problem reveals only the Problem and the Verdict', async () => {
 		const { learner } = await setup({ tests: { [pushHidden]: wrong } });
-		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
 
 		expect(view.verdict).toBe('Wrong Answer');
 		expect(view.failure).toEqual({ kind: 'hidden', problemId: 'stacks-push' });
@@ -753,7 +768,7 @@ describe('learner.submit()', () => {
 		const { learner, db } = await setup({
 			tests: { [pushExample]: { status: 'ok', stdout: 'WRONG', stderr: 'secret' } }
 		});
-		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python');
 
 		expect(view.failure).toEqual({
 			kind: 'earlierStep',
@@ -772,13 +787,13 @@ describe('learner.submit()', () => {
 
 	it('an earlier Hidden Test failure is also an earlier-step failure', async () => {
 		const { learner } = await setup({ tests: { [pushHidden]: wrong } });
-		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0);
+		const view = await learner.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python');
 		expect(view.failure).toMatchObject({ kind: 'earlierStep', problemId: 'stacks-push' });
 	});
 
 	it('an Extra runs its own Example Tests first, then its parent and earlier Core Tests, never later Core Problems', async () => {
 		const { learner, runner } = await setup();
-		await learner.submit('stacks-peek', { 'main.py': 'x' }, 0);
+		await learner.submit('stacks-peek', { 'main.py': 'x' }, 0, 'python');
 		expect(runner.calls.map((c) => c.tests.map((t) => t.id))).toEqual([
 			[peekExample],
 			[pushExample, pushHidden]
@@ -787,7 +802,9 @@ describe('learner.submit()', () => {
 
 	it('a Runner outage records nothing and leaves the status, keeping the saved code', async () => {
 		const { learner, db } = await setup({ unavailable: true });
-		await expect(learner.submit('stacks-push', { 'main.py': 'a' }, 0)).rejects.toMatchObject({
+		await expect(
+			learner.submit('stacks-push', { 'main.py': 'a' }, 0, 'python')
+		).rejects.toMatchObject({
 			code: 'RunnerUnavailable'
 		});
 		expect(await db.submission.count()).toBe(0);
@@ -800,17 +817,23 @@ describe('learner.submit()', () => {
 
 	it('applies the saveCode checks first', async () => {
 		const { learner, runner, db } = await setup();
-		await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0);
-		await expect(learner.submit('stacks-push', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+		await learner.saveCode('stacks-push', { 'main.py': 'a' }, 0, 'python');
+		await expect(
+			learner.submit('stacks-push', { 'main.py': 'b' }, 0, 'python')
+		).rejects.toMatchObject({
 			code: 'RevisionConflict'
 		});
-		await expect(learner.submit('stacks-push', { '../x': 'b' }, 1)).rejects.toMatchObject({
-			code: 'InvalidBuild'
-		});
-		await expect(learner.submit('queues-enqueue', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+		await expect(learner.submit('stacks-push', { '../x': 'b' }, 1, 'python')).rejects.toMatchObject(
+			{
+				code: 'InvalidBuild'
+			}
+		);
+		await expect(
+			learner.submit('queues-enqueue', { 'main.py': 'b' }, 0, 'python')
+		).rejects.toMatchObject({
 			code: 'TopicLocked'
 		});
-		await expect(learner.submit('nope', { 'main.py': 'b' }, 0)).rejects.toMatchObject({
+		await expect(learner.submit('nope', { 'main.py': 'b' }, 0, 'python')).rejects.toMatchObject({
 			code: 'NotFound'
 		});
 		expect(runner.calls).toHaveLength(0);
@@ -819,14 +842,16 @@ describe('learner.submit()', () => {
 
 	it('a Problem stays Solved after a later failing Submission', async () => {
 		const { db, catalogue, learner } = await setup();
-		expect((await learner.submit('stacks-push', { 'main.py': 'a' }, 0)).status).toBe('Solved');
+		expect((await learner.submit('stacks-push', { 'main.py': 'a' }, 0, 'python')).status).toBe(
+			'Solved'
+		);
 
 		const failing = createLearningCore({
 			catalogue,
 			db,
 			runner: createScriptedRunner({ tests: { [pushExample]: wrong } })
 		}).forLearner('any-learner');
-		const view = await failing.submit('stacks-push', { 'main.py': 'b' }, 1);
+		const view = await failing.submit('stacks-push', { 'main.py': 'b' }, 1, 'python');
 
 		expect(view).toMatchObject({ verdict: 'Wrong Answer', status: 'Solved' });
 		expect((await failing.topic('stacks')).chapters[0]?.problems[0]?.status).toBe('Solved');
@@ -836,17 +861,17 @@ describe('learner.submit()', () => {
 		const { learner } = await setup();
 		await learner.reachChapterEnd('stacks-undo-log');
 		await learner.reachChapterEnd('stacks-call-frames');
-		await learner.submit('stacks-push', { 'main.py': 'a' }, 0);
+		await learner.submit('stacks-push', { 'main.py': 'a' }, 0, 'python');
 		expect((await learner.map()).topics[0]).toMatchObject({ state: 'unlocked', coreSolved: 1 });
 
-		await learner.submit('stacks-pop', { 'main.py': 'b' }, 0);
+		await learner.submit('stacks-pop', { 'main.py': 'b' }, 0, 'python');
 
 		expect((await learner.map()).topics[0]).toMatchObject({ state: 'complete', coreSolved: 2 });
 	});
 
 	it('shows Attempted on the Topic after a failing Submission, and the Topic as current', async () => {
 		const { learner } = await setup({ tests: { [pushExample]: wrong } });
-		await learner.submit('stacks-push', { 'main.py': 'a' }, 0);
+		await learner.submit('stacks-push', { 'main.py': 'a' }, 0, 'python');
 		expect((await learner.topic('stacks')).chapters[0]?.problems[0]?.status).toBe('Attempted');
 		expect((await learner.map()).currentTopicId).toBe('stacks');
 	});
@@ -857,7 +882,7 @@ describe('learner.submit()', () => {
 			db: await createTestDb()
 		});
 		await expect(
-			core.forLearner('x').submit('stacks-push', { 'main.py': 'a' }, 0)
+			core.forLearner('x').submit('stacks-push', { 'main.py': 'a' }, 0, 'python')
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 	});
 });
@@ -890,17 +915,17 @@ describe('learner.switchLanguage()', () => {
 		expect((await learner.problem('stacks-pop')).files).toEqual(
 			catalogue.problem('stacks-push')?.referenceCode.typescript
 		);
-		await learner.saveCode('stacks-push', { 'main.ts': 'mine' }, 0);
+		await learner.saveCode('stacks-push', { 'main.ts': 'mine' }, 0, 'typescript');
 		expect((await learner.problem('stacks-pop')).files).toEqual({ 'main.ts': 'mine' });
 	});
 
 	it('keeps the old Language Build, and switching back restores its code and revision', async () => {
 		const { learner } = await setup();
-		await learner.saveCode('stacks-push', { 'main.py': 'python code' }, 0);
+		await learner.saveCode('stacks-push', { 'main.py': 'python code' }, 0, 'python');
 
 		await learner.switchLanguage('stacks', 'typescript');
 		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.ts': '' });
-		await learner.saveCode('stacks-push', { 'main.ts': 'ts code' }, 0);
+		await learner.saveCode('stacks-push', { 'main.ts': 'ts code' }, 0, 'typescript');
 		await learner.switchLanguage('stacks', 'python');
 
 		expect(await learner.problem('stacks-push')).toMatchObject({
@@ -927,7 +952,7 @@ describe('learner.switchLanguage()', () => {
 		const { learner, runner } = await setup();
 		await learner.switchLanguage('stacks', 'typescript');
 
-		await learner.run('stacks-push', { 'main.ts': 'console.log(2)' }, 0);
+		await learner.run('stacks-push', { 'main.ts': 'console.log(2)' }, 0, 'typescript');
 
 		expect(runner.calls[0].language).toBe('typescript');
 	});
@@ -936,7 +961,7 @@ describe('learner.switchLanguage()', () => {
 		const { learner, db } = await setup();
 		await learner.switchLanguage('stacks', 'typescript');
 
-		await learner.submit('stacks-push', { 'main.ts': 'console.log(2)' }, 0);
+		await learner.submit('stacks-push', { 'main.ts': 'console.log(2)' }, 0, 'typescript');
 
 		expect((await db.submission.findFirstOrThrow()).language).toBe('typescript');
 	});
@@ -950,5 +975,79 @@ describe('learner.switchLanguage()', () => {
 		await expect(learner.switchLanguage('queues', 'typescript')).rejects.toMatchObject({
 			code: 'TopicLocked'
 		});
+	});
+});
+
+describe('a tab acts on the Language it was loaded with', () => {
+	async function setup() {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const runner = createScriptedRunner();
+		const db = await createTestDb();
+		const core = createLearningCore({ catalogue, db, runner });
+		const learner = core.forLearner('any-learner');
+		// The stale tab saved Python (revision 1); another tab then switched the Topic to TypeScript
+		// and saved there too (revision 1), so both Builds sit at the same revision.
+		await learner.saveCode('stacks-push', { 'main.py': 'python v1' }, 0, 'python');
+		await learner.switchLanguage('stacks', 'typescript');
+		await learner.saveCode('stacks-push', { 'main.ts': 'ts v1' }, 0, 'typescript');
+		return { learner, runner, db };
+	}
+
+	it('refuses a stale-Language save and leaves both Builds untouched', async () => {
+		const { learner, db } = await setup();
+
+		await expect(
+			learner.saveCode('stacks-push', { 'main.py': 'python v2' }, 1, 'python')
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.ts': 'ts v1' });
+		const python = await db.buildStep.findMany({ where: { language: 'python' } });
+		expect(python.map((r) => [r.files, r.revision])).toEqual([[{ 'main.py': 'python v1' }, 1]]);
+	});
+
+	it('refuses a stale-Language run: nothing saved, nothing executed', async () => {
+		const { learner, runner } = await setup();
+
+		await expect(
+			learner.run('stacks-push', { 'main.py': 'python v2' }, 1, 'python')
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+
+		expect(runner.calls).toHaveLength(0);
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.ts': 'ts v1' });
+	});
+
+	it('refuses a stale-Language submit: no Submission, nothing executed', async () => {
+		const { learner, runner, db } = await setup();
+
+		await expect(
+			learner.submit('stacks-push', { 'main.py': 'python v2' }, 1, 'python')
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+
+		expect(runner.calls).toHaveLength(0);
+		expect(await db.submission.count()).toBe(0);
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.ts': 'ts v1' });
+	});
+
+	it('refuses a stale-Language first save too, creating no Build', async () => {
+		const { learner, db } = await setup();
+
+		await expect(
+			learner.saveCode('stacks-pop', { 'main.py': 'late' }, 0, 'python')
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+
+		expect(await db.buildStep.count({ where: { problemId: 'stacks-pop' } })).toBe(0);
+	});
+
+	it('still saves, runs and submits in the current Language', async () => {
+		const { learner, runner } = await setup();
+
+		expect(await learner.saveCode('stacks-push', { 'main.ts': 'ts v2' }, 1, 'typescript')).toEqual({
+			revision: 2
+		});
+		await learner.run('stacks-push', { 'main.ts': 'ts v3' }, 2, 'typescript');
+		const view = await learner.submit('stacks-push', { 'main.ts': 'ts v4' }, 3, 'typescript');
+
+		expect(view.revision).toBe(4);
+		expect(runner.calls.every((c) => c.language === 'typescript')).toBe(true);
 	});
 });
