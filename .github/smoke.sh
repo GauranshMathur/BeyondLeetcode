@@ -9,9 +9,10 @@ instance="$(mktemp -d)"
 
 cleanup() {
   status=$?
+  set +e
   docker rm -f web runner >/dev/null 2>&1
   if [ -f "$instance/compose.yaml" ]; then
-    [ "$status" -ne 0 ] && (cd "$instance" && docker compose logs)
+    if [ "$status" -ne 0 ]; then (cd "$instance" && docker compose logs); fi
     (cd "$instance" && docker compose down -v)
   fi
   docker volume rm bl-data >/dev/null 2>&1
