@@ -251,3 +251,34 @@ jobs:
         if: always()
         working-directory: ${{ runner.temp }}/instance
         run: docker compose down -v
+
+  # Publishes the app image as `edge` (a moving tag, overwritten by design) for amd64 and arm64.
+  # Only after every test job, the smoke test included, passed on this commit.
+  publish-edge:
+    if: github.event_name == 'push'
+    needs: [typecheck, lint, unit, build, sandbox, docker]
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: publish-edge
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/gauranshmathur/beyondleetcode:edge
+          build-args: IMAGE_REF=ghcr.io/gauranshmathur/beyondleetcode:edge
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
