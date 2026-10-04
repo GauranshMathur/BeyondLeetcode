@@ -1051,3 +1051,44 @@ describe('a tab acts on the Language it was loaded with', () => {
 		expect(runner.calls.every((c) => c.language === 'typescript')).toBe(true);
 	});
 });
+
+describe('the Accepted panel credits only its own Submission', () => {
+	it('two submits racing: only the one that completes the Topic reports topicCompleted', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const correct: NonNullable<RunnerScript['tests']> = {};
+		for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
+			const tests = [
+				...(catalogue.problem(p)?.exampleTests ?? []),
+				...(catalogue.hiddenTests(p) ?? [])
+			];
+			for (const t of tests) correct[t.id] = { status: 'ok', stdout: t.expected };
+		}
+		const inner = createScriptedRunner({ tests: correct });
+		// Both Runner calls are held until both submits are in flight, so their database
+		// steps start together and interleave.
+		let hold: { waiting: number; release: () => void; gate: Promise<void> } | undefined;
+		const runner = {
+			...inner,
+			async execute(request: Parameters<typeof inner.execute>[0]) {
+				if (hold && ++hold.waiting >= 2) hold.release();
+				await hold?.gate;
+				return inner.execute(request);
+			}
+		};
+		const core = createLearningCore({ catalogue, db: await createTestDb(), runner });
+		const learner = core.forLearner('any-learner');
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.reachChapterEnd('stacks-call-frames');
+		await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
+		let release: () => void = () => {};
+		hold = { waiting: 0, release: () => release(), gate: new Promise<void>((r) => (release = r)) };
+
+		const [extra, completing] = await Promise.all([
+			learner.submit('stacks-peek', { 'main.py': 'x' }, 0, 'python'),
+			learner.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python')
+		]);
+
+		expect(completing.accepted?.topicCompleted).toBe(true);
+		expect(extra.accepted?.topicCompleted).toBe(false);
+	});
+});

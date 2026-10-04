@@ -143,18 +143,23 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				}
 			};
 			const learner: Learner = {
-				map: async () => mapView(deps.catalogue, await loadProgress(deps, learnerId)),
+				map: async () =>
+					mapView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId)),
 				topic: async (topicId) =>
-					topicView(deps.catalogue, await loadProgress(deps, learnerId), topicId),
+					topicView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						topicId
+					),
 				chapter: async (chapterId) =>
 					chapterView(
 						deps.catalogue,
-						await loadProgress(deps, learnerId),
+						await loadProgress(deps.catalogue, deps.db, learnerId),
 						chapterId,
 						renderMarkdown
 					),
 				reachChapterEnd: async (chapterId) => {
-					const before = await loadProgress(deps, learnerId);
+					const before = await loadProgress(deps.catalogue, deps.db, learnerId);
 					const change = reachChapter(deps.catalogue, before, chapterId); // NotFound / TopicLocked
 					if (before.readChapters.has(chapterId)) return change;
 					// Only the call that inserts the mark reports the change; a concurrent repeat gets none.
@@ -162,10 +167,14 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						await deps.db.chapterRead.create({ data: { learnerId, chapterId, readAt: now() } });
 					} catch (e) {
 						if (!isUniqueViolation(e)) throw e;
-						return reachChapter(deps.catalogue, await loadProgress(deps, learnerId), chapterId);
+						return reachChapter(
+							deps.catalogue,
+							await loadProgress(deps.catalogue, deps.db, learnerId),
+							chapterId
+						);
 					}
 					// Diff against the state without this mark, so a concurrent read cannot hide the effect.
-					const after = await loadProgress(deps, learnerId);
+					const after = await loadProgress(deps.catalogue, deps.db, learnerId);
 					const readChapters = new Set(after.readChapters);
 					readChapters.delete(chapterId);
 					return reachChapter(deps.catalogue, { ...after, readChapters }, chapterId);
@@ -176,7 +185,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					const language = await loadLanguage(deps.db, learnerId, topicId);
 					return problemView(
 						deps.catalogue,
-						await loadProgress(deps, learnerId),
+						await loadProgress(deps.catalogue, deps.db, learnerId),
 						problemId,
 						language,
 						{
@@ -222,7 +231,11 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					return runView(tests, await execute(language, files, tests), revision);
 				},
 				switchLanguage: async (topicId, language) => {
-					topicView(deps.catalogue, await loadProgress(deps, learnerId), topicId); // NotFound / TopicLocked
+					topicView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						topicId
+					); // NotFound / TopicLocked
 					if (!LANGUAGES.includes(language)) throw new LearningError('InvalidBuild');
 					await deps.db.topicLanguage.upsert({
 						where: { learnerId_topicId: { learnerId, topicId } },
@@ -253,20 +266,29 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						(id) => deps.catalogue.problem(id)?.title ?? id
 					);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-					const before = await loadProgress(deps, learnerId);
-					const { id: submissionId } = await deps.db.submission.create({
-						data: {
-							learnerId,
-							problemId,
-							topicId,
-							language,
-							files,
-							verdict,
-							failingProblemId: failingProblemId ?? null,
-							createdAt: now()
-						}
+					// The Runner has answered; everything below is one short transaction. The insert comes
+					// first so the transaction takes SQLite's write lock before it reads anything (the
+					// libSQL adapter opens transactions deferred): another submit then waits, and the
+					// reads below see exactly the Submissions committed before this one.
+					const { submissionId, before, progress } = await deps.db.$transaction(async (tx) => {
+						const { id: submissionId } = await tx.submission.create({
+							data: {
+								learnerId,
+								problemId,
+								topicId,
+								language,
+								files,
+								verdict,
+								failingProblemId: failingProblemId ?? null,
+								createdAt: now()
+							}
+						});
+						return {
+							submissionId,
+							before: await loadProgress(deps.catalogue, tx, learnerId, submissionId),
+							progress: await loadProgress(deps.catalogue, tx, learnerId)
+						};
 					});
-					const progress = await loadProgress(deps, learnerId);
 					return {
 						submissionId,
 						verdict,
@@ -285,13 +307,19 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 }
 
 /** Read marks and Submissions give every status; the Topic of the latest activity is the current one. */
-async function loadProgress(deps: LearningCoreDeps, learnerId: string): Promise<Progress> {
-	const reads = await deps.db.chapterRead.findMany({
+async function loadProgress(
+	catalogue: Catalogue,
+	db: Pick<Db, 'chapterRead' | 'submission'>,
+	learnerId: string,
+	/** Leaves this Submission out: the state just before it. */
+	exceptSubmissionId?: string
+): Promise<Progress> {
+	const reads = await db.chapterRead.findMany({
 		where: { learnerId },
 		orderBy: { readAt: 'desc' }
 	});
-	const submissions = await deps.db.submission.findMany({
-		where: { learnerId },
+	const submissions = await db.submission.findMany({
+		where: { learnerId, ...(exceptSubmissionId && { id: { not: exceptSubmissionId } }) },
 		orderBy: { createdAt: 'desc' },
 		select: { problemId: true, topicId: true, verdict: true, createdAt: true }
 	});
@@ -304,7 +332,7 @@ async function loadProgress(deps: LearningCoreDeps, learnerId: string): Promise<
 	const recentTopicId =
 		recentSubmission && (!recentRead || recentSubmission.createdAt >= recentRead.readAt)
 			? recentSubmission.topicId
-			: recentRead && deps.catalogue.chapter(recentRead.chapterId)?.topicId;
+			: recentRead && catalogue.chapter(recentRead.chapterId)?.topicId;
 	return {
 		readChapters: new Set(reads.map((r) => r.chapterId)),
 		solvedProblems: solved,
