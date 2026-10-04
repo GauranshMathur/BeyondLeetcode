@@ -1,14 +1,13 @@
-import { type ChildProcess, spawn } from 'node:child_process';
-import { createServer } from 'node:net';
+import type { ChildProcess } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { containerLabel, sandboxConfig } from './config';
+import { sandboxConfig } from './config';
 import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
 import { createTar } from './tar';
-import { waitUntilHealthy } from './wait-healthy.testutil';
+import { containersOwnedBy, startRunnerProcess, waitUntilHealthy } from './wait-healthy.testutil';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
@@ -17,31 +16,14 @@ const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
 const engine = createEngine(socket);
 let runnerProcess: ChildProcess;
 let url: string;
+let instanceId: string;
 let runner: RunnerPort;
 
-async function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServer();
-		server.listen(0, '127.0.0.1', () => {
-			const { port } = server.address() as { port: number };
-			server.close(() => resolve(port));
-		});
-		server.on('error', reject);
-	});
-}
-
 beforeAll(async () => {
-	const port = await freePort();
-	url = `http://127.0.0.1:${port}`;
-	runnerProcess = spawn('bun', ['src/lib/server/runner/main.ts'], {
-		env: {
-			...process.env,
-			RUNNER_PORT: String(port),
-			RUNNER_TOKEN: token,
-			DOCKER_SOCKET: socket
-		},
-		stdio: 'inherit'
-	});
+	const started = await startRunnerProcess(token, socket);
+	runnerProcess = started.process;
+	url = started.url;
+	instanceId = started.instanceId;
 	await waitUntilHealthy(url, token);
 	runner = createHttpRunner({ url, token });
 	// Pull the image now so the first test does not pay for it.
@@ -704,7 +686,7 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 
 		expect(result.results.map((r) => r.status)).toEqual(tests.map(() => 'timeout'));
 		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs + 5000);
-		expect(await engine.listByLabel(containerLabel)).toEqual([]);
+		expect(await containersOwnedBy(engine, instanceId)).toEqual([]);
 	});
 
 	it('runs learner code unprivileged, offline and on a read-only root', async () => {
@@ -784,7 +766,7 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 		await run({ 'main.py': 'def (:\n' });
 		await run({ 'main.py': 'while True:\n    pass\n' });
 
-		expect(await engine.listByLabel(containerLabel)).toEqual([]);
+		expect(await containersOwnedBy(engine, instanceId)).toEqual([]);
 	});
 
 	it('rejects with the Runner process refusing a wrong token', async () => {

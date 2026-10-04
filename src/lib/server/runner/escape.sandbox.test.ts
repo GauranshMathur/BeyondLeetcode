@@ -1,11 +1,10 @@
-import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { createServer } from 'node:net';
+import { type ChildProcess, execFileSync } from 'node:child_process';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { containerLabel, sandboxConfig } from './config';
+import { sandboxConfig } from './config';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import type { RunnerPort } from './port';
-import { waitUntilHealthy } from './wait-healthy.testutil';
+import { containersOwnedBy, startRunnerProcess, waitUntilHealthy } from './wait-healthy.testutil';
 
 /**
  * Seam 2, adversarial: real learner Python through the HTTP adapter and a real Runner process,
@@ -18,30 +17,13 @@ const engine = createEngine(socket);
 let runnerProcess: ChildProcess;
 let runner: RunnerPort;
 let url: string;
-
-async function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServer();
-		server.listen(0, '127.0.0.1', () => {
-			const { port } = server.address() as { port: number };
-			server.close(() => resolve(port));
-		});
-		server.on('error', reject);
-	});
-}
+let instanceId: string;
 
 beforeAll(async () => {
-	const port = await freePort();
-	url = `http://127.0.0.1:${port}`;
-	runnerProcess = spawn('bun', ['src/lib/server/runner/main.ts'], {
-		env: {
-			...process.env,
-			RUNNER_PORT: String(port),
-			RUNNER_TOKEN: token,
-			DOCKER_SOCKET: socket
-		},
-		stdio: 'inherit'
-	});
+	const started = await startRunnerProcess(token, socket);
+	runnerProcess = started.process;
+	url = started.url;
+	instanceId = started.instanceId;
 	await waitUntilHealthy(url, token);
 	runner = createHttpRunner({ url, token });
 	// Pull the image now so the first test does not pay for it.
@@ -53,7 +35,7 @@ afterAll(() => {
 });
 
 afterEach(async () => {
-	expect(await engine.listByLabel(containerLabel)).toEqual([]);
+	expect(await containersOwnedBy(engine, instanceId)).toEqual([]);
 });
 
 const limits = { timeoutMs: 2000, memoryMb: 256 };
