@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { containerLabel, sandboxConfig, sweepMinAgeMs } from './config';
 import type { Engine } from './engine';
-import { createSandboxRunner, ensureImages, removeStaleContainers } from './sandbox';
+import { containerSpec, createSandboxRunner, ensureImages, removeStaleContainers } from './sandbox';
 
 const request = {
 	language: 'python' as const,
@@ -85,9 +85,10 @@ describe('Sandbox runner: harness exit status', () => {
 });
 
 describe('Sandbox runner: Language', () => {
-	it('starts TypeScript in its own image with RUNNER_LANGUAGE set, and Python in the stock one', async () => {
+	it('starts TypeScript and Go in their own images with RUNNER_LANGUAGE set, and Python in the stock one', async () => {
 		for (const [language, image] of [
 			['typescript', sandboxConfig.images.typescript],
+			['go', sandboxConfig.images.go],
 			['python', sandboxConfig.images.python]
 		] as const) {
 			const { engine } = fakeEngine({ output: okLine });
@@ -100,12 +101,20 @@ describe('Sandbox runner: Language', () => {
 		}
 	});
 
-	it('refuses a Language with no image yet', async () => {
-		const { engine } = fakeEngine({});
+	it('gives only Go the exec-allowed /exec tmpfs, with every other flag the same', () => {
+		const host = (language: 'python' | 'typescript' | 'go') => {
+			const { Tmpfs, ...rest } = containerSpec(language, 'test-instance', 1, 2000, 256).HostConfig;
+			return { tmpfs: Tmpfs as Record<string, string>, rest };
+		};
+		const python = host('python');
 
-		await expect(
-			createSandboxRunner(engine, 'test-instance').execute({ ...request, language: 'go' })
-		).rejects.toThrow(/not supported/);
+		expect(host('go').tmpfs).toEqual({
+			...python.tmpfs,
+			'/exec': 'rw,exec,nosuid,nodev,size=64m,uid=65534,gid=65534,mode=0700'
+		});
+		expect(Object.keys(host('typescript').tmpfs)).toEqual(['/work']);
+		expect(Object.keys(python.tmpfs)).toEqual(['/work']);
+		expect(host('go').rest).toEqual(python.rest);
 	});
 });
 

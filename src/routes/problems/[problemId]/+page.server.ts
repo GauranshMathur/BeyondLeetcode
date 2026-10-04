@@ -31,14 +31,14 @@ async function readBuild(request: Request) {
 }
 
 /** The picker offers these; Go joins with C7b. */
-const PICKABLE = ['python', 'typescript'] as const;
+const PICKABLE = ['python', 'typescript', 'go'] as const;
 
 export const actions: Actions = {
 	/** Language picker: builds this Problem's Topic in another Language, keeping the other Builds. */
 	switchLanguage: async ({ locals, params, request }) => {
 		const language = String((await request.formData()).get('language'));
 		const picked = PICKABLE.find((l) => l === language);
-		if (!picked) return fail(400, { message: 'language must be python or typescript' });
+		if (!picked) return fail(400, { message: 'language must be python, typescript or go' });
 		const { topicId } = await withLearningErrors(() => locals.learning.problem(params.problemId));
 		await withLearningErrors(() => locals.learning.switchLanguage(topicId, picked));
 		return { language: picked };

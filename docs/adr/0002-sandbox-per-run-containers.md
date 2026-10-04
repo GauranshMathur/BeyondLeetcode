@@ -13,4 +13,6 @@ Operators can harden further with rootless Docker/Podman or gVisor without code 
 
 ## Amended 2026-10-04
 
-Sandbox images are the stock `python` image for Python, and our own images for TypeScript (and Go later). Each of ours is `python:3.13-slim` plus the language toolchain, so the one Python harness runs in every image and branches only at compile and run. Images are pinned by tag, and the tag is bumped by hand.
+Sandbox images are the stock `python` image for Python, and our own images for TypeScript and Go. Each of ours is `python:3.13-slim` plus the language toolchain, so the one Python harness runs in every image and branches only at compile and run. Images are pinned by tag, and the tag is bumped by hand.
+
+Go compiles to a native binary, and `/work` is `noexec`. So a Go container has one extra tmpfs, `/exec` (`rw,exec,nosuid,nodev`, 64m, uid/gid 65534, mode 0700), and every other flag is the same. The harness builds into `/exec`, keeps the binary in memory, and before each Test wipes `/exec` and restores the binary from memory, as it does `/work`, so nothing a Test writes there survives into the next. Python and TypeScript keep only `/work`. The Go build cache is a read-only, pre-warmed copy in the image, linked into `/work` at run time; Go never touches the network or fetches a toolchain.

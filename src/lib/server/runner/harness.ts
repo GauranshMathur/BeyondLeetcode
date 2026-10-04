@@ -2,12 +2,13 @@
  * The fixed script that runs inside the Sandbox container (`python -I -c`: isolated, so nothing
  * learner-written in the working directory is ever imported into this process). It reads `<length>\n` and then
  * that many bytes of tar from stdin (the socket is never half-closed: Bun's net does not support it),
- * extracts it into the tmpfs work dir, checks the Build (py_compile, or tsc --noEmit for TypeScript), then runs each Test in its own
+ * extracts it into the tmpfs work dir, checks the Build (py_compile, tsc --noEmit for TypeScript, or go build, which
+ * also produces the binary, for Go), then runs each Test in its own
  * process and prints one JSON line per Test to stdout. Learner code never gets the harness's
  * stdout: it runs as a child with piped stdio.
  *
  * Tar layout: `build/<path>` for the Build's files, `tests/<index>.in` for each Test input.
- * Env: RUNNER_LANGUAGE ("python" or "typescript"; the one script serves every Sandbox image),
+ * Env: RUNNER_LANGUAGE ("python", "typescript" or "go"; the one script serves every Sandbox image),
  * RUNNER_TEST_COUNT, RUNNER_TEST_TIMEOUT_MS, RUNNER_OUTPUT_CAP, RUNNER_TOTAL_OUTPUT_CAP,
  * RUNNER_DEADLINE_S.
  *
@@ -18,7 +19,8 @@
  * This process is PID 1 and shares a uid with learner code, so it never chdirs into /work, reads
  * every Test input and the Build into memory and deletes /work/tests before the first learner
  * process starts, wipes /work and restores the Build from memory before every Test (nothing a Test
- * wrote survives it, IPC objects included), and on any unexpected failure exits
+ * wrote survives it, IPC objects included; for Go also /exec, where the binary lives, since /work
+ * is noexec: it is wiped and restored from memory the same way), and on any unexpected failure exits
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = String.raw`
@@ -150,11 +152,36 @@ def fresh_build():
         with open(target, "wb") as f:
             f.write(data)
     os.utime(WORK, (0, 0))
+    if LANGUAGE == "go":
+        # /exec is the second tmpfs (exec allowed) holding the compiled binary. Same treatment as /work:
+        # emptied, metadata reset, binary restored from memory, so nothing a Test wrote there survives.
+        wipe_children(EXEC)
+        for attr in os.listxattr(EXEC):
+            os.removexattr(EXEC, attr)
+        with open(GO_BINARY_PATH, "wb") as f:
+            f.write(GO_BINARY)
+        os.chmod(GO_BINARY_PATH, 0o700)
+        os.utime(EXEC, (0, 0))
 
 
 SYNTAX_LINE = re.compile(rb"^(?:Sorry: )?(?:SyntaxError|IndentationError|TabError|ValueError)\b", re.M)
 TSC_DIAGNOSTIC = re.compile(rb"error TS\d+")
+# What go build prints, with exit 1, when the Learner's code is wrong: a compiler diagnostic, a
+# linker error under its "# pkg" header (a missing main), a package that is not main (or a Build
+# mixing packages), and cgo-only files (cgo is off). Anything else on exit 1 is the toolchain's.
+GO_COMPILE_ERROR = re.compile(
+    rb"^\S+\.go:\d+:\d+: "
+    rb"|^# \S+\n(?:.*\n)*?[^\n]*function main is undeclared in the main package"
+    rb"|^-buildmode=exe requires exactly one main package"
+    rb"|^found packages \S+ \(\S+\) and \S+ \(\S+\) in "
+    rb"|^package \S+: build constraints exclude all Go files",
+    re.M,
+)
 CHILD_ENV = {"PATH": os.environ.get("PATH", "")}
+EXEC = "/exec"
+GO_BINARY_PATH = EXEC + "/main"
+GO_BINARY = b""
+GO_CACHE_SEED = "/opt/gocache"
 
 # The two places the Language matters: how the Build is checked, and how a Test is run.
 # Everything else (isolation, cleanup, caps, the watchdog) is shared.
@@ -179,13 +206,51 @@ elif LANGUAGE == "typescript":
         "--typeRoots", "/opt/ts/node_modules/@types", "--types", "node",
     ] + sorted(sources) if sources else None
     compile_cwd = BUILD
+elif LANGUAGE == "go":
+    RUN_ARGV = [GO_BINARY_PATH]
+    # Go never touches the network or fetches a toolchain: GOPROXY=off, GOTOOLCHAIN=local. The build
+    # cache and temp dir live in /work (tmpfs, wiped before every Test). The cache is a farm of symlinks
+    # into the image's pre-warmed, read-only /opt/gocache (see Dockerfile.sandbox-go; GOFLAGS must match
+    # it, -trimpath is part of every cache key), so the standard packages are never recompiled and
+    # the cache costs no memory. No cgo: the image has no C compiler.
+    GO_ENV = {
+        "PATH": os.environ.get("PATH", ""), "GOCACHE": WORK + "/gocache", "GOTMPDIR": WORK + "/gotmp",
+        "GOPATH": WORK + "/gopath", "GOFLAGS": "-trimpath", "CGO_ENABLED": "0", "GOTOOLCHAIN": "local",
+        "GOPROXY": "off", "GOENV": "off", "GOWORK": "off", "GOSUMDB": "off",
+    }
+    MODULE = WORK + "/gomod"
+    os.makedirs(GO_ENV["GOTMPDIR"])
+    for here, _, names in os.walk(GO_CACHE_SEED):
+        mirror = WORK + "/gocache" + here[len(GO_CACHE_SEED):]
+        os.makedirs(mirror, exist_ok=True)
+        for name in names:
+            os.symlink(os.path.join(here, name), os.path.join(mirror, name))
+    # A temporary module the harness writes itself: a learner go.mod, go.sum or go.work never reaches
+    # the toolchain, so it cannot pick another Go version or ask for a dependency. A Build is the
+    # top-level .go files, all package main.
+    os.makedirs(MODULE)
+    sources = [n for n in sorted(os.listdir(BUILD)) if n.endswith(".go") and os.path.isfile(os.path.join(BUILD, n))]
+    for name in sources:
+        shutil.copyfile(os.path.join(BUILD, name), os.path.join(MODULE, name))
+    version = subprocess.run(
+        ["go", "env", "GOVERSION"], stdin=subprocess.DEVNULL, capture_output=True, env=GO_ENV, check=True,
+    ).stdout.decode().strip()  # "go1.27.1"
+    with open(MODULE + "/go.mod", "w") as f:
+        f.write("module solution\n\ngo %s\n" % ".".join(version[2:].split(".")[:2]))
+    # -buildmode=exe: a package that is not main is an error, never a library written as the binary.
+    if not sources:
+        emit({"compileError": "No .go file in the Build (expected main.go)"})
+        sys.exit(0)
+    compile_argv = ["go", "build", "-buildmode=exe", "-ldflags=-s -w", "-o", GO_BINARY_PATH, "."]
+    compile_cwd = MODULE
 else:
     sys.exit("unknown language " + LANGUAGE)
 
 compiled = None
 if compile_argv:
     compiled = subprocess.run(
-        compile_argv, stdin=subprocess.DEVNULL, capture_output=True, env=CHILD_ENV, cwd=compile_cwd,
+        compile_argv, stdin=subprocess.DEVNULL, capture_output=True,
+        env=GO_ENV if LANGUAGE == "go" else CHILD_ENV, cwd=compile_cwd,
     )
 if compiled and compiled.returncode != 0:
     # A Compile Error is the compiler saying the code is wrong. Anything else (a signal, OOM 137,
@@ -196,6 +261,12 @@ if compiled and compiled.returncode != 0:
         # "Sorry: IndentationError: ...", "ValueError: source code string cannot contain null bytes").
         diagnostics = compiled.stderr
         is_compile_error = compiled.returncode == 1 and SYNTAX_LINE.search(diagnostics)
+    elif LANGUAGE == "go":
+        # go build exits 1 for every failure; stderr tells the Learner's mistakes (GO_COMPILE_ERROR) from
+        # the toolchain's (no space, cache failures, a killed compiler). Another exit code never is a
+        # Compile Error, and an exit 1 matching nothing known fails closed to a Runner error.
+        diagnostics = compiled.stderr
+        is_compile_error = compiled.returncode == 1 and GO_COMPILE_ERROR.search(diagnostics)
     else:
         # tsc exits 2 when it found errors, and prints "error TS<n>" diagnostics to stdout. Exit 1 is
         # a bad option or other failure of ours, so it is not the Learner's fault.
@@ -205,6 +276,10 @@ if compiled and compiled.returncode != 0:
         sys.exit("compile step failed with status %d" % compiled.returncode)
     emit({"compileError": text(diagnostics[:CAP], len(diagnostics) > CAP)})
     sys.exit(0)
+if LANGUAGE == "go":
+    # The binary is kept in memory and put back before every Test (fresh_build).
+    with open(GO_BINARY_PATH, "rb") as f:
+        GO_BINARY = f.read()
 
 
 def drain(fd, box, cap):
