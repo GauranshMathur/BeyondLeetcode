@@ -1,6 +1,6 @@
 const pythonImage = 'python:3.13-slim';
 /** Built from Dockerfile.sandbox-node: bump the tag number by hand whenever that file changes. */
-const typescriptImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-node:1';
+const typescriptImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-node:2';
 /** Built from Dockerfile.sandbox-go: bump the tag number by hand whenever that file changes. */
 const goImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-go:1';
 
