@@ -277,7 +277,7 @@ test('switching to Go keeps the Python build, and Run passes', async ({ page }) 
 			timeout: 60_000
 		});
 	} finally {
-		await page.getByLabel('build language').selectOption('python');
+		await page.getByRole('combobox', { name: 'build language' }).selectOption('python');
 		await page.getByRole('button', { name: 'Switch language' }).click();
 		await expect(page.getByLabel('Code: main.py')).toContainText('# my python build');
 	}
