@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.19.0...v0.20.0) (2026-10-04)
+
+
+### Features
+
+* **beyondleetcode:** C10a content check in CI ([#79](https://github.com/GauranshMathur/BeyondLeetcode/issues/79)) ([25fd073](https://github.com/GauranshMathur/BeyondLeetcode/commit/25fd073679cb757c999610cf6721e22f5fb35670))
+
 ## [0.19.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.18.0...v0.19.0) (2026-10-04)
 
 
