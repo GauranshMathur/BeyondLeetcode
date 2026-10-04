@@ -27,7 +27,7 @@ const problems = catalogue
 const languages = Object.keys(sandboxConfig.images) as Language[];
 
 describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () => {
-	beforeAll(() => ensureImages(engine, sandboxConfig.images));
+	beforeAll(() => ensureImages(engine, sandboxConfig.images), 300_000);
 
 	it('has Problems to check', () => {
 		expect(problems.length).toBeGreaterThan(0);
