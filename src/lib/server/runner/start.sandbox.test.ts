@@ -56,7 +56,7 @@ describe('Runner start: image pull', { timeout: 180_000 }, () => {
 			},
 			stdio: 'inherit'
 		});
-		const seen = await waitUntilHealthy(url, token, { intervalMs: 20 });
+		const seen = await waitUntilHealthy(url, token, { intervalMs: 20, languages: ['python'] });
 
 		expect(seen[0]).toBe(503);
 		expect(seen.at(-1)).toBe(200);
