@@ -23,7 +23,7 @@ func main() {
 		case "size":
 			fmt.Println(len(items))
 		case "peek":
-			fmt.Println(items[len(items)-1])
+			fmt.Println(items[len(items)-2])
 		}
 	}
 }
