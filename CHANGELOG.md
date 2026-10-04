@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.20.0...v0.20.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C4h learner tsconfig.json cannot break the TypeScript check ([#89](https://github.com/GauranshMathur/BeyondLeetcode/issues/89)) ([6d70efa](https://github.com/GauranshMathur/BeyondLeetcode/commit/6d70efa6e227e7fb7c5d2696023908f9b62969cc))
+* **beyondleetcode:** C4i start-up sweep revisits containers it skipped as too young ([#90](https://github.com/GauranshMathur/BeyondLeetcode/issues/90)) ([4def6d8](https://github.com/GauranshMathur/BeyondLeetcode/commit/4def6d8580615fc95dad67c354b73395b78ef86b))
+
 ## [0.20.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.19.0...v0.20.0) (2026-10-04)
 
 
