@@ -455,5 +455,5 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 
 	// The new Build is saved with a fresh revision: a Run goes straight through.
 	await page.getByRole('button', { name: 'Run' }).click();
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(page.locator('.status')).toHaveText('saved');
 });
