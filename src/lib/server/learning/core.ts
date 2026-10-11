@@ -5,7 +5,7 @@ import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
 import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
-import { loadProgress, recordChapterRead, recordSubmission } from './progress.ts';
+import { loadProgress, recordChapterRead, recordSubmission, resetProgress } from './progress.ts';
 import {
 	type BuildRef,
 	type ChapterView,
@@ -117,6 +117,12 @@ export interface Learner {
 	 * Throws NotFound or TopicLocked.
 	 */
 	solution(problemId: string): Promise<SolutionView>;
+	/**
+	 * Deletes everything this Learner has: read Chapters, saved code, Submissions, the Language
+	 * chosen per Topic and revealed Hints, in one transaction. Other Learners and the Learner
+	 * itself are untouched; afterwards the Map shows a new Learner. Never fails for lack of progress.
+	 */
+	resetProgress(): Promise<void>;
 }
 
 /** A Topic is built in Python until the Learner switches it. */
@@ -272,6 +278,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						problemId,
 						renderMarkdown
 					),
+				resetProgress: () => resetProgress(deps.db, learnerId),
 				revealHint: async (problemId) => {
 					const before = await learner.hints(problemId); // NotFound / TopicLocked
 					if (before.revealed.length >= before.total) throw new LearningError('NoMoreHints');
