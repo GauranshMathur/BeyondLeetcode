@@ -21,6 +21,8 @@ export async function createApp(env: {
 	RUNNER_TOKEN?: string;
 	/** '1' turns on the e2e Learner switch; never set outside the e2e web server. */
 	IDENTITY_TEST_LEARNER?: string;
+	/** Read only to refuse the test Learner switch in production. */
+	NODE_ENV?: string;
 }): Promise<App> {
 	if (!env.CONTENT_DIR) {
 		throw new Error('CONTENT_DIR is not set: point it at the content folder (see .env.example).');
@@ -34,6 +36,11 @@ export async function createApp(env: {
 	if (!env.RUNNER_TOKEN) {
 		throw new Error(
 			'RUNNER_TOKEN is not set: the bearer token the Runner expects (see .env.example).'
+		);
+	}
+	if (env.IDENTITY_TEST_LEARNER === '1' && env.NODE_ENV === 'production') {
+		throw new Error(
+			'IDENTITY_TEST_LEARNER=1 in production: the test Learner switch is for the browser tests only.'
 		);
 	}
 	const catalogue = await loadCatalogue(env.CONTENT_DIR);

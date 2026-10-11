@@ -12,7 +12,8 @@ export const init: ServerInit = async () => {
 		DATABASE_URL: env.DATABASE_URL,
 		RUNNER_URL: env.RUNNER_URL,
 		RUNNER_TOKEN: env.RUNNER_TOKEN,
-		IDENTITY_TEST_LEARNER: env.IDENTITY_TEST_LEARNER
+		IDENTITY_TEST_LEARNER: env.IDENTITY_TEST_LEARNER,
+		NODE_ENV: env.NODE_ENV
 	});
 	run = createHandle(app);
 };

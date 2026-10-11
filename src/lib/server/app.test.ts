@@ -22,6 +22,18 @@ it('fails at start with a clear message when RUNNER_URL or RUNNER_TOKEN is missi
 	);
 });
 
+it('refuses the test Learner switch in production', async () => {
+	const base = {
+		CONTENT_DIR: 'content',
+		DATABASE_URL: 'file:x.db',
+		RUNNER_URL: 'http://r',
+		RUNNER_TOKEN: 't'
+	};
+	await expect(
+		createApp({ ...base, IDENTITY_TEST_LEARNER: '1', NODE_ENV: 'production' })
+	).rejects.toThrow(/test Learner switch is for the browser tests only/);
+});
+
 async function migratedDatabase() {
 	const dir = mkdtempSync(join(tmpdir(), 'beyondleetcode-app-'));
 	onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
