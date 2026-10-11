@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.22.0...v0.23.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C15 one shared list of Languages; TypeScript and Go highlighting ([#112](https://github.com/GauranshMathur/BeyondLeetcode/issues/112)) ([dc63cf9](https://github.com/GauranshMathur/BeyondLeetcode/commit/dc63cf9511ad2504394ddfd9268fcea30e228ec5))
+
 ## [0.22.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.21.2...v0.22.0) (2026-10-11)
 
 
