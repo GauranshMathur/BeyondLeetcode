@@ -58,9 +58,17 @@ describe('throttleKey', () => {
 	});
 
 	it('puts everything that does not parse into one shared bucket', () => {
-		const junk = ['', 'not an ip', '999.1.1.1', '1.2.3', '2001:db8::zz', '1.2.3.4, 5.6.7.8'].map(
-			(a) => throttleKey('a@x.io', a)
-		);
+		const junk = [
+			'',
+			'not an ip',
+			'999.1.1.1',
+			'1.2.3',
+			'2001:db8::zz',
+			'1.2.3.4%garbage',
+			'2001:db8::1%',
+			'%eth0',
+			'1.2.3.4, 5.6.7.8'
+		].map((a) => throttleKey('a@x.io', a));
 		for (const k of junk) expect(k).toEqual(junk[0]);
 	});
 });

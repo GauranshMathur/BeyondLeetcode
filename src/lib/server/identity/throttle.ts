@@ -63,7 +63,13 @@ const hextets = (address: string): number[] => {
 
 /** IPv4 keys on the whole address (IPv4-mapped IPv6 included), IPv6 on its /64; junk shares one bucket. */
 const normaliseAddress = (raw: string): string => {
-	const address = raw.trim().split('%')[0];
+	const trimmed = raw.trim();
+	const zone = trimmed.indexOf('%');
+	// A zone id is only legal on IPv6; anything else with a % is junk.
+	const address =
+		zone > 0 && zone < trimmed.length - 1 && isIP(trimmed.slice(0, zone)) === 6
+			? trimmed.slice(0, zone)
+			: trimmed;
 	const kind = isIP(address);
 	if (kind === 4) return address;
 	if (kind !== 6) return UNKNOWN_ADDRESS;
