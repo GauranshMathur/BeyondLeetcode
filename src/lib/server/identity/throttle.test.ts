@@ -10,28 +10,58 @@ const setup = (options: Parameters<typeof createThrottle>[0] = {}) => {
 };
 
 describe('throttleKey', () => {
-	it('trims and lower-cases the email', () => {
-		expect(throttleKey('  Ada@Example.COM ', '1.1.1.1')).toEqual(
+	it('lower-cases the email like Better Auth and does not touch plus-tags, dots or whitespace', () => {
+		expect(throttleKey('Ada@Example.COM', '1.1.1.1')).toEqual(
 			throttleKey('ada@example.com', '1.1.1.1')
 		);
-	});
-
-	it('bounds the email length', () => {
-		const long = throttleKey(`${'a'.repeat(5_000)}@x.io`, '1.1.1.1');
-		expect(long.email.length).toBeLessThan(300);
-		expect(long.pair.length).toBeLessThan(400);
-	});
-
-	it('keys IPv6 on the /64 prefix and leaves IPv4 alone', () => {
-		const a = throttleKey('a@x.io', '2001:db8:1:2:aaaa:bbbb:cccc:dddd');
-		const b = throttleKey('a@x.io', '2001:0DB8:1:2::1');
-		const other = throttleKey('a@x.io', '2001:db8:1:3::1');
-		expect(a).toEqual(b);
-		expect(a.address).not.toEqual(other.address);
-		expect(throttleKey('a@x.io', '::ffff:1.2.3.4').address).toEqual(
-			throttleKey('a@x.io', '1.2.3.4').address
+		expect(throttleKey('a+x@x.io', '1.1.1.1').email).not.toEqual(
+			throttleKey('a@x.io', '1.1.1.1').email
 		);
-		expect(throttleKey('a@x.io', '1.2.3.4').address).toBe('a:1.2.3.4');
+		expect(throttleKey('a.b@x.io', '1.1.1.1').email).not.toEqual(
+			throttleKey('ab@x.io', '1.1.1.1').email
+		);
+	});
+
+	it('shares one bucket for empty and over-long emails', () => {
+		const long = throttleKey(`${'a'.repeat(5_000)}@x.io`, '1.1.1.1');
+		const longer = throttleKey(`${'b'.repeat(9_000)}@x.io`, '1.1.1.1');
+		expect(long).toEqual(longer);
+		expect(throttleKey('', '1.1.1.1')).toEqual(long);
+		expect(long.pair.length).toBeLessThan(100);
+	});
+
+	it('gives every spelling of one IPv6 /64 one key', () => {
+		const spellings = [
+			'2001:db8::1',
+			'2001:0db8:0:0::1',
+			'2001:DB8:0:0:0:0:0:ffff',
+			'2001:db8::1%eth0',
+			'2001:db8:0:0:1:2:3:4',
+			'2001:db8::192.0.2.1'
+		];
+		const keys = spellings.map((a) => throttleKey('a@x.io', a));
+		for (const k of keys) expect(k).toEqual(keys[0]);
+		expect(throttleKey('a@x.io', '2001:db8:0:1::1').address).not.toEqual(keys[0].address);
+	});
+
+	it('maps IPv4-mapped IPv6 to the IPv4 key in every spelling', () => {
+		const v4 = throttleKey('a@x.io', '1.2.3.4');
+		for (const a of [
+			'::ffff:1.2.3.4',
+			'::ffff:102:304',
+			'::FFFF:0102:0304',
+			'0:0:0:0:0:ffff:1.2.3.4'
+		]) {
+			expect(throttleKey('a@x.io', a)).toEqual(v4);
+		}
+		expect(throttleKey('a@x.io', '1.2.3.5').address).not.toEqual(v4.address);
+	});
+
+	it('puts everything that does not parse into one shared bucket', () => {
+		const junk = ['', 'not an ip', '999.1.1.1', '1.2.3', '2001:db8::zz', '1.2.3.4, 5.6.7.8'].map(
+			(a) => throttleKey('a@x.io', a)
+		);
+		for (const k of junk) expect(k).toEqual(junk[0]);
 	});
 });
 
@@ -115,31 +145,47 @@ describe('throttle', () => {
 		expect(throttle.attempt(throttleKey('v@x.io', '2001:db8:1:2:ffff::1')).allowed).toBe(false);
 	});
 
-	it('keeps memory bounded, dropping expired entries first', () => {
-		const { throttle, advance } = setup({ maxKeys: 6 });
-		throttle.attempt(throttleKey('old@x.io', '9.9.9.9'));
-		advance(11 * MIN);
-		for (let i = 0; i < 20; i++) throttle.attempt(throttleKey(`u${i}@x.io`, `10.0.0.${i}`));
-		expect(throttle.size()).toBeLessThanOrEqual(6);
-	});
-
-	it('keeps a blocked key through a flood of other keys', () => {
-		const { throttle } = setup({ maxKeys: 60 });
+	it('never evicts an unexpired key: a blocked key survives a flood and the flood is refused', () => {
+		const maxKeys = 50;
+		const { throttle } = setup({ maxKeys });
 		const blocked = throttleKey('victim@x.io', '1.1.1.1');
 		for (let i = 0; i < 5; i++) throttle.attempt(blocked);
-		for (let i = 0; i < 5_000; i++) {
-			throttle.attempt(throttleKey(`f${i}@x.io`, `10.${i % 250}.0.${i % 7}`));
-		}
-		expect(throttle.size()).toBeLessThanOrEqual(60);
+		const flood = Array.from({ length: maxKeys * 2 }, (_, i) =>
+			throttle.attempt(throttleKey(`f${i}@x.io`, `10.${i % 250}.0.${i % 7}`))
+		);
+		expect(flood.filter((r) => r.allowed).length).toBeLessThanOrEqual(maxKeys);
+		expect(flood.at(-1)).toMatchObject({ allowed: false });
+		expect(throttle.size()).toBeLessThanOrEqual(3 * maxKeys);
 		expect(throttle.attempt(blocked).allowed).toBe(false);
 	});
 
-	it('stays bounded even when every stored key is blocked', () => {
-		const { throttle } = setup({ maxKeys: 6 });
-		for (const n of [1, 2, 3, 4]) {
-			const key = throttleKey(`${n}@x.io`, `${n}.${n}.${n}.${n}`);
-			for (let i = 0; i < 5; i++) throttle.attempt(key);
-		}
-		expect(throttle.size()).toBeLessThanOrEqual(6);
+	it('keeps counting existing keys when the maps are full, and refuses new ones with the soonest expiry', () => {
+		const { throttle, advance } = setup({ maxKeys: 3 });
+		const known = throttleKey('known@x.io', '1.1.1.1');
+		throttle.attempt(known);
+		advance(MIN);
+		throttle.attempt(throttleKey('b@x.io', '2.2.2.2'));
+		throttle.attempt(throttleKey('c@x.io', '3.3.3.3'));
+		expect(throttle.attempt(known).allowed).toBe(true);
+		expect(throttle.attempt(throttleKey('d@x.io', '4.4.4.4'))).toEqual({
+			allowed: false,
+			retryAfterMs: 9 * MIN
+		});
+	});
+
+	it('clears everything after the window', () => {
+		const { throttle, advance } = setup({ maxKeys: 5 });
+		for (let i = 0; i < 20; i++) throttle.attempt(throttleKey(`f${i}@x.io`, `10.0.0.${i}`));
+		advance(10 * MIN);
+		expect(throttle.attempt(throttleKey('new@x.io', '9.9.9.9')).allowed).toBe(true);
+		expect(throttle.size()).toBe(3);
+	});
+
+	it('does not let an email flood starve address tracking', () => {
+		const { throttle } = setup({ maxKeys: 10 });
+		for (let i = 0; i < 100; i++) throttle.attempt(throttleKey(`f${i}@x.io`, '1.1.1.1'));
+		// emails and pairs are full, but the one address was tracked and is still below its limit
+		expect(throttle.size()).toBeLessThanOrEqual(30);
+		expect(throttle.attempt(throttleKey('f0@x.io', '1.1.1.1')).allowed).toBe(true);
 	});
 });

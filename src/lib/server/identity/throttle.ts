@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 /** The three counters one sign-in attempt touches. */
 export interface ThrottleKey {
 	/** Email at an address. */
@@ -18,14 +20,14 @@ export interface ThrottleOptions {
 	/** Attempts per window for one email across all addresses. */
 	emailLimit?: number;
 	windowMs?: number;
-	/** Cap on stored counters (each attempt uses three). */
+	/** Cap on stored counters per kind (pair, address, email). */
 	maxKeys?: number;
 	now?: () => number;
 }
 
 export interface Throttle {
 	/**
-	 * Counts the attempt and admits it, or refuses without counting. Synchronous, so concurrent
+	 * Counts the attempt and admits it, or refuses without counting (also when a counter map is full). Synchronous, so concurrent
 	 * sign-ins cannot all pass before any is counted. Call before checking the password.
 	 */
 	attempt(key: ThrottleKey): ThrottleCheck;
@@ -35,32 +37,54 @@ export interface Throttle {
 }
 
 const MAX_EMAIL = 254;
-const MAX_ADDRESS = 64;
+const UNKNOWN_ADDRESS = 'unknown';
+const ODD_EMAIL = '\u0000odd';
 
-/** IPv6 is keyed on its /64 prefix, so rotating privacy addresses share one budget. */
+/** Better Auth looks the user up by `email.toLowerCase()` and nothing else (1.7.7 sign-in). */
+const normaliseEmail = (raw: string): string => {
+	const email = raw.toLowerCase();
+	return email === '' || email.length > MAX_EMAIL ? ODD_EMAIL : email;
+};
+
+const hextets = (address: string): number[] => {
+	let text = address;
+	const lastColon = text.lastIndexOf(':');
+	const tail = text.slice(lastColon + 1);
+	if (tail.includes('.')) {
+		const [a, b, c, d] = tail.split('.').map(Number);
+		text = `${text.slice(0, lastColon + 1)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+	}
+	const [head, rest] = text.split('::');
+	const first = head ? head.split(':') : [];
+	const last = rest === undefined ? [] : rest ? rest.split(':') : [];
+	const fill = rest === undefined ? 0 : 8 - first.length - last.length;
+	return [...first, ...Array<string>(fill).fill('0'), ...last].map((g) => Number.parseInt(g, 16));
+};
+
+/** IPv4 keys on the whole address (IPv4-mapped IPv6 included), IPv6 on its /64; junk shares one bucket. */
 const normaliseAddress = (raw: string): string => {
-	const address = raw.trim().toLowerCase().split('%')[0].slice(0, MAX_ADDRESS);
-	const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-	if (mapped) return mapped[1];
-	if (!address.includes(':')) return address;
-	const [head, tail] = address.split('::');
-	const headGroups = head ? head.split(':') : [];
-	const tailGroups = tail === undefined ? [] : tail ? tail.split(':') : [];
-	const fill = tail === undefined ? 0 : Math.max(0, 8 - headGroups.length - tailGroups.length);
-	const groups = [...headGroups, ...Array<string>(fill).fill('0'), ...tailGroups];
-	return `${groups
+	const address = raw.trim().split('%')[0];
+	const kind = isIP(address);
+	if (kind === 4) return address;
+	if (kind !== 6) return UNKNOWN_ADDRESS;
+	const g = hextets(address);
+	if (g.length !== 8) return UNKNOWN_ADDRESS;
+	if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
+		return `${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`;
+	}
+	return `${g
 		.slice(0, 4)
-		.map((g) => g.replace(/^0+(?=.)/, ''))
+		.map((x) => x.toString(16))
 		.join(':')}::/64`;
 };
 
 export const throttleKey = (email: string, address: string): ThrottleKey => {
-	const normalEmail = email.trim().toLowerCase().slice(0, MAX_EMAIL);
+	const normalEmail = normaliseEmail(email);
 	const normalAddress = normaliseAddress(address);
 	return {
-		pair: `p:${normalEmail}|${normalAddress}`,
-		address: `a:${normalAddress}`,
-		email: `e:${normalEmail}`
+		pair: `${normalEmail}|${normalAddress}`,
+		address: normalAddress,
+		email: normalEmail
 	};
 };
 
@@ -68,10 +92,10 @@ interface Entry {
 	count: number;
 	/** The window starts at the first attempt and is fixed. */
 	resetAt: number;
-	limit: number;
 }
 
 // Per-process: counters reset on restart and are not shared between instances.
+// Worst-case memory: 3 * maxKeys entries (one map each for pair, address, email), never more.
 // The email-alone counter lets someone lock a known email out for a window; that is accepted.
 export const createThrottle = ({
 	limit = 5,
@@ -81,63 +105,53 @@ export const createThrottle = ({
 	maxKeys = 10_000,
 	now = Date.now
 }: ThrottleOptions = {}): Throttle => {
-	// Map order is insertion order, which is window-start order because windows are fixed.
-	const entries = new Map<string, Entry>();
+	// Insertion order is window-start order, since windows are fixed, so the first entry expires first.
+	const counter = (max: number) => ({ max, entries: new Map<string, Entry>() });
+	const pairs = counter(limit);
+	const addresses = counter(addressLimit);
+	const emails = counter(emailLimit);
+	type Counter = ReturnType<typeof counter>;
 
-	const live = (id: string, at: number): Entry | undefined => {
-		const entry = entries.get(id);
-		if (entry && entry.resetAt <= at) {
-			entries.delete(id);
-			return undefined;
-		}
-		return entry;
-	};
-
-	const makeRoom = (at: number) => {
-		if (entries.size < maxKeys) return;
-		for (const [id, entry] of entries) if (entry.resetAt <= at) entries.delete(id);
-		// Still full: drop the oldest key that is not blocked; blocked keys go only when all are blocked.
+	const sweep = ({ entries }: Counter, at: number) => {
 		for (const [id, entry] of entries) {
-			if (entries.size < maxKeys) return;
-			if (entry.count < entry.limit) entries.delete(id);
-		}
-		for (const id of entries.keys()) {
-			if (entries.size < maxKeys) return;
+			if (entry.resetAt > at) return;
 			entries.delete(id);
 		}
 	};
 
-	const bump = (id: string, max: number, at: number) => {
-		const entry = live(id, at);
-		if (entry) {
-			entry.count += 1;
-			return;
-		}
-		makeRoom(at);
-		entries.set(id, { count: 1, resetAt: at + windowMs, limit: max });
-	};
+	const soonest = ({ entries }: Counter) => entries.values().next().value?.resetAt ?? 0;
 
 	return {
-		attempt({ pair, address, email }) {
+		attempt(key) {
 			const at = now();
-			const counters: [string, number][] = [
-				[pair, limit],
-				[address, addressLimit],
-				[email, emailLimit]
+			const slots: [Counter, string][] = [
+				[pairs, key.pair],
+				[addresses, key.address],
+				[emails, key.email]
 			];
 			let retryAfterMs = 0;
-			for (const [id, max] of counters) {
-				const entry = live(id, at);
-				if (entry && entry.count >= max) retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
+			for (const [c, id] of slots) {
+				sweep(c, at);
+				const entry = c.entries.get(id);
+				if (entry) {
+					if (entry.count >= c.max) retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
+				} else if (c.entries.size >= maxKeys) {
+					// Full of unexpired entries: never evict one, refuse until the soonest expires.
+					retryAfterMs = Math.max(retryAfterMs, soonest(c) - at);
+				}
 			}
 			if (retryAfterMs > 0) return { allowed: false, retryAfterMs };
-			for (const [id, max] of counters) bump(id, max, at);
+			for (const [c, id] of slots) {
+				const entry = c.entries.get(id);
+				if (entry) entry.count += 1;
+				else c.entries.set(id, { count: 1, resetAt: at + windowMs });
+			}
 			return { allowed: true };
 		},
 		succeed({ pair, email }) {
-			entries.delete(pair);
-			entries.delete(email);
+			pairs.entries.delete(pair);
+			emails.entries.delete(email);
 		},
-		size: () => entries.size
+		size: () => pairs.entries.size + addresses.entries.size + emails.entries.size
 	};
 };
