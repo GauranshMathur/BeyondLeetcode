@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
-import { TEST_LEARNER_COOKIE } from '../e2e-learner.ts';
-import { createLocalIdentity } from './identity.ts';
-import { createTestDb } from './test-db.ts';
+import { TEST_LEARNER_COOKIE } from '../../e2e-learner.ts';
+import { createTestDb } from '../test-db.ts';
+import { createLocalIdentity } from './index.ts';
 
 const request = (cookies: Record<string, string> = {}) => ({
 	cookies: { get: (name: string) => cookies[name] }
