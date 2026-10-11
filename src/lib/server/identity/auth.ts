@@ -11,12 +11,19 @@ export interface Admission {
 	role?: 'admin' | 'learner';
 }
 
-/** The registration gate: `null` refuses the sign-up, otherwise it is admitted as described. */
+/**
+ * The registration gate: `null` refuses the sign-up, otherwise it is admitted as described.
+ *
+ * It runs twice per sign-up (the request hook, then the database hook), so it must stay free of
+ * side effects. Anything consumed on admit, such as an invite, is consumed in a `user.create.after`
+ * hook, never here.
+ */
 export type AdmitSignUp = (attempt: {
 	email: string | undefined;
 }) => Admission | null | Promise<Admission | null>;
 
 export const MIN_PASSWORD_LENGTH = 12;
+export const MAX_PASSWORD_LENGTH = 128;
 
 export type CreateAuthOptions = {
 	db: Db;
@@ -86,7 +93,11 @@ export function createAuth({
 			? { baseURL: origin, advanced: { useSecureCookies: origin.startsWith('https:') } }
 			: {}),
 		telemetry: { enabled: false },
-		emailAndPassword: { enabled: true, minPasswordLength: MIN_PASSWORD_LENGTH },
+		emailAndPassword: {
+			enabled: true,
+			minPasswordLength: MIN_PASSWORD_LENGTH,
+			maxPasswordLength: MAX_PASSWORD_LENGTH
+		},
 		// Emails are never verified, so an email must never join two Accounts.
 		account: { accountLinking: { enabled: false } },
 		// A removed or reset user must lose access on the next request.

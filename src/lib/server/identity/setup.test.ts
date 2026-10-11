@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
-import { createInstance } from '../instance.ts';
+import { createInstance, InstanceAlreadySetUpError } from '../instance.ts';
 import { createLearningCore } from '../learning/core.ts';
 import { createFileTestDb } from '../test-db.ts';
 import { type Auth, createAuth } from './auth.ts';
@@ -148,6 +148,7 @@ describe('createFirstAdmin', () => {
 		).rejects.toThrow();
 
 		expect(instance.mode()).toBe('local');
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
 	});
 
 	it('removes the half-made Account but keeps Local progress when sign-up fails after the user row', async () => {
@@ -201,6 +202,160 @@ describe('createFirstAdmin', () => {
 		expect(isFirstAdmin()).toBe(false);
 		await createFirstAdmin({ instance, auth, db }, admin);
 		expect(isFirstAdmin()).toBe(false);
+	});
+
+	it.each([
+		['absent', false],
+		['local', true]
+	])(
+		'refuses, and keeps the existing admin, when an Account exists but the Instance row is %s',
+		async (_, local) => {
+			const { db, auth, instance } = await setup();
+			await createFirstAdmin({ instance, auth, db }, admin);
+			await db.instance.deleteMany();
+			if (local) await db.instance.create({ data: { mode: 'local' } });
+			const restored = await createInstance(db);
+
+			await expect(
+				createFirstAdmin({ instance: restored, auth, db }, { ...admin, email: 'two@example.com' })
+			).rejects.toThrow(InstanceAlreadySetUpError);
+
+			expect(await db.user.findMany()).toEqual([expect.objectContaining({ email: admin.email })]);
+			expect(restored.mode()).toBe(local ? 'local' : null);
+			expect(await db.instance.count()).toBe(local ? 1 : 0);
+		}
+	);
+
+	it('can run again on a multi Instance with no Accounts', async () => {
+		const { db, auth } = await setup();
+		await db.instance.create({ data: { mode: 'multi' } });
+		const instance = await createInstance(db);
+
+		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
+
+		expect(await db.user.count()).toBe(1);
+		await expect(
+			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'two@example.com' })
+		).rejects.toThrow(InstanceAlreadySetUpError);
+	});
+
+	it('gives one admin when two calls race on a multi Instance with no Accounts', async () => {
+		const { db, auth } = await setup();
+		await db.instance.create({ data: { mode: 'multi' } });
+		const [a, b] = [await createInstance(db), await createInstance(db)];
+
+		const results = await Promise.allSettled([
+			createFirstAdmin({ instance: a, auth, db }, admin),
+			createFirstAdmin({ instance: b, auth, db }, { ...admin, email: 'two@example.com' })
+		]);
+
+		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.user.findFirstOrThrow()).toMatchObject({ email: admin.email, role: 'admin' });
+	});
+
+	it('gives one admin when two calls race on a Local Instance, with one Instance object or two', async () => {
+		for (const shared of [true, false]) {
+			const { db, auth, instance } = await setup();
+			await instance.chooseLocal();
+			const second = shared ? instance : await createInstance(db);
+
+			const results = await Promise.allSettled([
+				createFirstAdmin({ instance, auth, db }, admin),
+				createFirstAdmin({ instance: second, auth, db }, { ...admin, email: 'two@example.com' })
+			]);
+
+			expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+			expect(await db.user.count()).toBe(1);
+			expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
+		}
+	});
+
+	it('logs, rethrows the sign-up error and stays closed when the rollback fails after the delete', async () => {
+		const { db, auth, instance } = await setup();
+		const failingUndo = {
+			...instance,
+			chooseMulti: async () => {
+				await instance.chooseMulti();
+				return {
+					undo: async () => {
+						throw new Error('undo failed');
+					}
+				};
+			}
+		};
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(
+			createFirstAdmin({ instance: failingUndo, auth: failingAfterUser(auth), db }, admin)
+		).rejects.toThrow(/session store down/);
+
+		expect(logged).toHaveBeenCalledOnce();
+		expect(JSON.stringify(logged.mock.calls)).not.toContain(admin.password);
+		logged.mockRestore();
+		expect(await db.user.count()).toBe(0);
+		expect(instance.mode()).toBe('multi');
+		await expect(
+			auth.api.signUpEmail({ body: { ...admin, email: 'eve@example.com' } })
+		).rejects.toMatchObject({ statusCode: 403 });
+		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
+	});
+
+	it.each([
+		['an empty name', { name: '  ' }],
+		['a bad email', { email: 'a@b' }],
+		['a 129-character password', { password: 'a'.repeat(129) }]
+	])('refuses %s before touching the Instance', async (_, bad) => {
+		const { db, auth, instance } = await setup();
+
+		await expect(createFirstAdmin({ instance, auth, db }, { ...admin, ...bad })).rejects.toThrow();
+
+		expect(instance.mode()).toBeNull();
+		expect(await db.instance.count()).toBe(0);
+	});
+
+	it('refuses a real sign-up made while the first-admin scope is live, over HTTP and auth.api', async () => {
+		const db = await createFileTestDb();
+		const gate = createRegistration();
+		let release: () => void = () => {};
+		const latch = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const auth = createAuth({
+			db,
+			origin: 'http://localhost:3000',
+			secret,
+			admitSignUp: async (a) => {
+				if (a.email === admin.email) {
+					release();
+					await new Promise((resolve) => setTimeout(resolve, 20));
+				} else {
+					await latch;
+				}
+				return gate(a);
+			}
+		});
+		const eve = { name: 'Eve', email: 'eve@example.com', password: 'correct horse battery' };
+		const http = auth.handler(
+			new Request('http://localhost:3000/api/auth/sign-up/email', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+				body: JSON.stringify(eve)
+			})
+		);
+		const direct = auth.api.signUpEmail({ body: { ...eve, email: 'eve2@example.com' } });
+		const instance = await createInstance(db);
+
+		const [first, httpRes, directRes] = await Promise.allSettled([
+			createFirstAdmin({ instance, auth, db }, admin),
+			http,
+			direct
+		]);
+
+		expect(first.status).toBe('fulfilled');
+		expect(httpRes.status === 'fulfilled' && httpRes.value.status).toBe(403);
+		expect(directRes.status).toBe('rejected');
+		expect((await db.user.findMany()).map((u) => u.email)).toEqual([admin.email]);
 	});
 
 	it('leaves a plain sign-up refused afterwards, over HTTP and through auth.api', async () => {

@@ -136,3 +136,18 @@ it('migrating a database without the local Learner leaves it not set up', async 
 	expect(rows).toHaveLength(0);
 	client.close();
 });
+
+it.each([
+	['one Instance object', false],
+	['two Instance objects', true]
+])('two chooseMulti calls on a Local Instance via %s: exactly one wins', async (_, two) => {
+	const db = await createTestDb();
+	const a = await createInstance(db);
+	await a.chooseLocal();
+	const b = two ? await createInstance(db) : a;
+
+	const results = await Promise.allSettled([a.chooseMulti(), b.chooseMulti()]);
+
+	expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+	expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
+});

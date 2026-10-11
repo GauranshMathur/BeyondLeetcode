@@ -72,6 +72,17 @@ describe('createAuth', () => {
 		expect(await db.learner.count()).toBe(0);
 	});
 
+	it('refuses in the database hook on its own when the request hook admitted', async () => {
+		let calls = 0;
+		const { auth, db } = await setup(() => (++calls === 1 ? {} : null));
+
+		await expect(auth.api.signUpEmail({ body })).rejects.toMatchObject({ statusCode: 403 });
+
+		expect(calls).toBe(2);
+		expect(await db.user.count()).toBe(0);
+		expect(await db.learner.count()).toBe(0);
+	});
+
 	it('refuses a client that sets learnerId or role, and drops mustChangePassword', async () => {
 		const { auth, db } = await setup();
 

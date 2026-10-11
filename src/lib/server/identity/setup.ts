@@ -1,7 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { z } from 'zod';
 import type { Db } from '../db.ts';
 import type { Instance } from '../instance.ts';
-import { type Auth, MIN_PASSWORD_LENGTH } from './auth.ts';
+import { InstanceAlreadySetUpError } from '../instance.ts';
+import { type Auth, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './auth.ts';
 
 /** The Local Learner's id: the first admin takes it over, so Local progress stays theirs. */
 export const FIRST_ADMIN_LEARNER_ID = 'local';
@@ -9,7 +11,7 @@ export const FIRST_ADMIN_LEARNER_ID = 'local';
 const firstAdmin = new AsyncLocalStorage<true>();
 
 /** Runs `fn` as the first-admin sign-up; `registration.ts` admits only calls made inside it. */
-export const runAsFirstAdmin = <T>(fn: () => Promise<T>): Promise<T> => firstAdmin.run(true, fn);
+const runAsFirstAdmin = <T>(fn: () => Promise<T>): Promise<T> => firstAdmin.run(true, fn);
 
 /** True only inside `runAsFirstAdmin`; nothing in a request can set it. */
 export const isFirstAdmin = (): boolean => firstAdmin.getStore() === true;
@@ -20,34 +22,85 @@ export interface FirstAdminInput {
 	password: string;
 }
 
+// One first-admin attempt at a time in this process (the Instance is one process on one SQLite
+// file), so the cleanup below can only ever remove the Account this very attempt made.
+let queue: Promise<unknown> = Promise.resolve();
+const exclusively = <T>(fn: () => Promise<T>): Promise<T> => {
+	const run = queue.then(fn, fn);
+	queue = run.catch(() => {});
+	return run;
+};
+
+function validate({ name, email, password }: FirstAdminInput) {
+	if (name.trim() === '') throw new Error('The name is required.');
+	if (!z.email().safeParse(email).success) throw new Error('The email address is not valid.');
+	if (password.length < MIN_PASSWORD_LENGTH || password.length > MAX_PASSWORD_LENGTH) {
+		throw new Error(
+			`The password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
+		);
+	}
+}
+
 /**
  * Claims the Instance as multi-user and signs the first admin up, who owns the `local` Learner
  * (so Local progress carries over). Returns the sign-up response's headers: their `Set-Cookie`
- * signs the admin in. If sign-up fails after the claim, the half-made Account is removed (never the
- * Learner or its progress) and the Instance is put back as it was, so Setup can be retried.
+ * signs the admin in.
+ *
+ * Refuses (InstanceAlreadySetUpError) when the Instance is multi and has Accounts, or any Account
+ * exists at all. A multi Instance with no Accounts (a crash between claim and sign-up) is claimable
+ * again, so Setup is never locked out. If sign-up fails after the claim, the half-made Account is
+ * removed (never the Learner or its progress) and the Instance is put back as it was. If that
+ * cleanup fails too, the error is logged and the Instance stays multi (closed), still claimable.
  */
 export async function createFirstAdmin(
 	{ instance, auth, db }: { instance: Instance; auth: Auth; db: Db },
-	{ name, email, password }: FirstAdminInput
+	input: FirstAdminInput
 ): Promise<{ headers: Headers }> {
-	if (password.length < MIN_PASSWORD_LENGTH) {
-		throw new Error(`The password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
-	}
-	if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw new Error('The email address is not valid.');
-	const claim = await instance.chooseMulti();
-	try {
-		const { headers } = await runAsFirstAdmin(() =>
-			auth.api.signUpEmail({ body: { name, email, password }, returnHeaders: true })
-		);
-		return { headers };
-	} catch (error) {
-		// Sign-up is not one transaction: the user row can exist when a later step fails. If this
-		// cleanup fails too, the Instance stays multi (closed: everyone is sent to sign in), and the
-		// original error is the one reported.
+	validate(input);
+	return exclusively(async () => {
+		const claim = await claimInstance(instance, db);
+		if ((await db.user.count()) > 0) {
+			await rollback(claim, db, false);
+			throw new InstanceAlreadySetUpError();
+		}
 		try {
-			await db.user.deleteMany({ where: { learnerId: FIRST_ADMIN_LEARNER_ID } });
-			await claim.undo();
-		} catch {}
+			const { headers } = await runAsFirstAdmin(() =>
+				auth.api.signUpEmail({
+					body: { name: input.name.trim(), email: input.email, password: input.password },
+					returnHeaders: true
+				})
+			);
+			return { headers };
+		} catch (error) {
+			await rollback(claim, db, true);
+			throw error;
+		}
+	});
+}
+
+type Claim = { undo(): Promise<void> };
+
+async function claimInstance(instance: Instance, db: Db): Promise<Claim> {
+	try {
+		return await instance.chooseMulti();
+	} catch (error) {
+		// Multi with no Accounts: nobody can ever sign in, so Setup may run again, with nothing to undo.
+		if (
+			error instanceof InstanceAlreadySetUpError &&
+			instance.mode() === 'multi' &&
+			(await db.user.count()) === 0
+		) {
+			return { undo: async () => {} };
+		}
 		throw error;
+	}
+}
+
+async function rollback(claim: Claim, db: Db, removeAccount: boolean) {
+	try {
+		if (removeAccount) await db.user.deleteMany({ where: { learnerId: FIRST_ADMIN_LEARNER_ID } });
+		await claim.undo();
+	} catch (cleanupError) {
+		console.error('createFirstAdmin: rollback failed, the Instance stays multi-user', cleanupError);
 	}
 }
