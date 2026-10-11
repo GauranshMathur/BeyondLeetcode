@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.23.0...v0.24.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C19 Report an issue links on Problem and Chapter ([#118](https://github.com/GauranshMathur/BeyondLeetcode/issues/118)) ([890bc30](https://github.com/GauranshMathur/BeyondLeetcode/commit/890bc30827ec063b4bad5913c93778eaa29344a6))
+
 ## [0.23.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.22.0...v0.23.0) (2026-10-11)
 
 
