@@ -7,6 +7,7 @@ const STATUS: Record<LearningErrorCode, number> = {
 	TopicLocked: 403,
 	RevisionConflict: 409,
 	InvalidBuild: 400,
+	NoMoreHints: 409,
 	RunnerUnavailable: 503
 };
 

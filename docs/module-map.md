@@ -29,7 +29,8 @@ learner.run(build, files)         // saves, then → RunView { revision, compile
 learner.submit(build, files)      // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
 learner.startFromReferenceCode(problemId)
 learner.switchLanguage(problemId, language)   // the Language of that Problem's Topic
-learner.revealHint(problemId)
+learner.hints(problemId)      // screen read: { total, revealed[{ number, html }], chapter } - never an unrevealed Hint
+learner.revealHint(problemId)  // raises the revealed count by one, never past the total; → the same view
 ```
 
 **Build reference.** `learner.problem()` returns `build: { problemId, language, revision }`: the Problem, the Language the screen shows, and the revision its code is based on (0 for a step never saved). The tab hands it back unchanged with every save, run or submit and takes the new revision from the reply. The core never trusts it: a `language` other than the Topic's current one, or a stale `revision`, is `RevisionConflict`. Run and Submit are "save, then act" in one core path.
@@ -46,6 +47,7 @@ Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic exc
 - The core, not the Runner, picks the Verdict: Compile Error > Time Limit Exceeded > Runtime Error > Wrong Answer > Accepted.
 - A failing Hidden Test (or earlier step) shows only which Problem failed and the Verdict: no input, expected output or Learner output. Output is shown for failing Example Tests.
 - A Solution's code is the Reference Code after that Problem.
+- Hints reveal in number order and the Learner's count is stored per Problem (one number). Revealing is free, changes no progress and is atomic, so two at once never pass the total. The browser only receives the revealed Hints' text; every Hint links to the Problem's Chapter.
 
 **Inside the core.** The rules (Unlock graph, code seeding, Test assembly, Verdict, hiding Hidden Tests, the before/after diff for the Accepted panel) are pure functions with no I/O; a thin shell loads state, calls them, calls the Runner and saves. The pure rules are an internal seam: table tests may cover them, but behaviour tests go through `forLearner`.
 

@@ -3,6 +3,7 @@ export type LearningErrorCode =
 	| 'TopicLocked'
 	| 'RevisionConflict'
 	| 'InvalidBuild'
+	| 'NoMoreHints'
 	| 'RunnerUnavailable';
 
 /** A refusal from the Learning core (docs/module-map.md). A Verdict is never an error. */

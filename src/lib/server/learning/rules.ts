@@ -369,6 +369,40 @@ export function problemView(
 	};
 }
 
+/**
+ * A Problem's Hints as far as one Learner has revealed them: the revealed Hints' text, the total,
+ * and the Chapter every Hint links back to. Nothing else about unrevealed Hints leaves the core.
+ */
+export interface HintsView {
+	readonly total: number;
+	/** The revealed Hints, numbered from 1, in reveal order. */
+	readonly revealed: readonly { readonly number: number; readonly html: string }[];
+	/** The Problem's Chapter: the content format has no per-Hint section. */
+	readonly chapter: { readonly id: string; readonly title: string };
+}
+
+/** One Problem's Hints for a Learner who has revealed `revealedCount` of them. Pure. */
+export function hintsView(
+	catalogue: ProblemCatalogue,
+	progress: Progress,
+	problemId: string,
+	revealedCount: number,
+	renderMarkdown: (markdown: string) => string
+): HintsView {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	const chapter = catalogue.chapter(problem.chapterId);
+	const shown = Math.min(Math.max(revealedCount, 0), problem.hints.length);
+	return {
+		total: problem.hints.length,
+		revealed: problem.hints
+			.slice(0, shown)
+			.map((hint, i) => ({ number: i + 1, html: renderMarkdown(hint) })),
+		chapter: { id: problem.chapterId, title: chapter?.title ?? problem.chapterId }
+	};
+}
+
 /** The most code one Build may hold, in UTF-8 bytes of paths and contents together. */
 export const MAX_BUILD_BYTES = 256 * 1024;
 

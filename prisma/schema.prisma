@@ -48,6 +48,16 @@ model TopicLanguage {
   @@id([learnerId, topicId])
 }
 
+// How many of a Problem's Hints a Learner has revealed (CONTEXT.md: Hint). Hints reveal in number
+// order, so one number is the whole state. No row means none.
+model HintsRevealed {
+  learnerId String
+  problemId String
+  count     Int
+
+  @@id([learnerId, problemId])
+}
+
 // One Submit of a Problem (CONTEXT.md: Submission). A Problem is Solved once any of its
 // Submissions is Accepted, Attempted while it has some but none Accepted.
 model Submission {

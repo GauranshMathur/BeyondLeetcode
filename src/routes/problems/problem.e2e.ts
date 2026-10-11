@@ -332,3 +332,50 @@ test('a Problem links to a prefilled new GitHub issue in a new tab', async ({ pa
 	expect(url.searchParams.get('title')).toBe('Problem: Push and size (stacks-push)');
 	expect(url.searchParams.get('body')).toContain('What is wrong');
 });
+
+test('Hints reveal one at a time, in order, link to the Chapter, and survive a reload', async ({
+	page
+}) => {
+	await page.goto('/problems/stacks-push');
+	await page.getByRole('link', { name: 'Hints' }).click();
+	await expect(page).toHaveURL('/problems/stacks-push?tab=hints');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Hints');
+	await expect(page.getByText('Hint 1 of 2')).toBeVisible();
+	await expect(page.getByText('First hint.')).toHaveCount(0);
+	await expect(page.getByText('Second hint.')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Reveal hint 2' })).toHaveCount(0);
+
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByText('First hint.')).toBeVisible();
+	await expect(page.getByText('Second hint.')).toHaveCount(0);
+	await expect(page.getByText('Hint 2 of 2')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Reveal hint 2' }).click();
+	await expect(page.getByText('Second hint.')).toBeVisible();
+	await expect(page.getByRole('button', { name: /Reveal hint/ })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: /An undo log/ })).toHaveCount(2);
+
+	await page.reload();
+	await expect(page.getByText('First hint.')).toBeVisible();
+	await expect(page.getByText('Second hint.')).toBeVisible();
+
+	await page
+		.getByRole('link', { name: /An undo log/ })
+		.first()
+		.click();
+	await expect(page).toHaveURL('/chapters/stacks-undo-log');
+});
+
+test('the browser receives only the Hints already revealed', async ({ page }) => {
+	const body = await (await page.request.get('/problems/stacks-peek?tab=hints')).text();
+	expect(body).not.toContain('First hint.');
+	expect(body).not.toContain('Second hint.');
+
+	await page.goto('/problems/stacks-peek?tab=hints');
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByText('First hint.')).toBeVisible();
+
+	const after = await (await page.request.get('/problems/stacks-peek?tab=hints')).text();
+	expect(after).toContain('First hint.');
+	expect(after).not.toContain('Second hint.');
+});
