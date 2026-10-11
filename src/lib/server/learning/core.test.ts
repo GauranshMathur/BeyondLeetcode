@@ -233,7 +233,27 @@ describe('learner.problem() and learner.saveCode()', () => {
 			exampleTests: [{ name: '01', input: 'push 1\npush 2\nsize\n', expected: '2\n' }],
 			build: { problemId: 'stacks-push', language: 'python', revision: 0 },
 			files: { 'main.py': '' },
+			seedNotes: {
+				python: 'starts empty',
+				typescript: 'starts empty',
+				go: 'starts empty'
+			},
 			status: 'Untouched'
+		});
+	});
+
+	it("tells the picker what a new Build would start from: the Learner's code in that Language, else the Reference Code", async () => {
+		const { learner } = await setup();
+		expect((await learner.problem('stacks-pop')).seedNotes).toEqual({
+			python: 'starts from the reference code for the previous Problem',
+			typescript: 'starts from the reference code for the previous Problem',
+			go: 'starts from the reference code for the previous Problem'
+		});
+
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'mine' });
+		expect((await learner.problem('stacks-pop')).seedNotes).toMatchObject({
+			python: 'starts from your code for the previous Problem',
+			typescript: 'starts from the reference code for the previous Problem'
 		});
 	});
 

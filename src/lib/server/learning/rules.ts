@@ -1,4 +1,4 @@
-import { entryFileOf } from '../../languages';
+import { entryFileOf, LANGUAGES } from '../../languages';
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import type { ExecuteResult } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
@@ -260,6 +260,8 @@ export interface ProblemView {
 	readonly build: BuildRef;
 	/** The Learner's code: stored if saved, otherwise what the step would start from. */
 	readonly files: BuildFiles;
+	/** For each Language: what a Build started in it would start from (see seedNoteOf). */
+	readonly seedNotes: Readonly<Record<Language, string>>;
 	readonly status: ProblemStatus;
 }
 
@@ -297,6 +299,25 @@ export function seedSourceOf(
 	return mainLine[mainLine.indexOf(problemId) - 1];
 }
 
+/** What a new Build of a step starts from, in the order the rule tries them. */
+export type SeedKind = 'previousStep' | 'referenceCode' | 'empty';
+
+/**
+ * The words for what seeds a new Build, for the Language picker: the Learner's own code for the
+ * step it seeds from (`sourceSaved`), else that step's Reference Code, and nothing on a Topic's
+ * first Problem (which has no source). Mirrors the choice problemView makes for `files`.
+ */
+export function seedNoteOf(hasSource: boolean, sourceSaved: boolean): string {
+	const kind: SeedKind = !hasSource ? 'empty' : sourceSaved ? 'previousStep' : 'referenceCode';
+	return SEED_NOTES[kind];
+}
+
+const SEED_NOTES: Readonly<Record<SeedKind, string>> = {
+	previousStep: 'starts from your code for the previous Problem',
+	referenceCode: 'starts from the reference code for the previous Problem',
+	empty: 'starts empty'
+};
+
 /**
  * One Problem for one Learner. Pure. `own` is the step's stored code and `source` the stored
  * code of the step it seeds from. An unsaved step shows its starting code without writing it:
@@ -307,7 +328,12 @@ export function problemView(
 	progress: Progress,
 	problemId: string,
 	language: Language,
-	saved: { own?: SavedStep; source?: SavedStep },
+	saved: {
+		own?: SavedStep;
+		source?: SavedStep;
+		/** The Languages in which the source step has saved code (for the picker's notes). */
+		sourceSavedIn?: readonly Language[];
+	},
 	renderMarkdown: (markdown: string) => string
 ): ProblemView {
 	const problem = catalogue.problem(problemId);
@@ -333,6 +359,12 @@ export function problemView(
 		})),
 		build: { problemId, language, revision: saved.own?.revision ?? 0 },
 		files: saved.own?.files ?? start,
+		seedNotes: Object.fromEntries(
+			LANGUAGES.map((l) => [
+				l.id,
+				seedNoteOf(sourceId !== undefined, saved.sourceSavedIn?.includes(l.id) ?? false)
+			])
+		) as Record<Language, string>,
 		status: listed?.status ?? 'Untouched'
 	};
 }
