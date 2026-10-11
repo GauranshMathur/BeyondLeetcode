@@ -232,7 +232,7 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 	if (kind === 'save' && waiting !== undefined) {
 		// Run or Submit save the Build themselves, so they go anyway; a switch does not.
 		if (typeof waiting === 'object') {
-			return { state: { ...failed, queued: undefined, switching: false, switchFailed: true } };
+			return follow({ ...failed, queued: undefined, switching: false, switchFailed: true }, true);
 		}
 		return sendBuild({ ...failed, queued: undefined }, waiting);
 	}

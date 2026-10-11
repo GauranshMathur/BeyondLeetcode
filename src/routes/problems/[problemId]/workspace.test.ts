@@ -279,6 +279,11 @@ describe('switching Language', () => {
 		expect(state).toMatchObject({ switching: false, switchFailed: true });
 	});
 
+	it('keeps retrying the unsent code after the save before a switch failed', () => {
+		const { step } = play(edited(), { type: 'switch', language: 'go' }, respond(fail(500)));
+		expect(step.timer).toEqual({ afterMs: RETRY_DELAY_MS });
+	});
+
 	it('fails when the save before it is in conflict or rejected', () => {
 		for (const status of [409, 400]) {
 			const { state, sent } = play(

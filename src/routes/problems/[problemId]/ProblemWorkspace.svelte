@@ -56,6 +56,9 @@ async function post(request: Request): Promise<Reply> {
 			keepalive: request.kind !== 'switch' && request.keepalive === true,
 			headers: { 'x-sveltekit-action': 'true' }
 		});
+		// A 4xx is final whatever the body is (a proxy may not send an action's JSON).
+		if (response.status >= 400 && response.status < 500)
+			return { ok: false, status: response.status };
 		const result = deserialize(await response.text());
 		if (result.type === 'failure') return { ok: false, status: result.status };
 		if (result.type === 'error') {
