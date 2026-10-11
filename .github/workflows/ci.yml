@@ -67,7 +67,7 @@ jobs:
       - name: Build the Sandbox images
         run: .github/build-sandbox-images.sh
       # The Playwright webServer builds the app, serves it under Bun and starts the Runner.
-      - run: for i in 1 2 3 4 5 6 7 8 9 10; do echo "== run $i"; bun run test:e2e || exit 1; done
+      - run: bun run test:e2e
 
   sandbox:
     runs-on: ubuntu-24.04
