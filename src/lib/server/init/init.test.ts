@@ -21,6 +21,7 @@ describe('init', () => {
 		expect(envValue(env, 'PORT')).toBe('8080');
 		expect(envValue(env, 'BEYONDLEETCODE_IMAGE')).toBe(DEFAULT_IMAGE);
 		expect(envValue(env, 'RUNNER_TOKEN')).toMatch(/^[0-9a-f]{48}$/);
+		expect(envValue(env, 'BETTER_AUTH_SECRET')).toMatch(/^[0-9a-f]{48}$/);
 		expect(await read('compose.yaml')).toMatch(/image: \$\{BEYONDLEETCODE_IMAGE\}/);
 		expect(out).toContain('docker compose up -d');
 		expect(out).toContain('https://learn.example.com');
@@ -57,6 +58,15 @@ describe('init', () => {
 		expect((await stat(join(dir, '.env'))).mode & 0o777).toBe(0o600);
 	});
 
+	it('writes a different auth secret than the runner token, and a new one each run', async () => {
+		await runInit(['--origin', 'http://a.io'], dir);
+		const first = await read('.env');
+		await runInit(['--origin', 'http://a.io', '--force'], dir);
+		const second = await read('.env');
+		expect(envValue(first, 'BETTER_AUTH_SECRET')).not.toBe(envValue(first, 'RUNNER_TOKEN'));
+		expect(envValue(first, 'BETTER_AUTH_SECRET')).not.toBe(envValue(second, 'BETTER_AUTH_SECRET'));
+	});
+
 	it('generates a different token each time', () => {
 		expect(newToken()).toHaveLength(48);
 		expect(newToken()).not.toBe(newToken());
@@ -76,5 +86,22 @@ describe('compose.yaml', () => {
 		expect(runner).toContain('networks: [internal]');
 		expect(compose).toContain('internal: true');
 		expect(compose).toContain('PROTOCOL_HEADER');
+	});
+
+	it('passes the auth secret and OAuth variables to web only, all optional', async () => {
+		await runInit(['--origin', 'http://a.io'], dir);
+		const compose = await read('compose.yaml');
+		const web = compose.slice(compose.indexOf('  web:'), compose.indexOf('  runner:'));
+		const runner = compose.slice(compose.indexOf('  runner:'), compose.indexOf('networks:\n'));
+		for (const name of [
+			'BETTER_AUTH_SECRET',
+			'GITHUB_CLIENT_ID',
+			'GITHUB_CLIENT_SECRET',
+			'GOOGLE_CLIENT_ID',
+			'GOOGLE_CLIENT_SECRET'
+		]) {
+			expect(web).toContain(`${name}: \${${name}:-}`);
+			expect(runner).not.toContain(name);
+		}
 	});
 });

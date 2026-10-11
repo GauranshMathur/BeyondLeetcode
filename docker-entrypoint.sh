@@ -11,6 +11,7 @@ Roles:
            Needs ORIGIN (the Instance's public URL, e.g. https://learn.example.com);
            without it SvelteKit rejects form posts. Keeps data under /data
            (DATABASE_URL=file:/data/beyondleetcode.db). Runs as the non-root bun user.
+           BETTER_AUTH_SECRET and the GITHUB_/GOOGLE_ OAuth variables are optional (Multi-user only).
   runner   Run learner code in sandboxes. Needs RUNNER_TOKEN (32+ characters) and the
            container engine socket mounted at DOCKER_SOCKET (default /var/run/docker.sock).
            Listens on RUNNER_PORT (default 8787). Runs as root because the socket needs it.
