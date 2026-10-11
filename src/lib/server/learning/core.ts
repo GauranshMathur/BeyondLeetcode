@@ -107,8 +107,8 @@ export interface Learner {
 	hints(problemId: string): Promise<HintsView>;
 	/**
 	 * Reveals the next Hint (raises the count by one) and returns the view. Free, changes no
-	 * progress, safe to call twice at once. Throws NoMoreHints when all are revealed (or there
-	 * are none), NotFound or TopicLocked.
+	 * progress, safe to call twice at once. Past the last Hint (or with none) it changes nothing and
+	 * returns the Hints already revealed. Throws NotFound or TopicLocked.
 	 */
 	revealHint(problemId: string): Promise<HintsView>;
 	/**
@@ -281,9 +281,9 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				resetProgress: () => resetProgress(deps.db, learnerId),
 				revealHint: async (problemId) => {
 					const before = await learner.hints(problemId); // NotFound / TopicLocked
-					if (before.revealed.length >= before.total) throw new LearningError('NoMoreHints');
+					if (before.revealed.length >= before.total) return before;
 					// One atomic step each, never past the count: concurrent reveals each raise it by
-					// one until the last Hint, then the rest are refused.
+					// one until the last Hint, then the rest change nothing.
 					const raise = () =>
 						deps.db.hintsRevealed.updateMany({
 							where: { learnerId, problemId, count: { lt: before.total } },
@@ -295,7 +295,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						} catch (e) {
 							if ((e as { code?: string }).code !== 'P2002') throw e;
 							// The row appeared meanwhile (or is already at the last Hint).
-							if ((await raise()).count === 0) throw new LearningError('NoMoreHints');
+							await raise();
 						}
 					}
 					return learner.hints(problemId);

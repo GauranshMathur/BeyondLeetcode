@@ -1,5 +1,6 @@
 import type { Language } from '$lib/languages';
-import type { BuildRef, RunView, SubmitView } from '$lib/server/learning/core';
+import type { Reply, ReplyData } from '$lib/problem-wire';
+import type { BuildRef } from '$lib/server/learning/core';
 import type { Outcome } from './outcome';
 
 /**
@@ -13,7 +14,15 @@ import type { Outcome } from './outcome';
 export const SAVE_DELAY_MS = 1000;
 export const RETRY_DELAY_MS = 5 * SAVE_DELAY_MS;
 
-export type SaveState = 'saved' | 'edited' | 'saving' | 'failed' | 'rejected' | 'conflict';
+/** `signedOut`: the session ended; the code stays in the editor and nothing is sent until the Learner signs in again. */
+export type SaveState =
+	| 'saved'
+	| 'edited'
+	| 'saving'
+	| 'failed'
+	| 'rejected'
+	| 'conflict'
+	| 'signedOut';
 type Files = Record<string, string>;
 type Act = 'run' | 'submit';
 
@@ -39,9 +48,6 @@ export interface Session {
 	/** What waits for it. */
 	readonly queued?: Act | { switchTo: Language };
 }
-
-/** How the component reports an answer: the data of a success, or a failure with its HTTP status (0: none arrived). */
-export type Reply = { ok: true; data: unknown } | { ok: false; status: number; revision?: number };
 
 export type Event =
 	| { type: 'edit'; files: Files }
@@ -75,7 +81,9 @@ export function begin(build: BuildRef, files: Files): Session {
 export const isBusy = (s: Session) =>
 	s.outcome?.kind === 'running' || s.outcome?.kind === 'submitting';
 
-const blocked = (s: Session) => s.save === 'conflict' || s.save === 'rejected';
+/** Nothing is sent, and edits are not scheduled, until the Learner acts (reload, or sign in again). */
+const halted = (s: Session) => s.save === 'conflict' || s.save === 'signedOut';
+const blocked = (s: Session) => halted(s) || s.save === 'rejected';
 
 /** Sends `kind` now with the latest code, which saves it too. */
 function sendBuild(s: Session, kind: 'save' | Act, keepalive = false): Step {
@@ -107,13 +115,15 @@ export function transition(s: Session, event: Event): Step {
 	switch (event.type) {
 		case 'edit':
 			if (s.save === 'conflict') return { state: s };
+			// Signed out: the code is kept for the Learner, but nothing is scheduled.
+			if (s.save === 'signedOut') return { state: { ...s, files: event.files, dirty: true } };
 			return {
 				state: { ...s, files: event.files, dirty: true, save: 'edited' },
 				timer: { afterMs: SAVE_DELAY_MS }
 			};
 
 		case 'tick':
-			if (s.inFlight || !s.dirty || s.save === 'conflict' || s.switching) return { state: s };
+			if (s.inFlight || !s.dirty || halted(s) || s.switching) return { state: s };
 			return sendBuild(s, 'save');
 
 		case 'run':
@@ -138,7 +148,7 @@ export function transition(s: Session, event: Event): Step {
 
 		case 'flush': {
 			const closed = s.closed || event.final;
-			if (s.inFlight || !s.dirty || s.save === 'conflict') {
+			if (s.inFlight || !s.dirty || halted(s)) {
 				return { state: { ...s, closed }, timer: 'cancel' };
 			}
 			return sendBuild({ ...s, closed }, 'save', true);
@@ -153,8 +163,24 @@ export function transition(s: Session, event: Event): Step {
 
 /** The answer to the request of `kind`. */
 function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
-	const status = reply.ok ? 200 : reply.status;
 	const wasAct = kind === 'run' || kind === 'submit';
+	const refused = !reply.ok && reply.kind === 'refused' ? reply : undefined;
+
+	if (!reply.ok && reply.kind === 'signedOut') {
+		// The session ended: keep every unsent character, stop sending, and say so.
+		return {
+			state: {
+				...s,
+				save: 'signedOut',
+				dirty: s.dirty || kind === 'save' || wasAct,
+				outcome: undefined,
+				queued: undefined,
+				switching: false,
+				switchFailed: kind === 'switch' || typeof s.queued === 'object'
+			},
+			timer: 'cancel'
+		};
+	}
 
 	if (kind === 'switch') {
 		// A switch that went through reloads the screen; either way it is no longer under way.
@@ -170,13 +196,13 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 		return sendBuild({ ...after, queued: undefined }, waiting);
 	};
 
-	if (status === 409 || (status >= 400 && status < 500)) {
-		// 409: the Build moved on (another tab, a switched Language). Other 4xx: the server will never accept it.
+	if (refused && refused.code !== 'RunnerUnavailable') {
+		// RevisionConflict: the Build moved on (another tab, a switched Language). Anything else the server will never accept.
 		const switchWaiting = typeof s.queued === 'object';
 		return {
 			state: {
 				...s,
-				save: status === 409 ? 'conflict' : 'rejected',
+				save: refused.code === 'RevisionConflict' ? 'conflict' : 'rejected',
 				outcome: undefined,
 				queued: undefined,
 				switching: switchWaiting ? false : s.switching,
@@ -185,12 +211,12 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 		};
 	}
 
-	if (!reply.ok && status === 503 && typeof reply.revision === 'number') {
-		// The Build was saved before the Runner failed; the error carries the revision it saved.
+	if (refused && typeof refused.revision === 'number') {
+		// The Build was saved before the Runner failed; the refusal carries the revision it saved.
 		return follow(
 			{
 				...s,
-				build: { ...s.build, revision: reply.revision },
+				build: { ...s.build, revision: refused.revision },
 				save: s.dirty ? 'edited' : 'saved',
 				outcome: { kind: 'unavailable' }
 			},
@@ -199,8 +225,7 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 	}
 
 	if (reply.ok) {
-		const data = reply.data as { revision: number };
-		const revision = data.revision;
+		const { revision } = reply.data as ReplyData['save'];
 		const settled: Session = {
 			...s,
 			build: { ...s.build, revision },
@@ -208,13 +233,13 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 		};
 		if (kind === 'run') {
 			return follow(
-				{ ...settled, outcome: { kind: 'result', view: reply.data as RunView } },
+				{ ...settled, outcome: { kind: 'result', view: reply.data as ReplyData['run'] } },
 				false
 			);
 		}
 		if (kind === 'submit') {
 			return follow(
-				{ ...settled, outcome: { kind: 'verdict', view: reply.data as SubmitView } },
+				{ ...settled, outcome: { kind: 'verdict', view: reply.data as ReplyData['submit'] } },
 				false
 			);
 		}

@@ -27,17 +27,18 @@ learner.reachChapterEnd(chapterId)                    // → progress change (ma
 learner.saveCode(build, files)    // build: Build reference { problemId, language, revision } → { revision }, or RevisionConflict
 learner.run(build, files)         // saves, then → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
 learner.submit(build, files)      // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
-learner.startFromReferenceCode(problemId)
 learner.switchLanguage(problemId, language)   // the Language of that Problem's Topic
 learner.hints(problemId)      // screen read: { total, revealed[{ number, html }], chapter } - never an unrevealed Hint
 learner.solution(problemId)    // screen read: { explanationHtml, referenceCode: Language → files }; never changes progress or a Build
-learner.revealHint(problemId)  // raises the revealed count by one, never past the total; → the same view
+learner.revealHint(problemId)  // raises the revealed count by one; past the last Hint it changes nothing and answers the Hints already revealed (never an error) → the same view
 learner.resetProgress()       // deletes this Learner's read Chapters, saved code, Submissions, Languages per Topic and revealed Hints in one transaction; the Learner row stays
 ```
 
 **Build reference.** `learner.problem()` returns `build: { problemId, language, revision }`: the Problem, the Language the screen shows, and the revision its code is based on (0 for a step never saved). The tab hands it back unchanged with every save, run or submit and takes the new revision from the reply. The core never trusts it: a `language` other than the Topic's current one, or a stale `revision`, is `RevisionConflict`. Run and Submit are "save, then act" in one core path.
 
-Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab, second device, or a Language switched elsewhere), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. An error raised after the code was saved (`RunnerUnavailable` during Run or Submit) carries the `revision` that save produced. Routes map codes to statuses, and pass that revision on, through one shared helper (`withLearningErrors`) and do nothing else with them.
+Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab, second device, or a Language switched elsewhere), `InvalidBuild` (400; bad paths or a Build over the size cap), `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. An error raised after the code was saved (`RunnerUnavailable` during Run or Submit) carries the `revision` that save produced. Routes map codes to statuses, and pass that revision on, through one shared helper (`withLearningErrors`) and do nothing else with them. There is no `NoMoreHints`: the core owns what revealing past the last Hint means.
+
+**Problem screen wire contract.** `src/lib/problem-wire.ts` is imported by the Problem route's actions and by the screen's state machine (browser-safe). A refusal travels as the core's own code in the error body (`{ message: code, revision? }`), plus `BadRequest` for a form the route cannot read; the status is informational. The browser turns any answer into a `Reply` (`toReply`): data, a refusal with its code, `signedOut` (a 401 or a redirect: the Learner's code stays in the editor, nothing is retried, the screen says to sign in again) or `unreachable` (retried).
 
 **Rules the interface guarantees**
 

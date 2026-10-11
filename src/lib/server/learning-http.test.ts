@@ -1,5 +1,6 @@
 import { isHttpError } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
+import { decodeRefusal } from '$lib/problem-wire';
 import { LearningError, type LearningErrorCode } from './learning/core.ts';
 import { withLearningErrors } from './learning-http.ts';
 
@@ -27,6 +28,7 @@ describe('withLearningErrors', () => {
 
 		expect(e.status).toBe(status);
 		expect(e.body).toEqual({ message: code });
+		expect(decodeRefusal(e.body)).toEqual({ code });
 	});
 
 	it('carries the saved revision of a Runner outage in the same error', async () => {
@@ -34,6 +36,7 @@ describe('withLearningErrors', () => {
 
 		expect(e.status).toBe(503);
 		expect(e.body).toEqual({ message: 'RunnerUnavailable', revision: 4 });
+		expect(decodeRefusal(e.body)).toEqual({ code: 'RunnerUnavailable', revision: 4 });
 	});
 
 	it('passes the result through and rethrows anything that is not a LearningError', async () => {
