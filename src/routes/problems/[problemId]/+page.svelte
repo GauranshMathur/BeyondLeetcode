@@ -20,7 +20,7 @@ const problem = $derived(data.problem);
 				<nav class="tabs mono" aria-label="Problem sections">
 					<a href="/problems/{problem.id}" data-sveltekit-noscroll aria-current={data.tab === 'problem' ? 'page' : undefined}>Problem</a>
 					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-noscroll aria-current={data.tab === 'hints' ? 'page' : undefined}>Hints</a>
-					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-noscroll aria-current={data.tab === 'solution' ? 'page' : undefined}>Solution</a>
+					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-noscroll data-sveltekit-preload-data="off" aria-current={data.tab === 'solution' ? 'page' : undefined}>Solution</a>
 				</nav>
 				{#if data.tab === 'hints' && data.hints}
 					<HintsTab {problem} hints={data.hints} />
