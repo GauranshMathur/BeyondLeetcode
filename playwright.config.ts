@@ -12,7 +12,7 @@ const web = [
 	'export ORIGIN=http://localhost:4173',
 	`export RUNNER_URL=http://127.0.0.1:${runnerPort}`,
 	`export RUNNER_TOKEN=${runnerToken}`,
-	// Test-only: lets each e2e file act as its own Learner (x-test-learner header). Never set outside this server.
+	// Test-only: lets each e2e file act as its own Learner (test_learner cookie). Never set outside this server.
 	'export IDENTITY_TEST_LEARNER=1',
 	'bunx prisma migrate deploy',
 	'bun run build',

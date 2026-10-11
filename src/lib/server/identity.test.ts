@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest';
-import { createLocalIdentity, TEST_LEARNER_HEADER } from './identity.ts';
+import { TEST_LEARNER_COOKIE } from '../e2e-learner.ts';
+import { createLocalIdentity } from './identity.ts';
 import { createTestDb } from './test-db.ts';
 
-const request = (headers: Record<string, string> = {}) => ({
-	request: new Request('http://localhost/', { headers })
+const request = (cookies: Record<string, string> = {}) => ({
+	cookies: { get: (name: string) => cookies[name] }
 });
 
 it('answers every request with the Local Learner: admin, displayed as Local', async () => {
@@ -18,27 +19,27 @@ it('answers every request with the Local Learner: admin, displayed as Local', as
 	expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 });
 
-it('ignores the test Learner header when the gate is off', async () => {
+it('ignores the test Learner cookie when the gate is off', async () => {
 	const identity = await createLocalIdentity(await createTestDb());
 
-	const who = await identity.resolve(request({ [TEST_LEARNER_HEADER]: 'someone-else' }));
+	const who = await identity.resolve(request({ [TEST_LEARNER_COOKIE]: 'someone-else' }));
 
 	expect(who?.learnerId).toBe('local');
 });
 
-it('acts as the header Learner when the gate is on, as a plain learner', async () => {
-	const identity = await createLocalIdentity(await createTestDb(), { testLearnerHeader: true });
+it('acts as the cookie Learner when the gate is on, as a plain learner', async () => {
+	const identity = await createLocalIdentity(await createTestDb(), { testLearnerCookie: true });
 
-	const who = await identity.resolve(request({ [TEST_LEARNER_HEADER]: 'topic-e2e' }));
+	const who = await identity.resolve(request({ [TEST_LEARNER_COOKIE]: 'topic-e2e' }));
 
 	expect(who).toEqual({ learnerId: 'topic-e2e', displayName: 'Local', role: 'learner' });
 });
 
-it('with the gate on, no header or a malformed one is still the Local Learner', async () => {
-	const identity = await createLocalIdentity(await createTestDb(), { testLearnerHeader: true });
+it('with the gate on, no cookie or a malformed one is still the Local Learner', async () => {
+	const identity = await createLocalIdentity(await createTestDb(), { testLearnerCookie: true });
 
 	expect((await identity.resolve(request()))?.learnerId).toBe('local');
-	expect((await identity.resolve(request({ [TEST_LEARNER_HEADER]: 'a b/../c' })))?.learnerId).toBe(
+	expect((await identity.resolve(request({ [TEST_LEARNER_COOKIE]: 'a b/../c' })))?.learnerId).toBe(
 		'local'
 	);
 });

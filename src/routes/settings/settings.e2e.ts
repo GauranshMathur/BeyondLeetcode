@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { asLearner } from '../../lib/e2e-learner.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
-test.use({ extraHTTPHeaders: { 'x-test-learner': 'e2e-settings' } });
+test.use({ storageState: asLearner('e2e-settings') });
 
 const paper = (page: import('@playwright/test').Page) =>
 	page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -24,7 +25,7 @@ test('dark wins on the next load whatever the device prefers, and follow-my-devi
 	browser
 }) => {
 	const context = await browser.newContext({
-		extraHTTPHeaders: { 'x-test-learner': 'e2e-settings' },
+		storageState: asLearner('e2e-settings'),
 		colorScheme: 'light'
 	});
 	const page = await context.newPage();
@@ -49,7 +50,7 @@ test('dark wins on the next load whatever the device prefers, and follow-my-devi
 
 test('light wins on a dark device', async ({ browser }) => {
 	const context = await browser.newContext({
-		extraHTTPHeaders: { 'x-test-learner': 'e2e-settings' },
+		storageState: asLearner('e2e-settings'),
 		colorScheme: 'dark'
 	});
 	const page = await context.newPage();
@@ -64,7 +65,7 @@ test('light wins on a dark device', async ({ browser }) => {
 
 test('the form works without JavaScript', async ({ browser }) => {
 	const context = await browser.newContext({
-		extraHTTPHeaders: { 'x-test-learner': 'e2e-settings' },
+		storageState: asLearner('e2e-settings'),
 		javaScriptEnabled: false,
 		colorScheme: 'light'
 	});
@@ -149,7 +150,7 @@ test('cancelling the Reset progress confirm changes nothing; confirming makes th
 
 test('the Reset progress confirm works without JavaScript', async ({ browser }) => {
 	const context = await browser.newContext({
-		extraHTTPHeaders: { 'x-test-learner': 'e2e-settings' },
+		storageState: asLearner('e2e-settings'),
 		javaScriptEnabled: false
 	});
 	const page = await context.newPage();

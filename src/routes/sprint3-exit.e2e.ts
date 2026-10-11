@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
+import { asLearner } from '../lib/e2e-learner.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
-test.use({ extraHTTPHeaders: { 'x-test-learner': 'e2e-sprint3-exit' } });
+test.use({ storageState: asLearner('e2e-sprint3-exit') });
 
 // Sprint 3 exit: a Learner in Local mode finishes a Topic and unlocks the next.
 // The Reference Code is read from the fixture on disk, not copied here.

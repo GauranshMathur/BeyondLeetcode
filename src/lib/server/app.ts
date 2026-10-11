@@ -42,7 +42,7 @@ export async function createApp(env: {
 			runner: createHttpRunner({ url: env.RUNNER_URL, token: env.RUNNER_TOKEN })
 		}),
 		identity: await createLocalIdentity(db, {
-			testLearnerHeader: env.IDENTITY_TEST_LEARNER === '1'
+			testLearnerCookie: env.IDENTITY_TEST_LEARNER === '1'
 		})
 	};
 }
