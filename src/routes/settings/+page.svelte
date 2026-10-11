@@ -15,9 +15,11 @@ $effect(() => {
 // The saved cookie only reaches the next render; apply the choice to this page now.
 const applyTheme: SubmitFunction = ({ formData }) => {
 	const chosen = parseTheme(formData.get('theme')?.toString());
-	return async ({ update }) => {
-		if (chosen) document.documentElement.dataset.theme = chosen;
-		else delete document.documentElement.dataset.theme;
+	return async ({ result, update }) => {
+		if (result.type === 'success') {
+			if (chosen) document.documentElement.dataset.theme = chosen;
+			else delete document.documentElement.dataset.theme;
+		}
 		await update({ reset: false });
 	};
 };
