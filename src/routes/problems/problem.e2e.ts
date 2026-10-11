@@ -163,6 +163,12 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await page.goto('/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('1 of 2');
 	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
+
+	// Solved or not, the Solution is open and the status stays Solved.
+	await page.goto('/problems/stacks-push?tab=solution');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Solution');
+	await page.goto('/topics/stacks');
+	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
 });
 
 // A string literal is coloured by the editor's highlight style, not the plain text colour.
@@ -378,4 +384,43 @@ test('the browser receives only the Hints already revealed', async ({ page }) =>
 	const after = await (await page.request.get('/problems/stacks-peek?tab=hints')).text();
 	expect(after).toContain('First hint.');
 	expect(after).not.toContain('Second hint.');
+});
+
+test('the Solution tab shows the explanation and the Reference Code in each Language, and keeps the Learner code', async ({
+	page
+}) => {
+	// Not in the Problem's own page data.
+	const plain = await (await page.request.get('/problems/stacks-push')).text();
+	expect(plain).not.toContain('readFileSync');
+
+	await page.goto('/problems/stacks-push');
+	await typeInEditor(page, '# mine');
+	await page.getByRole('link', { name: 'Solution' }).click();
+	await expect(page).toHaveURL('/problems/stacks-push?tab=solution');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Solution');
+	await expect(page.getByText('Placeholder fixture text')).toBeVisible();
+	await expect(page.getByText('reference code · read only')).toBeVisible();
+
+	const language = page.getByRole('navigation', { name: 'Reference code language' });
+	const code = page.locator('.viewer .cm-content');
+	await expect(language.getByRole('button', { name: 'Python' })).toHaveAttribute(
+		'aria-current',
+		'true'
+	);
+	await expect(code).toContainText('items');
+	await expect(code).toHaveAttribute('aria-readonly', 'true');
+	await code.click();
+	await page.keyboard.type('zzz', { delay: 25 });
+	await expect(code).not.toContainText('zzz');
+	await language.getByRole('button', { name: 'TypeScript' }).click();
+	await expect(code).toContainText('readFileSync');
+	await language.getByRole('button', { name: 'Go' }).click();
+	await expect(code).toContainText('package main');
+
+	// The Learner's own code was saved and is back when the Problem tab is.
+	await page.getByRole('link', { name: 'Problem', exact: true }).click();
+	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
+	await page.reload();
+	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
 });

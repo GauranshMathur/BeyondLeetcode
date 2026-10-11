@@ -21,8 +21,10 @@ import {
 	type RunView,
 	runView,
 	type SavedStep,
+	type SolutionView,
 	type SubmitView,
 	seedSourceOf,
+	solutionView,
 	submitPlan,
 	type TopicView,
 	topicView,
@@ -42,6 +44,7 @@ export type {
 	RunTestStatus,
 	RunTestView,
 	RunView,
+	SolutionView,
 	SubmitFailure,
 	SubmitView,
 	TopicState,
@@ -108,6 +111,12 @@ export interface Learner {
 	 * are none), NotFound or TopicLocked.
 	 */
 	revealHint(problemId: string): Promise<HintsView>;
+	/**
+	 * The Problem's Solution: the explanation (HTML) and the Reference Code after the Problem in
+	 * every Language. Always available, solved or not; never writes, changes no progress or Build.
+	 * Throws NotFound or TopicLocked.
+	 */
+	solution(problemId: string): Promise<SolutionView>;
 }
 
 /** A Topic is built in Python until the Learner switches it. */
@@ -254,6 +263,13 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						await loadProgress(deps.catalogue, deps.db, learnerId),
 						problemId,
 						await loadRevealed(deps.db, learnerId, problemId),
+						renderMarkdown
+					),
+				solution: async (problemId) =>
+					solutionView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						problemId,
 						renderMarkdown
 					),
 				revealHint: async (problemId) => {

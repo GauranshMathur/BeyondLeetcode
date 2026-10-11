@@ -4,8 +4,9 @@ import { deserialize } from '$app/forms';
 import { invalidateAll } from '$app/navigation';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
 import { LANGUAGES, type Language, languageById } from '$lib/languages';
-import type { ProblemView } from '$lib/server/learning/core';
+import type { ProblemView, SolutionView } from '$lib/server/learning/core';
 import ResultsPanel from './ResultsPanel.svelte';
+import SolutionCode from './SolutionCode.svelte';
 import {
 	begin,
 	type Event,
@@ -16,7 +17,16 @@ import {
 	transition
 } from './workspace';
 
-let { problem, statement }: { problem: ProblemView; statement: Snippet } = $props();
+let {
+	problem,
+	statement,
+	solution
+}: {
+	problem: ProblemView;
+	statement: Snippet;
+	/** While set, the Reference Code replaces the editor. The editor stays mounted, so the Learner's code and any pending save are untouched. */
+	solution?: SolutionView;
+} = $props();
 
 // The state machine in ./workspace.ts owns the Build, its revision and every transition. This component
 // renders it, runs the timer and the fetch it asks for, and feeds each answer back as an event. It is keyed
@@ -127,33 +137,38 @@ const label: Record<SaveState, string> = {
 		{@render statement()}
 
 		<div class="pane">
-			<div class="bar">
-				<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
-				<div class="bar-right">
-					<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected'} role="status">{label[session.save]}</span>
-					<label class="mono picker">build language
-						<select value={choice} onchange={(e) => (picked = e.currentTarget.value as Language)} aria-describedby={confirming ? 'switch-note' : undefined} disabled={session.switching}>
-							{#each LANGUAGES as language (language.id)}
-								<option value={language.id}>{language.name}</option>
-							{/each}
-						</select>
-					</label>
-				</div>
-			</div>
-			{#if confirming}
-				<div class="confirm" role="group" aria-label="Switch build language">
-					<div class="confirm-text">
-						<span class="mono ask">Switch to {nameOf(choice)}?</span>
-						<span id="switch-note" class="note">Starts a new {nameOf(choice)} copy of this build; it {problem.seedNotes[choice]}. Your {nameOf(problem.build.language)} build is kept.{session.switchFailed ? ' The switch did not go through; try again.' : ''}</span>
-					</div>
-					<div class="confirm-actions">
-						<button type="button" class="cancel mono" onclick={() => (picked = undefined)} disabled={session.switching}>Cancel</button>
-						<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} disabled={session.switching || busy}>{session.switching ? 'Switching…' : 'Switch language'}</button>
-					</div>
-				</div>
+			{#if solution}
+				<SolutionCode {solution} startLanguage={problem.build.language} />
 			{/if}
-			<CodeEditor files={problem.files} {onchange} readonly={session.save === 'conflict' || session.switching} />
-			<ResultsPanel outcome={session.outcome} />
+			<div class="build" class:off={solution !== undefined}>
+				<div class="bar">
+					<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
+					<div class="bar-right">
+						<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected'} role="status">{label[session.save]}</span>
+						<label class="mono picker">build language
+							<select value={choice} onchange={(e) => (picked = e.currentTarget.value as Language)} aria-describedby={confirming ? 'switch-note' : undefined} disabled={session.switching}>
+								{#each LANGUAGES as language (language.id)}
+									<option value={language.id}>{language.name}</option>
+								{/each}
+							</select>
+						</label>
+					</div>
+				</div>
+				{#if confirming}
+					<div class="confirm" role="group" aria-label="Switch build language">
+						<div class="confirm-text">
+							<span class="mono ask">Switch to {nameOf(choice)}?</span>
+							<span id="switch-note" class="note">Starts a new {nameOf(choice)} copy of this build; it {problem.seedNotes[choice]}. Your {nameOf(problem.build.language)} build is kept.{session.switchFailed ? ' The switch did not go through; try again.' : ''}</span>
+						</div>
+						<div class="confirm-actions">
+							<button type="button" class="cancel mono" onclick={() => (picked = undefined)} disabled={session.switching}>Cancel</button>
+							<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} disabled={session.switching || busy}>{session.switching ? 'Switching…' : 'Switch language'}</button>
+						</div>
+					</div>
+				{/if}
+				<CodeEditor files={problem.files} {onchange} readonly={session.save === 'conflict' || session.switching} />
+				<ResultsPanel outcome={session.outcome} />
+			</div>
 		</div>
 	</div>
 </div>
@@ -211,6 +226,16 @@ const label: Record<SaveState, string> = {
 		flex-direction: column;
 		min-height: 0;
 		min-width: 0;
+	}
+	.build {
+		display: flex;
+		flex-direction: column;
+		flex-grow: 1;
+		min-height: 0;
+		min-width: 0;
+	}
+	.build.off {
+		display: none;
 	}
 	.bar {
 		display: flex;

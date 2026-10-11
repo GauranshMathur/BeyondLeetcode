@@ -6,10 +6,13 @@ import { withLearningErrors } from '$lib/server/learning-http';
 import type { Actions, PageServerLoad } from './$types';
 
 /** The tabs of the left pane; the Problem is the default and has no `?tab`. */
-export type Tab = 'problem' | 'hints';
+export type Tab = 'problem' | 'hints' | 'solution';
+
+const tabOf = (value: string | null): Tab =>
+	value === 'hints' || value === 'solution' ? value : 'problem';
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {
-	const tab: Tab = url.searchParams.get('tab') === 'hints' ? 'hints' : 'problem';
+	const tab = tabOf(url.searchParams.get('tab'));
 	return {
 		tab,
 		problem: await withLearningErrors(() => locals.learning.problem(params.problemId)),
@@ -17,6 +20,11 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		hints:
 			tab === 'hints'
 				? await withLearningErrors(() => locals.learning.hints(params.problemId))
+				: undefined,
+		// The Solution is read only when its tab is open, never with the Problem.
+		solution:
+			tab === 'solution'
+				? await withLearningErrors(() => locals.learning.solution(params.problemId))
 				: undefined
 	};
 };

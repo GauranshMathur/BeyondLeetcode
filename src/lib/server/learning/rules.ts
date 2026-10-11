@@ -403,6 +403,28 @@ export function hintsView(
 	};
 }
 
+/** A Problem's Solution: the explanation and the Reference Code after the Problem, in every Language. */
+export interface SolutionView {
+	readonly explanationHtml: string;
+	readonly referenceCode: Readonly<Record<Language, BuildFiles>>;
+}
+
+/** One Problem's Solution. Pure; the Solution is open to any Learner who can open the Problem. */
+export function solutionView(
+	catalogue: ProblemCatalogue,
+	progress: Progress,
+	problemId: string,
+	renderMarkdown: (markdown: string) => string
+): SolutionView {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	return {
+		explanationHtml: renderMarkdown(problem.solution),
+		referenceCode: problem.referenceCode
+	};
+}
+
 /** The most code one Build may hold, in UTF-8 bytes of paths and contents together. */
 export const MAX_BUILD_BYTES = 256 * 1024;
 
