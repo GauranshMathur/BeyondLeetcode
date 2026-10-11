@@ -1,6 +1,7 @@
 import type { Handle, ServerInit } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { type App, createApp } from '$lib/server/app';
+import { parseTheme, THEME_COOKIE, withTheme } from '$lib/theme';
 
 let app: App;
 
@@ -18,5 +19,9 @@ export const init: ServerInit = async () => {
 export const handle: Handle = ({ event, resolve }) => {
 	event.locals.learnerId = app.learnerId;
 	event.locals.learning = app.core.forLearner(app.learnerId);
-	return resolve(event);
+	// No theme cookie means follow the device; a choice goes on <html> in the server render, so no flash.
+	// Read when the page renders, not before: an action that just set the cookie is seen by its own response.
+	return resolve(event, {
+		transformPageChunk: ({ html }) => withTheme(html, parseTheme(event.cookies.get(THEME_COOKIE)))
+	});
 };
