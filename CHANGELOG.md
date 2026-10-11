@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.32.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.31.0...v0.32.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C25 Problem: start from reference code ([#142](https://github.com/GauranshMathur/BeyondLeetcode/issues/142)) ([858c822](https://github.com/GauranshMathur/BeyondLeetcode/commit/858c822d716eac81f01b339eda531023f89600f1))
+* **beyondleetcode:** C27 Identity gate rules as one tested function ([#144](https://github.com/GauranshMathur/BeyondLeetcode/issues/144)) ([c411edb](https://github.com/GauranshMathur/BeyondLeetcode/commit/c411edb5171cee0c2e2f0ec2e3e210b3c93db194))
+
 ## [0.31.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.30.0...v0.31.0) (2026-10-11)
 
 
