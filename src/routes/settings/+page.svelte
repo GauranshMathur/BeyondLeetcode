@@ -59,7 +59,34 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		</form>
 	</section>
 
-	<!-- C20b adds Reset progress here. -->
+	<section class="group last">
+		<div class="label">
+			<h2>Reset progress</h2>
+			<p>Start over from the beginning.</p>
+		</div>
+		<div class="control">
+			<p class="lead">
+				Deletes the Chapters you have read, your saved code, your Submissions and the Hints you have revealed.
+			</p>
+			<form method="GET" action="/settings">
+				<button type="submit" name="reset" value="confirm" class="outline" aria-expanded={data.confirmingReset}>Reset progress</button>
+			</form>
+			{#if data.confirmingReset}
+				<div class="confirm" role="group" aria-label="Reset progress">
+					<div class="confirm-text">
+						<span class="ask">Reset all progress?</span>
+						<span id="reset-note" class="note">This cannot be undone. Your theme is kept.</span>
+					</div>
+					<div class="confirm-actions">
+						<a class="cancel" href="/settings">Cancel</a>
+						<form method="POST" action="?/reset">
+							<button type="submit" class="small" aria-describedby="reset-note">Reset progress</button>
+						</form>
+					</div>
+				</div>
+			{/if}
+		</div>
+	</section>
 </main>
 
 <style>
@@ -160,6 +187,78 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		font-family: var(--font-mono);
 		font-size: 15px;
 		font-weight: 500;
+	}
+	.last {
+		padding-bottom: 32px;
+		border-bottom: 1px solid var(--ink);
+	}
+	.lead {
+		margin: 0;
+		font-size: 19px;
+		line-height: 1.5;
+		color: var(--body);
+	}
+	.outline {
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
+	}
+	.confirm {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 24px;
+		padding: 16px 24px;
+		border-top: 1px solid var(--ink);
+		border-bottom: 1px solid var(--ink);
+	}
+	.confirm-text {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.ask {
+		font-family: var(--font-mono);
+		font-size: 12px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+	.note {
+		font-size: 16px;
+		line-height: 1.5;
+		color: var(--body);
+	}
+	.confirm-actions {
+		display: flex;
+		gap: 20px;
+		align-items: center;
+		flex-shrink: 0;
+	}
+	.cancel {
+		padding: 12px 0;
+		line-height: 20px;
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 14px;
+		text-decoration: none;
+	}
+	.small {
+		height: 44px;
+		padding: 0 22px;
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
+		border-radius: 2px;
+		font-family: var(--font-mono);
+		font-size: 14px;
+		font-weight: 500;
+	}
+	@media (max-width: 800px) {
+		.confirm {
+			flex-direction: column;
+			align-items: flex-start;
+		}
 	}
 	.error {
 		margin: 0;
