@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.32.0...v0.32.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C43 e2e flakes: lost link click, Settings theme select before hydration ([#150](https://github.com/GauranshMathur/BeyondLeetcode/issues/150)) ([ce6b09f](https://github.com/GauranshMathur/BeyondLeetcode/commit/ce6b09ff762f4da38d9d62a24ce9e80880dfddae))
+
 ## [0.32.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.31.0...v0.32.0) (2026-10-11)
 
 
