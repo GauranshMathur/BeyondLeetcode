@@ -13,11 +13,14 @@ let { children, data } = $props();
 {#if !(page.route.id === '/problems/[problemId]' && !page.error)}
 <header>
 	<a class="brand" href="/">Beyond Leetcode</a>
+	<!-- Setup shows the wordmark alone: before the Instance is set up there is no Map and no name. -->
+	{#if page.route.id !== '/setup'}
 	<nav aria-label="Primary">
 		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
 		<!-- The display name opens Settings; Local Mode's Identity names it "Local". -->
 		<a href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}>{data.displayName}</a>
 	</nav>
+	{/if}
 </header>
 {/if}
 

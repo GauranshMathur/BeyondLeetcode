@@ -1,6 +1,4 @@
 <script lang="ts">
-import favicon from '$lib/assets/favicon.svg';
-import '$lib/styles/tokens.css';
 import type { PageProps } from './$types';
 
 let { form }: PageProps = $props();
@@ -8,12 +6,7 @@ let { form }: PageProps = $props();
 
 <svelte:head>
 	<title>Set up · BeyondLeetcode</title>
-	<link rel="icon" href={favicon} />
 </svelte:head>
-
-<header>
-	<a class="brand" href="/setup">Beyond Leetcode</a>
-</header>
 
 <main>
 	<section class="intro">
@@ -56,24 +49,6 @@ let { form }: PageProps = $props();
 </main>
 
 <style>
-	header {
-		display: flex;
-		align-items: center;
-		padding: 24px clamp(16px, 6.7vw, 96px);
-		border-bottom: 1px solid var(--ink);
-	}
-	.brand {
-		color: var(--ink);
-		font-family: var(--font-sans);
-		font-weight: 600;
-		font-size: 22px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		text-decoration: none;
-		display: inline-block;
-		padding: 10px 0;
-		line-height: 24px;
-	}
 	.intro {
 		display: flex;
 		flex-direction: column;
