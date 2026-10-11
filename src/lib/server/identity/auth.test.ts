@@ -37,22 +37,53 @@ describe('createAuth', () => {
 		expect(await db.learner.count()).toBe(0);
 	});
 
-	it('never stores learnerId, role or mustChangePassword from the client', async () => {
+	it('refuses a client that sets learnerId or role, and drops mustChangePassword', async () => {
 		const { auth, db } = await setup();
 
-		const attempts = [{ learnerId: 'mine' }, { role: 'admin' }, { mustChangePassword: true }];
-		for (const [i, extra] of attempts.entries()) {
-			// Better Auth either rejects the field or drops it; both are safe.
-			await auth.api
-				.signUpEmail({ body: { ...body, email: `a${i}@example.com`, ...extra } as typeof body })
-				.catch(() => undefined);
+		for (const [i, extra] of [{ learnerId: 'mine' }, { role: 'admin' }].entries()) {
+			await expect(
+				auth.api.signUpEmail({
+					body: { ...body, email: `a${i}@example.com`, ...extra } as typeof body
+				})
+			).rejects.toMatchObject({ statusCode: 400 });
 		}
+		expect(await db.user.count()).toBe(0);
 
-		for (const user of await db.user.findMany()) {
-			expect(user.learnerId).not.toBe('mine');
-			expect(user.role).toBe('learner');
-			expect(user.mustChangePassword).toBe(false);
-		}
+		// Better Auth silently ignores this one rather than refusing it.
+		await auth.api.signUpEmail({
+			body: { ...body, mustChangePassword: true } as typeof body
+		});
+		expect(await db.user.findFirstOrThrow()).toMatchObject({ mustChangePassword: false });
+	});
+
+	it('answers a closed sign-up the same for an existing email and a new one', async () => {
+		const { auth, db } = await setup();
+		await auth.api.signUpEmail({ body });
+		const closed = createAuth({ db, origin: '', secret });
+
+		const status = (email: string) =>
+			closed.handler(
+				new Request('http://localhost:3000/api/auth/sign-up/email', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+					body: JSON.stringify({ ...body, email })
+				})
+			);
+		const [existing, fresh] = [await status(body.email), await status('new@example.com')];
+
+		expect(existing.status).toBe(403);
+		expect(fresh.status).toBe(403);
+		expect(await existing.json()).toEqual(await fresh.json());
+	});
+
+	it('refuses a password of 11 characters and takes 12', async () => {
+		const { auth } = await setup();
+		await expect(
+			auth.api.signUpEmail({ body: { ...body, password: 'a'.repeat(11) } })
+		).rejects.toMatchObject({ statusCode: 400 });
+		await expect(
+			auth.api.signUpEmail({ body: { ...body, password: 'a'.repeat(12) } })
+		).resolves.toBeTruthy();
 	});
 
 	it('serves no admin endpoint we do not use over HTTP', async () => {
@@ -74,6 +105,40 @@ describe('createAuth', () => {
 				new Request(`http://localhost:3000/api/auth/admin/${path}`, { method: 'POST' })
 			);
 			expect(res.status, path).toBe(404);
+		}
+		for (const path of [
+			'update-user',
+			'verify-password',
+			'update-session',
+			'change-email',
+			'delete-user',
+			'delete-user/callback',
+			'request-password-reset',
+			'reset-password',
+			'send-verification-email',
+			'verify-email',
+			'link-social',
+			'unlink-account',
+			'refresh-token',
+			'get-access-token',
+			'account-info',
+			'list-accounts'
+		]) {
+			const res = await auth.handler(
+				new Request(`http://localhost:3000/api/auth/${path}`, { method: 'POST' })
+			);
+			expect(res.status, path).toBe(404);
+		}
+		for (const [method, path] of [
+			['POST', 'sign-in/email'],
+			['POST', 'sign-out'],
+			['GET', 'get-session'],
+			['POST', 'change-password']
+		] as const) {
+			const res = await auth.handler(
+				new Request(`http://localhost:3000/api/auth/${path}`, { method })
+			);
+			expect(res.status, path).not.toBe(404);
 		}
 		const kept = await auth.handler(
 			new Request('http://localhost:3000/api/auth/admin/list-users', { method: 'GET' })
