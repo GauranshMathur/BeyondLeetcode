@@ -1,6 +1,6 @@
 {
 	"title": "Dynamic arrays",
-	"summary": "Build the growable array behind Python's list, and measure what its growth rule costs.",
+	"summary": "Build the growable array behind Python's list, Go's slices, Rust's Vec and Java's ArrayList, and measure what each growth rule costs.",
 	"prerequisites": [],
-	"chapters": ["dynamic-arrays-cpython-list"]
+	"chapters": ["dynamic-arrays-cpython-list", "dynamic-arrays-go-slices", "dynamic-arrays-promises"]
 }

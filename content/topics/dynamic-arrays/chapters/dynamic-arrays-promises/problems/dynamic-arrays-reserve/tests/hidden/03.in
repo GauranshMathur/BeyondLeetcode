@@ -1,0 +1,12 @@
+policy go
+reserve 300
+fill 301 6
+cap
+copies
+shrink
+cap
+append 5
+cap
+copies
+get 301
+get 302

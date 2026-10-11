@@ -1,0 +1,9 @@
+policy double
+reserve 100
+cap
+fill 100 1
+cap
+copies
+append 2
+cap
+copies

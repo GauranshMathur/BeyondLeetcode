@@ -1,0 +1,602 @@
+policy go
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+append 1
+cap
+copies
