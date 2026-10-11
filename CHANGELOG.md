@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.30.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.29.0...v0.30.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C23 Problem screen wire contract and signed-out state ([#137](https://github.com/GauranshMathur/BeyondLeetcode/issues/137)) ([e7deca9](https://github.com/GauranshMathur/BeyondLeetcode/commit/e7deca9eeee43180396128b23870b6ce2991b0cb))
+* **beyondleetcode:** C26 Instance mode stored, existing installs become Local ([#140](https://github.com/GauranshMathur/BeyondLeetcode/issues/140)) ([b1db88e](https://github.com/GauranshMathur/BeyondLeetcode/commit/b1db88ec245b8931d10403d9339a42b890472ab3))
+
 ## [0.29.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.28.0...v0.29.0) (2026-10-11)
 
 
