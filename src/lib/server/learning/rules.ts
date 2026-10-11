@@ -256,12 +256,22 @@ export interface ProblemView {
 	readonly parentProblemId?: string;
 	readonly statementHtml: string;
 	readonly exampleTests: readonly { name: string; input: string; expected: string }[];
-	readonly language: Language;
+	/** The Build this screen shows; the tab hands it back unchanged with every save, run or submit. */
+	readonly build: BuildRef;
 	/** The Learner's code: stored if saved, otherwise what the step would start from. */
 	readonly files: BuildFiles;
-	/** 0 until the step is first saved. */
-	readonly revision: number;
 	readonly status: ProblemStatus;
+}
+
+/**
+ * Which Build a save, run or submit acts on: the Problem, the Language the tab showed, and the
+ * revision its code is based on (0 for a step never saved). The server issues it (ProblemView.build,
+ * and the new revision with every reply); the tab returns it unchanged. The core still checks it.
+ */
+export interface BuildRef {
+	readonly problemId: string;
+	readonly language: Language;
+	readonly revision: number;
 }
 
 /** Code the Learner has stored for a step. */
@@ -321,9 +331,8 @@ export function problemView(
 			input: t.input,
 			expected: t.expected
 		})),
-		language,
+		build: { problemId, language, revision: saved.own?.revision ?? 0 },
 		files: saved.own?.files ?? start,
-		revision: saved.own?.revision ?? 0,
 		status: listed?.status ?? 'Untouched'
 	};
 }
