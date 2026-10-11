@@ -34,6 +34,8 @@ function request(path: string, routeId: string | null, method = 'GET') {
 
 type ResolveFn = (event: RequestEvent, opts?: ResolveOptions) => Promise<Response>;
 
+const call = ({ event, resolve }: ReturnType<typeof request>) => ({ event, resolve });
+
 const framing = {
 	'content-security-policy': "frame-ancestors 'none'",
 	'x-frame-options': 'DENY'
@@ -82,15 +84,35 @@ it('Setup itself renders on a fresh Instance, for nobody', async () => {
 	expect(locals.learning).toBeUndefined();
 });
 
-it('static assets and SvelteKit internals pass on a fresh Instance', async () => {
-	const { handle } = await setup();
-
-	for (const path of ['/_app/immutable/entry/start.js', '/favicon.ico', '/robots.txt']) {
-		const { event, resolve } = request(path, null);
-		const response = await handle({ event, resolve });
-		expect(response.status, path).toBe(200);
-		expect(resolve, path).toHaveBeenCalledOnce();
+it('a remote call is refused with 404 in every mode, whatever pathname its headers claim', async () => {
+	const fresh = await setup();
+	const local = await setup({ local: true });
+	for (const { handle } of [fresh, local]) {
+		for (const [path, routeId] of [
+			['/_app/remote/abc/fn', null],
+			['/_app/x', null],
+			['/setup', '/setup'],
+			['/', '/']
+		] as const) {
+			const { event, resolve } = request(path, routeId, 'POST');
+			(event as { isRemoteRequest: boolean }).isRemoteRequest = true;
+			const response = await handle({ event, resolve });
+			expect(response.status, path).toBe(404);
+			expect(Object.fromEntries(response.headers), path).toMatchObject(framing);
+			expect(resolve, path).not.toHaveBeenCalled();
+		}
 	}
+});
+
+it('the gate refusals are never cached', async () => {
+	const fresh = await setup();
+	const local = await setup({ local: true });
+
+	const redirect = await fresh.handle(call(request('/', '/')));
+	const notFound = await local.handle(call(request('/signin', '/signin')));
+
+	expect(redirect.headers.get('cache-control')).toBe('no-store');
+	expect(notFound.headers.get('cache-control')).toBe('no-store');
 });
 
 it('a Local Instance resolves the Local Learner and renders the page', async () => {

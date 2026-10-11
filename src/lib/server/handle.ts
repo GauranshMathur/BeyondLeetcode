@@ -4,19 +4,16 @@ import type { App } from './app.ts';
 import { gate } from './identity/gate.ts';
 import type { Identity } from './identity/index.ts';
 
-/** Static files and SvelteKit's own endpoints are not pages: the gate never sees them. */
-function isAsset(pathname: string): boolean {
-	return pathname.startsWith('/_app/') || pathname === '/favicon.ico' || pathname === '/robots.txt';
-}
-
 /**
- * Per request: skip assets, read the Instance mode, resolve Identity only once the mode is Local,
+ * Per request: refuse remote calls, read the Instance mode, resolve Identity only once the mode is Local,
  * let the gate decide, then render. Every response, refusals included, refuses framing.
  */
 export function createHandle(app: Pick<App, 'core' | 'identity' | 'instance'>): Handle {
 	return async ({ event, resolve }) => {
 		const { url, request } = event;
-		if (isAsset(url.pathname)) return refuseFraming(await resolve(event));
+		// Remote calls take their pathname and route from client headers, so the gate cannot judge them; none exist yet.
+		// Static files never reach this hook (the server answers them first).
+		if (event.isRemoteRequest) return refuseFraming(refusal(404));
 
 		event.locals.instance = app.instance;
 		const mode = app.instance.mode();
@@ -34,13 +31,14 @@ export function createHandle(app: Pick<App, 'core' | 'identity' | 'instance'>): 
 		});
 		if (verdict.kind === 'redirect') {
 			return refuseFraming(
-				new Response(null, { status: verdict.status, headers: { location: verdict.location } })
+				new Response(null, {
+					status: verdict.status,
+					headers: { location: verdict.location, 'Cache-Control': 'no-store' }
+				})
 			);
 		}
 		if (verdict.kind === 'status') {
-			return refuseFraming(
-				new Response(verdict.status === 403 ? 'Forbidden' : 'Not found', { status: verdict.status })
-			);
+			return refuseFraming(refusal(verdict.status));
 		}
 
 		// Unset only on /setup before the Instance is set up; the gate lets no other page through then.
@@ -57,6 +55,14 @@ export function createHandle(app: Pick<App, 'core' | 'identity' | 'instance'>): 
 			})
 		);
 	};
+}
+
+/** A gate decision depends on the Instance state, so it is never cached. */
+function refusal(status: 403 | 404): Response {
+	return new Response(status === 403 ? 'Forbidden' : 'Not found', {
+		status,
+		headers: { 'Cache-Control': 'no-store' }
+	});
 }
 
 /** Reset progress is destructive: no other site may frame the app and trick a click (clickjacking). */
