@@ -15,7 +15,12 @@ export async function withLearningErrors<T>(call: () => Promise<T>): Promise<T> 
 	try {
 		return await call();
 	} catch (e) {
-		if (e instanceof LearningError) error(STATUS[e.code], e.code);
+		// A refusal after a save (Runner outage) carries the saved revision in the body.
+		if (e instanceof LearningError)
+			error(
+				STATUS[e.code],
+				e.revision === undefined ? e.code : { message: e.code, revision: e.revision }
+			);
 		throw e;
 	}
 }

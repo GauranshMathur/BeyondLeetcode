@@ -24,15 +24,17 @@ learner.chapter(chapterId)    learner.problem(problemId)
 
 // Learner actions
 learner.reachChapterEnd(chapterId)                    // → progress change (may Complete a Topic)
-learner.saveCode(problemId, files, baseRevision, language) // → new revision, or RevisionConflict
-learner.run(problemId, files, baseRevision, language)      // → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
-learner.submit(problemId, files, baseRevision, language)   // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
+learner.saveCode(build, files)    // build: Build reference { problemId, language, revision } → { revision }, or RevisionConflict
+learner.run(build, files)         // saves, then → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
+learner.submit(build, files)      // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
 learner.startFromReferenceCode(problemId)
-learner.switchLanguage(topicId, language)
+learner.switchLanguage(problemId, language)   // the Language of that Problem's Topic
 learner.revealHint(problemId)
 ```
 
-Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab, second device, or a Language switched elsewhere), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. Routes map codes to statuses through one shared helper.
+**Build reference.** `learner.problem()` returns `build: { problemId, language, revision }`: the Problem, the Language the screen shows, and the revision its code is based on (0 for a step never saved). The tab hands it back unchanged with every save, run or submit and takes the new revision from the reply. The core never trusts it: a `language` other than the Topic's current one, or a stale `revision`, is `RevisionConflict`. Run and Submit are "save, then act" in one core path.
+
+Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab, second device, or a Language switched elsewhere), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. An error raised after the code was saved (`RunnerUnavailable` during Run or Submit) carries the `revision` that save produced. Routes map codes to statuses, and pass that revision on, through one shared helper (`withLearningErrors`) and do nothing else with them.
 
 **Rules the interface guarantees**
 

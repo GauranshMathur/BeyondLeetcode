@@ -19,11 +19,10 @@ type SaveState = 'saved' | 'edited' | 'saving' | 'failed' | 'rejected' | 'confli
 const paths = Object.keys(problem.files);
 // svelte-ignore state_referenced_locally
 let files = { ...problem.files };
+// The Build reference the server issued: sent back with every save, run and submit, even if `problem`
+// has moved on by then. Only its revision changes, to what the server reports after a save.
 // svelte-ignore state_referenced_locally
-let revision = problem.revision;
-// The Language this Build was loaded in: sent with every save, even if `problem` has moved on by then.
-// svelte-ignore state_referenced_locally
-const loadedLanguage = problem.language;
+let build = problem.build;
 let saveState = $state<SaveState>('saved');
 let timer: ReturnType<typeof setTimeout> | undefined;
 let inFlight = false;
@@ -32,8 +31,8 @@ let outcome = $state<Outcome | undefined>(undefined);
 // The Language picker: a pick waits for the inline confirm; switching saves first, then reloads the Problem.
 const nameOf = (id: string) => languageById(id)?.name ?? id;
 // svelte-ignore state_referenced_locally
-let choice = $state<string>(problem.language);
-let confirming = $derived(choice !== problem.language);
+let choice = $state<string>(problem.build.language);
+let confirming = $derived(choice !== problem.build.language);
 let switching = $state(false);
 let switchFailed = $state(false);
 const busy = $derived(outcome?.kind === 'running' || outcome?.kind === 'submitting');
@@ -61,8 +60,7 @@ async function save(keepalive = false) {
 	try {
 		const body = new FormData();
 		body.set('files', JSON.stringify(files));
-		body.set('baseRevision', String(revision));
-		body.set('language', loadedLanguage);
+		body.set('build', JSON.stringify(build));
 		const response = await fetch(saveUrl, {
 			method: 'POST',
 			body,
@@ -77,7 +75,7 @@ async function save(keepalive = false) {
 		} else {
 			const result = deserialize(await response.text());
 			if (result.type !== 'success') throw new Error('save failed');
-			revision = (result.data as { revision: number }).revision;
+			build = { ...build, revision: (result.data as { revision: number }).revision };
 			saveState = dirty ? 'edited' : 'saved';
 		}
 	} catch {
@@ -121,8 +119,7 @@ async function send(
 	try {
 		const body = new FormData();
 		body.set('files', JSON.stringify(sent));
-		body.set('baseRevision', String(revision));
-		body.set('language', loadedLanguage);
+		body.set('build', JSON.stringify(build));
 		const response = await fetch(url, {
 			method: 'POST',
 			body,
@@ -136,14 +133,15 @@ async function send(
 			outcome = undefined;
 		} else {
 			const result = deserialize(await response.text());
-			if (result.type === 'failure' && result.status === 503) {
-				// The Build was saved before the Runner failed (a failure result comes back as HTTP 200).
-				if (typeof result.data?.revision === 'number') revision = result.data.revision;
+			if (result.type === 'error' && response.status === 503) {
+				// The Build was saved before the Runner failed; the error carries the revision it saved.
+				if (typeof result.error?.revision === 'number')
+					build = { ...build, revision: result.error.revision };
 				saveState = dirty ? 'edited' : 'saved';
 				outcome = { kind: 'unavailable' };
 			} else if (result.type === 'success') {
 				const next = done(result.data as Record<string, unknown>);
-				revision = next.revision;
+				build = { ...build, revision: next.revision };
 				saveState = dirty ? 'edited' : 'saved';
 				outcome = next;
 			} else {
@@ -193,7 +191,7 @@ onDestroy(() => {
 });
 
 function cancelSwitch() {
-	choice = problem.language;
+	choice = problem.build.language;
 }
 
 async function confirmSwitch() {
@@ -273,7 +271,7 @@ const label: Record<SaveState, string> = {
 				<div class="confirm" role="group" aria-label="Switch build language">
 					<div class="confirm-text">
 						<span class="mono ask">Switch to {nameOf(choice)}?</span>
-						<span id="switch-note" class="note">Starts a new {nameOf(choice)} copy of this build from reference code. Your {nameOf(problem.language)} build is kept.{switchFailed ? ' The switch did not go through; try again.' : ''}</span>
+						<span id="switch-note" class="note">Starts a new {nameOf(choice)} copy of this build from reference code. Your {nameOf(problem.build.language)} build is kept.{switchFailed ? ' The switch did not go through; try again.' : ''}</span>
 					</div>
 					<div class="confirm-actions">
 						<button type="button" class="cancel mono" onclick={cancelSwitch} disabled={switching}>Cancel</button>
