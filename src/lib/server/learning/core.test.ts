@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
 import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
-import { createTestDb } from '../test-db.ts';
+import { createFileTestDb, createTestDb } from '../test-db.ts';
 import { createLearningCore, LearningError } from './core.ts';
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
@@ -191,15 +191,6 @@ describe('learner.chapter() and learner.reachChapterEnd()', () => {
 		expect((await learner.topic('stacks')).counts.chaptersRead).toBe(2);
 		// The repeat did not make stacks-undo-log the most recent read.
 		expect((await core.forLearner('any-learner').map()).currentTopicId).toBe('stacks');
-	});
-
-	it('survives two concurrent reads of the same Chapter', async () => {
-		const { learner } = await setup();
-		await Promise.all([
-			learner.reachChapterEnd('stacks-undo-log'),
-			learner.reachChapterEnd('stacks-undo-log')
-		]);
-		expect((await learner.topic('stacks')).counts.chaptersRead).toBe(1);
 	});
 
 	it("keeps each Learner's Read marks to themselves", async () => {
@@ -1052,8 +1043,8 @@ describe('a tab acts on the Language it was loaded with', () => {
 	});
 });
 
-describe('the Accepted panel credits only its own Submission', () => {
-	it('two submits racing: only the one that completes the Topic reports topicCompleted', async () => {
+describe('progress events racing on a file database', () => {
+	it('credit each effect to exactly one caller: a Chapter read once, a Topic completed once', async () => {
 		const catalogue = await loadCatalogue(fixtureDir);
 		const correct: NonNullable<RunnerScript['tests']> = {};
 		for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
@@ -1064,30 +1055,47 @@ describe('the Accepted panel credits only its own Submission', () => {
 			for (const t of tests) correct[t.id] = { status: 'ok', stdout: t.expected };
 		}
 		const inner = createScriptedRunner({ tests: correct });
-		// Both Runner calls are held until both submits are in flight, so their database
+		// Runner calls are held until the racing submits are all in flight, so their database
 		// steps start together and interleave.
-		let hold: { waiting: number; release: () => void; gate: Promise<void> } | undefined;
+		let hold: { waiting: number; of: number; release: () => void; gate: Promise<void> } | undefined;
 		const runner = {
 			...inner,
 			async execute(request: Parameters<typeof inner.execute>[0]) {
-				if (hold && ++hold.waiting >= 2) hold.release();
+				if (hold && ++hold.waiting >= hold.of) hold.release();
 				await hold?.gate;
 				return inner.execute(request);
 			}
 		};
-		const core = createLearningCore({ catalogue, db: await createTestDb(), runner });
-		const learner = core.forLearner('any-learner');
-		await learner.reachChapterEnd('stacks-undo-log');
-		await learner.reachChapterEnd('stacks-call-frames');
-		await learner.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
-		let release: () => void = () => {};
-		hold = { waiting: 0, release: () => release(), gate: new Promise<void>((r) => (release = r)) };
+		const core = createLearningCore({ catalogue, db: await createFileTestDb(), runner });
 
-		const [extra, completing] = await Promise.all([
-			learner.submit('stacks-peek', { 'main.py': 'x' }, 0, 'python'),
-			learner.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python')
+		// Two reads of the same Chapter: exactly one is the read that completes the Topic.
+		const reader = core.forLearner('reader');
+		await reader.reachChapterEnd('stacks-undo-log');
+		await reader.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
+		await reader.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python');
+		const reads = await Promise.all([
+			reader.reachChapterEnd('stacks-call-frames'),
+			reader.reachChapterEnd('stacks-call-frames')
 		]);
+		expect(reads.filter((r) => r.topicCompleted)).toHaveLength(1);
+		expect((await reader.topic('stacks')).counts.chaptersRead).toBe(2);
 
+		// Two submits: only the one that completes the Topic reports topicCompleted.
+		const solver = core.forLearner('solver');
+		await solver.reachChapterEnd('stacks-undo-log');
+		await solver.reachChapterEnd('stacks-call-frames');
+		await solver.submit('stacks-push', { 'main.py': 'x' }, 0, 'python');
+		let release: () => void = () => {};
+		hold = {
+			waiting: 0,
+			of: 2,
+			release: () => release(),
+			gate: new Promise<void>((r) => (release = r))
+		};
+		const [extra, completing] = await Promise.all([
+			solver.submit('stacks-peek', { 'main.py': 'x' }, 0, 'python'),
+			solver.submit('stacks-pop', { 'main.py': 'x' }, 0, 'python')
+		]);
 		expect(completing.accepted?.topicCompleted).toBe(true);
 		expect(extra.accepted?.topicCompleted).toBe(false);
 	});

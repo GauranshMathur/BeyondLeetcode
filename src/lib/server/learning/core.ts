@@ -5,19 +5,17 @@ import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
 import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
+import { loadProgress, recordChapterRead, recordSubmission } from './progress.ts';
 import {
-	acceptedDiff,
 	type ChapterView,
 	chapterView,
 	judge,
 	type MapView,
 	mapView,
 	type ProblemView,
-	type Progress,
 	type ProgressChange,
 	problemView,
 	type RunView,
-	reachChapter,
 	runView,
 	type SavedStep,
 	type SubmitView,
@@ -158,27 +156,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						chapterId,
 						renderMarkdown
 					),
-				reachChapterEnd: async (chapterId) => {
-					const before = await loadProgress(deps.catalogue, deps.db, learnerId);
-					const change = reachChapter(deps.catalogue, before, chapterId); // NotFound / TopicLocked
-					if (before.readChapters.has(chapterId)) return change;
-					// Only the call that inserts the mark reports the change; a concurrent repeat gets none.
-					try {
-						await deps.db.chapterRead.create({ data: { learnerId, chapterId, readAt: now() } });
-					} catch (e) {
-						if (!isUniqueViolation(e)) throw e;
-						return reachChapter(
-							deps.catalogue,
-							await loadProgress(deps.catalogue, deps.db, learnerId),
-							chapterId
-						);
-					}
-					// Diff against the state without this mark, so a concurrent read cannot hide the effect.
-					const after = await loadProgress(deps.catalogue, deps.db, learnerId);
-					const readChapters = new Set(after.readChapters);
-					readChapters.delete(chapterId);
-					return reachChapter(deps.catalogue, { ...after, readChapters }, chapterId);
-				},
+				reachChapterEnd: (chapterId) => recordChapterRead(deps, learnerId, chapterId, now()),
 				problem: async (problemId) => {
 					const sourceId = seedSourceOf(deps.catalogue, problemId);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
@@ -266,78 +244,28 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						(id) => deps.catalogue.problem(id)?.title ?? id
 					);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-					// The Runner has answered; everything below is one short transaction. The insert comes
-					// first so the transaction takes SQLite's write lock before it reads anything (the
-					// libSQL adapter opens transactions deferred): another submit then waits, and the
-					// reads below see exactly the Submissions committed before this one.
-					const { submissionId, before, progress } = await deps.db.$transaction(async (tx) => {
-						const { id: submissionId } = await tx.submission.create({
-							data: {
-								learnerId,
-								problemId,
-								topicId,
-								language,
-								files,
-								verdict,
-								failingProblemId: failingProblemId ?? null,
-								createdAt: now()
-							}
-						});
-						return {
-							submissionId,
-							before: await loadProgress(deps.catalogue, tx, learnerId, submissionId),
-							progress: await loadProgress(deps.catalogue, tx, learnerId)
-						};
+					const { submissionId, solved, accepted } = await recordSubmission(deps, learnerId, {
+						learnerId,
+						problemId,
+						topicId,
+						language,
+						files,
+						verdict,
+						failingProblemId: failingProblemId ?? null,
+						createdAt: now()
 					});
 					return {
 						submissionId,
 						verdict,
 						...(failure && { failure }),
 						revision,
-						status: progress.solvedProblems.has(problemId) ? 'Solved' : 'Attempted',
-						...(verdict === 'Accepted' && {
-							accepted: acceptedDiff(deps.catalogue, before, progress, problemId)
-						})
+						status: solved ? 'Solved' : 'Attempted',
+						...(accepted && { accepted })
 					};
 				}
 			};
 			return learner;
 		}
-	};
-}
-
-/** Read marks and Submissions give every status; the Topic of the latest activity is the current one. */
-async function loadProgress(
-	catalogue: Catalogue,
-	db: Pick<Db, 'chapterRead' | 'submission'>,
-	learnerId: string,
-	/** Leaves this Submission out: the state just before it. */
-	exceptSubmissionId?: string
-): Promise<Progress> {
-	const reads = await db.chapterRead.findMany({
-		where: { learnerId },
-		orderBy: { readAt: 'desc' }
-	});
-	const submissions = await db.submission.findMany({
-		where: { learnerId, ...(exceptSubmissionId && { id: { not: exceptSubmissionId } }) },
-		orderBy: { createdAt: 'desc' },
-		select: { problemId: true, topicId: true, verdict: true, createdAt: true }
-	});
-	const solved = new Set(
-		submissions.filter((s) => s.verdict === 'Accepted').map((s) => s.problemId)
-	);
-	const attempted = new Set(submissions.map((s) => s.problemId).filter((id) => !solved.has(id)));
-	const recentRead = reads[0];
-	const recentSubmission = submissions[0];
-	const recentTopicId =
-		recentSubmission && (!recentRead || recentSubmission.createdAt >= recentRead.readAt)
-			? recentSubmission.topicId
-			: recentRead && catalogue.chapter(recentRead.chapterId)?.topicId;
-	return {
-		readChapters: new Set(reads.map((r) => r.chapterId)),
-		solvedProblems: solved,
-		attemptedProblems: attempted,
-		...(recentTopicId && { recentTopicId })
 	};
 }
 
@@ -368,9 +296,4 @@ async function loadStep(
 		}
 	});
 	return row ? { files: row.files as BuildFiles, revision: row.revision } : undefined;
-}
-
-/** Prisma's error code for a second row with the same unique key. */
-function isUniqueViolation(e: unknown): boolean {
-	return (e as { code?: string } | null)?.code === 'P2002';
 }
