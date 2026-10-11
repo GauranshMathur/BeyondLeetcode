@@ -3,6 +3,7 @@ import { onDestroy, type Snippet } from 'svelte';
 import { deserialize } from '$app/forms';
 import { invalidateAll } from '$app/navigation';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
+import { LANGUAGES, languageById } from '$lib/languages';
 import type { ProblemView, RunView, SubmitView } from '$lib/server/learning/core';
 import type { Outcome } from './outcome';
 import ResultsPanel from './ResultsPanel.svelte';
@@ -29,8 +30,7 @@ let inFlight = false;
 let dirty = false;
 let outcome = $state<Outcome | undefined>(undefined);
 // The Language picker: a pick waits for the inline confirm; switching saves first, then reloads the Problem.
-const LANGUAGE_NAMES = { python: 'Python', typescript: 'TypeScript', go: 'Go' } as const;
-const PICKABLE = ['python', 'typescript', 'go'] as const;
+const nameOf = (id: string) => languageById(id)?.name ?? id;
 // svelte-ignore state_referenced_locally
 let choice = $state<string>(problem.language);
 let confirming = $derived(choice !== problem.language);
@@ -262,8 +262,8 @@ const label: Record<SaveState, string> = {
 					<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
 					<label class="mono picker">build language
 						<select bind:value={choice} aria-describedby={confirming ? 'switch-note' : undefined} disabled={switching}>
-							{#each PICKABLE as language (language)}
-								<option value={language}>{LANGUAGE_NAMES[language]}</option>
+							{#each LANGUAGES as language (language.id)}
+								<option value={language.id}>{language.name}</option>
 							{/each}
 						</select>
 					</label>
@@ -272,8 +272,8 @@ const label: Record<SaveState, string> = {
 			{#if confirming}
 				<div class="confirm" role="group" aria-label="Switch build language">
 					<div class="confirm-text">
-						<span class="mono ask">Switch to {LANGUAGE_NAMES[choice as keyof typeof LANGUAGE_NAMES]}?</span>
-						<span id="switch-note" class="note">Starts a new {LANGUAGE_NAMES[choice as keyof typeof LANGUAGE_NAMES]} copy of this build from reference code. Your {LANGUAGE_NAMES[problem.language]} build is kept.{switchFailed ? ' The switch did not go through; try again.' : ''}</span>
+						<span class="mono ask">Switch to {nameOf(choice)}?</span>
+						<span id="switch-note" class="note">Starts a new {nameOf(choice)} copy of this build from reference code. Your {nameOf(problem.language)} build is kept.{switchFailed ? ' The switch did not go through; try again.' : ''}</span>
 					</div>
 					<div class="confirm-actions">
 						<button type="button" class="cancel mono" onclick={cancelSwitch} disabled={switching}>Cancel</button>

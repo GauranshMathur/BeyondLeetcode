@@ -107,7 +107,7 @@ export interface Learner {
 }
 
 /** A Topic is built in Python until the Learner switches it. */
-const DEFAULT_LANGUAGE: Language = 'python';
+const DEFAULT_LANGUAGE: Language = LANGUAGES[0];
 
 export interface LearningCore {
 	/** Every call on the returned Learner acts for this one Learner. */
