@@ -76,3 +76,11 @@ model Submission {
 
   @@index([learnerId, createdAt])
 }
+
+// The Instance's one row (CONTEXT.md: Instance). No row means not set up; the fixed id makes
+// creating it the claim. mode is `local` or `multi`, registrationMode `open` or `invite`.
+model Instance {
+  id               String @id @default("instance")
+  mode             String
+  registrationMode String @default("invite")
+}
