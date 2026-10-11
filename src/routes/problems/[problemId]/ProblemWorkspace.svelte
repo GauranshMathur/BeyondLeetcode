@@ -44,20 +44,25 @@ async function perform(request: Request) {
 	dispatch({ type: 'response', reply: await post(request) });
 }
 
+const ACTION: Partial<Record<Request['kind'], string>> = {
+	switch: 'switchLanguage',
+	restart: 'startFromReferenceCode'
+};
+
 async function post(request: Request): Promise<Reply> {
 	try {
 		const body = new FormData();
 		if (request.kind === 'switch') {
 			body.set('language', request.language);
 		} else {
-			body.set('files', JSON.stringify(request.files));
+			if (request.kind !== 'restart') body.set('files', JSON.stringify(request.files));
 			body.set('build', JSON.stringify(request.build));
 		}
-		const action = request.kind === 'switch' ? 'switchLanguage' : request.kind;
+		const action = ACTION[request.kind] ?? request.kind;
 		const response = await fetch(`/problems/${session.build.problemId}?/${action}`, {
 			method: 'POST',
 			body,
-			keepalive: request.kind !== 'switch' && request.keepalive === true,
+			keepalive: 'keepalive' in request && request.keepalive === true,
 			headers: { 'x-sveltekit-action': 'true' }
 		});
 		// A redirect or proxy page is not an action's JSON; the contract reads the status either way.
@@ -81,6 +86,16 @@ const nameOf = (id: string) => languageById(id)?.name ?? id;
 let picked = $state<Language | undefined>(undefined);
 const choice = $derived(picked ?? problem.build.language);
 const confirming = $derived(choice !== problem.build.language);
+
+// Start from reference code: the same inline confirm; the Learner's Submissions are kept.
+let confirmingRestart = $state(false);
+const restartLocked = $derived(
+	busy ||
+		session.switching ||
+		session.restarting ||
+		session.save === 'conflict' ||
+		session.save === 'signedOut'
+);
 
 function onchange(files: Record<string, string>) {
 	dispatch({ type: 'edit', files });
@@ -161,7 +176,25 @@ const label: Record<SaveState, string> = {
 				{#if session.save === 'signedOut'}
 					<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
 				{/if}
-				<CodeEditor files={problem.files} {onchange} readonly={session.save === 'conflict' || session.switching} />
+				<div class="reference">
+					<span id="ref-help" class="mono help">Replaces your code for this step with the known-good build after the previous Problem (empty on a Topic's first Problem). Your submissions are kept.{session.restartFailed ? ' It did not go through; try again.' : ''}</span>
+					<button type="button" class="run mono" aria-describedby="ref-help" disabled={restartLocked || confirmingRestart} onclick={() => (confirmingRestart = true)}>Start from reference code</button>
+				</div>
+				{#if confirmingRestart}
+					<div class="confirm" role="group" aria-label="Start from reference code">
+						<div class="confirm-text">
+							<span class="mono ask">Start from reference code?</span>
+							<span id="restart-note" class="note">Your code for this step is replaced with the reference code. It cannot be undone; your submissions and progress are kept.</span>
+						</div>
+						<div class="confirm-actions">
+							<button type="button" class="cancel mono" onclick={() => (confirmingRestart = false)}>Cancel</button>
+							<button type="button" class="run mono" aria-describedby="restart-note" disabled={restartLocked} onclick={() => { confirmingRestart = false; dispatch({ type: 'restart' }); }}>Replace my code</button>
+						</div>
+					</div>
+				{/if}
+				{#key session.restarts}
+					<CodeEditor files={session.files} {onchange} readonly={session.save === 'conflict' || session.switching || session.restarting} />
+				{/key}
 				<ResultsPanel outcome={session.outcome} />
 			</div>
 		</div>
@@ -302,6 +335,22 @@ const label: Record<SaveState, string> = {
 	}
 	.signed-out a {
 		color: var(--ink);
+	}
+	.reference {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 24px;
+		padding: 12px 24px;
+		border-bottom: 1px solid var(--rule);
+	}
+	.reference .run {
+		flex-shrink: 0;
+	}
+	.help {
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--muted);
 	}
 	.cancel {
 		padding: 12px 0;

@@ -37,20 +37,24 @@ function parseJson(value: FormDataEntryValue | null): unknown {
 	}
 }
 
-/** The page posts the whole Build's files and the Build reference it was issued, unchanged. */
-function readBuild(form: FormData, problemId: string) {
-	const files = parseJson(form.get('files'));
-	if (typeof files !== 'object' || files === null || Array.isArray(files)) {
-		refuse({ code: 'BadRequest' });
-	}
+/** The Build reference the page was issued, posted back unchanged. */
+function readRef(form: FormData, problemId: string): BuildRef {
 	const ref = parseJson(form.get('build')) as Partial<Record<keyof BuildRef, unknown>> | null;
 	const language = languageById(ref?.language)?.id;
 	if (!language) refuse({ code: 'BadRequest' });
 	if (ref?.problemId !== problemId || !Number.isInteger(ref?.revision)) {
 		refuse({ code: 'BadRequest' });
 	}
-	const build: BuildRef = { problemId, language, revision: ref.revision as number };
-	return { build, files: files as BuildFiles };
+	return { problemId, language, revision: ref.revision as number };
+}
+
+/** The page posts the whole Build's files with the reference. */
+function readBuild(form: FormData, problemId: string) {
+	const files = parseJson(form.get('files'));
+	if (typeof files !== 'object' || files === null || Array.isArray(files)) {
+		refuse({ code: 'BadRequest' });
+	}
+	return { build: readRef(form, problemId), files: files as BuildFiles };
 }
 
 /** Save, Run and Submit differ only in what the core does with the Build the page posts. */
@@ -76,6 +80,12 @@ export const actions: Actions = {
 		withLearningErrors(async () => ({
 			hints: await locals.learning.revealHint(params.problemId ?? '')
 		})),
+
+	/** Replaces this Build with the Reference Code after the previous Problem; the core decides what that is. */
+	startFromReferenceCode: async ({ locals, params, request }) => {
+		const build = readRef(await request.formData(), params.problemId ?? '');
+		return withLearningErrors(() => locals.learning.startFromReferenceCode(build));
+	},
 
 	/** Autosave. */
 	save: buildAction((learner, build, files) => learner.saveCode(build, files)),

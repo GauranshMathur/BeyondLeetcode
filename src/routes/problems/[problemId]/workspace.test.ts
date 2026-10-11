@@ -457,3 +457,97 @@ describe('each core code reaches the machine as itself', () => {
 		expect(saved(refused('RunnerUnavailable')).save).toBe('failed');
 	});
 });
+
+describe('starting from reference code', () => {
+	const started = { files: { 'main.py': 'ref' }, revision: 9 };
+
+	it('sends the reference alone, drops unsent edits, and takes the files and revision from the reply', () => {
+		const { sent, state } = play(edited(), { type: 'restart' });
+		expect(sent).toEqual([{ kind: 'restart', build }]);
+		expect(state).toMatchObject({ restarting: true, inFlight: 'restart', dirty: false });
+
+		const done = play(state, respond(ok(started))).state;
+		expect(done).toMatchObject({
+			files: { 'main.py': 'ref' },
+			build: { ...build, revision: 9 },
+			save: 'saved',
+			dirty: false,
+			restarting: false,
+			restartFailed: false,
+			restarts: 1
+		});
+	});
+
+	it('waits for an autosave on the wire so it carries the revision that save produces', () => {
+		const { sent, state } = play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'restart' },
+			respond(ok({ revision: 4 }))
+		);
+		expect(sent.map((r) => r.kind)).toEqual(['save', 'restart']);
+		expect(sent[1]).toEqual({ kind: 'restart', build: { ...build, revision: 4 } });
+		expect(state.restarting).toBe(true);
+	});
+
+	it('holds Run, Submit, switch, edits and ticks while it is under way, and is ignored while they are', () => {
+		const { sent } = play(
+			fresh(),
+			{ type: 'restart' },
+			{ type: 'run' },
+			{ type: 'submit' },
+			{ type: 'switch', language: 'go' },
+			{ type: 'restart' },
+			{ type: 'edit', files: { 'main.py': 'z' } },
+			{ type: 'tick' }
+		);
+		expect(sent.map((r) => r.kind)).toEqual(['restart']);
+		expect(play(fresh(), { type: 'run' }, { type: 'restart' }).sent.map((r) => r.kind)).toEqual([
+			'run'
+		]);
+	});
+
+	it('a conflict ends it and shows the conflict; other refusals leave the Learner code and say it failed', () => {
+		const conflict = play(fresh(), { type: 'restart' }, respond(refused('RevisionConflict'))).state;
+		expect(conflict).toMatchObject({ save: 'conflict', restarting: false, restartFailed: true });
+
+		const failed = play(edited(), { type: 'restart' }, respond(unreachable));
+		expect(failed.state).toMatchObject({
+			restarting: false,
+			restartFailed: true,
+			files: { 'main.py': 'b' },
+			dirty: true,
+			save: 'failed'
+		});
+		expect(failed.step.timer).toEqual({ afterMs: RETRY_DELAY_MS });
+	});
+
+	it('is dropped when the autosave it waited for is refused or the session ended', () => {
+		const rejected = play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'restart' },
+			respond(refused('InvalidBuild'))
+		);
+		expect(rejected.sent.map((r) => r.kind)).toEqual(['save']);
+		expect(rejected.state).toMatchObject({
+			restarting: false,
+			restartFailed: true,
+			queued: undefined
+		});
+
+		const out = play(fresh(), { type: 'restart' }, respond(signedOut)).state;
+		expect(out).toMatchObject({ save: 'signedOut', restarting: false, restartFailed: true });
+		expect(play(out, { type: 'restart' }).sent).toEqual([]);
+	});
+
+	it('is allowed after a rejected save: it is the way out', () => {
+		const rejected = play(edited(), { type: 'tick' }, respond(refused('InvalidBuild'))).state;
+		expect(play(rejected, { type: 'restart' }).sent.map((r) => r.kind)).toEqual(['restart']);
+	});
+
+	it('is refused in conflict', () => {
+		const conflict = play(edited(), { type: 'tick' }, respond(refused('RevisionConflict'))).state;
+		expect(play(conflict, { type: 'restart' }).sent).toEqual([]);
+	});
+});

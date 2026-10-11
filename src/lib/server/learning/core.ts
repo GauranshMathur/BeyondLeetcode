@@ -19,6 +19,7 @@ import {
 	type ProgressChange,
 	problemView,
 	type RunView,
+	referenceStartOf,
 	runView,
 	type SavedStep,
 	type SolutionView,
@@ -79,6 +80,13 @@ export interface Learner {
 	 * NotFound or TopicLocked.
 	 */
 	saveCode(build: BuildRef, files: BuildFiles): Promise<{ revision: number }>;
+	/**
+	 * Replaces the Learner's Build for this Problem and Language with the Reference Code as it stands
+	 * after the previous Problem (empty before a Topic's first Problem; an Extra's previous is its
+	 * parent). Same checks and errors as saveCode. Returns the new files and revision. Changes no
+	 * Submission, progress or Hint.
+	 */
+	startFromReferenceCode(build: BuildRef): Promise<{ files: BuildFiles; revision: number }>;
 	/**
 	 * Saves like saveCode (same errors), then runs the Problem's Example Tests only and compares
 	 * the outputs. Writes nothing else: never a Submission, status or progress change. Throws
@@ -242,6 +250,11 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							throw new LearningError('RevisionConflict');
 						throw e;
 					}
+				},
+				startFromReferenceCode: async (build) => {
+					await learner.problem(build.problemId); // NotFound / TopicLocked
+					const files = referenceStartOf(deps.catalogue, build.problemId, build.language);
+					return { files, ...(await learner.saveCode(build, files)) };
 				},
 				run: (build, files) =>
 					saveThen(build, files, async ({ problemId, language }, revision) => {

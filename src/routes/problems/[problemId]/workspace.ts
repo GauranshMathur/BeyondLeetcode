@@ -29,7 +29,9 @@ type Act = 'run' | 'submit';
 /** What the machine asks the component to send. Save, Run and Submit all carry the Build and its reference. */
 export type Request =
 	| { kind: 'save' | Act; build: BuildRef; files: Files; keepalive?: true }
-	| { kind: 'switch'; language: Language };
+	| { kind: 'switch'; language: Language }
+	/** Start from reference code: replaces the Build, so it carries the reference alone. */
+	| { kind: 'restart'; build: BuildRef };
 
 export interface Session {
 	/** The reference the server issued; only its revision changes, to what the server reports. */
@@ -41,12 +43,17 @@ export interface Session {
 	readonly outcome?: Outcome;
 	readonly switching: boolean;
 	readonly switchFailed: boolean;
+	/** Start from reference code is under way (editing and every other request wait). */
+	readonly restarting: boolean;
+	readonly restartFailed: boolean;
+	/** How many times the Build was replaced by reference code: the editor starts over on each. */
+	readonly restarts: number;
 	/** The screen is being left: a failed save is not retried. */
 	readonly closed: boolean;
 	/** What is on the wire. */
 	readonly inFlight?: Request['kind'];
 	/** What waits for it. */
-	readonly queued?: Act | { switchTo: Language };
+	readonly queued?: Act | 'restart' | { switchTo: Language };
 }
 
 export type Event =
@@ -55,6 +62,7 @@ export type Event =
 	| { type: 'run' }
 	| { type: 'submit' }
 	| { type: 'switch'; language: Language }
+	| { type: 'restart' }
 	| { type: 'response'; reply: Reply }
 	/** Leaving the page: send what is pending. `final` when the screen is going away for good. */
 	| { type: 'flush'; final: boolean };
@@ -74,6 +82,9 @@ export function begin(build: BuildRef, files: Files): Session {
 		dirty: false,
 		switching: false,
 		switchFailed: false,
+		restarting: false,
+		restartFailed: false,
+		restarts: 0,
 		closed: false
 	};
 }
@@ -90,6 +101,15 @@ function sendBuild(s: Session, kind: 'save' | Act, keepalive = false): Step {
 	return {
 		state: { ...s, dirty: false, save: 'saving', inFlight: kind },
 		send: { kind, build: s.build, files: s.files, ...(keepalive && { keepalive: true as const }) },
+		timer: 'cancel'
+	};
+}
+
+/** Sends the reference request; edits not yet sent are replaced with the rest of the Build. */
+function sendRestart(s: Session): Step {
+	return {
+		state: { ...s, dirty: false, inFlight: 'restart', queued: undefined },
+		send: { kind: 'restart', build: s.build },
 		timer: 'cancel'
 	};
 }
@@ -114,7 +134,7 @@ function follow(s: Session, failed: boolean): Step {
 export function transition(s: Session, event: Event): Step {
 	switch (event.type) {
 		case 'edit':
-			if (s.save === 'conflict') return { state: s };
+			if (s.save === 'conflict' || s.restarting) return { state: s };
 			// Signed out: the code is kept for the Learner, but nothing is scheduled.
 			if (s.save === 'signedOut') return { state: { ...s, files: event.files, dirty: true } };
 			return {
@@ -123,12 +143,12 @@ export function transition(s: Session, event: Event): Step {
 			};
 
 		case 'tick':
-			if (s.inFlight || !s.dirty || halted(s) || s.switching) return { state: s };
+			if (s.inFlight || !s.dirty || halted(s) || s.switching || s.restarting) return { state: s };
 			return sendBuild(s, 'save');
 
 		case 'run':
 		case 'submit': {
-			if (isBusy(s) || blocked(s) || s.switching) return { state: s };
+			if (isBusy(s) || blocked(s) || s.switching || s.restarting) return { state: s };
 			const pending = {
 				...s,
 				outcome: { kind: event.type === 'run' ? 'running' : 'submitting' } as Outcome
@@ -139,11 +159,21 @@ export function transition(s: Session, event: Event): Step {
 		}
 
 		case 'switch': {
-			if (isBusy(s) || s.switching || event.language === s.build.language) return { state: s };
+			if (isBusy(s) || s.switching || s.restarting || event.language === s.build.language)
+				return { state: s };
 			const next = { ...s, switching: true, switchFailed: false };
 			if (s.inFlight)
 				return { state: { ...next, queued: { switchTo: event.language } }, timer: 'cancel' };
 			return { ...continueSwitch(next, event.language), timer: 'cancel' };
+		}
+
+		case 'restart': {
+			// Not in conflict (reload first) or signed out; a rejected save is the very case it is for.
+			if (isBusy(s) || halted(s) || s.switching || s.restarting) return { state: s };
+			const next = { ...s, restarting: true, restartFailed: false };
+			// An autosave is on the wire: this must carry the revision it produces, so it waits.
+			if (s.inFlight) return { state: { ...next, queued: 'restart' }, timer: 'cancel' };
+			return sendRestart(next);
 		}
 
 		case 'flush': {
@@ -165,6 +195,7 @@ export function transition(s: Session, event: Event): Step {
 function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 	const wasAct = kind === 'run' || kind === 'submit';
 	const refused = !reply.ok && reply.kind === 'refused' ? reply : undefined;
+	const restartWaiting = s.queued === 'restart';
 
 	if (!reply.ok && reply.kind === 'signedOut') {
 		// The session ended: keep every unsent character, stop sending, and say so.
@@ -172,11 +203,13 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 			state: {
 				...s,
 				save: 'signedOut',
-				dirty: s.dirty || kind === 'save' || wasAct,
+				dirty: s.dirty || kind === 'save' || kind === 'restart' || wasAct,
 				outcome: undefined,
 				queued: undefined,
 				switching: false,
-				switchFailed: kind === 'switch' || typeof s.queued === 'object'
+				switchFailed: kind === 'switch' || typeof s.queued === 'object',
+				restarting: false,
+				restartFailed: kind === 'restart' || restartWaiting
 			},
 			timer: 'cancel'
 		};
@@ -187,10 +220,46 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 		return { state: { ...s, switching: false, switchFailed: !reply.ok } };
 	}
 
-	// What waited for a save: Run or Submit go out with the new revision; a switch goes on.
+	if (kind === 'restart') {
+		if (reply.ok) {
+			const { files, revision } = reply.data as ReplyData['startFromReferenceCode'];
+			return {
+				state: {
+					...s,
+					files: { ...files },
+					build: { ...s.build, revision },
+					save: 'saved',
+					dirty: false,
+					outcome: undefined,
+					restarting: false,
+					restartFailed: false,
+					restarts: s.restarts + 1
+				}
+			};
+		}
+		if (refused) {
+			return {
+				state: {
+					...s,
+					save: refused.code === 'RevisionConflict' ? 'conflict' : s.save,
+					restarting: false,
+					restartFailed: true,
+					dirty: refused.code === 'RevisionConflict' ? s.dirty : true
+				}
+			};
+		}
+		// Network trouble or a 5xx: the Learner's code is still the Build; it goes out again as a save.
+		return follow(
+			{ ...s, dirty: true, save: 'failed', restarting: false, restartFailed: true },
+			true
+		);
+	}
+
+	// What waited for a save: Run or Submit go out with the new revision; a switch or a restart goes on.
 	const resume = (after: Session): Step => {
 		const waiting = after.queued;
 		if (waiting === undefined) return follow(after, false);
+		if (waiting === 'restart') return sendRestart(after);
 		if (typeof waiting === 'object')
 			return continueSwitch({ ...after, queued: undefined }, waiting.switchTo);
 		return sendBuild({ ...after, queued: undefined }, waiting);
@@ -206,7 +275,9 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 				outcome: undefined,
 				queued: undefined,
 				switching: switchWaiting ? false : s.switching,
-				switchFailed: switchWaiting ? true : s.switchFailed
+				switchFailed: switchWaiting ? true : s.switchFailed,
+				restarting: restartWaiting ? false : s.restarting,
+				restartFailed: restartWaiting ? true : s.restartFailed
 			}
 		};
 	}
@@ -256,6 +327,7 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 	const waiting = failed.queued;
 	if (kind === 'save' && waiting !== undefined) {
 		// Run or Submit save the Build themselves, so they go anyway; a switch does not.
+		if (waiting === 'restart') return sendRestart(failed);
 		if (typeof waiting === 'object') {
 			return follow({ ...failed, queued: undefined, switching: false, switchFailed: true }, true);
 		}
