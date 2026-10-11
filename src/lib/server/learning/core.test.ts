@@ -1196,17 +1196,17 @@ describe('Hints', () => {
 		expect(JSON.stringify(await learner.hints('stacks-push'))).not.toContain('Second hint');
 	});
 
-	it('refuses to reveal past the last Hint with NoMoreHints', async () => {
+	it('answers a reveal past the last Hint with the Hints already revealed, unchanged', async () => {
 		const { core } = await setup();
 		const learner = core.forLearner('l');
 		await learner.revealHint('stacks-push');
-		await learner.revealHint('stacks-push');
+		const last = await learner.revealHint('stacks-push');
 
-		await expect(learner.revealHint('stacks-push')).rejects.toMatchObject({ code: 'NoMoreHints' });
+		expect(await learner.revealHint('stacks-push')).toEqual(last);
 		expect((await learner.hints('stacks-push')).revealed).toHaveLength(2);
 	});
 
-	it('answers a Problem with no Hints with total 0, and refuses to reveal', async () => {
+	it('answers a Problem with no Hints with total 0, and a reveal changes nothing', async () => {
 		const catalogue = await loadCatalogue(fixtureDir);
 		const bare = {
 			...catalogue,
@@ -1220,7 +1220,7 @@ describe('Hints', () => {
 		);
 
 		expect((await learner.hints('stacks-push')).total).toBe(0);
-		await expect(learner.revealHint('stacks-push')).rejects.toMatchObject({ code: 'NoMoreHints' });
+		expect((await learner.revealHint('stacks-push')).total).toBe(0);
 	});
 
 	it('two reveals at once never go past the count, and a lone pair raises it by two', async () => {
@@ -1230,12 +1230,12 @@ describe('Hints', () => {
 		await Promise.all([learner.revealHint('stacks-push'), learner.revealHint('stacks-push')]);
 		expect((await learner.hints('stacks-push')).revealed).toHaveLength(2);
 
-		const settled = await Promise.allSettled([
+		const settled = await Promise.all([
 			learner.revealHint('stacks-push'),
 			learner.revealHint('stacks-push'),
 			learner.revealHint('stacks-push')
 		]);
-		expect(settled.every((r) => r.status === 'rejected')).toBe(true);
+		expect(settled.every((view) => view.revealed.length === 2)).toBe(true);
 		expect((await learner.hints('stacks-push')).revealed).toHaveLength(2);
 	});
 

@@ -1,21 +1,15 @@
 <script lang="ts">
+import type { ActionResult } from '@sveltejs/kit';
 import { onDestroy, type Snippet, untrack } from 'svelte';
 import { deserialize } from '$app/forms';
 import { invalidateAll } from '$app/navigation';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
 import { LANGUAGES, type Language, languageById } from '$lib/languages';
+import { type Reply, toReply } from '$lib/problem-wire';
 import type { ProblemView, SolutionView } from '$lib/server/learning/core';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
-import {
-	begin,
-	type Event,
-	isBusy,
-	type Reply,
-	type Request,
-	type SaveState,
-	transition
-} from './workspace';
+import { begin, type Event, isBusy, type Request, type SaveState, transition } from './workspace';
 
 let {
 	problem,
@@ -66,19 +60,16 @@ async function post(request: Request): Promise<Reply> {
 			keepalive: request.kind !== 'switch' && request.keepalive === true,
 			headers: { 'x-sveltekit-action': 'true' }
 		});
-		// A 4xx is final whatever the body is (a proxy may not send an action's JSON).
-		if (response.status >= 400 && response.status < 500)
-			return { ok: false, status: response.status };
-		const result = deserialize(await response.text());
-		if (result.type === 'failure') return { ok: false, status: result.status };
-		if (result.type === 'error') {
-			return { ok: false, status: response.status, revision: result.error?.revision };
-		}
-		if (result.type !== 'success') return { ok: false, status: 0 };
-		if (request.kind === 'switch') await invalidateAll();
-		return { ok: true, data: result.data };
+		// A redirect or proxy page is not an action's JSON; the contract reads the status either way.
+		let result: ActionResult | undefined;
+		try {
+			result = deserialize(await response.text());
+		} catch {}
+		const reply = toReply(response, result);
+		if (reply.ok && request.kind === 'switch') await invalidateAll();
+		return reply;
 	} catch {
-		return { ok: false, status: 0 };
+		return { ok: false, kind: 'unreachable' };
 	}
 }
 
@@ -113,7 +104,8 @@ const label: Record<SaveState, string> = {
 	saving: 'saving…',
 	failed: 'not saved · retrying',
 	rejected: 'not saved — this code cannot be stored',
-	conflict: 'edited elsewhere — reload'
+	conflict: 'edited elsewhere — reload',
+	signedOut: 'not saved — signed out'
 };
 </script>
 
@@ -144,7 +136,7 @@ const label: Record<SaveState, string> = {
 				<div class="bar">
 					<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
 					<div class="bar-right">
-						<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected'} role="status">{label[session.save]}</span>
+						<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'} role="status">{label[session.save]}</span>
 						<label class="mono picker">build language
 							<select value={choice} onchange={(e) => (picked = e.currentTarget.value as Language)} aria-describedby={confirming ? 'switch-note' : undefined} disabled={session.switching}>
 								{#each LANGUAGES as language (language.id)}
@@ -165,6 +157,9 @@ const label: Record<SaveState, string> = {
 							<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} disabled={session.switching || busy}>{session.switching ? 'Switching…' : 'Switch language'}</button>
 						</div>
 					</div>
+				{/if}
+				{#if session.save === 'signedOut'}
+					<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
 				{/if}
 				<CodeEditor files={problem.files} {onchange} readonly={session.save === 'conflict' || session.switching} />
 				<ResultsPanel outcome={session.outcome} />
@@ -296,6 +291,17 @@ const label: Record<SaveState, string> = {
 		gap: 20px;
 		align-items: center;
 		flex-shrink: 0;
+	}
+	.signed-out {
+		margin: 0;
+		padding: 16px 24px;
+		border-bottom: 1px solid var(--ink);
+		font-size: 16px;
+		line-height: 1.5;
+		color: var(--body);
+	}
+	.signed-out a {
+		color: var(--ink);
 	}
 	.cancel {
 		padding: 12px 0;

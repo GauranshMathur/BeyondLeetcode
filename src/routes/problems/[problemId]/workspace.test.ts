@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import type { Reply, WireCode } from '$lib/problem-wire';
 import type { BuildRef, RunView, SubmitView } from '$lib/server/learning/core';
 import {
 	begin,
 	type Event,
 	RETRY_DELAY_MS,
-	type Reply,
 	SAVE_DELAY_MS,
 	type Session,
 	type Step,
@@ -16,7 +16,23 @@ const runView = { revision: 5, tests: [] } as RunView;
 const submitView = { revision: 5, verdict: 'Accepted' } as unknown as SubmitView;
 
 const ok = (data: unknown): Reply => ({ ok: true, data });
-const fail = (status: number, revision?: number): Reply => ({ ok: false, status, revision });
+const refused = (code: WireCode, revision?: number): Reply => ({
+	ok: false,
+	kind: 'refused',
+	code,
+	...(revision !== undefined && { revision })
+});
+const unreachable: Reply = { ok: false, kind: 'unreachable' };
+const signedOut: Reply = { ok: false, kind: 'signedOut' };
+/** The answer an HTTP status stood for before the contract carried codes. */
+const fail = (status: number, revision?: number): Reply =>
+	status === 409
+		? refused('RevisionConflict')
+		: status === 400
+			? refused('InvalidBuild')
+			: status === 503 && revision !== undefined
+				? refused('RunnerUnavailable', revision)
+				: unreachable;
 const respond = (reply: Reply): Event => ({ type: 'response', reply });
 
 /** Plays events against a session, returning the final step and every request sent on the way. */
@@ -362,4 +378,82 @@ it('ignores an answer when nothing is on the wire', () => {
 	const { state, sent } = play(fresh(), respond(ok({ revision: 9 })));
 	expect(state).toEqual(fresh());
 	expect(sent).toEqual([]);
+});
+
+describe('a session that ended (401 or a redirect)', () => {
+	const out = () => play(edited(), { type: 'tick' }, respond(signedOut));
+
+	it('stops: the code stays in the editor, nothing is retried, no timer runs', () => {
+		const { step } = out();
+		expect(step.state).toMatchObject({
+			save: 'signedOut',
+			dirty: true,
+			files: { 'main.py': 'b' },
+			inFlight: undefined
+		});
+		expect(step.timer).toBe('cancel');
+	});
+
+	it('keeps later edits without scheduling a save, and sends nothing on a tick, flush or Run', () => {
+		const { state, sent } = play(
+			out().state,
+			{ type: 'edit', files: { 'main.py': 'c' } },
+			{ type: 'tick' },
+			{ type: 'flush', final: false },
+			{ type: 'run' },
+			{ type: 'submit' },
+			{ type: 'switch', language: 'go' }
+		);
+		expect(sent).toEqual([]);
+		expect(state).toMatchObject({ save: 'signedOut', files: { 'main.py': 'c' }, dirty: true });
+		expect(
+			transition(out().state, { type: 'edit', files: { 'main.py': 'c' } }).timer
+		).toBeUndefined();
+	});
+
+	it('ends a Run or Submit that was out, with no result and no retry', () => {
+		for (const act of ['run', 'submit'] as const) {
+			const { step } = play(fresh(), { type: act }, respond(signedOut));
+			expect(step.state).toMatchObject({ save: 'signedOut', outcome: undefined, dirty: true });
+			expect(step.timer).toBe('cancel');
+		}
+	});
+
+	it('ends a Language switch that was under way, and one that waited for the autosave', () => {
+		const direct = play(fresh(), { type: 'switch', language: 'go' }, respond(signedOut)).state;
+		expect(direct).toMatchObject({ switching: false, switchFailed: true, save: 'signedOut' });
+
+		const waiting = play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'switch', language: 'go' },
+			respond(signedOut)
+		);
+		expect(waiting.sent.map((r) => r.kind)).toEqual(['save']);
+		expect(waiting.state).toMatchObject({
+			switching: false,
+			switchFailed: true,
+			queued: undefined
+		});
+	});
+});
+
+describe('each core code reaches the machine as itself', () => {
+	const saved = (reply: Reply) => play(edited(), { type: 'tick' }, respond(reply)).state;
+
+	it.each([
+		['RevisionConflict', 'conflict'],
+		['NotFound', 'rejected'],
+		['TopicLocked', 'rejected'],
+		['InvalidBuild', 'rejected'],
+		['BadRequest', 'rejected']
+	] as const)('%s on a save is %s', (code, save) => {
+		expect(saved(refused(code)).save).toBe(save);
+	});
+
+	it('RunnerUnavailable carries the saved revision; without one it is a failure to retry', () => {
+		const { state } = play(edited(), { type: 'submit' }, respond(refused('RunnerUnavailable', 4)));
+		expect(state).toMatchObject({ outcome: { kind: 'unavailable' }, build: { revision: 4 } });
+		expect(saved(refused('RunnerUnavailable')).save).toBe('failed');
+	});
 });

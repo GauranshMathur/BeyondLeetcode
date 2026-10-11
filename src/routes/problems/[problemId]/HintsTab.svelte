@@ -1,5 +1,6 @@
 <script lang="ts">
 import { enhance } from '$app/forms';
+import type { ReplyData } from '$lib/problem-wire';
 import type { HintsView, ProblemView } from '$lib/server/learning/core';
 
 let { problem, hints }: { problem: ProblemView; hints: HintsView } = $props();
@@ -41,7 +42,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 						revealing = true;
 						return async ({ result }) => {
 							revealing = false;
-							if (result.type === 'success') revealed = (result.data as { hints: HintsView }).hints;
+							if (result.type === 'success') revealed = (result.data as ReplyData['revealHint']).hints;
 						};
 					}}
 				>

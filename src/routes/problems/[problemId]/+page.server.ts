@@ -1,8 +1,8 @@
-import { type Action, fail } from '@sveltejs/kit';
-import { LANGUAGE_IDS, languageById } from '$lib/languages';
+import type { Action } from '@sveltejs/kit';
+import { languageById } from '$lib/languages';
 import type { BuildFiles } from '$lib/server/content/catalogue';
-import { type BuildRef, type Learner, LearningError } from '$lib/server/learning/core';
-import { withLearningErrors } from '$lib/server/learning-http';
+import type { BuildRef, Learner } from '$lib/server/learning/core';
+import { refuse, withLearningErrors } from '$lib/server/learning-http';
 import type { Actions, PageServerLoad } from './$types';
 
 /** The tabs of the left pane; the Problem is the default and has no `?tab`. */
@@ -29,8 +29,6 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	};
 };
 
-const NOT_A_LANGUAGE = `language must be ${LANGUAGE_IDS.slice(0, -1).join(', ')} or ${LANGUAGE_IDS.at(-1)}`;
-
 function parseJson(value: FormDataEntryValue | null): unknown {
 	try {
 		return JSON.parse(String(value));
@@ -43,13 +41,13 @@ function parseJson(value: FormDataEntryValue | null): unknown {
 function readBuild(form: FormData, problemId: string) {
 	const files = parseJson(form.get('files'));
 	if (typeof files !== 'object' || files === null || Array.isArray(files)) {
-		return { failure: fail(400, { message: 'files must be a JSON object' }) };
+		refuse({ code: 'BadRequest' });
 	}
 	const ref = parseJson(form.get('build')) as Partial<Record<keyof BuildRef, unknown>> | null;
 	const language = languageById(ref?.language)?.id;
-	if (!language) return { failure: fail(400, { message: NOT_A_LANGUAGE }) };
+	if (!language) refuse({ code: 'BadRequest' });
 	if (ref?.problemId !== problemId || !Number.isInteger(ref?.revision)) {
-		return { failure: fail(400, { message: 'build must name this problem and a revision' }) };
+		refuse({ code: 'BadRequest' });
 	}
 	const build: BuildRef = { problemId, language, revision: ref.revision as number };
 	return { build, files: files as BuildFiles };
@@ -59,9 +57,8 @@ function readBuild(form: FormData, problemId: string) {
 const buildAction =
 	(act: (learner: Learner, build: BuildRef, files: BuildFiles) => Promise<object>): Action =>
 	async ({ locals, params, request }) => {
-		const posted = readBuild(await request.formData(), params.problemId ?? '');
-		if (posted.failure) return posted.failure;
-		return withLearningErrors(() => act(locals.learning, posted.build, posted.files));
+		const { build, files } = readBuild(await request.formData(), params.problemId ?? '');
+		return withLearningErrors(() => act(locals.learning, build, files));
 	};
 
 export const actions: Actions = {
@@ -69,22 +66,16 @@ export const actions: Actions = {
 	switchLanguage: async ({ locals, params, request }) => {
 		const language = String((await request.formData()).get('language'));
 		const picked = languageById(language)?.id;
-		if (!picked) return fail(400, { message: NOT_A_LANGUAGE });
+		if (!picked) refuse({ code: 'BadRequest' });
 		await withLearningErrors(() => locals.learning.switchLanguage(params.problemId, picked));
 		return { language: picked };
 	},
 
-	/** Reveals the next Hint. A second reveal past the last one answers with the current Hints. */
+	/** Reveals the next Hint; the core answers a reveal past the last one with the Hints as they are. */
 	revealHint: ({ locals, params }) =>
-		withLearningErrors(async () => {
-			try {
-				return { hints: await locals.learning.revealHint(params.problemId ?? '') };
-			} catch (e) {
-				if (e instanceof LearningError && e.code === 'NoMoreHints')
-					return { hints: await locals.learning.hints(params.problemId ?? '') };
-				throw e;
-			}
-		}),
+		withLearningErrors(async () => ({
+			hints: await locals.learning.revealHint(params.problemId ?? '')
+		})),
 
 	/** Autosave. */
 	save: buildAction((learner, build, files) => learner.saveCode(build, files)),
