@@ -319,3 +319,16 @@ test('switching to Go keeps the Python build, and Run passes', async ({ page }) 
 		await expect(page.getByLabel('Code: main.py')).toContainText('# my python build');
 	}
 });
+
+test('a Problem links to a prefilled new GitHub issue in a new tab', async ({ page }) => {
+	await page.goto('/problems/stacks-push');
+	const link = page.getByRole('link', { name: /Report an issue/ });
+	await expect(link).toHaveAttribute('target', '_blank');
+	await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+	const url = new URL((await link.getAttribute('href')) ?? '');
+	expect(`${url.origin}${url.pathname}`).toBe(
+		'https://github.com/GauranshMathur/BeyondLeetcode/issues/new'
+	);
+	expect(url.searchParams.get('title')).toBe('Problem: Push and size (stacks-push)');
+	expect(url.searchParams.get('body')).toContain('What is wrong');
+});
