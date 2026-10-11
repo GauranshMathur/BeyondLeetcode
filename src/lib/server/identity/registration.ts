@@ -1,8 +1,5 @@
 import type { AdmitSignUp } from './auth.ts';
-import { isFirstAdmin } from './setup.ts';
-
-/** The Local Learner's id: the first admin takes it over, so Local progress stays theirs. */
-const LOCAL_LEARNER_ID = 'local';
+import { FIRST_ADMIN_LEARNER_ID, isFirstAdmin } from './setup.ts';
 
 /**
  * Who may create an Account. Today exactly one case: the call `createFirstAdmin` makes, marked by
@@ -13,7 +10,7 @@ const LOCAL_LEARNER_ID = 'local';
  */
 export function createRegistration(): AdmitSignUp {
 	return () => {
-		if (isFirstAdmin()) return { learnerId: LOCAL_LEARNER_ID, role: 'admin' };
+		if (isFirstAdmin()) return { learnerId: FIRST_ADMIN_LEARNER_ID, role: 'admin' };
 		return null;
 	};
 }

@@ -36,7 +36,7 @@ describe('createFirstAdmin', () => {
 	it('on a fresh Instance makes a multi Instance whose admin owns an empty local Learner', async () => {
 		const { db, auth, instance, core } = await setup();
 
-		const { headers } = await createFirstAdmin({ instance, auth }, admin);
+		const { headers } = await createFirstAdmin({ instance, auth, db }, admin);
 
 		expect(instance.mode()).toBe('multi');
 		expect(await db.user.findFirstOrThrow()).toMatchObject({
@@ -65,7 +65,7 @@ describe('createFirstAdmin', () => {
 		const before = await core.forLearner('local').map();
 		expect(before.topics[0]).toMatchObject({ id: 'stacks' });
 
-		const { headers } = await createFirstAdmin({ instance, auth }, admin);
+		const { headers } = await createFirstAdmin({ instance, auth, db }, admin);
 
 		const user = await createMultiUserIdentity(auth).resolve({
 			cookies: { get: () => undefined },
@@ -79,10 +79,10 @@ describe('createFirstAdmin', () => {
 
 	it('refuses a second call and leaves the first admin alone', async () => {
 		const { db, auth, instance } = await setup();
-		await createFirstAdmin({ instance, auth }, admin);
+		await createFirstAdmin({ instance, auth, db }, admin);
 
 		await expect(
-			createFirstAdmin({ instance, auth }, { ...admin, email: 'two@example.com' })
+			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'two@example.com' })
 		).rejects.toThrow(/already set up/);
 		expect(await db.user.count()).toBe(1);
 		expect(instance.mode()).toBe('multi');
@@ -93,7 +93,7 @@ describe('createFirstAdmin', () => {
 		const other = await createInstance(db);
 
 		const results = await Promise.allSettled([
-			createFirstAdmin({ instance, auth }, admin),
+			createFirstAdmin({ instance, auth, db }, admin),
 			createFirstAdmin({ instance: other, auth }, { ...admin, email: 'two@example.com' })
 		]);
 
@@ -105,7 +105,7 @@ describe('createFirstAdmin', () => {
 		const { db, auth, instance } = await setup();
 
 		await expect(
-			createFirstAdmin({ instance, auth }, { ...admin, password: 'short' })
+			createFirstAdmin({ instance, auth, db }, { ...admin, password: 'short' })
 		).rejects.toThrow(/password/i);
 
 		expect(instance.mode()).toBeNull();
@@ -116,29 +116,55 @@ describe('createFirstAdmin', () => {
 		const { db, auth, instance } = await setup();
 
 		await expect(
-			createFirstAdmin({ instance, auth }, { ...admin, email: 'not-an-email' })
+			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'not-an-email' })
 		).rejects.toThrow();
 
 		expect(instance.mode()).toBeNull();
 		expect(await db.instance.count()).toBe(0);
 		expect(await db.user.count()).toBe(0);
-		await expect(createFirstAdmin({ instance, auth }, admin)).resolves.toBeTruthy();
+		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
 	});
 
 	it('puts a Local Instance back to local when sign-up fails after the claim', async () => {
-		const { auth, instance } = await setup();
+		const { auth, instance, db } = await setup();
 		await instance.chooseLocal();
 
 		await expect(
-			createFirstAdmin({ instance, auth }, { ...admin, email: 'not-an-email' })
+			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'not-an-email' })
 		).rejects.toThrow();
 
 		expect(instance.mode()).toBe('local');
 	});
 
+	it('removes the half-made Account but keeps Local progress when sign-up fails after the user row', async () => {
+		const { db, auth, instance, core } = await setup();
+		await instance.chooseLocal();
+		await db.learner.create({ data: { id: 'local' } });
+		await core.forLearner('local').reachChapterEnd('stacks-undo-log');
+		const failing = {
+			...auth,
+			api: {
+				...auth.api,
+				signUpEmail: async (...args: Parameters<typeof auth.api.signUpEmail>) => {
+					await auth.api.signUpEmail(...args);
+					throw new Error('session store down');
+				}
+			}
+		} as typeof auth;
+
+		await expect(createFirstAdmin({ instance, auth: failing, db }, admin)).rejects.toThrow(
+			/session store down/
+		);
+
+		expect(await db.user.count()).toBe(0);
+		expect(instance.mode()).toBe('local');
+		expect((await core.forLearner('local').chapter('stacks-undo-log')).read).toBe(true);
+		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
+	});
+
 	it('leaves a plain sign-up refused afterwards, over HTTP and through auth.api', async () => {
 		const { db, auth, instance } = await setup();
-		await createFirstAdmin({ instance, auth }, admin);
+		await createFirstAdmin({ instance, auth, db }, admin);
 		const other = { name: 'Eve', email: 'eve@example.com', password: 'correct horse battery' };
 
 		await expect(auth.api.signUpEmail({ body: other })).rejects.toMatchObject({ statusCode: 403 });
