@@ -1261,3 +1261,79 @@ describe('Hints', () => {
 		expect((await learner.problem('stacks-push')).status).toBe('Untouched');
 	});
 });
+
+describe('learner.solution()', () => {
+	async function setup() {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const core = createLearningCore({ catalogue, db: await createTestDb() });
+		return { catalogue, core };
+	}
+
+	it('gives the explanation as HTML and the Reference Code after the Problem in every Language', async () => {
+		const { catalogue, core } = await setup();
+
+		const view = await core.forLearner('l').solution('stacks-push');
+
+		expect(view.explanationHtml).toContain('<p>Placeholder fixture text');
+		expect(view.referenceCode).toEqual(catalogue.problem('stacks-push')?.referenceCode);
+		expect(Object.keys(view.referenceCode)).toEqual(['python', 'typescript', 'go']);
+	});
+
+	it('keeps every file of a multi-file Reference Code, entry file first as authored', async () => {
+		const { catalogue } = await setup();
+		const multi = {
+			...catalogue,
+			problem: (id: string) => {
+				const problem = catalogue.problem(id);
+				return (
+					problem && {
+						...problem,
+						referenceCode: {
+							...problem.referenceCode,
+							python: { 'main.py': 'import helpers', 'helpers.py': 'x = 1' }
+						}
+					}
+				);
+			}
+		};
+		const learner = createLearningCore({ catalogue: multi, db: await createTestDb() }).forLearner(
+			'l'
+		);
+
+		const view = await learner.solution('stacks-push');
+
+		expect(Object.keys(view.referenceCode.python)).toEqual(['main.py', 'helpers.py']);
+	});
+
+	it('is always available, solved or not, and changes no progress or Build', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('l');
+		const before = { map: await learner.map(), problem: await learner.problem('stacks-push') };
+
+		await learner.solution('stacks-push');
+
+		expect({ map: await learner.map(), problem: await learner.problem('stacks-push') }).toEqual(
+			before
+		);
+		expect(before.problem.status).toBe('Untouched');
+	});
+
+	it('is not part of the Problem view', async () => {
+		const { core } = await setup();
+
+		const problem = await core.forLearner('l').problem('stacks-push');
+
+		expect(Object.keys(problem)).not.toContain('solution');
+		expect(Object.keys(problem)).not.toContain('referenceCode');
+	});
+
+	it('refuses a Locked Topic and an unknown Problem', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('l');
+
+		await expect(learner.solution('queues-enqueue')).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		await expect(learner.solution('nope')).rejects.toMatchObject({ code: 'NotFound' });
+	});
+});
