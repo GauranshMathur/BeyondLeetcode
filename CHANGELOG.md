@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.21.2...v0.22.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C10b first real Topic, dynamic arrays ([#109](https://github.com/GauranshMathur/BeyondLeetcode/issues/109)) ([758c847](https://github.com/GauranshMathur/BeyondLeetcode/commit/758c8473c802a5c6fab50b9ea22d637921de7b9d))
+
 ## [0.21.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.21.1...v0.21.2) (2026-10-04)
 
 
