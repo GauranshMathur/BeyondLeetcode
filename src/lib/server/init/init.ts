@@ -24,7 +24,8 @@ export const USAGE = `Usage: docker run --rm -v "$PWD":/out ghcr.io/gauranshmath
   --force   Overwrite compose.yaml and .env if they exist.
 
 Upgrading an existing install? init will not touch your files. For Multi-user, add a line
-BETTER_AUTH_SECRET=<48 random hex characters> to your .env (e.g. from \`openssl rand -hex 24\`).`;
+BETTER_AUTH_SECRET=<48 random hex characters> to your .env (e.g. from \`openssl rand -hex 24\`)
+and BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET:-} under web's environment in your compose.yaml, then recreate web.`;
 
 export function parseArgs(args: string[]): InitOptions {
   let origin: string | undefined;
