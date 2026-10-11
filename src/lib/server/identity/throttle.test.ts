@@ -150,6 +150,30 @@ describe('throttle', () => {
 		expect(throttle.attempt(from('99.99.99.99', 'someone')).allowed).toBe(true);
 	});
 
+	it('holds the per-account limit of 50 while the address map is flooded and evicting', () => {
+		const { throttle } = setup({ maxKeys: 60 });
+		let admitted = 0;
+		for (let i = 0; i < 200; i++) {
+			if (throttle.attempt(from(`10.${i >> 8}.${i & 255}.1`, 'victim')).allowed) admitted++;
+			throttle.attempt(from(`11.${i >> 8}.${i & 255}.1`, null));
+		}
+		expect(admitted).toBe(50);
+		expect(throttle.attempt(from('99.99.99.99', 'victim')).allowed).toBe(false);
+	});
+
+	it('never drops a live Account entry when its map is full, and still applies the address limit', () => {
+		const { throttle } = setup({ maxKeys: 3, addressLimit: 2 });
+		for (let i = 0; i < 3; i++) throttle.attempt(from(`1.1.1.${i}`, `a${i}`));
+		expect(throttle.attempt(from('2.2.2.2', 'new')).allowed).toBe(true);
+		// the original accounts are still counted
+		for (let i = 0; i < 4; i++) throttle.attempt(from(`3.3.3.${i}`, 'a0'));
+		expect(throttle.attempt(from('4.4.4.4', 'a0')).allowed).toBe(true);
+		expect(throttle.size()).toBeLessThanOrEqual(9);
+		throttle.attempt(from('5.5.5.5', 'new2'));
+		expect(throttle.attempt(from('5.5.5.5', 'new2')).allowed).toBe(true);
+		expect(throttle.attempt(from('5.5.5.5', 'new3')).allowed).toBe(false);
+	});
+
 	it('drops expired entries first when full', () => {
 		const { throttle, advance } = setup({ maxKeys: 3 });
 		for (let i = 0; i < 3; i++) throttle.attempt(from(`1.1.1.${i}`, null));

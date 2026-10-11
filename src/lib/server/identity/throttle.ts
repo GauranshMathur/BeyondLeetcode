@@ -92,9 +92,12 @@ interface Entry {
  * or the Account limit tells an attacker whether an email has an Account. The Account limit also lets
  * someone lock a known Account out for a window; that is accepted.
  *
- * Each map is capped at maxKeys. When full, expired entries go first, then the entry whose window ends
- * earliest. Filling the address map takes maxKeys distinct real addresses inside one window; the other
- * maps are bounded by Accounts. A full map never refuses an attempt. Worst case: 3 * maxKeys entries.
+ * Each map is capped at maxKeys; expired entries are dropped first. Only the address map ever drops a
+ * live entry (the one whose window ends earliest), and only when it holds more distinct unexpired
+ * addresses than maxKeys. Residual: an attacker with more addresses than that inside one window gets
+ * fresh per-address budgets and is still held to the per-Account limit. The Account maps never drop a
+ * live entry (a full one skips storing the new key), and a full map never refuses an attempt.
+ * Worst case: 3 * maxKeys entries.
  */
 export const createThrottle = ({
 	limit = 5,
@@ -145,6 +148,8 @@ export const createThrottle = ({
 					continue;
 				}
 				if (c.entries.size >= maxKeys) {
+					// Only the address map may drop a live entry; Account maps keep theirs and skip the new key.
+					if (c !== addresses) continue;
 					const earliest = c.entries.keys().next().value;
 					if (earliest !== undefined) c.entries.delete(earliest);
 				}
