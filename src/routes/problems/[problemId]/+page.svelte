@@ -1,6 +1,7 @@
 <script lang="ts">
 import { reportIssueUrl } from '$lib/issue-link';
 import type { PageProps } from './$types';
+import HintsTab from './HintsTab.svelte';
 import ProblemWorkspace from './ProblemWorkspace.svelte';
 
 let { data }: PageProps = $props();
@@ -14,36 +15,66 @@ const problem = $derived(data.problem);
 {#key `${problem.id}:${problem.build.language}`}
 	<ProblemWorkspace {problem}>
 		{#snippet statement()}
-			<section class="statement" aria-label="Problem">
-				<div class="head">
-					<span class="mono muted">{problem.kind === 'Core' ? 'core' : 'extra'} · {problem.topicTitle}</span>
-					<h1>{problem.title}</h1>
-				</div>
-				<div class="prose">{@html problem.statementHtml}</div>
+			<div class="left">
+				<nav class="tabs mono" aria-label="Problem sections">
+					<a href="/problems/{problem.id}" data-sveltekit-noscroll aria-current={data.tab === 'problem' ? 'page' : undefined}>Problem</a>
+					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-noscroll aria-current={data.tab === 'hints' ? 'page' : undefined}>Hints</a>
+				</nav>
+				{#if data.tab === 'hints' && data.hints}
+					<HintsTab {problem} hints={data.hints} />
+				{:else}
+					<section class="statement" aria-label="Problem">
+						<div class="head">
+							<span class="mono muted">{problem.kind === 'Core' ? 'core' : 'extra'} · {problem.topicTitle}</span>
+							<h1>{problem.title}</h1>
+						</div>
+						<div class="prose">{@html problem.statementHtml}</div>
 
-				{#each problem.exampleTests as test, i (test.name)}
-					<div class="example">
-						<span class="label mono">Example {i + 1}</span>
-						<pre class="mono"><span class="muted">Input</span>
+						{#each problem.exampleTests as test, i (test.name)}
+							<div class="example">
+								<span class="label mono">Example {i + 1}</span>
+								<pre class="mono"><span class="muted">Input</span>
 {test.input}<span class="muted">Output</span>
 {test.expected}</pre>
-					</div>
-				{/each}
+							</div>
+						{/each}
 
-				<div class="idrow">
-					<p class="mono muted id">{problem.id}</p>
-					<a class="report mono" href={reportIssueUrl('Problem', problem.title, problem.id)} target="_blank" rel="noopener noreferrer">Report an issue<span aria-hidden="true">↗</span><span class="sr-only">(opens GitHub in a new tab)</span></a>
-				</div>
-			</section>
+						<div class="idrow">
+							<p class="mono muted id">{problem.id}</p>
+							<a class="report mono" href={reportIssueUrl('Problem', problem.title, problem.id)} target="_blank" rel="noopener noreferrer">Report an issue<span aria-hidden="true">↗</span><span class="sr-only">(opens GitHub in a new tab)</span></a>
+						</div>
+					</section>
+				{/if}
+			</div>
 		{/snippet}
 	</ProblemWorkspace>
 {/key}
 
 <style>
+	.left {
+		border-right: 1px solid var(--ink);
+		min-width: 0;
+	}
+	.tabs {
+		display: flex;
+		gap: 28px;
+		padding: 0 40px;
+		border-bottom: 1px solid var(--rule);
+		font-size: 13px;
+	}
+	.tabs a {
+		color: var(--muted);
+		padding: 16px 0 14px;
+		text-decoration: none;
+		border-bottom: 2px solid transparent;
+	}
+	.tabs a[aria-current='page'] {
+		color: var(--ink);
+		border-bottom-color: var(--accent);
+	}
 	.statement {
 		box-sizing: border-box;
 		padding: 36px 40px;
-		border-right: 1px solid var(--ink);
 		display: flex;
 		flex-direction: column;
 		gap: 24px;
@@ -144,7 +175,7 @@ const problem = $derived(data.problem);
 		clip: rect(0 0 0 0);
 	}
 	@media (max-width: 900px) {
-		.statement {
+		.left {
 			border-right: 0;
 			border-bottom: 1px solid var(--ink);
 		}

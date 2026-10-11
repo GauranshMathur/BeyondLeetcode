@@ -1142,3 +1142,122 @@ describe('progress events racing on a file database', () => {
 		expect(extra.accepted?.topicCompleted).toBe(false);
 	});
 });
+
+describe('Hints', () => {
+	async function setup(db?: Awaited<ReturnType<typeof createTestDb>>) {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const core = createLearningCore({ catalogue, db: db ?? (await createTestDb()) });
+		return { catalogue, core };
+	}
+
+	it('starts with nothing revealed: the count and the Chapter to link to, no hint text', async () => {
+		const { core } = await setup();
+
+		const view = await core.forLearner('l').hints('stacks-push');
+
+		expect(view).toEqual({
+			total: 2,
+			revealed: [],
+			chapter: { id: 'stacks-undo-log', title: 'An undo log' }
+		});
+		expect(JSON.stringify(view)).not.toContain('hint.');
+	});
+
+	it('reveals one Hint per call, in number order, rendered as Markdown', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('l');
+
+		const first = await learner.revealHint('stacks-push');
+		expect(first.total).toBe(2);
+		expect(first.revealed).toHaveLength(1);
+		expect(first.revealed[0]?.number).toBe(1);
+		expect(first.revealed[0]?.html).toContain('<p>First hint.');
+
+		const second = await learner.revealHint('stacks-push');
+		expect(second.revealed.map((h) => h.number)).toEqual([1, 2]);
+		expect(second.revealed[1]?.html).toContain('<p>Second hint.');
+	});
+
+	it('remembers what was revealed, per Learner and per Problem', async () => {
+		const { core } = await setup();
+		await core.forLearner('a').revealHint('stacks-push');
+		await core.forLearner('a').revealHint('stacks-push');
+
+		expect((await core.forLearner('a').hints('stacks-push')).revealed).toHaveLength(2);
+		expect((await core.forLearner('b').hints('stacks-push')).revealed).toHaveLength(0);
+		expect((await core.forLearner('a').hints('stacks-peek')).revealed).toHaveLength(0);
+	});
+
+	it('never sends an unrevealed Hint: its text is absent from the view', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('l');
+		await learner.revealHint('stacks-push');
+
+		expect(JSON.stringify(await learner.hints('stacks-push'))).not.toContain('Second hint');
+	});
+
+	it('refuses to reveal past the last Hint with NoMoreHints', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('l');
+		await learner.revealHint('stacks-push');
+		await learner.revealHint('stacks-push');
+
+		await expect(learner.revealHint('stacks-push')).rejects.toMatchObject({ code: 'NoMoreHints' });
+		expect((await learner.hints('stacks-push')).revealed).toHaveLength(2);
+	});
+
+	it('answers a Problem with no Hints with total 0, and refuses to reveal', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const bare = {
+			...catalogue,
+			problem: (id: string) => {
+				const problem = catalogue.problem(id);
+				return problem && { ...problem, hints: [] };
+			}
+		};
+		const learner = createLearningCore({ catalogue: bare, db: await createTestDb() }).forLearner(
+			'l'
+		);
+
+		expect((await learner.hints('stacks-push')).total).toBe(0);
+		await expect(learner.revealHint('stacks-push')).rejects.toMatchObject({ code: 'NoMoreHints' });
+	});
+
+	it('two reveals at once never go past the count, and a lone pair raises it by two', async () => {
+		const { core } = await setup(await createFileTestDb());
+		const learner = core.forLearner('l');
+
+		await Promise.all([learner.revealHint('stacks-push'), learner.revealHint('stacks-push')]);
+		expect((await learner.hints('stacks-push')).revealed).toHaveLength(2);
+
+		const settled = await Promise.allSettled([
+			learner.revealHint('stacks-push'),
+			learner.revealHint('stacks-push'),
+			learner.revealHint('stacks-push')
+		]);
+		expect(settled.every((r) => r.status === 'rejected')).toBe(true);
+		expect((await learner.hints('stacks-push')).revealed).toHaveLength(2);
+	});
+
+	it('refuses a Locked Topic and an unknown Problem', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('l');
+
+		await expect(learner.hints('queues-enqueue')).rejects.toMatchObject({ code: 'TopicLocked' });
+		await expect(learner.revealHint('queues-enqueue')).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		await expect(learner.hints('nope')).rejects.toMatchObject({ code: 'NotFound' });
+		await expect(learner.revealHint('nope')).rejects.toMatchObject({ code: 'NotFound' });
+	});
+
+	it('reveals and reads write no progress', async () => {
+		const { core } = await setup();
+		const learner = core.forLearner('l');
+		const before = await learner.map();
+		await learner.revealHint('stacks-push');
+
+		expect(await learner.map()).toEqual(before);
+		expect((await learner.problem('stacks-push')).status).toBe('Untouched');
+	});
+});

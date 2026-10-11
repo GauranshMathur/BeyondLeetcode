@@ -1,13 +1,25 @@
 import { type Action, fail } from '@sveltejs/kit';
 import { LANGUAGE_IDS, languageById } from '$lib/languages';
 import type { BuildFiles } from '$lib/server/content/catalogue';
-import type { BuildRef, Learner } from '$lib/server/learning/core';
+import { type BuildRef, type Learner, LearningError } from '$lib/server/learning/core';
 import { withLearningErrors } from '$lib/server/learning-http';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, params }) => ({
-	problem: await withLearningErrors(() => locals.learning.problem(params.problemId))
-});
+/** The tabs of the left pane; the Problem is the default and has no `?tab`. */
+export type Tab = 'problem' | 'hints';
+
+export const load: PageServerLoad = async ({ locals, params, url }) => {
+	const tab: Tab = url.searchParams.get('tab') === 'hints' ? 'hints' : 'problem';
+	return {
+		tab,
+		problem: await withLearningErrors(() => locals.learning.problem(params.problemId)),
+		// Only the revealed Hints, and only when the tab is open.
+		hints:
+			tab === 'hints'
+				? await withLearningErrors(() => locals.learning.hints(params.problemId))
+				: undefined
+	};
+};
 
 const NOT_A_LANGUAGE = `language must be ${LANGUAGE_IDS.slice(0, -1).join(', ')} or ${LANGUAGE_IDS.at(-1)}`;
 
@@ -53,6 +65,18 @@ export const actions: Actions = {
 		await withLearningErrors(() => locals.learning.switchLanguage(params.problemId, picked));
 		return { language: picked };
 	},
+
+	/** Reveals the next Hint. A second reveal past the last one answers with the current Hints. */
+	revealHint: ({ locals, params }) =>
+		withLearningErrors(async () => {
+			try {
+				return { hints: await locals.learning.revealHint(params.problemId ?? '') };
+			} catch (e) {
+				if (e instanceof LearningError && e.code === 'NoMoreHints')
+					return { hints: await locals.learning.hints(params.problemId ?? '') };
+				throw e;
+			}
+		}),
 
 	/** Autosave. */
 	save: buildAction((learner, build, files) => learner.saveCode(build, files)),

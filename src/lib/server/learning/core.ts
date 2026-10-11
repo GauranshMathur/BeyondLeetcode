@@ -10,6 +10,8 @@ import {
 	type BuildRef,
 	type ChapterView,
 	chapterView,
+	type HintsView,
+	hintsView,
 	judge,
 	type MapView,
 	mapView,
@@ -32,6 +34,7 @@ export type {
 	AcceptedView,
 	BuildRef,
 	ChapterView,
+	HintsView,
 	MapTopic,
 	MapView,
 	ProblemView,
@@ -94,6 +97,17 @@ export interface Learner {
 	 * other Language's Builds are kept. Throws NotFound or TopicLocked, InvalidBuild for an unknown Language.
 	 */
 	switchLanguage(problemId: string, language: Language): Promise<void>;
+	/**
+	 * The Problem's Hints the Learner has revealed (text), how many there are, and the Chapter they
+	 * link back to. Unrevealed Hints are never included. Throws NotFound or TopicLocked. Never writes.
+	 */
+	hints(problemId: string): Promise<HintsView>;
+	/**
+	 * Reveals the next Hint (raises the count by one) and returns the view. Free, changes no
+	 * progress, safe to call twice at once. Throws NoMoreHints when all are revealed (or there
+	 * are none), NotFound or TopicLocked.
+	 */
+	revealHint(problemId: string): Promise<HintsView>;
 }
 
 /** A Topic is built in Python until the Learner switches it. */
@@ -234,6 +248,35 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						update: { language }
 					});
 				},
+				hints: async (problemId) =>
+					hintsView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						problemId,
+						await loadRevealed(deps.db, learnerId, problemId),
+						renderMarkdown
+					),
+				revealHint: async (problemId) => {
+					const before = await learner.hints(problemId); // NotFound / TopicLocked
+					if (before.revealed.length >= before.total) throw new LearningError('NoMoreHints');
+					// One atomic step each, never past the count: concurrent reveals each raise it by
+					// one until the last Hint, then the rest are refused.
+					const raise = () =>
+						deps.db.hintsRevealed.updateMany({
+							where: { learnerId, problemId, count: { lt: before.total } },
+							data: { count: { increment: 1 } }
+						});
+					if ((await raise()).count === 0) {
+						try {
+							await deps.db.hintsRevealed.create({ data: { learnerId, problemId, count: 1 } });
+						} catch (e) {
+							if ((e as { code?: string }).code !== 'P2002') throw e;
+							// The row appeared meanwhile (or is already at the last Hint).
+							if ((await raise()).count === 0) throw new LearningError('NoMoreHints');
+						}
+					}
+					return learner.hints(problemId);
+				},
 				submit: (build, files) =>
 					saveThen(build, files, async ({ problemId, language }, revision) => {
 						// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
@@ -323,4 +366,12 @@ async function languagesSaved(
 		select: { language: true }
 	});
 	return LANGUAGES.filter((l) => rows.some((r) => r.language === l));
+}
+
+/** How many of a Problem's Hints the Learner has revealed. */
+async function loadRevealed(db: Db, learnerId: string, problemId: string): Promise<number> {
+	const row = await db.hintsRevealed.findUnique({
+		where: { learnerId_problemId: { learnerId, problemId } }
+	});
+	return row?.count ?? 0;
 }
