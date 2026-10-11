@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
 
@@ -77,19 +78,14 @@ test('edits typed just before leaving are still saved', async ({ page }) => {
 	await expect(page.getByLabel('Code: main.py')).toContainText('# last second');
 });
 
-// The solution for stacks-push: the fixture's Reference Code, which passes its Example Test.
-const correct = `import sys
-
-items = []
-for line in sys.stdin.read().splitlines():
-    parts = line.split()
-    if not parts:
-        continue
-    if parts[0] == "push":
-        items.append(int(parts[1]))
-    elif parts[0] == "size":
-        print(len(items))
-`;
+// The solution for stacks-push: the fixture's Reference Code, which passes its Example Test. The scripted
+// Runner recognises it by content, so it is read from disk rather than copied here.
+const referenceCode = (file: string, language: string) =>
+	readFileSync(
+		`src/lib/server/content/fixture/topics/stacks/chapters/stacks-undo-log/problems/stacks-push/reference/${language}/${file}`,
+		'utf8'
+	);
+const correct = referenceCode('main.py', 'python');
 
 async function setCode(page: Page, code: string, file = 'main.py') {
 	const editor = page.getByLabel(`Code: ${file}`);
@@ -210,15 +206,7 @@ test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1
 	await expect(bar.getByRole('link', { name: 'map' })).toBeVisible();
 });
 
-const correctTypeScript = `import { readFileSync } from 'node:fs';
-
-const items: number[] = [];
-for (const line of readFileSync(0, 'utf8').split('\\n')) {
-	const [command, value] = line.trim().split(/\\s+/);
-	if (command === 'push') items.push(Number(value));
-	else if (command === 'size') console.log(items.length);
-}
-`;
+const correctTypeScript = referenceCode('main.ts', 'typescript');
 
 test('switching to TypeScript asks first, keeps the Python build, and Run passes', async ({
 	page
@@ -280,28 +268,7 @@ test('a tab left on one Language is told to reload after another tab switches La
 	}
 });
 
-const correctGo = `package main
-
-import (
-	"bufio"
-	"fmt"
-	"os"
-	"strings"
-)
-
-func main() {
-	size := 0
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		switch strings.Fields(scanner.Text() + " -")[0] {
-		case "push":
-			size++
-		case "size":
-			fmt.Println(size)
-		}
-	}
-}
-`;
+const correctGo = referenceCode('main.go', 'go');
 
 test('switching to Go keeps the Python build, and Run passes', async ({ page }) => {
 	await page.goto('/problems/stacks-push');
