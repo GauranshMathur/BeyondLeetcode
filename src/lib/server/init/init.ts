@@ -21,7 +21,11 @@ export const USAGE = `Usage: docker run --rm -v "$PWD":/out ghcr.io/gauranshmath
 
   --origin  Public URL of this Instance, e.g. https://learn.example.com (required).
   --port    Host port the web container listens on (default 3000).
-  --force   Overwrite compose.yaml and .env if they exist.`;
+  --force   Overwrite compose.yaml and .env if they exist.
+
+Upgrading an existing install? init will not touch your files. For Multi-user, add a line
+BETTER_AUTH_SECRET=<48 random hex characters> to your .env (e.g. from \`openssl rand -hex 24\`)
+and BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET:-} under web's environment in your compose.yaml, then recreate web.`;
 
 export function parseArgs(args: string[]): InitOptions {
 	let origin: string | undefined;
@@ -68,8 +72,13 @@ export function newToken(): string {
 	return randomBytes(TOKEN_LENGTH / 2).toString('hex');
 }
 
-export function envFile(options: InitOptions, image: string, token = newToken()): string {
-	return `# Written by \`init\`. Keep this file private: it holds the Runner token.
+export function envFile(
+	options: InitOptions,
+	image: string,
+	token = newToken(),
+	authSecret = newToken()
+): string {
+	return `# Written by \`init\`. Keep this file private: it holds the Runner token and the auth secret.
 
 # Public URL of this Instance. SvelteKit's CSRF check compares form posts against it.
 # Behind a reverse proxy, see the PROTOCOL_HEADER/HOST_HEADER block in compose.yaml instead.
@@ -80,6 +89,9 @@ PORT=${options.port}
 
 # Shared secret between web and runner (48 random characters). Change it only by restarting both.
 RUNNER_TOKEN=${token}
+
+# Signs sessions in Multi-user mode (48 random characters). Not read at start; keep it stable once users sign in.
+BETTER_AUTH_SECRET=${authSecret}
 
 # Image both containers run. Pin a version tag to control upgrades.
 BEYONDLEETCODE_IMAGE=${image}
