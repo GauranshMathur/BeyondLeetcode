@@ -1,50 +1,39 @@
 import { isIP } from 'node:net';
 
-/** The three counters one sign-in attempt touches. */
-export interface ThrottleKey {
-	/** Email at an address. */
-	pair: string;
-	/** Address alone; never cleared by a success. */
+export interface ThrottleInput {
+	/** The client address as the server saw it; any spelling of one address shares a counter. */
 	address: string;
-	/** Email alone. */
-	email: string;
+	/** The Account's id, or null when the sign-in names none. */
+	accountId: string | null;
 }
 
 export type ThrottleCheck = { allowed: true } | { allowed: false; retryAfterMs: number };
 
 export interface ThrottleOptions {
-	/** Attempts per window for one email at one address. */
+	/** Attempts per window for one Account from one address. */
 	limit?: number;
-	/** Attempts per window for one address across all emails. */
+	/** Attempts per window for one address across all Accounts. */
 	addressLimit?: number;
-	/** Attempts per window for one email across all addresses. */
-	emailLimit?: number;
+	/** Attempts per window for one Account across all addresses. */
+	accountLimit?: number;
 	windowMs?: number;
-	/** Cap on stored counters per kind (pair, address, email). */
+	/** Cap on stored counters per map (address, account + address, account). */
 	maxKeys?: number;
 	now?: () => number;
 }
 
 export interface Throttle {
 	/**
-	 * Counts the attempt and admits it, or refuses without counting (also when a counter map is full). Synchronous, so concurrent
+	 * Counts the attempt and admits it, or refuses without counting. Synchronous, so concurrent
 	 * sign-ins cannot all pass before any is counted. Call before checking the password.
 	 */
-	attempt(key: ThrottleKey): ThrottleCheck;
-	/** Call after a right password; clears the email-scoped counters, never the address one. */
-	succeed(key: ThrottleKey): void;
+	attempt(input: ThrottleInput): ThrottleCheck;
+	/** Call after a right password; clears the account + address counter only. */
+	succeed(input: ThrottleInput): void;
 	size(): number;
 }
 
-const MAX_EMAIL = 254;
 const UNKNOWN_ADDRESS = 'unknown';
-const ODD_EMAIL = '\u0000odd';
-
-/** Better Auth looks the user up by `email.toLowerCase()` and nothing else (1.7.7 sign-in). */
-const normaliseEmail = (raw: string): string => {
-	const email = raw.toLowerCase();
-	return email === '' || email.length > MAX_EMAIL ? ODD_EMAIL : email;
-};
 
 const hextets = (address: string): number[] => {
 	let text = address;
@@ -84,39 +73,51 @@ const normaliseAddress = (raw: string): string => {
 		.join(':')}::/64`;
 };
 
-export const throttleKey = (email: string, address: string): ThrottleKey => {
-	const normalEmail = normaliseEmail(email);
-	const normalAddress = normaliseAddress(address);
-	return {
-		pair: `${normalEmail}|${normalAddress}`,
-		address: normalAddress,
-		email: normalEmail
-	};
-};
-
 interface Entry {
 	count: number;
 	/** The window starts at the first attempt and is fixed. */
 	resetAt: number;
 }
 
-// Per-process: counters reset on restart and are not shared between instances.
-// Worst-case memory: 3 * maxKeys entries (one map each for pair, address, email), never more.
-// The email-alone counter lets someone lock a known email out for a window; that is accepted.
+/**
+ * In-memory sign-in throttle, per process: counters reset on restart and are not shared between instances.
+ *
+ * Three counters, none keyed on a string the client types: the address (20), the Account at an address
+ * (5, which the address counter caps at 20 per address) and the Account (50). The caller looks the
+ * Account up the way Better Auth does and passes its id, or null when there is none; then only the
+ * address counter applies. If that lookup ever disagrees with the library, the Account limits are
+ * skipped but the address limit still holds.
+ *
+ * The caller must show one message for "wrong password", "no such account" and "too many attempts",
+ * or the Account limit tells an attacker whether an email has an Account. The Account limit also lets
+ * someone lock a known Account out for a window; that is accepted.
+ *
+ * Each map is capped at maxKeys. When full, expired entries go first, then the entry whose window ends
+ * earliest. Filling the address map takes maxKeys distinct real addresses inside one window; the other
+ * maps are bounded by Accounts. A full map never refuses an attempt. Worst case: 3 * maxKeys entries.
+ */
 export const createThrottle = ({
 	limit = 5,
 	addressLimit = 20,
-	emailLimit = 50,
+	accountLimit = 50,
 	windowMs = 10 * 60_000,
 	maxKeys = 10_000,
 	now = Date.now
 }: ThrottleOptions = {}): Throttle => {
-	// Insertion order is window-start order, since windows are fixed, so the first entry expires first.
+	// Insertion order is window-start order, since windows are fixed, so the first entry ends first.
 	const counter = (max: number) => ({ max, entries: new Map<string, Entry>() });
-	const pairs = counter(limit);
 	const addresses = counter(addressLimit);
-	const emails = counter(emailLimit);
+	const pairs = counter(limit);
+	const accounts = counter(accountLimit);
 	type Counter = ReturnType<typeof counter>;
+
+	const slotsFor = ({ address, accountId }: ThrottleInput): [Counter, string][] => {
+		const where = normaliseAddress(address);
+		const slots: [Counter, string][] = [[addresses, where]];
+		// The address has no '|', so the key is unambiguous whatever the id holds.
+		if (accountId !== null) slots.push([pairs, `${where}|${accountId}`], [accounts, accountId]);
+		return slots;
+	};
 
 	const sweep = ({ entries }: Counter, at: number) => {
 		for (const [id, entry] of entries) {
@@ -125,39 +126,36 @@ export const createThrottle = ({
 		}
 	};
 
-	const soonest = ({ entries }: Counter) => entries.values().next().value?.resetAt ?? 0;
-
 	return {
-		attempt(key) {
+		attempt(input) {
 			const at = now();
-			const slots: [Counter, string][] = [
-				[pairs, key.pair],
-				[addresses, key.address],
-				[emails, key.email]
-			];
+			for (const c of [addresses, pairs, accounts]) sweep(c, at);
+			const slots = slotsFor(input);
 			let retryAfterMs = 0;
 			for (const [c, id] of slots) {
-				sweep(c, at);
 				const entry = c.entries.get(id);
-				if (entry) {
-					if (entry.count >= c.max) retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
-				} else if (c.entries.size >= maxKeys) {
-					// Full of unexpired entries: never evict one, refuse until the soonest expires.
-					retryAfterMs = Math.max(retryAfterMs, soonest(c) - at);
-				}
+				if (entry && entry.count >= c.max)
+					retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
 			}
 			if (retryAfterMs > 0) return { allowed: false, retryAfterMs };
 			for (const [c, id] of slots) {
 				const entry = c.entries.get(id);
-				if (entry) entry.count += 1;
-				else c.entries.set(id, { count: 1, resetAt: at + windowMs });
+				if (entry) {
+					entry.count += 1;
+					continue;
+				}
+				if (c.entries.size >= maxKeys) {
+					const earliest = c.entries.keys().next().value;
+					if (earliest !== undefined) c.entries.delete(earliest);
+				}
+				c.entries.set(id, { count: 1, resetAt: at + windowMs });
 			}
 			return { allowed: true };
 		},
-		succeed({ pair, email }) {
-			pairs.entries.delete(pair);
-			emails.entries.delete(email);
+		succeed(input) {
+			if (input.accountId === null) return;
+			pairs.entries.delete(`${normaliseAddress(input.address)}|${input.accountId}`);
 		},
-		size: () => pairs.entries.size + addresses.entries.size + emails.entries.size
+		size: () => addresses.entries.size + pairs.entries.size + accounts.entries.size
 	};
 };
