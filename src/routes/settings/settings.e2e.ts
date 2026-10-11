@@ -1,11 +1,19 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-settings') });
 
-const paper = (page: import('@playwright/test').Page) =>
-	page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+const paper = (page: Page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+// Choosing only submits once the page has hydrated (the Save button goes away then), and the choice
+// only counts once the server has answered: a select before that, or a goto right after it, loses it.
+async function chooseTheme(page: Page, theme: 'light' | 'dark' | 'system') {
+	await expect(page.getByRole('button', { name: 'Save theme' })).toHaveCount(0);
+	const saved = page.waitForResponse((r) => r.url().includes('?/theme'));
+	await page.getByLabel('Theme').selectOption(theme);
+	await saved;
+}
 
 const LIGHT = 'rgb(243, 238, 228)';
 const DARK = 'rgb(23, 21, 18)';
@@ -32,7 +40,7 @@ test('dark wins on the next load whatever the device prefers, and follow-my-devi
 	await page.goto('/settings');
 	expect(await paper(page)).toBe(LIGHT);
 
-	await page.getByLabel('Theme').selectOption('dark');
+	await chooseTheme(page, 'dark');
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
 	// Next load, another page: the server render is already dark.
@@ -41,7 +49,7 @@ test('dark wins on the next load whatever the device prefers, and follow-my-devi
 	expect(await paper(page)).toBe(DARK);
 
 	await page.goto('/settings');
-	await page.getByLabel('Theme').selectOption('system');
+	await chooseTheme(page, 'system');
 	await page.goto('/');
 	await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
 	expect(await paper(page)).toBe(LIGHT);
@@ -57,7 +65,7 @@ test('light wins on a dark device', async ({ browser }) => {
 	await page.goto('/');
 	expect(await paper(page)).toBe(DARK);
 	await page.goto('/settings');
-	await page.getByLabel('Theme').selectOption('light');
+	await chooseTheme(page, 'light');
 	await page.goto('/');
 	expect(await paper(page)).toBe(LIGHT);
 	await context.close();
@@ -129,7 +137,7 @@ test('cancelling the Reset progress confirm changes nothing; confirming makes th
 	await expect(solvedStacks(page)).toBeVisible();
 
 	await page.goto('/settings');
-	await page.getByLabel('Theme').selectOption('dark');
+	await chooseTheme(page, 'dark');
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 	await page.getByRole('button', { name: 'Reset progress' }).click();
 	await page
@@ -144,7 +152,7 @@ test('cancelling the Reset progress confirm changes nothing; confirming makes th
 	// The theme is not progress.
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 	await page.goto('/settings');
-	await page.getByLabel('Theme').selectOption('system');
+	await chooseTheme(page, 'system');
 	await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
 });
 

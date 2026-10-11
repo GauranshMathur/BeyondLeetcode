@@ -51,3 +51,37 @@ test('a Chapter links to a prefilled new GitHub issue in a new tab', async ({ pa
 	expect(url.searchParams.get('title')).toBe('Chapter: An undo log (stacks-undo-log)');
 	expect(url.searchParams.get('body')).toContain('Source that shows it');
 });
+
+// Reaching the end posts reach-end and then re-runs the load. That re-run must not cancel a click on a
+// link that is already navigating: held here so the order is fixed (click first, reach-end answers
+// while the Problem page is still loading), not left to timing.
+test.describe('a link clicked while the Chapter is being marked Read', () => {
+	test.use({ storageState: asLearner('e2e-chapter-click') });
+
+	test('still navigates', async ({ page }) => {
+		let releaseReachEnd = () => {};
+		let releaseProblem = () => {};
+		const reachEndHeld = new Promise<void>((resolve) => (releaseReachEnd = resolve));
+		const problemHeld = new Promise<void>((resolve) => (releaseProblem = resolve));
+		await page.route(/\/chapters\/stacks-undo-log\?\/reachEnd/, async (route) => {
+			await reachEndHeld;
+			await route.continue();
+		});
+		await page.route(/\/problems\/stacks-push\/__data\.json/, async (route) => {
+			await problemHeld;
+			await route.continue();
+		});
+
+		const reachEndPosted = page.waitForRequest(/\?\/reachEnd/);
+		await page.goto('/chapters/stacks-undo-log');
+		await reachEndPosted; // the page is hydrated and the end has been reached
+		const problemLoading = page.waitForRequest(/stacks-push\/__data\.json/);
+		await page.getByRole('link', { name: 'Push and size' }).click();
+		await problemLoading;
+		const reachEndDone = page.waitForResponse(/\?\/reachEnd/);
+		releaseReachEnd();
+		await reachEndDone;
+		releaseProblem();
+		await expect(page).toHaveURL('/problems/stacks-push');
+	});
+});
