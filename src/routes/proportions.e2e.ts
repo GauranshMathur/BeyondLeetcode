@@ -1,7 +1,11 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 
 // The canvas boards (Nav, Map, Topic, Chapter) are 1440 wide; these are their control sizes.
-test.use({ viewport: { width: 1440, height: 900 } });
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({
+	viewport: { width: 1440, height: 900 },
+	extraHTTPHeaders: { 'x-test-learner': 'e2e-proportions' }
+});
 
 async function box(locator: Locator) {
 	const b = await locator.first().boundingBox();

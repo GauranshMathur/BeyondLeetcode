@@ -1,5 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
 
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({ extraHTTPHeaders: { 'x-test-learner': 'e2e-problem' } });
+
 // Click into the editor, wait until CodeMirror has focus, then type at a human pace. Typing with
 // no delay straight after the click races CodeMirror's selection sync and can move the cursor.
 async function typeInEditor(page: Page, text: string) {

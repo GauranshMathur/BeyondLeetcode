@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({ extraHTTPHeaders: { 'x-test-learner': 'e2e-fonts' } });
+
 test('no page requests a web font', async ({ page }) => {
 	const requests: string[] = [];
 	page.on('request', (request) => requests.push(request.url()));

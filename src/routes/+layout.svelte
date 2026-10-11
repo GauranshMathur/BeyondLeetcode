@@ -3,7 +3,7 @@ import { page } from '$app/state';
 import favicon from '$lib/assets/favicon.svg';
 import '$lib/styles/tokens.css';
 
-let { children } = $props();
+let { children, data } = $props();
 </script>
 
 <svelte:head>
@@ -15,8 +15,8 @@ let { children } = $props();
 	<a class="brand" href="/">Beyond Leetcode</a>
 	<nav aria-label="Primary">
 		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
-		<!-- Local Mode has no username: the canvas nav shows "Local", which opens Settings. -->
-		<a href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}>Local</a>
+		<!-- The display name opens Settings; Local Mode's Identity names it "Local". -->
+		<a href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}>{data.displayName}</a>
 	</nav>
 </header>
 {/if}

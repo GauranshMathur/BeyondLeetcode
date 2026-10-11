@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({ extraHTTPHeaders: { 'x-test-learner': 'e2e-chapter' } });
+
 test('reaching the end of a Chapter marks it Read on the Topic', async ({ page }) => {
 	await page.goto('/topics/stacks');
 	const chapterRow = page.locator('section.chapter', {

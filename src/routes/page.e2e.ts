@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({ extraHTTPHeaders: { 'x-test-learner': 'e2e-page' } });
+
 test('the Map shows Unlocked and Locked Topics from the fixture content', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText(

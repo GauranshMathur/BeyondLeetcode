@@ -1,3 +1,4 @@
+import type { Identity } from '$lib/server/identity';
 import type { Learner } from '$lib/server/learning/core';
 
 // See https://svelte.dev/docs/kit/types#app.d.ts
@@ -9,7 +10,8 @@ declare global {
 			revision?: number;
 		}
 		interface Locals {
-			learnerId: string;
+			/** Who this request is, from Identity. */
+			identity: Identity;
 			/** The Learning core acting for this request's Learner. */
 			learning: Learner;
 		}

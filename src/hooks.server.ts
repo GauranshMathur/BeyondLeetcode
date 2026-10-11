@@ -1,4 +1,4 @@
-import type { Handle, ServerInit } from '@sveltejs/kit';
+import { error, type Handle, type ServerInit } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { type App, createApp } from '$lib/server/app';
 import { parseTheme, THEME_COOKIE, withTheme } from '$lib/theme';
@@ -11,14 +11,18 @@ export const init: ServerInit = async () => {
 		CONTENT_DIR: env.CONTENT_DIR,
 		DATABASE_URL: env.DATABASE_URL,
 		RUNNER_URL: env.RUNNER_URL,
-		RUNNER_TOKEN: env.RUNNER_TOKEN
+		RUNNER_TOKEN: env.RUNNER_TOKEN,
+		IDENTITY_TEST_LEARNER: env.IDENTITY_TEST_LEARNER
 	});
 };
 
-/** Local Mode: every request is the single Local Learner. */
+/** Identity says who the request is; the Learning core then acts for that Learner. */
 export const handle: Handle = async ({ event, resolve }) => {
-	event.locals.learnerId = app.learnerId;
-	event.locals.learning = app.core.forLearner(app.learnerId);
+	const identity = await app.identity.resolve(event);
+	// Local Mode never answers nobody; a later adapter that does will redirect to sign-in here.
+	if (!identity) error(401, 'Not signed in');
+	event.locals.identity = identity;
+	event.locals.learning = app.core.forLearner(identity.learnerId);
 	// No theme cookie means follow the device; a choice goes on <html> in the server render, so no flash.
 	// Read when the page renders, not before: an action that just set the cookie is seen by its own response.
 	return refuseFraming(

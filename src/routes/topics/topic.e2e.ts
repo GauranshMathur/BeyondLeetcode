@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({ extraHTTPHeaders: { 'x-test-learner': 'e2e-topic' } });
+
 test('Map to an Unlocked Topic shows its Chapters and Problems', async ({ page }) => {
 	await page.goto('/');
 	await page.getByRole('link', { name: /^Stacks, unlocked/ }).click();
