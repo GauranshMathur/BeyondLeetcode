@@ -144,3 +144,25 @@ test('the Reset progress confirm works without JavaScript', async ({ browser }) 
 	await expect(page.getByRole('group', { name: 'Reset progress' })).toHaveCount(0);
 	await context.close();
 });
+
+test('no response can be framed: a page and a form action refuse it', async ({ page, baseURL }) => {
+	const refuses = (headers: Record<string, string>) => {
+		expect(headers['content-security-policy']).toBe("frame-ancestors 'none'");
+		expect(headers['x-frame-options']).toBe('DENY');
+	};
+	refuses((await page.request.get('/settings')).headers());
+	const action = await page.request.post('/settings?/theme', {
+		form: { theme: 'light' },
+		headers: { origin: baseURL ?? '' }
+	});
+	expect(action.ok()).toBe(true);
+	refuses(action.headers());
+	// A redirect from an action carries them too.
+	const redirect = await page.request.post('/settings?/reset', {
+		form: {},
+		headers: { origin: baseURL ?? '', accept: 'text/html' },
+		maxRedirects: 0
+	});
+	expect(redirect.status()).toBe(303);
+	refuses(redirect.headers());
+});
