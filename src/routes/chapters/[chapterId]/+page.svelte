@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { SubmitFunction } from '@sveltejs/kit';
 import { enhance } from '$app/forms';
+import { navigating } from '$app/state';
 import { reportIssueUrl } from '$lib/issue-link';
 import type { PageProps } from './$types';
 
@@ -8,10 +9,12 @@ let { data }: PageProps = $props();
 const chapter = $derived(data.chapter);
 
 // A failed save must not replace the Chapter with an error page; reopening the Chapter retries.
+// update() re-runs the load, which would cancel a link the Learner clicked meanwhile; that link
+// loads the next page fresh anyway, so skip the re-run then.
 const saveRead: SubmitFunction =
 	() =>
 	async ({ result, update }) => {
-		if (result.type === 'success') await update();
+		if (result.type === 'success' && !navigating.to) await update();
 	};
 
 let endForm = $state<HTMLFormElement>();
