@@ -94,7 +94,7 @@ describe('createMultiUserIdentity', () => {
 
 	it('resolves a user without a learnerId to nobody', async () => {
 		const { identity, asking, cookie, db } = await setup();
-		await db.user.updateMany({ data: { learnerId: null } });
+		await db.user.updateMany({ data: { learnerId: '' } });
 		expect(await identity.resolve(asking(cookie))).toBeNull();
 	});
 });
