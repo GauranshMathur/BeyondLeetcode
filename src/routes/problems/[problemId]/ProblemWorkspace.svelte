@@ -159,7 +159,7 @@ const label: Record<SaveState, string> = {
 					</div>
 				{/if}
 				{#if session.save === 'signedOut'}
-					<p class="signed-out" role="alert">You are signed out. <a href="/sign-in">Sign in again</a> to keep working; your code is still here.</p>
+					<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
 				{/if}
 				<CodeEditor files={problem.files} {onchange} readonly={session.save === 'conflict' || session.switching} />
 				<ResultsPanel outcome={session.outcome} />

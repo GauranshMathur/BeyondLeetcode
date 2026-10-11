@@ -60,7 +60,7 @@ describe('toReply', () => {
 
 		expect(toReply(sent(200, true), undefined)).toEqual(signedOut);
 		expect(toReply(sent(200, true), success)).toEqual(signedOut);
-		expect(toReply(sent(200), { type: 'redirect', status: 303, location: '/sign-in' })).toEqual(
+		expect(toReply(sent(200), { type: 'redirect', status: 303, location: '/signin' })).toEqual(
 			signedOut
 		);
 	});
