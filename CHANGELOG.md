@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.26.0...v0.27.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C20b Settings: reset progress ([#125](https://github.com/GauranshMathur/BeyondLeetcode/issues/125)) ([c706c3d](https://github.com/GauranshMathur/BeyondLeetcode/commit/c706c3dfba7ec0b80b185ff4d3311f4fb6405ac9))
+
 ## [0.26.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.25.0...v0.26.0) (2026-10-11)
 
 
