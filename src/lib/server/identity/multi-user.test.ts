@@ -8,7 +8,7 @@ const body = { email: 'ada@example.com', password: 'correct horse battery', name
 
 async function setup() {
 	const db = await createFileTestDb();
-	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, allowSignUp: () => true });
+	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, admitSignUp: () => ({}) });
 	const identity = createMultiUserIdentity(auth);
 	const res = await auth.api.signUpEmail({ body, returnHeaders: true });
 	const cookie = res.headers
