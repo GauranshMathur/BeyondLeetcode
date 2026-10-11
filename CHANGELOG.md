@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.30.0...v0.31.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C30 init writes the auth secret ([#139](https://github.com/GauranshMathur/BeyondLeetcode/issues/139)) ([aab3773](https://github.com/GauranshMathur/BeyondLeetcode/commit/aab37730d98313863924cd1e9cfa509392b6334e))
+
 ## [0.30.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.29.0...v0.30.0) (2026-10-11)
 
 
