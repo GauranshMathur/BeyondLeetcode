@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type Client, createClient } from '@libsql/client';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { onTestFinished } from 'vitest';
@@ -48,5 +51,30 @@ export async function createTestDb(): Promise<Db> {
 		}
 	});
 	await client.executeMultiple(schemaSql);
+	return db;
+}
+
+/**
+ * A fresh SQLite database in a temp file with every migration applied, deleted when the test
+ * ends. For tests of concurrency: unlike the in-memory database above it gives each Prisma
+ * transaction its own connection, as production does, so writers really contend for the lock.
+ */
+export async function createFileTestDb(): Promise<Db> {
+	const dir = await mkdtemp(join(tmpdir(), 'beyondleetcode-test-'));
+	const url = `file:${join(dir, 'test.db')}`;
+	const client = createClient({ url });
+	try {
+		await client.executeMultiple(schemaSql);
+	} finally {
+		client.close();
+	}
+	const db = new PrismaClient({ adapter: new PrismaLibSql({ url }) });
+	onTestFinished(async () => {
+		try {
+			await db.$disconnect();
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
 	return db;
 }
