@@ -28,8 +28,7 @@ COPY src/lib/server/runner ./src/lib/server/runner
 # The shared list of Languages (src/lib/languages.ts) is read by the Runner.
 COPY src/lib/languages.ts ./src/lib/languages.ts
 COPY src/lib/server/init ./src/lib/server/init
-# C10b: switch this line to `COPY content /app/content` once the repo's content/ folder exists.
-COPY src/lib/server/content/fixture /app/content
+COPY content /app/content
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production \

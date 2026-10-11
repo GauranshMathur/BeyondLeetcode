@@ -1,0 +1,18 @@
+policy cpython
+fill 17 1
+cap
+fill 4 1
+cap
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+len
+cap
+pop
+cap

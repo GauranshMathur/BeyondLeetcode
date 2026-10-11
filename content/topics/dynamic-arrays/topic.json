@@ -1,0 +1,6 @@
+{
+	"title": "Dynamic arrays",
+	"summary": "Build the growable array behind Python's list, and measure what its growth rule costs.",
+	"prerequisites": [],
+	"chapters": ["dynamic-arrays-cpython-list"]
+}

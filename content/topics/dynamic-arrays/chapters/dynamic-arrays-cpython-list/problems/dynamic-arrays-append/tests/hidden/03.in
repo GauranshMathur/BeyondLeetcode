@@ -1,0 +1,9 @@
+append -4
+
+append 1000000000
+get 1
+get 2
+get -1
+append -1000000000
+get 2
+len

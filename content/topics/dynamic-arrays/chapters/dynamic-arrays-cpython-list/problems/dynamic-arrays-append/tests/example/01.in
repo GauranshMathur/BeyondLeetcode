@@ -1,0 +1,5 @@
+append 7
+append 9
+len
+get 0
+get 5
