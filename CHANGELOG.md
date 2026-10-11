@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.25.0...v0.26.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C18 Problem Solution tab with read-only Reference Code ([#122](https://github.com/GauranshMathur/BeyondLeetcode/issues/122)) ([9300881](https://github.com/GauranshMathur/BeyondLeetcode/commit/93008815713423319d0de4f6e30da2d5ff4b07c4))
+
 ## [0.25.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.24.0...v0.25.0) (2026-10-11)
 
 
