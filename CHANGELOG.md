@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.28.0...v0.29.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C22 Identity: who is this request, Local Mode as one adapter ([#136](https://github.com/GauranshMathur/BeyondLeetcode/issues/136)) ([6d31ea9](https://github.com/GauranshMathur/BeyondLeetcode/commit/6d31ea9b5ded08b1a0c54b432645af510906ebbf))
+
 ## [0.28.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.27.0...v0.28.0) (2026-10-11)
 
 
