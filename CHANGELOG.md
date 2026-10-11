@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.27.0...v0.28.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C10c dynamic arrays, the Go and Rust/Java Chapters ([#110](https://github.com/GauranshMathur/BeyondLeetcode/issues/110)) ([a7a216d](https://github.com/GauranshMathur/BeyondLeetcode/commit/a7a216d668836d0a6ff9a169d3ff7abab8f7ea6b))
+
 ## [0.27.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.26.0...v0.27.0) (2026-10-11)
 
 
