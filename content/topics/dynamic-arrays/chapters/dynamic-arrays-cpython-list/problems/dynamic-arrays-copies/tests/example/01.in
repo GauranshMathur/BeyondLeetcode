@@ -1,0 +1,7 @@
+policy exact
+append 10
+append 20
+append 30
+append 40
+cap
+copies

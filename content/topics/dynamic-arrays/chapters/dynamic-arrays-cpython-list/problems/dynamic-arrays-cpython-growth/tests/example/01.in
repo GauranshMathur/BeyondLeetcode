@@ -1,0 +1,9 @@
+policy cpython
+cap
+append 1
+cap
+fill 3 2
+cap
+append 5
+cap
+copies

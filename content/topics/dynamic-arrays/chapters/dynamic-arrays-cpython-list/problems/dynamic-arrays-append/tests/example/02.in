@@ -1,0 +1,6 @@
+len
+get 0
+append 5
+get 1
+get -1
+get 0

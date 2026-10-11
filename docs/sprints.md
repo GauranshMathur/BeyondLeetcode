@@ -39,7 +39,7 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 **Exit:** `docker compose up` from a released image solves that one problem; CI green on `main`.
 
-**Status (2026-10-04):** exit met on release `v0.21.0`: `init` + `docker compose up` from the published image, then the smoke test solved the fixture Problem in Python, TypeScript and Go. Open: C10b, the first real Topic, Chapter and Problem (needs the maintainer's source verification); until it lands the image ships the fixture content. Decided along the way: our own Sandbox images for TypeScript and Go (ADR 0002, amended), TypeScript type errors are Compile Errors, releases publish `vX.Y.Z` and `latest` only after the full CI run on the released source, `edge` on every merge.
+**Status (2026-10-04):** exit met on release `v0.21.0`: `init` + `docker compose up` from the published image, then the smoke test solved the fixture Problem in Python, TypeScript and Go. C10b adds the first real Topic, dynamic arrays (`content/`, researched in `docs/research/`); it merges once the maintainer has opened its cited sources, and from then the image ships `content/` instead of the fixture. Decided along the way: our own Sandbox images for TypeScript and Go (ADR 0002, amended), TypeScript type errors are Compile Errors, releases publish `vX.Y.Z` and `latest` only after the full CI run on the released source, `edge` on every merge.
 
 ## Sprint 3 · Learning loop
 
