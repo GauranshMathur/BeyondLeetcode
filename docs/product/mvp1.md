@@ -28,7 +28,14 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 - **Local:** single user, no login. The nav shows "Local" instead of a username.
   - Local mode has a Settings screen with two things: the theme (light, dark, or follow the device) and Reset progress, which deletes everything the learner has done after a confirm step.
 - **Multi-user:** local accounts, plus optional GitHub and Google sign-in. Registration is open or invite-only (admin toggle); invite-only uses an Accept invite page. There is no email reset: the admin resets passwords from the Users page. A first-run setup screen creates the admin.
-- Switching an instance from Local to Multi-user keeps the Local progress as the first admin's.
+- Switching an instance from Local to Multi-user keeps the Local progress as the first admin's. The switch is a row on Local Settings and cannot be undone.
+- Accounts (decided 2026-10-11):
+  - A user signs in with an email and a password. The email is only a sign-in name: it is never verified and nothing is ever sent to it.
+  - An invite is a link that works once, for one new account, for 7 days. It carries no email and no role; whoever accepts it becomes a learner. The admin sees the link once and passes it on by hand; a pending invite can only be cancelled.
+  - A new instance starts invite-only. Invite-only also applies to GitHub and Google sign-up.
+  - A password reset gives the admin a one-time password to pass on. It signs the user out everywhere, and the user must set a new password before doing anything else.
+  - Removing a user deletes their progress.
+  - There is one admin, the account created at setup. An admin who forgets their password runs a command on the server that prints a one-time password.
 - Instance settings beyond the registration toggle live in config, not UI, for MVP1.
 
 **Devices.** Desktop first. Mobile must work, including writing and submitting code. Mobile boards exist for Problem, Map, Topic, Chapter and Sign in.
