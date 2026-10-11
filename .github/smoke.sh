@@ -34,7 +34,8 @@ wait_for_200() {
 echo "== web role serves the Map"
 docker volume create bl-data >/dev/null
 docker run -d --name web -p 3000:3000 -e ORIGIN=http://localhost:3000 -e RUNNER_URL=http://runner:8787 -e RUNNER_TOKEN=ci-web-smoke-token-0123456789abcdef-0123456789 -v bl-data:/data "$image" web
-wait_for_200 http://localhost:3000/ || { docker logs web; exit 1; }
+# -L: a fresh Instance answers "/" with a redirect to Setup, which serves 200.
+wait_for_200 http://localhost:3000/ -L || { docker logs web; exit 1; }
 
 # The runner pulls every Sandbox image at start-up; the tags are only published once this reaches main,
 # so both are built here under the exact name:tag config.ts uses and found locally through the socket.
@@ -53,7 +54,7 @@ cd "$instance"
 docker run --rm -v "$PWD":/out -e BEYONDLEETCODE_IMAGE="$image" "$image" init --origin http://localhost:3000
 grep -q "^BEYONDLEETCODE_IMAGE=$image\$" .env
 docker compose up -d
-wait_for_200 http://localhost:3000/
+wait_for_200 http://localhost:3000/ -L
 # Only the runner holds the engine socket.
 if docker compose exec -T web test -e /var/run/docker.sock; then
   echo "web container has the Docker socket"; exit 1
