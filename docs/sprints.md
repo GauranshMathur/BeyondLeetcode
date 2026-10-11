@@ -52,6 +52,8 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 **Exit:** a learner in Local mode can finish a topic and unlock the next; all Sprint 3 cards Done.
 
+**Status (2026-10-11):** exit met, checked by a browser test (C21): a Learner in Local mode reads both Stacks Chapters, solves both Core Problems with the Reference Code, sees the "Topic complete" panel name Queues, and the Map shows Stacks complete and Queues unlocked. Built this sprint: one module for progress events (C14, #103); one list of Languages with TypeScript and Go highlighting (C15, #101, cut down); the Problem screen's one save-then-act path and its state machine as a tested module (C16a and C16b, #102, #105, #106); Hints (C17); the Solution tab (C18); report-an-issue links (C19); Settings for Local mode with the theme and Reset progress (C20a, C20b); and anti-framing headers on every response. Decided along the way: a Hint links to its whole Chapter; Local-mode Settings holds the theme and Reset progress; the theme lives in a cookie. Open: C10c, the Go and Rust/Java Chapters of dynamic arrays (PR #110), waits on the maintainer's call about its source review. The boards' breadcrumb step indicator, previous/next arrows and the "In the wild" and "Submissions" tabs are drawn but have no cards.
+
 ## Sprint 4 · Multi-user
 
 **Goal:** one instance serves a group.
