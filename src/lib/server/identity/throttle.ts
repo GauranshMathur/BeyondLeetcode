@@ -1,48 +1,82 @@
-/** One sign-in attempt's two counters: the email at an address, and the address alone. */
+/** The three counters one sign-in attempt touches. */
 export interface ThrottleKey {
+	/** Email at an address. */
 	pair: string;
+	/** Address alone; never cleared by a success. */
 	address: string;
+	/** Email alone. */
+	email: string;
 }
 
 export type ThrottleCheck = { allowed: true } | { allowed: false; retryAfterMs: number };
 
 export interface ThrottleOptions {
-	/** Failures per window for one email at one address. */
+	/** Attempts per window for one email at one address. */
 	limit?: number;
-	/** Failures per window for one address across all emails. */
+	/** Attempts per window for one address across all emails. */
 	addressLimit?: number;
+	/** Attempts per window for one email across all addresses. */
+	emailLimit?: number;
 	windowMs?: number;
-	/** Cap on stored counters (each attempt uses two). */
+	/** Cap on stored counters (each attempt uses three). */
 	maxKeys?: number;
 	now?: () => number;
 }
 
 export interface Throttle {
-	/** Never counts. Refuses without the caller checking the password. */
-	check(key: ThrottleKey): ThrottleCheck;
-	/** Call after a wrong password. */
-	fail(key: ThrottleKey): void;
-	/** Call after a right password; clears the pair only, never the address count. */
+	/**
+	 * Counts the attempt and admits it, or refuses without counting. Synchronous, so concurrent
+	 * sign-ins cannot all pass before any is counted. Call before checking the password.
+	 */
+	attempt(key: ThrottleKey): ThrottleCheck;
+	/** Call after a right password; clears the email-scoped counters, never the address one. */
 	succeed(key: ThrottleKey): void;
 	size(): number;
 }
 
-export const throttleKey = (email: string, address: string): ThrottleKey => ({
-	pair: `p:${email.trim().toLowerCase()}|${address}`,
-	address: `a:${address}`
-});
+const MAX_EMAIL = 254;
+const MAX_ADDRESS = 64;
+
+/** IPv6 is keyed on its /64 prefix, so rotating privacy addresses share one budget. */
+const normaliseAddress = (raw: string): string => {
+	const address = raw.trim().toLowerCase().split('%')[0].slice(0, MAX_ADDRESS);
+	const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+	if (mapped) return mapped[1];
+	if (!address.includes(':')) return address;
+	const [head, tail] = address.split('::');
+	const headGroups = head ? head.split(':') : [];
+	const tailGroups = tail === undefined ? [] : tail ? tail.split(':') : [];
+	const fill = tail === undefined ? 0 : Math.max(0, 8 - headGroups.length - tailGroups.length);
+	const groups = [...headGroups, ...Array<string>(fill).fill('0'), ...tailGroups];
+	return `${groups
+		.slice(0, 4)
+		.map((g) => g.replace(/^0+(?=.)/, ''))
+		.join(':')}::/64`;
+};
+
+export const throttleKey = (email: string, address: string): ThrottleKey => {
+	const normalEmail = email.trim().toLowerCase().slice(0, MAX_EMAIL);
+	const normalAddress = normaliseAddress(address);
+	return {
+		pair: `p:${normalEmail}|${normalAddress}`,
+		address: `a:${normalAddress}`,
+		email: `e:${normalEmail}`
+	};
+};
 
 interface Entry {
 	count: number;
-	/** The window starts at the first failure and is fixed. */
+	/** The window starts at the first attempt and is fixed. */
 	resetAt: number;
 	limit: number;
 }
 
 // Per-process: counters reset on restart and are not shared between instances.
+// The email-alone counter lets someone lock a known email out for a window; that is accepted.
 export const createThrottle = ({
 	limit = 5,
 	addressLimit = 20,
+	emailLimit = 50,
 	windowMs = 10 * 60_000,
 	maxKeys = 10_000,
 	now = Date.now
@@ -84,24 +118,25 @@ export const createThrottle = ({
 	};
 
 	return {
-		check({ pair, address }) {
+		attempt({ pair, address, email }) {
 			const at = now();
+			const counters: [string, number][] = [
+				[pair, limit],
+				[address, addressLimit],
+				[email, emailLimit]
+			];
 			let retryAfterMs = 0;
-			for (const id of [pair, address]) {
+			for (const [id, max] of counters) {
 				const entry = live(id, at);
-				if (entry && entry.count >= entry.limit) {
-					retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
-				}
+				if (entry && entry.count >= max) retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
 			}
-			return retryAfterMs > 0 ? { allowed: false, retryAfterMs } : { allowed: true };
+			if (retryAfterMs > 0) return { allowed: false, retryAfterMs };
+			for (const [id, max] of counters) bump(id, max, at);
+			return { allowed: true };
 		},
-		fail({ pair, address }) {
-			const at = now();
-			bump(pair, limit, at);
-			bump(address, addressLimit, at);
-		},
-		succeed({ pair }) {
+		succeed({ pair, email }) {
 			entries.delete(pair);
+			entries.delete(email);
 		},
 		size: () => entries.size
 	};
