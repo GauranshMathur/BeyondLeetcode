@@ -33,6 +33,7 @@ export async function createFirstAdmin(
 	if (password.length < MIN_PASSWORD_LENGTH) {
 		throw new Error(`The password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
 	}
+	if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw new Error('The email address is not valid.');
 	const claim = await instance.chooseMulti();
 	try {
 		const { headers } = await runAsFirstAdmin(() =>
@@ -40,9 +41,13 @@ export async function createFirstAdmin(
 		);
 		return { headers };
 	} catch (error) {
-		// Sign-up is not one transaction: the user row can exist when a later step fails.
-		await db.user.deleteMany({ where: { learnerId: FIRST_ADMIN_LEARNER_ID } });
-		await claim.undo();
+		// Sign-up is not one transaction: the user row can exist when a later step fails. If this
+		// cleanup fails too, the Instance stays multi (closed: everyone is sent to sign in), and the
+		// original error is the one reported.
+		try {
+			await db.user.deleteMany({ where: { learnerId: FIRST_ADMIN_LEARNER_ID } });
+			await claim.undo();
+		} catch {}
 		throw error;
 	}
 }

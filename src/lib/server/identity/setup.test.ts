@@ -4,10 +4,10 @@ import { loadCatalogue } from '../content/catalogue.ts';
 import { createInstance } from '../instance.ts';
 import { createLearningCore } from '../learning/core.ts';
 import { createFileTestDb } from '../test-db.ts';
-import { createAuth } from './auth.ts';
+import { type Auth, createAuth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
 import { createRegistration } from './registration.ts';
-import { createFirstAdmin } from './setup.ts';
+import { createFirstAdmin, isFirstAdmin } from './setup.ts';
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
 const secret = 'test-secret-test-secret-test-secret-0123';
@@ -31,6 +31,20 @@ const cookieOf = (headers: Headers) =>
 		.getSetCookie()
 		.map((c) => c.split(';')[0])
 		.join('; ');
+
+/** An Auth whose sign-up writes the user row, then fails: the half-made Account case. */
+function failingAfterUser(auth: Auth): Auth {
+	return {
+		...auth,
+		api: {
+			...auth.api,
+			signUpEmail: async (...args: Parameters<typeof auth.api.signUpEmail>) => {
+				await auth.api.signUpEmail(...args);
+				throw new Error('session store down');
+			}
+		}
+	} as unknown as Auth;
+}
 
 describe('createFirstAdmin', () => {
 	it('on a fresh Instance makes a multi Instance whose admin owns an empty local Learner', async () => {
@@ -116,7 +130,7 @@ describe('createFirstAdmin', () => {
 		const { db, auth, instance } = await setup();
 
 		await expect(
-			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'not-an-email' })
+			createFirstAdmin({ instance, auth: failingAfterUser(auth), db }, admin)
 		).rejects.toThrow();
 
 		expect(instance.mode()).toBeNull();
@@ -130,7 +144,7 @@ describe('createFirstAdmin', () => {
 		await instance.chooseLocal();
 
 		await expect(
-			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'not-an-email' })
+			createFirstAdmin({ instance, auth: failingAfterUser(auth), db }, admin)
 		).rejects.toThrow();
 
 		expect(instance.mode()).toBe('local');
@@ -141,16 +155,7 @@ describe('createFirstAdmin', () => {
 		await instance.chooseLocal();
 		await db.learner.create({ data: { id: 'local' } });
 		await core.forLearner('local').reachChapterEnd('stacks-undo-log');
-		const failing = {
-			...auth,
-			api: {
-				...auth.api,
-				signUpEmail: async (...args: Parameters<typeof auth.api.signUpEmail>) => {
-					await auth.api.signUpEmail(...args);
-					throw new Error('session store down');
-				}
-			}
-		} as typeof auth;
+		const failing = failingAfterUser(auth);
 
 		await expect(createFirstAdmin({ instance, auth: failing, db }, admin)).rejects.toThrow(
 			/session store down/
@@ -160,6 +165,42 @@ describe('createFirstAdmin', () => {
 		expect(instance.mode()).toBe('local');
 		expect((await core.forLearner('local').chapter('stacks-undo-log')).read).toBe(true);
 		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
+	});
+
+	it('refuses a bad email before touching the Instance', async () => {
+		const { db, auth, instance } = await setup();
+
+		await expect(
+			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'nope' })
+		).rejects.toThrow(/email/i);
+
+		expect(instance.mode()).toBeNull();
+		expect(await db.instance.count()).toBe(0);
+	});
+
+	it('stays closed (multi in row and memory) when the rollback itself fails', async () => {
+		const { db, auth, instance } = await setup();
+		const broken = {
+			...db,
+			user: { ...db.user, deleteMany: async () => Promise.reject(new Error('disk gone')) }
+		} as unknown as typeof db;
+
+		await expect(
+			createFirstAdmin({ instance, auth: failingAfterUser(auth), db: broken }, admin)
+		).rejects.toThrow(/session store down/);
+
+		expect(instance.mode()).toBe('multi');
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
+	});
+
+	it('does not leave the first-admin flag set after a call returns or throws', async () => {
+		const { db, auth, instance } = await setup();
+		await expect(
+			createFirstAdmin({ instance, auth: failingAfterUser(auth), db }, admin)
+		).rejects.toThrow();
+		expect(isFirstAdmin()).toBe(false);
+		await createFirstAdmin({ instance, auth, db }, admin);
+		expect(isFirstAdmin()).toBe(false);
 	});
 
 	it('leaves a plain sign-up refused afterwards, over HTTP and through auth.api', async () => {
