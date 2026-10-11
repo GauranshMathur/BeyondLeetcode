@@ -178,7 +178,10 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							own: await loadStep(deps.db, learnerId, topicId, language, problemId),
 							source: sourceId
 								? await loadStep(deps.db, learnerId, topicId, language, sourceId)
-								: undefined
+								: undefined,
+							sourceSavedIn: sourceId
+								? await languagesSaved(deps.db, learnerId, topicId, sourceId)
+								: []
 						},
 						renderMarkdown
 					);
@@ -306,4 +309,18 @@ async function loadStep(
 		}
 	});
 	return row ? { files: row.files as BuildFiles, revision: row.revision } : undefined;
+}
+
+/** The Languages in which the Learner has saved this step. */
+async function languagesSaved(
+	db: Db,
+	learnerId: string,
+	topicId: string,
+	problemId: string
+): Promise<Language[]> {
+	const rows = await db.buildStep.findMany({
+		where: { learnerId, topicId, problemId },
+		select: { language: true }
+	});
+	return LANGUAGES.filter((l) => rows.some((r) => r.language === l));
 }
