@@ -108,7 +108,7 @@ describe('createFirstAdmin', () => {
 
 		const results = await Promise.allSettled([
 			createFirstAdmin({ instance, auth, db }, admin),
-			createFirstAdmin({ instance: other, auth }, { ...admin, email: 'two@example.com' })
+			createFirstAdmin({ instance: other, auth, db }, { ...admin, email: 'two@example.com' })
 		]);
 
 		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
