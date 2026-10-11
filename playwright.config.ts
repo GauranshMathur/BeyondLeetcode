@@ -12,6 +12,8 @@ const web = [
 	'export ORIGIN=http://localhost:4173',
 	`export RUNNER_URL=http://127.0.0.1:${runnerPort}`,
 	`export RUNNER_TOKEN=${runnerToken}`,
+	// Test-only: lets each e2e file act as its own Learner (test_learner cookie). Never set outside this server.
+	'export IDENTITY_TEST_LEARNER=1',
 	'bunx prisma migrate deploy',
 	'bun run build',
 	'PORT=4173 bun ./build/index.js'
@@ -27,7 +29,7 @@ export default defineConfig({
 	],
 	// With two web servers Playwright cannot infer the base URL.
 	use: { baseURL: 'http://localhost:4173' },
-	// The files share one database and several tests change a Learner's whole progress (Reset progress, finishing a Topic), so files must not run at the same time.
-	workers: 1,
+	// Each file acts as its own Learner (see IDENTITY_TEST_LEARNER above), so files can run at the same time.
+	workers: 4,
 	testMatch: '**/*.e2e.{ts,js}'
 });

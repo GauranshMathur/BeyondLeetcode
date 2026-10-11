@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { asLearner } from '../lib/e2e-learner.ts';
+
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({ storageState: asLearner('e2e-page') });
 
 test('the Map shows Unlocked and Locked Topics from the fixture content', async ({ page }) => {
 	await page.goto('/');

@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { asLearner } from '../../lib/e2e-learner.ts';
+
+// This file acts as its own Learner, so it never depends on another file's leftovers.
+test.use({ storageState: asLearner('e2e-settings') });
 
 const paper = (page: import('@playwright/test').Page) =>
 	page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -20,7 +24,10 @@ test('the nav links Local to Settings', async ({ page }) => {
 test('dark wins on the next load whatever the device prefers, and follow-my-device restores it', async ({
 	browser
 }) => {
-	const context = await browser.newContext({ colorScheme: 'light' });
+	const context = await browser.newContext({
+		storageState: asLearner('e2e-settings'),
+		colorScheme: 'light'
+	});
 	const page = await context.newPage();
 	await page.goto('/settings');
 	expect(await paper(page)).toBe(LIGHT);
@@ -42,7 +49,10 @@ test('dark wins on the next load whatever the device prefers, and follow-my-devi
 });
 
 test('light wins on a dark device', async ({ browser }) => {
-	const context = await browser.newContext({ colorScheme: 'dark' });
+	const context = await browser.newContext({
+		storageState: asLearner('e2e-settings'),
+		colorScheme: 'dark'
+	});
 	const page = await context.newPage();
 	await page.goto('/');
 	expect(await paper(page)).toBe(DARK);
@@ -54,7 +64,11 @@ test('light wins on a dark device', async ({ browser }) => {
 });
 
 test('the form works without JavaScript', async ({ browser }) => {
-	const context = await browser.newContext({ javaScriptEnabled: false, colorScheme: 'light' });
+	const context = await browser.newContext({
+		storageState: asLearner('e2e-settings'),
+		javaScriptEnabled: false,
+		colorScheme: 'light'
+	});
 	const page = await context.newPage();
 	await page.goto('/settings');
 	await page.getByLabel('Theme').selectOption('dark');
@@ -135,7 +149,10 @@ test('cancelling the Reset progress confirm changes nothing; confirming makes th
 });
 
 test('the Reset progress confirm works without JavaScript', async ({ browser }) => {
-	const context = await browser.newContext({ javaScriptEnabled: false });
+	const context = await browser.newContext({
+		storageState: asLearner('e2e-settings'),
+		javaScriptEnabled: false
+	});
 	const page = await context.newPage();
 	await page.goto('/settings');
 	await page.getByRole('button', { name: 'Reset progress' }).click();
