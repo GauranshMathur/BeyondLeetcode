@@ -428,3 +428,32 @@ test('the Solution tab shows the explanation and the Reference Code in each Lang
 	await page.reload();
 	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
 });
+
+test('Start from reference code asks first, cancel changes nothing, confirm puts the previous Problem Reference Code in the editor', async ({
+	page
+}) => {
+	await page.goto('/problems/stacks-pop');
+	await setCode(page, 'broken(\n');
+	await expect(page.getByRole('status')).toHaveText('saved');
+
+	await page.getByRole('button', { name: 'Start from reference code' }).click();
+	const confirm = page.getByRole('group', { name: 'Start from reference code' });
+	await expect(confirm).toBeVisible();
+	await confirm.getByRole('button', { name: 'Cancel' }).click();
+	await expect(confirm).toHaveCount(0);
+	await expect(page.getByLabel('Code: main.py')).toContainText('broken(');
+
+	await page.getByRole('button', { name: 'Start from reference code' }).click();
+	await confirm.getByRole('button', { name: 'Replace my code' }).click();
+	// The Reference Code after stacks-push: it handles push and size, not pop yet.
+	await expect(page.getByLabel('Code: main.py')).toContainText('items.append(int(parts[1]))');
+	await expect(page.getByLabel('Code: main.py')).not.toContainText('broken(');
+	await expect(page.getByRole('status')).toHaveText('saved');
+
+	await page.reload();
+	await expect(page.getByLabel('Code: main.py')).toContainText('items.append(int(parts[1]))');
+
+	// The new Build is saved with a fresh revision: a Run goes straight through.
+	await page.getByRole('button', { name: 'Run' }).click();
+	await expect(page.getByRole('status')).toHaveText('saved');
+});

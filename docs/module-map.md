@@ -27,6 +27,7 @@ learner.reachChapterEnd(chapterId)                    // → progress change (ma
 learner.saveCode(build, files)    // build: Build reference { problemId, language, revision } → { revision }, or RevisionConflict
 learner.run(build, files)         // saves, then → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
 learner.submit(build, files)      // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
+learner.startFromReferenceCode(build)  // replaces this Build with the Reference Code after the previous Problem (an Extra: its parent; empty on a Topic's first Problem) → { files, revision }; same revision check as saveCode; keeps Submissions, changes no progress or Hint
 learner.switchLanguage(problemId, language)   // the Language of that Problem's Topic
 learner.hints(problemId)      // screen read: { total, revealed[{ number, html }], chapter } - never an unrevealed Hint
 learner.solution(problemId)    // screen read: { explanationHtml, referenceCode: Language → files }; never changes progress or a Build
