@@ -1,6 +1,7 @@
 import { loadCatalogue } from './content/catalogue.ts';
 import { createDb } from './db.ts';
-import { createLocalIdentity, type IdentityResolver } from './identity.ts';
+import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
+import { createInstance, type Instance } from './instance.ts';
 import { createLearningCore, type LearningCore } from './learning/core.ts';
 import { createHttpRunner } from './runner/http-adapter.ts';
 
@@ -8,6 +9,8 @@ export interface App {
 	core: LearningCore;
 	/** Asked once per request: who is it? (Local Mode adapter.) */
 	identity: IdentityResolver;
+	/** The Instance's mode, read by the hook on every request. One per server: it caches the mode. */
+	instance: Instance;
 }
 
 /** Wires the Instance at server start: content, database, Learning core, Identity. */
@@ -35,14 +38,25 @@ export async function createApp(env: {
 	}
 	const catalogue = await loadCatalogue(env.CONTENT_DIR);
 	const db = createDb(env.DATABASE_URL);
+	const instance = await createInstance(db);
+	const identity = await createLocalIdentity(db, {
+		testLearnerCookie: env.IDENTITY_TEST_LEARNER === '1'
+	});
+	// A fresh database stays empty until someone chooses; an already-Local one gets its Learner at boot.
+	if (instance.mode() === 'local') await identity.ensureLocalLearner();
 	return {
+		instance: {
+			...instance,
+			async chooseLocal() {
+				await instance.chooseLocal();
+				await identity.ensureLocalLearner();
+			}
+		},
+		identity,
 		core: createLearningCore({
 			catalogue,
 			db,
 			runner: createHttpRunner({ url: env.RUNNER_URL, token: env.RUNNER_TOKEN })
-		}),
-		identity: await createLocalIdentity(db, {
-			testLearnerCookie: env.IDENTITY_TEST_LEARNER === '1'
 		})
 	};
 }

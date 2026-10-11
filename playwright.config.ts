@@ -31,5 +31,14 @@ export default defineConfig({
 	use: { baseURL: 'http://localhost:4173' },
 	// Each file acts as its own Learner (see IDENTITY_TEST_LEARNER above), so files can run at the same time.
 	workers: 4,
-	testMatch: '**/*.e2e.{ts,js}'
+	// "setup" chooses Local through the real screen on the fresh database; every other file depends on it.
+	projects: [
+		{ name: 'setup', testMatch: '**/setup.e2e.ts' },
+		{
+			name: 'e2e',
+			testMatch: '**/*.e2e.{ts,js}',
+			testIgnore: '**/setup.e2e.ts',
+			dependencies: ['setup']
+		}
+	]
 });

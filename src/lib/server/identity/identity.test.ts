@@ -10,12 +10,24 @@ const request = (cookies: Record<string, string> = {}) => ({
 it('answers every request with the Local Learner: admin, displayed as Local', async () => {
 	const db = await createTestDb();
 	const identity = await createLocalIdentity(db);
+	await identity.ensureLocalLearner();
 
 	const first = await identity.resolve(request());
 	const second = await identity.resolve(request());
 
 	expect(first).toEqual({ learnerId: 'local', displayName: 'Local', role: 'admin' });
 	expect(second).toEqual(first);
+	expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
+});
+
+it('creates no Learner until ensureLocalLearner runs, and running it twice makes one', async () => {
+	const db = await createTestDb();
+	const identity = await createLocalIdentity(db);
+	expect(await db.learner.count()).toBe(0);
+
+	await identity.ensureLocalLearner();
+	await identity.ensureLocalLearner();
+
 	expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 });
 

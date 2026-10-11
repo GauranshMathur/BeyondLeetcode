@@ -26,7 +26,12 @@ const slow = { timeout: 180_000 };
 test('Map to Topic to Chapter (Read) to Problem, then Run and Submit once per Language', async ({
 	page
 }) => {
+	// A fresh Instance shows Setup first; choose Local through the real screen.
 	await page.goto('/');
+	await expect(page).toHaveURL('/setup');
+	await page.getByRole('button', { name: 'Start in Local mode →' }).click();
+	await expect(page).toHaveURL('/');
+
 	await page.getByRole('link', { name: /^Dynamic arrays, unlocked/ }).click();
 	await expect(page).toHaveURL('/topics/dynamic-arrays');
 
