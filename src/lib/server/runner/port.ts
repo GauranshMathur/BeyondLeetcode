@@ -9,7 +9,9 @@
  * request. The Learning core maps that rejection to `RunnerUnavailable`.
  */
 
-export type Language = 'python' | 'typescript' | 'go';
+import type { Language } from '../../languages';
+
+export type { Language };
 
 /** A Build's files, keyed by path relative to the Build root. */
 export type Files = Record<string, string>;

@@ -1,3 +1,4 @@
+import { entryFileOf } from '../../languages';
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import type { ExecuteResult } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
@@ -244,13 +245,6 @@ export function reachChapter(
 	};
 }
 
-/** The entry file of a Build that has not been started, by Language. */
-const ENTRY_FILE: Record<Language, string> = {
-	python: 'main.py',
-	typescript: 'main.ts',
-	go: 'main.go'
-};
-
 /** A Problem as the Problem screen needs it. Never carries Hints, a Solution or Hidden Tests. */
 export interface ProblemView {
 	readonly id: string;
@@ -313,7 +307,7 @@ export function problemView(
 	const sourceId = seedSourceOf(catalogue, problemId);
 	const start: BuildFiles = sourceId
 		? (saved.source?.files ?? catalogue.problem(sourceId)?.referenceCode[language] ?? {})
-		: { [ENTRY_FILE[language]]: '' };
+		: { [entryFileOf(language)]: '' };
 	return {
 		id: problem.id,
 		title: problem.title,

@@ -165,6 +165,19 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
 });
 
+// A string literal is coloured by the editor's highlight style, not the plain text colour.
+async function expectStringHighlighted(page: Page, literal: string) {
+	const colourOf = (selector: string) => async () =>
+		page
+			.locator(selector)
+			.first()
+			.evaluate((el) => getComputedStyle(el).color);
+	const token = page.locator('.cm-line span', { hasText: literal }).first();
+	await expect(token).toBeVisible();
+	const plain = await colourOf('.cm-content')();
+	await expect.poll(() => token.evaluate((el) => getComputedStyle(el).color)).not.toBe(plain);
+}
+
 test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1000', async ({
 	page
 }) => {
@@ -223,6 +236,7 @@ test('switching to TypeScript asks first, keeps the Python build, and Run passes
 		await expect(picker).toHaveValue('typescript');
 
 		await setCode(page, correctTypeScript, 'main.ts');
+		await expectStringHighlighted(page, "'node:fs'");
 		await page.getByRole('button', { name: 'Run' }).click();
 		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText('pass', {
 			timeout: 60_000
@@ -294,6 +308,7 @@ test('switching to Go keeps the Python build, and Run passes', async ({ page }) 
 		await expect(picker).toHaveValue('go');
 
 		await setCode(page, correctGo, 'main.go');
+		await expectStringHighlighted(page, '"bufio"');
 		await page.getByRole('button', { name: 'Run' }).click();
 		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText('pass', {
 			timeout: 60_000

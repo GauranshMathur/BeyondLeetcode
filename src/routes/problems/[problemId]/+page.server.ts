@@ -1,4 +1,5 @@
 import { fail } from '@sveltejs/kit';
+import { LANGUAGE_IDS, languageById } from '$lib/languages';
 import { LearningError } from '$lib/server/learning/core';
 import { withLearningErrors } from '$lib/server/learning-http';
 import type { Actions, PageServerLoad } from './$types';
@@ -7,8 +8,7 @@ export const load: PageServerLoad = async ({ locals, params }) => ({
 	problem: await withLearningErrors(() => locals.learning.problem(params.problemId))
 });
 
-/** The Languages the picker offers and the actions accept. */
-const PICKABLE = ['python', 'typescript', 'go'] as const;
+const NOT_A_LANGUAGE = `language must be ${LANGUAGE_IDS.slice(0, -1).join(', ')} or ${LANGUAGE_IDS.at(-1)}`;
 
 /** The page posts the whole Build with the revision it was based on and the Language it showed. */
 async function readBuild(request: Request) {
@@ -30,9 +30,8 @@ async function readBuild(request: Request) {
 	) {
 		return { failure: fail(400, { message: 'files and baseRevision are required' }) };
 	}
-	const language = PICKABLE.find((l) => l === form.get('language'));
-	if (!language)
-		return { failure: fail(400, { message: 'language must be python, typescript or go' }) };
+	const language = languageById(form.get('language'))?.id;
+	if (!language) return { failure: fail(400, { message: NOT_A_LANGUAGE }) };
 	return { files: files as Record<string, string>, baseRevision, language };
 }
 
@@ -40,8 +39,8 @@ export const actions: Actions = {
 	/** Language picker: builds this Problem's Topic in another Language, keeping the other Builds. */
 	switchLanguage: async ({ locals, params, request }) => {
 		const language = String((await request.formData()).get('language'));
-		const picked = PICKABLE.find((l) => l === language);
-		if (!picked) return fail(400, { message: 'language must be python, typescript or go' });
+		const picked = languageById(language)?.id;
+		if (!picked) return fail(400, { message: NOT_A_LANGUAGE });
 		const { topicId } = await withLearningErrors(() => locals.learning.problem(params.problemId));
 		await withLearningErrors(() => locals.learning.switchLanguage(topicId, picked));
 		return { language: picked };
