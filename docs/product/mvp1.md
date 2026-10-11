@@ -26,6 +26,7 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 
 **Instance modes.**
 - **Local:** single user, no login. The nav shows "Local" instead of a username.
+  - Local mode has a Settings screen with two things: the theme (light, dark, or follow the device) and Reset progress, which deletes everything the learner has done after a confirm step.
 - **Multi-user:** local accounts, plus optional GitHub and Google sign-in. Registration is open or invite-only (admin toggle); invite-only uses an Accept invite page. There is no email reset: the admin resets passwords from the Users page. A first-run setup screen creates the admin.
 - Switching an instance from Local to Multi-user keeps the Local progress as the first admin's.
 - Instance settings beyond the registration toggle live in config, not UI, for MVP1.
