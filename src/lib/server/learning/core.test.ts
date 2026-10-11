@@ -1337,3 +1337,110 @@ describe('learner.solution()', () => {
 		await expect(learner.solution('nope')).rejects.toMatchObject({ code: 'NotFound' });
 	});
 });
+
+describe('learner.startFromReferenceCode()', () => {
+	async function setup() {
+		const catalogue = await loadCatalogue(fixtureDir);
+		// Every Test answers correctly, so a Submit is Accepted whatever the code.
+		const tests: NonNullable<RunnerScript['tests']> = {};
+		for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
+			for (const t of [
+				...(catalogue.problem(p)?.exampleTests ?? []),
+				...(catalogue.hiddenTests(p) ?? [])
+			])
+				tests[t.id] = { status: 'ok', stdout: t.expected };
+		}
+		const db = await createTestDb();
+		const core = createLearningCore({ catalogue, db, runner: createScriptedRunner({ tests }) });
+		return { catalogue, db, learner: core.forLearner('any-learner') };
+	}
+
+	it("replaces the Learner's Build with the Reference Code after the previous Problem", async () => {
+		const { learner, catalogue } = await setup();
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'mine' });
+		const broken = await learner.saveCode(ref('stacks-pop', 0), { 'main.py': 'broken' });
+
+		const started = await learner.startFromReferenceCode(ref('stacks-pop', broken.revision));
+
+		const reference = catalogue.problem('stacks-push')?.referenceCode.python;
+		expect(started).toEqual({ files: reference, revision: broken.revision + 1 });
+		expect(await learner.problem('stacks-pop')).toMatchObject({
+			build: { problemId: 'stacks-pop', language: 'python', revision: broken.revision + 1 },
+			files: reference
+		});
+		// Only this step: the previous Problem keeps the Learner's own code.
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.py': 'mine' });
+	});
+
+	it('works on a step never saved, and a Submit with the new revision is accepted by the core', async () => {
+		const { learner, catalogue } = await setup();
+
+		const started = await learner.startFromReferenceCode(ref('stacks-pop', 0));
+		expect(started.revision).toBe(1);
+
+		const view = await learner.submit(ref('stacks-pop', started.revision), started.files);
+		expect(view).toMatchObject({ verdict: 'Accepted' });
+		expect(started.files).toEqual(catalogue.problem('stacks-push')?.referenceCode.python);
+	});
+
+	it("starts a Topic's first Problem empty", async () => {
+		const { learner } = await setup();
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'mine' });
+
+		const started = await learner.startFromReferenceCode(ref('stacks-push', 1));
+
+		expect(started).toEqual({ files: { 'main.py': '' }, revision: 2 });
+	});
+
+	it('uses the Language of the Build, and an Extra starts from its parent', async () => {
+		const { learner, catalogue } = await setup();
+		await learner.switchLanguage('stacks-push', 'typescript');
+
+		const started = await learner.startFromReferenceCode(ref('stacks-peek', 0, 'typescript'));
+
+		expect(started.files).toEqual(catalogue.problem('stacks-push')?.referenceCode.typescript);
+	});
+
+	it('goes through the same revision check as a save', async () => {
+		const { learner } = await setup();
+		await learner.saveCode(ref('stacks-pop', 0), { 'main.py': 'a' });
+
+		await expect(learner.startFromReferenceCode(ref('stacks-pop', 0))).rejects.toMatchObject({
+			code: 'RevisionConflict'
+		});
+		await expect(
+			learner.startFromReferenceCode(ref('stacks-pop', 1, 'typescript'))
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+		expect((await learner.problem('stacks-pop')).files).toEqual({ 'main.py': 'a' });
+	});
+
+	it('refuses a Locked Topic and an unknown Problem', async () => {
+		const { learner } = await setup();
+
+		await expect(learner.startFromReferenceCode(ref('queues-enqueue', 0))).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		await expect(learner.startFromReferenceCode(ref('nope', 0))).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+	});
+
+	it('keeps the Submissions and changes no progress or Hint', async () => {
+		const { learner, db } = await setup();
+		await learner.revealHint('stacks-pop');
+		const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+		const before = {
+			submissions: await db.submission.findMany(),
+			status: (await learner.problem('stacks-pop')).status,
+			hints: await learner.hints('stacks-pop'),
+			map: await learner.map()
+		};
+
+		await learner.startFromReferenceCode(ref('stacks-pop', view.revision));
+
+		expect(await db.submission.findMany()).toEqual(before.submissions);
+		expect((await learner.problem('stacks-pop')).status).toBe(before.status);
+		expect(await learner.hints('stacks-pop')).toEqual(before.hints);
+		expect(await learner.map()).toEqual(before.map);
+	});
+});

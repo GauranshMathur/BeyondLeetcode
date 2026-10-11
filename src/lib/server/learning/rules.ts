@@ -319,6 +319,21 @@ const SEED_NOTES: Readonly<Record<SeedKind, string>> = {
 };
 
 /**
+ * The Reference Code a Problem starts from: the Reference Code after the Problem it seeds from, in
+ * `language`; an empty Build (the entry file) before a Topic's first Problem.
+ */
+export function referenceStartOf(
+	catalogue: Pick<Catalogue, 'topic' | 'problem'>,
+	problemId: string,
+	language: Language
+): BuildFiles {
+	const sourceId = seedSourceOf(catalogue, problemId);
+	return sourceId
+		? (catalogue.problem(sourceId)?.referenceCode[language] ?? {})
+		: { [entryFileOf(language)]: '' };
+}
+
+/**
  * One Problem for one Learner. Pure. `own` is the step's stored code and `source` the stored
  * code of the step it seeds from. An unsaved step shows its starting code without writing it:
  * the source's saved code, else the Reference Code after the source, else an empty Build.
@@ -341,9 +356,8 @@ export function problemView(
 	const topic = topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
 	const listed = topic.chapters.flatMap((c) => c.problems).find((p) => p.id === problemId);
 	const sourceId = seedSourceOf(catalogue, problemId);
-	const start: BuildFiles = sourceId
-		? (saved.source?.files ?? catalogue.problem(sourceId)?.referenceCode[language] ?? {})
-		: { [entryFileOf(language)]: '' };
+	const start: BuildFiles =
+		(sourceId && saved.source?.files) || referenceStartOf(catalogue, problemId, language);
 	return {
 		id: problem.id,
 		title: problem.title,

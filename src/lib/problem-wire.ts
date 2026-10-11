@@ -1,4 +1,5 @@
 import type { ActionResult } from '@sveltejs/kit';
+import type { BuildFiles } from '$lib/server/content/catalogue';
 import type { HintsView, RunView, SubmitView } from '$lib/server/learning/core';
 import type { LearningErrorCode } from '$lib/server/learning/errors';
 import type { Language } from './languages';
@@ -52,6 +53,7 @@ export interface ReplyData {
 	run: RunView;
 	submit: SubmitView;
 	switchLanguage: { language: Language };
+	startFromReferenceCode: { files: BuildFiles; revision: number };
 	revealHint: { hints: HintsView };
 }
 
