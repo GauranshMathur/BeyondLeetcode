@@ -40,7 +40,12 @@ describe('Runner adapter', () => {
 			stdio: 'pipe'
 		});
 
-		const app = await createApp({ ...base, DATABASE_URL, RUNNER_ADAPTER: 'scripted' });
+		const app = await createApp({
+			...base,
+			DATABASE_URL,
+			RUNNER_ADAPTER: 'scripted',
+			IDENTITY_TEST_LEARNER: '1'
+		});
 
 		const learner = app.core.forLearner('someone');
 		const problem = await learner.problem('stacks-push');
@@ -49,10 +54,24 @@ describe('Runner adapter', () => {
 		expect(submitted.verdict).toBe('Accepted');
 	}, 30_000);
 
-	it('refuses the scripted adapter in production', async () => {
+	it('refuses the scripted adapter without the e2e test switch, whatever NODE_ENV is', async () => {
+		await expect(createApp({ ...base, RUNNER_ADAPTER: 'scripted' })).rejects.toThrow(
+			/browser tests only/
+		);
 		await expect(
-			createApp({ ...base, RUNNER_ADAPTER: 'scripted', NODE_ENV: 'production' })
-		).rejects.toThrow(/scripted/);
+			createApp({ ...base, RUNNER_ADAPTER: 'scripted', NODE_ENV: 'development' })
+		).rejects.toThrow(/browser tests only/);
+	});
+
+	it('refuses the scripted adapter in production even with the e2e test switch', async () => {
+		await expect(
+			createApp({
+				...base,
+				RUNNER_ADAPTER: 'scripted',
+				IDENTITY_TEST_LEARNER: '1',
+				NODE_ENV: 'production'
+			})
+		).rejects.toThrow(/browser tests only/);
 	});
 
 	it('refuses an unknown adapter name', async () => {

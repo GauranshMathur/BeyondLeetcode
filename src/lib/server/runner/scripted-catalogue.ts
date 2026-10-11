@@ -60,7 +60,7 @@ export function createCatalogueScriptedRunner(catalogue: Catalogue): RunnerPort 
 				tests: tests(() => ({ status: 'runtimeError', stderr: `${raised[1]}: ${raised[2]}\n` }))
 			};
 		}
-		const printed = /^print\((.*)\)\s*$/m.exec(source);
+		const printed = /^print\((.*)\)[ \t]*$/m.exec(source);
 		if (printed) return { tests: tests(() => ({ status: 'ok', stdout: `${printed[1]}\n` })) };
 		return {};
 	}

@@ -44,14 +44,22 @@ export async function createApp(env: {
 	};
 }
 
-/** The HTTP adapter unless RUNNER_ADAPTER=scripted, which the production image refuses. */
+/** The HTTP adapter unless RUNNER_ADAPTER=scripted, which only the e2e server may turn on. */
 function chooseRunner(
-	env: { RUNNER_URL?: string; RUNNER_TOKEN?: string; RUNNER_ADAPTER?: string; NODE_ENV?: string },
+	env: {
+		RUNNER_URL?: string;
+		RUNNER_TOKEN?: string;
+		RUNNER_ADAPTER?: string;
+		NODE_ENV?: string;
+		IDENTITY_TEST_LEARNER?: string;
+	},
 	catalogue: Catalogue
 ): RunnerPort {
 	if (env.RUNNER_ADAPTER === 'scripted') {
-		if (env.NODE_ENV === 'production') {
-			throw new Error('RUNNER_ADAPTER=scripted is for tests: the production image never runs it.');
+		if (env.IDENTITY_TEST_LEARNER !== '1' || env.NODE_ENV === 'production') {
+			throw new Error(
+				'RUNNER_ADAPTER=scripted is for the browser tests only: it needs the e2e test switch and refuses production.'
+			);
 		}
 		return createCatalogueScriptedRunner(catalogue);
 	}
