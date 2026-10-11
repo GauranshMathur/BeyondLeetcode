@@ -5,10 +5,13 @@ import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
 import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
-import { loadProgress, recordChapterRead, recordSubmission } from './progress.ts';
+import { loadProgress, recordChapterRead, recordSubmission, resetProgress } from './progress.ts';
 import {
+	type BuildRef,
 	type ChapterView,
 	chapterView,
+	type HintsView,
+	hintsView,
 	judge,
 	type MapView,
 	mapView,
@@ -18,8 +21,10 @@ import {
 	type RunView,
 	runView,
 	type SavedStep,
+	type SolutionView,
 	type SubmitView,
 	seedSourceOf,
+	solutionView,
 	submitPlan,
 	type TopicView,
 	topicView,
@@ -29,7 +34,9 @@ import {
 export { LearningError, type LearningErrorCode } from './errors.ts';
 export type {
 	AcceptedView,
+	BuildRef,
 	ChapterView,
+	HintsView,
 	MapTopic,
 	MapView,
 	ProblemView,
@@ -37,6 +44,7 @@ export type {
 	RunTestStatus,
 	RunTestView,
 	RunView,
+	SolutionView,
 	SubmitFailure,
 	SubmitView,
 	TopicState,
@@ -64,50 +72,61 @@ export interface Learner {
 	/** One Problem with the Learner's code for it. Throws NotFound or TopicLocked. Never writes. */
 	problem(problemId: string): Promise<ProblemView>;
 	/**
-	 * Stores the Learner's code for a Problem. `baseRevision` is the revision the code was based
-	 * on (0 for a step never saved) and `language` the Language the tab showed (ProblemView.language).
-	 * Throws RevisionConflict when the revision is stale or the Topic is no longer built in
-	 * `language`, InvalidBuild for bad paths or too much code, NotFound or TopicLocked.
+	 * Stores the Learner's code for a Build. `build` is the reference the screen was issued
+	 * (ProblemView.build): `revision` is what the code was based on (0 for a step never saved) and
+	 * `language` the Language the tab showed. Throws RevisionConflict when the revision is stale or
+	 * the Topic is no longer built in that Language, InvalidBuild for bad paths or too much code,
+	 * NotFound or TopicLocked.
 	 */
-	saveCode(
-		problemId: string,
-		files: BuildFiles,
-		baseRevision: number,
-		language: Language
-	): Promise<{ revision: number }>;
+	saveCode(build: BuildRef, files: BuildFiles): Promise<{ revision: number }>;
 	/**
 	 * Saves like saveCode (same errors), then runs the Problem's Example Tests only and compares
 	 * the outputs. Writes nothing else: never a Submission, status or progress change. Throws
-	 * RunnerUnavailable when the Runner cannot answer; the saved code stays.
+	 * RunnerUnavailable when the Runner cannot answer; the saved code stays and the error carries
+	 * its `revision`.
 	 */
-	run(
-		problemId: string,
-		files: BuildFiles,
-		baseRevision: number,
-		language: Language
-	): Promise<RunView>;
+	run(build: BuildRef, files: BuildFiles): Promise<RunView>;
 	/**
 	 * Saves like saveCode (same errors), runs every Test of the Problem and of the earlier Core
 	 * Problems it builds on, picks the Verdict and records the Submission. Throws
-	 * RunnerUnavailable when the Runner cannot answer: nothing is recorded, the saved code stays.
+	 * RunnerUnavailable when the Runner cannot answer: nothing is recorded, the saved code stays
+	 * and the error carries its `revision`.
 	 */
-	submit(
-		problemId: string,
-		files: BuildFiles,
-		baseRevision: number,
-		language: Language
-	): Promise<SubmitView>;
+	submit(build: BuildRef, files: BuildFiles): Promise<SubmitView>;
 	/**
-	 * Builds the Topic in `language` from now on. Writes only the Learner's choice: a Language's
-	 * steps are created when first saved, seeded like any first touch (the Learner's previous Core
-	 * step in that Language, else its Reference Code; the first Problem empty). Every other
-	 * Language's Builds are kept. Throws NotFound or TopicLocked, InvalidBuild for an unknown Language.
+	 * Builds the Problem's Topic in `language` from now on. Writes only the Learner's choice: a
+	 * Language's steps are created when first saved, seeded like any first touch (the Learner's
+	 * previous Core step in that Language, else its Reference Code; the first Problem empty). Every
+	 * other Language's Builds are kept. Throws NotFound or TopicLocked, InvalidBuild for an unknown Language.
 	 */
-	switchLanguage(topicId: string, language: Language): Promise<void>;
+	switchLanguage(problemId: string, language: Language): Promise<void>;
+	/**
+	 * The Problem's Hints the Learner has revealed (text), how many there are, and the Chapter they
+	 * link back to. Unrevealed Hints are never included. Throws NotFound or TopicLocked. Never writes.
+	 */
+	hints(problemId: string): Promise<HintsView>;
+	/**
+	 * Reveals the next Hint (raises the count by one) and returns the view. Free, changes no
+	 * progress, safe to call twice at once. Throws NoMoreHints when all are revealed (or there
+	 * are none), NotFound or TopicLocked.
+	 */
+	revealHint(problemId: string): Promise<HintsView>;
+	/**
+	 * The Problem's Solution: the explanation (HTML) and the Reference Code after the Problem in
+	 * every Language. Always available, solved or not; never writes, changes no progress or Build.
+	 * Throws NotFound or TopicLocked.
+	 */
+	solution(problemId: string): Promise<SolutionView>;
+	/**
+	 * Deletes everything this Learner has: read Chapters, saved code, Submissions, the Language
+	 * chosen per Topic and revealed Hints, in one transaction. Other Learners and the Learner
+	 * itself are untouched; afterwards the Map shows a new Learner. Never fails for lack of progress.
+	 */
+	resetProgress(): Promise<void>;
 }
 
 /** A Topic is built in Python until the Learner switches it. */
-const DEFAULT_LANGUAGE: Language = 'python';
+const DEFAULT_LANGUAGE: Language = LANGUAGES[0];
 
 export interface LearningCore {
 	/** Every call on the returned Learner acts for this one Learner. */
@@ -140,6 +159,24 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					throw new LearningError('RunnerUnavailable');
 				}
 			};
+			/**
+			 * Save-then-act: saves the Build, then runs `act` with the revision the save produced. A
+			 * Runner outage in `act` leaves the saved code, so it is rethrown carrying that revision.
+			 */
+			const saveThen = async <T>(
+				build: BuildRef,
+				files: BuildFiles,
+				act: (build: BuildRef, revision: number) => Promise<T>
+			): Promise<T> => {
+				const { revision } = await learner.saveCode(build, files);
+				try {
+					return await act(build, revision);
+				} catch (e) {
+					if (e instanceof LearningError && e.code === 'RunnerUnavailable')
+						throw new LearningError(e.code, revision);
+					throw e;
+				}
+			};
 			const learner: Learner = {
 				map: async () =>
 					mapView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId)),
@@ -170,23 +207,26 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							own: await loadStep(deps.db, learnerId, topicId, language, problemId),
 							source: sourceId
 								? await loadStep(deps.db, learnerId, topicId, language, sourceId)
-								: undefined
+								: undefined,
+							sourceSavedIn: sourceId
+								? await languagesSaved(deps.db, learnerId, topicId, sourceId)
+								: []
 						},
 						renderMarkdown
 					);
 				},
-				saveCode: async (problemId, files, baseRevision, language) => {
+				saveCode: async ({ problemId, language, revision: baseRevision }, files) => {
 					// Same checks as the screen read: NotFound, TopicLocked.
 					const view = await learner.problem(problemId);
 					const build = validateBuild(files);
 					// A tab showing another Language than the current one is stale (switched elsewhere).
-					if (language !== view.language) throw new LearningError('RevisionConflict');
+					if (language !== view.build.language) throw new LearningError('RevisionConflict');
 					// Every write below is keyed on the tab's Language, so a switchLanguage landing after
 					// this check can only leave the write on the Build the tab was showing.
 					const key = { learnerId, topicId: view.topicId, language, problemId };
-					if (baseRevision !== view.revision) throw new LearningError('RevisionConflict');
+					if (baseRevision !== view.build.revision) throw new LearningError('RevisionConflict');
 					try {
-						if (view.revision === 0) {
+						if (view.build.revision === 0) {
 							await deps.db.buildStep.create({ data: { ...key, files: build, revision: 1 } });
 							return { revision: 1 };
 						}
@@ -203,17 +243,19 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						throw e;
 					}
 				},
-				run: async (problemId, files, baseRevision, language) => {
-					const { revision } = await learner.saveCode(problemId, files, baseRevision, language);
-					const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
-					return runView(tests, await execute(language, files, tests), revision);
-				},
-				switchLanguage: async (topicId, language) => {
+				run: (build, files) =>
+					saveThen(build, files, async ({ problemId, language }, revision) => {
+						const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
+						return runView(tests, await execute(language, files, tests), revision);
+					}),
+				switchLanguage: async (problemId, language) => {
+					const topicId = deps.catalogue.problem(problemId)?.topicId;
+					if (topicId === undefined) throw new LearningError('NotFound');
 					topicView(
 						deps.catalogue,
 						await loadProgress(deps.catalogue, deps.db, learnerId),
 						topicId
-					); // NotFound / TopicLocked
+					); // TopicLocked
 					if (!LANGUAGES.includes(language)) throw new LearningError('InvalidBuild');
 					await deps.db.topicLanguage.upsert({
 						where: { learnerId_topicId: { learnerId, topicId } },
@@ -221,48 +263,85 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						update: { language }
 					});
 				},
-				submit: async (problemId, files, baseRevision, language) => {
-					const { revision } = await learner.saveCode(problemId, files, baseRevision, language);
-					// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
-					const plan = submitPlan(deps.catalogue, problemId);
-					const batches = [];
-					if (plan.visible.length > 0) {
-						batches.push({
-							tests: plan.visible,
-							result: await execute(language, files, plan.visible)
+				hints: async (problemId) =>
+					hintsView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						problemId,
+						await loadRevealed(deps.db, learnerId, problemId),
+						renderMarkdown
+					),
+				solution: async (problemId) =>
+					solutionView(
+						deps.catalogue,
+						await loadProgress(deps.catalogue, deps.db, learnerId),
+						problemId,
+						renderMarkdown
+					),
+				resetProgress: () => resetProgress(deps.db, learnerId),
+				revealHint: async (problemId) => {
+					const before = await learner.hints(problemId); // NotFound / TopicLocked
+					if (before.revealed.length >= before.total) throw new LearningError('NoMoreHints');
+					// One atomic step each, never past the count: concurrent reveals each raise it by
+					// one until the last Hint, then the rest are refused.
+					const raise = () =>
+						deps.db.hintsRevealed.updateMany({
+							where: { learnerId, problemId, count: { lt: before.total } },
+							data: { count: { increment: 1 } }
 						});
+					if ((await raise()).count === 0) {
+						try {
+							await deps.db.hintsRevealed.create({ data: { learnerId, problemId, count: 1 } });
+						} catch (e) {
+							if ((e as { code?: string }).code !== 'P2002') throw e;
+							// The row appeared meanwhile (or is already at the last Hint).
+							if ((await raise()).count === 0) throw new LearningError('NoMoreHints');
+						}
 					}
-					if (!batches[0]?.result.compileError && plan.hidden.length > 0) {
-						const result = await execute(language, files, plan.hidden);
-						// The code compiled in call 1; a message here is not for the Learner (it ran with Hidden inputs).
-						if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
-						batches.push({ tests: plan.hidden, result });
-					}
-					const { verdict, failure, failingProblemId } = judge(
-						batches,
-						problemId,
-						(id) => deps.catalogue.problem(id)?.title ?? id
-					);
-					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-					const { submissionId, solved, accepted } = await recordSubmission(deps, learnerId, {
-						learnerId,
-						problemId,
-						topicId,
-						language,
-						files,
-						verdict,
-						failingProblemId: failingProblemId ?? null,
-						createdAt: now()
-					});
-					return {
-						submissionId,
-						verdict,
-						...(failure && { failure }),
-						revision,
-						status: solved ? 'Solved' : 'Attempted',
-						...(accepted && { accepted })
-					};
-				}
+					return learner.hints(problemId);
+				},
+				submit: (build, files) =>
+					saveThen(build, files, async ({ problemId, language }, revision) => {
+						// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
+						const plan = submitPlan(deps.catalogue, problemId);
+						const batches = [];
+						if (plan.visible.length > 0) {
+							batches.push({
+								tests: plan.visible,
+								result: await execute(language, files, plan.visible)
+							});
+						}
+						if (!batches[0]?.result.compileError && plan.hidden.length > 0) {
+							const result = await execute(language, files, plan.hidden);
+							// The code compiled in call 1; a message here is not for the Learner (it ran with Hidden inputs).
+							if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
+							batches.push({ tests: plan.hidden, result });
+						}
+						const { verdict, failure, failingProblemId } = judge(
+							batches,
+							problemId,
+							(id) => deps.catalogue.problem(id)?.title ?? id
+						);
+						const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
+						const { submissionId, solved, accepted } = await recordSubmission(deps, learnerId, {
+							learnerId,
+							problemId,
+							topicId,
+							language,
+							files,
+							verdict,
+							failingProblemId: failingProblemId ?? null,
+							createdAt: now()
+						});
+						return {
+							submissionId,
+							verdict,
+							...(failure && { failure }),
+							revision,
+							status: solved ? 'Solved' : 'Attempted',
+							...(accepted && { accepted })
+						};
+					})
 			};
 			return learner;
 		}
@@ -296,4 +375,26 @@ async function loadStep(
 		}
 	});
 	return row ? { files: row.files as BuildFiles, revision: row.revision } : undefined;
+}
+
+/** The Languages in which the Learner has saved this step. */
+async function languagesSaved(
+	db: Db,
+	learnerId: string,
+	topicId: string,
+	problemId: string
+): Promise<Language[]> {
+	const rows = await db.buildStep.findMany({
+		where: { learnerId, topicId, problemId },
+		select: { language: true }
+	});
+	return LANGUAGES.filter((l) => rows.some((r) => r.language === l));
+}
+
+/** How many of a Problem's Hints the Learner has revealed. */
+async function loadRevealed(db: Db, learnerId: string, problemId: string): Promise<number> {
+	const row = await db.hintsRevealed.findUnique({
+		where: { learnerId_problemId: { learnerId, problemId } }
+	});
+	return row?.count ?? 0;
 }

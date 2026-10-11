@@ -24,15 +24,20 @@ learner.chapter(chapterId)    learner.problem(problemId)
 
 // Learner actions
 learner.reachChapterEnd(chapterId)                    // → progress change (may Complete a Topic)
-learner.saveCode(problemId, files, baseRevision, language) // → new revision, or RevisionConflict
-learner.run(problemId, files, baseRevision, language)      // → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
-learner.submit(problemId, files, baseRevision, language)   // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
+learner.saveCode(build, files)    // build: Build reference { problemId, language, revision } → { revision }, or RevisionConflict
+learner.run(build, files)         // saves, then → RunView { revision, compileError?, tests[{ name, input, expected, actual, stderr, passed, status }] }; Example Tests only; never changes progress
+learner.submit(build, files)      // saves, runs, returns Verdict (+ accepted: next Problem, Topic Complete, newly Unlocked)
 learner.startFromReferenceCode(problemId)
-learner.switchLanguage(topicId, language)
-learner.revealHint(problemId)
+learner.switchLanguage(problemId, language)   // the Language of that Problem's Topic
+learner.hints(problemId)      // screen read: { total, revealed[{ number, html }], chapter } - never an unrevealed Hint
+learner.solution(problemId)    // screen read: { explanationHtml, referenceCode: Language → files }; never changes progress or a Build
+learner.revealHint(problemId)  // raises the revealed count by one, never past the total; → the same view
+learner.resetProgress()       // deletes this Learner's read Chapters, saved code, Submissions, Languages per Topic and revealed Hints in one transaction; the Learner row stays
 ```
 
-Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab, second device, or a Language switched elsewhere), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. Routes map codes to statuses through one shared helper.
+**Build reference.** `learner.problem()` returns `build: { problemId, language, revision }`: the Problem, the Language the screen shows, and the revision its code is based on (0 for a step never saved). The tab hands it back unchanged with every save, run or submit and takes the new revision from the reply. The core never trusts it: a `language` other than the Topic's current one, or a stale `revision`, is `RevisionConflict`. Run and Submit are "save, then act" in one core path.
+
+Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic except the Map), `RevisionConflict` (409; stale tab, second device, or a Language switched elsewhere), `InvalidBuild` (400; bad paths or a Build over the size cap), `NoMoreHints`, `RunnerUnavailable` (503; the Runner is down, busy or failed). A Verdict is never an error. An error raised after the code was saved (`RunnerUnavailable` during Run or Submit) carries the `revision` that save produced. Routes map codes to statuses, and pass that revision on, through one shared helper (`withLearningErrors`) and do nothing else with them.
 
 **Rules the interface guarantees**
 
@@ -43,7 +48,9 @@ Errors: `NotFound` (404), `TopicLocked` (403; anything inside a Locked Topic exc
 - Submit runs the Problem's Tests plus every earlier Core Problem's Tests (up to the parent step for an Extra). It waits for the result; a Runner outage records nothing. It makes two Runner calls, each its own container: the Problem's Example Tests (the only output ever shown), then every other Test (outcomes only). Tests in one container are not isolated from each other: kernel counters survive the harness's cleanup, so a Hidden input must never share a container with a Test whose output is shown.
 - The core, not the Runner, picks the Verdict: Compile Error > Time Limit Exceeded > Runtime Error > Wrong Answer > Accepted.
 - A failing Hidden Test (or earlier step) shows only which Problem failed and the Verdict: no input, expected output or Learner output. Output is shown for failing Example Tests.
-- A Solution's code is the Reference Code after that Problem.
+- A Solution's code is the Reference Code after that Problem. It is always available (any Problem inside an Unlocked or Complete Topic, solved or not), read only, and loaded by its own call: the Problem view never carries it.
+- Reset progress deletes every row of this Learner in every progress table (every model with a `learnerId`) in one transaction, and nothing of any other Learner. A test fails when the Prisma schema has such a model that the reset does not clear. Settings such as the theme are not progress and are kept.
+- Hints reveal in number order and the Learner's count is stored per Problem (one number). Revealing is free, changes no progress and is atomic, so two at once never pass the total. The browser only receives the revealed Hints' text; every Hint links to the Problem's Chapter.
 
 **Inside the core.** The rules (Unlock graph, code seeding, Test assembly, Verdict, hiding Hidden Tests, the before/after diff for the Accepted panel) are pure functions with no I/O; a thin shell loads state, calls them, calls the Runner and saves. The pure rules are an internal seam: table tests may cover them, but behaviour tests go through `forLearner`.
 

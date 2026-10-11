@@ -1,3 +1,5 @@
+import type { Language } from '../../languages';
+
 const pythonImage = 'python:3.13-slim';
 /** Built from Dockerfile.sandbox-node: bump the tag number by hand whenever that file changes. */
 const typescriptImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-node:1';
@@ -9,7 +11,10 @@ export const sandboxConfig = {
 	/** Pinned by tag, in one place. */
 	pythonImage,
 	/** Language to Sandbox image: the one list the Runner pulls from. */
-	images: { python: pythonImage, typescript: typescriptImage, go: goImage },
+	images: { python: pythonImage, typescript: typescriptImage, go: goImage } satisfies Record<
+		Language,
+		string
+	>,
 	/** Wall-clock limit for the whole container; unfinished Tests after it are `timeout`. */
 	containerTimeoutMs: 10_000,
 	/** Per-Test run time. */

@@ -15,8 +15,8 @@ let { children } = $props();
 	<a class="brand" href="/">Beyond Leetcode</a>
 	<nav aria-label="Primary">
 		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
-		<!-- Local Mode has no username: the canvas nav shows "Local" (S1). -->
-		<span class="who">Local</span>
+		<!-- Local Mode has no username: the canvas nav shows "Local", which opens Settings. -->
+		<a href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}>Local</a>
 	</nav>
 </header>
 {/if}
@@ -61,9 +61,5 @@ let { children } = $props();
 		text-decoration-color: var(--accent);
 		text-decoration-thickness: 2px;
 		text-underline-offset: 8px;
-	}
-	.who {
-		padding: 12px 0;
-		line-height: 20px;
 	}
 </style>

@@ -1,230 +1,111 @@
 <script lang="ts">
-import { onDestroy, type Snippet } from 'svelte';
+import { onDestroy, type Snippet, untrack } from 'svelte';
 import { deserialize } from '$app/forms';
 import { invalidateAll } from '$app/navigation';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
-import type { ProblemView, RunView, SubmitView } from '$lib/server/learning/core';
-import type { Outcome } from './outcome';
+import { LANGUAGES, type Language, languageById } from '$lib/languages';
+import type { ProblemView, SolutionView } from '$lib/server/learning/core';
 import ResultsPanel from './ResultsPanel.svelte';
+import SolutionCode from './SolutionCode.svelte';
+import {
+	begin,
+	type Event,
+	isBusy,
+	type Reply,
+	type Request,
+	type SaveState,
+	transition
+} from './workspace';
 
-let { problem, statement }: { problem: ProblemView; statement: Snippet } = $props();
+let {
+	problem,
+	statement,
+	solution
+}: {
+	problem: ProblemView;
+	statement: Snippet;
+	/** While set, the Reference Code replaces the editor. The editor stays mounted, so the Learner's code and any pending save are untouched. */
+	solution?: SolutionView;
+} = $props();
 
-const SAVE_DELAY_MS = 1000;
-type SaveState = 'saved' | 'edited' | 'saving' | 'failed' | 'rejected' | 'conflict';
-
-// The page owns the Build and its revision from here on; the editor reports every edit.
-// The Build and revision are taken once; this component is keyed by Problem, so it never goes stale.
-// svelte-ignore state_referenced_locally
-const paths = Object.keys(problem.files);
-// svelte-ignore state_referenced_locally
-let files = { ...problem.files };
-// svelte-ignore state_referenced_locally
-let revision = problem.revision;
-// The Language this Build was loaded in: sent with every save, even if `problem` has moved on by then.
-// svelte-ignore state_referenced_locally
-const loadedLanguage = problem.language;
-let saveState = $state<SaveState>('saved');
+// The state machine in ./workspace.ts owns the Build, its revision and every transition. This component
+// renders it, runs the timer and the fetch it asks for, and feeds each answer back as an event. It is keyed
+// by Problem and Language, so the session is started once from the first `problem`.
+let session = $state.raw(untrack(() => begin(problem.build, problem.files)));
 let timer: ReturnType<typeof setTimeout> | undefined;
-let inFlight = false;
-let dirty = false;
-let outcome = $state<Outcome | undefined>(undefined);
-// The Language picker: a pick waits for the inline confirm; switching saves first, then reloads the Problem.
-const LANGUAGE_NAMES = { python: 'Python', typescript: 'TypeScript', go: 'Go' } as const;
-const PICKABLE = ['python', 'typescript', 'go'] as const;
-// svelte-ignore state_referenced_locally
-let choice = $state<string>(problem.language);
-let confirming = $derived(choice !== problem.language);
-let switching = $state(false);
-let switchFailed = $state(false);
-const busy = $derived(outcome?.kind === 'running' || outcome?.kind === 'submitting');
 
-function onchange(next: Record<string, string>) {
-	if (saveState === 'conflict') return;
-	files = next;
-	dirty = true;
-	saveState = 'edited';
-	clearTimeout(timer);
-	timer = setTimeout(save, SAVE_DELAY_MS);
-}
-
-const RETRY_DELAY_MS = 5 * SAVE_DELAY_MS;
-// svelte-ignore state_referenced_locally
-const saveUrl = `/problems/${problem.id}?/save`;
-let closed = false;
-
-async function save(keepalive = false) {
-	if (inFlight || !dirty || saveState === 'conflict') return;
-	inFlight = true;
-	dirty = false;
-	saveState = 'saving';
-	let retry = false;
-	try {
-		const body = new FormData();
-		body.set('files', JSON.stringify(files));
-		body.set('baseRevision', String(revision));
-		body.set('language', loadedLanguage);
-		const response = await fetch(saveUrl, {
-			method: 'POST',
-			body,
-			keepalive,
-			headers: { 'x-sveltekit-action': 'true' }
-		});
-		if (response.status === 409) {
-			saveState = 'conflict';
-		} else if (response.status >= 400 && response.status < 500) {
-			// The server will never accept this Build (too large, bad path): retrying cannot help.
-			saveState = 'rejected';
-		} else {
-			const result = deserialize(await response.text());
-			if (result.type !== 'success') throw new Error('save failed');
-			revision = (result.data as { revision: number }).revision;
-			saveState = dirty ? 'edited' : 'saved';
-		}
-	} catch {
-		dirty = true;
-		retry = true;
-		saveState = 'failed';
-	} finally {
-		inFlight = false;
-	}
-	afterSave(retry);
-}
-
-/** Edits made while saving, or a transient failure, go out on the next tick. */
-function afterSave(retry: boolean) {
-	if (dirty && (!closed || !retry) && saveState !== 'conflict' && saveState !== 'rejected') {
+function dispatch(event: Event) {
+	const step = transition(session, event);
+	session = step.state;
+	if (step.timer) {
 		clearTimeout(timer);
-		timer = setTimeout(save, retry ? RETRY_DELAY_MS : 0);
+		if (step.timer !== 'cancel')
+			timer = setTimeout(() => dispatch({ type: 'tick' }), step.timer.afterMs);
 	}
+	if (step.send) void perform(step.send);
 }
 
-// svelte-ignore state_referenced_locally
-const runUrl = `/problems/${problem.id}?/run`;
-// svelte-ignore state_referenced_locally
-const submitUrl = `/problems/${problem.id}?/submit`;
+/** The one place that talks to the server: posts the request and reports what came back. */
+async function perform(request: Request) {
+	dispatch({ type: 'response', reply: await post(request) });
+}
 
-/** Run and Submit save the Build themselves, so they wait for an autosave in flight and hold the next one off. */
-async function send(
-	url: string,
-	pending: Outcome,
-	done: (data: Record<string, unknown>) => Outcome & { revision: number }
-) {
-	if (busy || saveState === 'conflict' || saveState === 'rejected') return;
-	outcome = pending;
-	clearTimeout(timer);
-	while (inFlight) await new Promise((resolve) => setTimeout(resolve, 25));
-	inFlight = true;
-	const sent = files;
-	dirty = false;
-	saveState = 'saving';
-	let retry = false;
+async function post(request: Request): Promise<Reply> {
 	try {
 		const body = new FormData();
-		body.set('files', JSON.stringify(sent));
-		body.set('baseRevision', String(revision));
-		body.set('language', loadedLanguage);
-		const response = await fetch(url, {
+		if (request.kind === 'switch') {
+			body.set('language', request.language);
+		} else {
+			body.set('files', JSON.stringify(request.files));
+			body.set('build', JSON.stringify(request.build));
+		}
+		const action = request.kind === 'switch' ? 'switchLanguage' : request.kind;
+		const response = await fetch(`/problems/${session.build.problemId}?/${action}`, {
 			method: 'POST',
 			body,
+			keepalive: request.kind !== 'switch' && request.keepalive === true,
 			headers: { 'x-sveltekit-action': 'true' }
 		});
-		if (response.status === 409) {
-			saveState = 'conflict';
-			outcome = undefined;
-		} else if (response.status >= 400 && response.status < 500) {
-			saveState = 'rejected';
-			outcome = undefined;
-		} else {
-			const result = deserialize(await response.text());
-			if (result.type === 'failure' && result.status === 503) {
-				// The Build was saved before the Runner failed (a failure result comes back as HTTP 200).
-				if (typeof result.data?.revision === 'number') revision = result.data.revision;
-				saveState = dirty ? 'edited' : 'saved';
-				outcome = { kind: 'unavailable' };
-			} else if (result.type === 'success') {
-				const next = done(result.data as Record<string, unknown>);
-				revision = next.revision;
-				saveState = dirty ? 'edited' : 'saved';
-				outcome = next;
-			} else {
-				throw new Error('request failed');
-			}
+		// A 4xx is final whatever the body is (a proxy may not send an action's JSON).
+		if (response.status >= 400 && response.status < 500)
+			return { ok: false, status: response.status };
+		const result = deserialize(await response.text());
+		if (result.type === 'failure') return { ok: false, status: result.status };
+		if (result.type === 'error') {
+			return { ok: false, status: response.status, revision: result.error?.revision };
 		}
+		if (result.type !== 'success') return { ok: false, status: 0 };
+		if (request.kind === 'switch') await invalidateAll();
+		return { ok: true, data: result.data };
 	} catch {
-		dirty = true;
-		retry = true;
-		saveState = 'failed';
-		outcome = undefined;
-	} finally {
-		inFlight = false;
+		return { ok: false, status: 0 };
 	}
-	afterSave(retry);
 }
 
-const run = () =>
-	send(runUrl, { kind: 'running' }, (data) => {
-		const view = data as unknown as RunView;
-		return { kind: 'result', view, revision: view.revision };
-	});
+const busy = $derived(isBusy(session));
+const paths = $derived(Object.keys(problem.files));
 
-const submit = () =>
-	send(submitUrl, { kind: 'submitting' }, (data) => {
-		const view = data as unknown as SubmitView;
-		return { kind: 'verdict', view, revision: view.revision };
-	});
+// The Language picker: a pick waits for the inline confirm; switching saves first, then reloads the Problem.
+const nameOf = (id: string) => languageById(id)?.name ?? id;
+let picked = $state<Language | undefined>(undefined);
+const choice = $derived(picked ?? problem.build.language);
+const confirming = $derived(choice !== problem.build.language);
+
+function onchange(files: Record<string, string>) {
+	dispatch({ type: 'edit', files });
+}
 
 function onkeydown(event: KeyboardEvent) {
 	if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
 		// Capture phase: the editor's own Mod-Enter (insert blank line) must not see it.
 		event.preventDefault();
 		event.stopPropagation();
-		void run();
+		dispatch({ type: 'run' });
 	}
 }
 
 // Leaving the page (navigation, reload, close) sends what is pending and stops the timers.
-function flush() {
-	clearTimeout(timer);
-	void save(true);
-}
-onDestroy(() => {
-	flush();
-	closed = true;
-});
-
-function cancelSwitch() {
-	choice = problem.language;
-}
-
-async function confirmSwitch() {
-	if (busy || switching) return;
-	switching = true;
-	switchFailed = false;
-	// Nothing may save into the new Language's Build afterwards: send what is pending first.
-	clearTimeout(timer);
-	while (inFlight) await new Promise((resolve) => setTimeout(resolve, 25));
-	await save();
-	if (dirty || saveState === 'conflict' || saveState === 'rejected') {
-		switching = false;
-		switchFailed = true;
-		return;
-	}
-	try {
-		const body = new FormData();
-		body.set('language', choice);
-		const response = await fetch(`/problems/${problem.id}?/switchLanguage`, {
-			method: 'POST',
-			body,
-			headers: { 'x-sveltekit-action': 'true' }
-		});
-		if (deserialize(await response.text()).type !== 'success') throw new Error('switch failed');
-		await invalidateAll();
-	} catch {
-		switchFailed = true;
-	} finally {
-		switching = false;
-	}
-}
+onDestroy(() => dispatch({ type: 'flush', final: true }));
 
 const label: Record<SaveState, string> = {
 	saved: 'saved',
@@ -236,7 +117,7 @@ const label: Record<SaveState, string> = {
 };
 </script>
 
-<svelte:window onpagehide={flush} onkeydowncapture={onkeydown} />
+<svelte:window onpagehide={() => dispatch({ type: 'flush', final: false })} onkeydowncapture={onkeydown} />
 
 <div class="page">
 	<header class="workspace-bar">
@@ -247,8 +128,8 @@ const label: Record<SaveState, string> = {
 			</nav>
 		</div>
 		<div class="actions">
-			<button type="button" class="run mono" disabled={busy} onclick={run}>{outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
-			<button type="button" class="run submit mono" disabled={busy} onclick={submit}>{outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
+			<button type="button" class="run mono" disabled={busy} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
+			<button type="button" class="run submit mono" disabled={busy} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
 		</div>
 	</header>
 
@@ -256,33 +137,38 @@ const label: Record<SaveState, string> = {
 		{@render statement()}
 
 		<div class="pane">
-			<div class="bar">
-				<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
-				<div class="bar-right">
-					<span class="mono status" class:warn={saveState === 'conflict' || saveState === 'failed' || saveState === 'rejected'} role="status">{label[saveState]}</span>
-					<label class="mono picker">build language
-						<select bind:value={choice} aria-describedby={confirming ? 'switch-note' : undefined} disabled={switching}>
-							{#each PICKABLE as language (language)}
-								<option value={language}>{LANGUAGE_NAMES[language]}</option>
-							{/each}
-						</select>
-					</label>
-				</div>
-			</div>
-			{#if confirming}
-				<div class="confirm" role="group" aria-label="Switch build language">
-					<div class="confirm-text">
-						<span class="mono ask">Switch to {LANGUAGE_NAMES[choice as keyof typeof LANGUAGE_NAMES]}?</span>
-						<span id="switch-note" class="note">Starts a new {LANGUAGE_NAMES[choice as keyof typeof LANGUAGE_NAMES]} copy of this build from reference code. Your {LANGUAGE_NAMES[problem.language]} build is kept.{switchFailed ? ' The switch did not go through; try again.' : ''}</span>
-					</div>
-					<div class="confirm-actions">
-						<button type="button" class="cancel mono" onclick={cancelSwitch} disabled={switching}>Cancel</button>
-						<button type="button" class="run mono" onclick={confirmSwitch} disabled={switching || busy}>{switching ? 'Switching…' : 'Switch language'}</button>
-					</div>
-				</div>
+			{#if solution}
+				<SolutionCode {solution} startLanguage={problem.build.language} />
 			{/if}
-			<CodeEditor files={problem.files} {onchange} readonly={saveState === 'conflict' || switching} />
-			<ResultsPanel {outcome} />
+			<div class="build" class:off={solution !== undefined}>
+				<div class="bar">
+					<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
+					<div class="bar-right">
+						<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected'} role="status">{label[session.save]}</span>
+						<label class="mono picker">build language
+							<select value={choice} onchange={(e) => (picked = e.currentTarget.value as Language)} aria-describedby={confirming ? 'switch-note' : undefined} disabled={session.switching}>
+								{#each LANGUAGES as language (language.id)}
+									<option value={language.id}>{language.name}</option>
+								{/each}
+							</select>
+						</label>
+					</div>
+				</div>
+				{#if confirming}
+					<div class="confirm" role="group" aria-label="Switch build language">
+						<div class="confirm-text">
+							<span class="mono ask">Switch to {nameOf(choice)}?</span>
+							<span id="switch-note" class="note">Starts a new {nameOf(choice)} copy of this build; it {problem.seedNotes[choice]}. Your {nameOf(problem.build.language)} build is kept.{session.switchFailed ? ' The switch did not go through; try again.' : ''}</span>
+						</div>
+						<div class="confirm-actions">
+							<button type="button" class="cancel mono" onclick={() => (picked = undefined)} disabled={session.switching}>Cancel</button>
+							<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} disabled={session.switching || busy}>{session.switching ? 'Switching…' : 'Switch language'}</button>
+						</div>
+					</div>
+				{/if}
+				<CodeEditor files={problem.files} {onchange} readonly={session.save === 'conflict' || session.switching} />
+				<ResultsPanel outcome={session.outcome} />
+			</div>
 		</div>
 	</div>
 </div>
@@ -340,6 +226,16 @@ const label: Record<SaveState, string> = {
 		flex-direction: column;
 		min-height: 0;
 		min-width: 0;
+	}
+	.build {
+		display: flex;
+		flex-direction: column;
+		flex-grow: 1;
+		min-height: 0;
+		min-width: 0;
+	}
+	.build.off {
+		display: none;
 	}
 	.bar {
 		display: flex;

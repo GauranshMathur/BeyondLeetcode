@@ -111,3 +111,26 @@ export async function recordSubmission(
 		};
 	});
 }
+
+type Tx = Parameters<Parameters<Db['$transaction']>[0]>[0];
+
+/**
+ * How each table holding a Learner's progress (a Prisma model with a `learnerId`) is cleared.
+ * Adding such a model without an entry here fails reset.test.ts.
+ */
+const CLEAR: Record<string, (tx: Tx, learnerId: string) => Promise<unknown>> = {
+	chapterRead: (tx, learnerId) => tx.chapterRead.deleteMany({ where: { learnerId } }),
+	buildStep: (tx, learnerId) => tx.buildStep.deleteMany({ where: { learnerId } }),
+	topicLanguage: (tx, learnerId) => tx.topicLanguage.deleteMany({ where: { learnerId } }),
+	hintsRevealed: (tx, learnerId) => tx.hintsRevealed.deleteMany({ where: { learnerId } }),
+	submission: (tx, learnerId) => tx.submission.deleteMany({ where: { learnerId } })
+};
+
+export const PROGRESS_TABLES = Object.keys(CLEAR);
+
+/** Deletes everything the Learner has, in one transaction. The Learner row stays. */
+export async function resetProgress(db: Db, learnerId: string): Promise<void> {
+	await db.$transaction(async (tx) => {
+		for (const clear of Object.values(CLEAR)) await clear(tx, learnerId);
+	});
+}

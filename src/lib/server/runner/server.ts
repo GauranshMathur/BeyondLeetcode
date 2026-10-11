@@ -1,6 +1,7 @@
 /** The Runner's HTTP surface: `POST /execute` and `GET /health`, both behind a bearer token. */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
+import { LANGUAGE_IDS } from '../../languages';
 import { sandboxConfig } from './config';
 import type { RunnerPort } from './port';
 
@@ -30,7 +31,7 @@ function hasNoFileUnderFile(files: Record<string, string>): boolean {
 }
 
 const executeRequest = z.object({
-	language: z.enum(['python', 'typescript', 'go']),
+	language: z.enum(LANGUAGE_IDS),
 	files: z
 		.record(buildPath, z.string())
 		.refine((files) => Object.keys(files).length <= sandboxConfig.maxFiles, 'Too many files')

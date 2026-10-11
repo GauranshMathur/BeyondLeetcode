@@ -1,4 +1,6 @@
 <script lang="ts">
+import { go } from '@codemirror/lang-go';
+import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
@@ -51,13 +53,20 @@ const highlight = HighlightStyle.define([
 	{ tag: [tags.string, tags.number], color: 'var(--accent)' }
 ]);
 
+/** Highlighting by file extension; any other file is plain text. */
+function syntaxFor(path: string) {
+	if (path.endsWith('.py')) return [python()];
+	if (path.endsWith('.ts')) return [javascript({ typescript: true })];
+	if (path.endsWith('.go')) return [go()];
+	return [];
+}
+
 function stateFor(path: string, doc: string) {
 	return EditorState.create({
 		doc,
 		extensions: [
 			basicSetup,
-			// Only Python has a language extension; other files are plain text.
-			...(path.endsWith('.py') ? [python()] : []),
+			...syntaxFor(path),
 			theme,
 			syntaxHighlighting(highlight),
 			lock.of(EditorState.readOnly.of(readonly)),

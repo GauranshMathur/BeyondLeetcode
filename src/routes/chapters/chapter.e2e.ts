@@ -34,3 +34,16 @@ test('a Locked Topic Chapter returns 403 and an unknown Chapter 404', async ({ p
 	expect((await page.goto('/chapters/queues-print-spooler'))?.status()).toBe(403);
 	expect((await page.goto('/chapters/nope'))?.status()).toBe(404);
 });
+
+test('a Chapter links to a prefilled new GitHub issue in a new tab', async ({ page }) => {
+	await page.goto('/chapters/stacks-undo-log');
+	const link = page.getByRole('link', { name: /Report an issue/ });
+	await expect(link).toHaveAttribute('target', '_blank');
+	await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+	const url = new URL((await link.getAttribute('href')) ?? '');
+	expect(`${url.origin}${url.pathname}`).toBe(
+		'https://github.com/GauranshMathur/BeyondLeetcode/issues/new'
+	);
+	expect(url.searchParams.get('title')).toBe('Chapter: An undo log (stacks-undo-log)');
+	expect(url.searchParams.get('body')).toContain('Source that shows it');
+});

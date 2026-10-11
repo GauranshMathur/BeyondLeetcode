@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.27.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.26.0...v0.27.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C20b Settings: reset progress ([#125](https://github.com/GauranshMathur/BeyondLeetcode/issues/125)) ([c706c3d](https://github.com/GauranshMathur/BeyondLeetcode/commit/c706c3dfba7ec0b80b185ff4d3311f4fb6405ac9))
+
+## [0.26.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.25.0...v0.26.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C18 Problem Solution tab with read-only Reference Code ([#122](https://github.com/GauranshMathur/BeyondLeetcode/issues/122)) ([9300881](https://github.com/GauranshMathur/BeyondLeetcode/commit/93008815713423319d0de4f6e30da2d5ff4b07c4))
+
+## [0.25.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.24.0...v0.25.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C17 Problem Hints tab, revealed one at a time ([#120](https://github.com/GauranshMathur/BeyondLeetcode/issues/120)) ([d4f41a2](https://github.com/GauranshMathur/BeyondLeetcode/commit/d4f41a217f11f3b2d697a29b748d189a02843864))
+* **beyondleetcode:** C20a Settings: Local screen with theme ([#119](https://github.com/GauranshMathur/BeyondLeetcode/issues/119)) ([6674b24](https://github.com/GauranshMathur/BeyondLeetcode/commit/6674b243f09126f19f4b33fb8a8e88770212f274))
+
+## [0.24.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.23.0...v0.24.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C19 Report an issue links on Problem and Chapter ([#118](https://github.com/GauranshMathur/BeyondLeetcode/issues/118)) ([890bc30](https://github.com/GauranshMathur/BeyondLeetcode/commit/890bc30827ec063b4bad5913c93778eaa29344a6))
+
+## [0.23.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.22.0...v0.23.0) (2026-10-11)
+
+
+### Features
+
+* **beyondleetcode:** C15 one shared list of Languages; TypeScript and Go highlighting ([#112](https://github.com/GauranshMathur/BeyondLeetcode/issues/112)) ([dc63cf9](https://github.com/GauranshMathur/BeyondLeetcode/commit/dc63cf9511ad2504394ddfd9268fcea30e228ec5))
+
 ## [0.22.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.21.2...v0.22.0) (2026-10-11)
 
 

@@ -4,7 +4,10 @@ import type { Learner } from '$lib/server/learning/core';
 // for information about these interfaces
 declare global {
 	namespace App {
-		// interface Error {}
+		interface Error {
+			/** Set when the code was saved before the refusal: the revision the save produced. */
+			revision?: number;
+		}
 		interface Locals {
 			learnerId: string;
 			/** The Learning core acting for this request's Learner. */

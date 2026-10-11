@@ -1,3 +1,4 @@
+import { entryFileOf, LANGUAGES } from '../../languages';
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import type { ExecuteResult } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
@@ -244,13 +245,6 @@ export function reachChapter(
 	};
 }
 
-/** The entry file of a Build that has not been started, by Language. */
-const ENTRY_FILE: Record<Language, string> = {
-	python: 'main.py',
-	typescript: 'main.ts',
-	go: 'main.go'
-};
-
 /** A Problem as the Problem screen needs it. Never carries Hints, a Solution or Hidden Tests. */
 export interface ProblemView {
 	readonly id: string;
@@ -262,12 +256,24 @@ export interface ProblemView {
 	readonly parentProblemId?: string;
 	readonly statementHtml: string;
 	readonly exampleTests: readonly { name: string; input: string; expected: string }[];
-	readonly language: Language;
+	/** The Build this screen shows; the tab hands it back unchanged with every save, run or submit. */
+	readonly build: BuildRef;
 	/** The Learner's code: stored if saved, otherwise what the step would start from. */
 	readonly files: BuildFiles;
-	/** 0 until the step is first saved. */
-	readonly revision: number;
+	/** For each Language: what a Build started in it would start from (see seedNoteOf). */
+	readonly seedNotes: Readonly<Record<Language, string>>;
 	readonly status: ProblemStatus;
+}
+
+/**
+ * Which Build a save, run or submit acts on: the Problem, the Language the tab showed, and the
+ * revision its code is based on (0 for a step never saved). The server issues it (ProblemView.build,
+ * and the new revision with every reply); the tab returns it unchanged. The core still checks it.
+ */
+export interface BuildRef {
+	readonly problemId: string;
+	readonly language: Language;
+	readonly revision: number;
 }
 
 /** Code the Learner has stored for a step. */
@@ -293,6 +299,25 @@ export function seedSourceOf(
 	return mainLine[mainLine.indexOf(problemId) - 1];
 }
 
+/** What a new Build of a step starts from, in the order the rule tries them. */
+export type SeedKind = 'previousStep' | 'referenceCode' | 'empty';
+
+/**
+ * The words for what seeds a new Build, for the Language picker: the Learner's own code for the
+ * step it seeds from (`sourceSaved`), else that step's Reference Code, and nothing on a Topic's
+ * first Problem (which has no source). Mirrors the choice problemView makes for `files`.
+ */
+export function seedNoteOf(hasSource: boolean, sourceSaved: boolean): string {
+	const kind: SeedKind = !hasSource ? 'empty' : sourceSaved ? 'previousStep' : 'referenceCode';
+	return SEED_NOTES[kind];
+}
+
+const SEED_NOTES: Readonly<Record<SeedKind, string>> = {
+	previousStep: 'starts from your code for the previous Problem',
+	referenceCode: 'starts from the reference code for the previous Problem',
+	empty: 'starts empty'
+};
+
 /**
  * One Problem for one Learner. Pure. `own` is the step's stored code and `source` the stored
  * code of the step it seeds from. An unsaved step shows its starting code without writing it:
@@ -303,7 +328,12 @@ export function problemView(
 	progress: Progress,
 	problemId: string,
 	language: Language,
-	saved: { own?: SavedStep; source?: SavedStep },
+	saved: {
+		own?: SavedStep;
+		source?: SavedStep;
+		/** The Languages in which the source step has saved code (for the picker's notes). */
+		sourceSavedIn?: readonly Language[];
+	},
 	renderMarkdown: (markdown: string) => string
 ): ProblemView {
 	const problem = catalogue.problem(problemId);
@@ -313,7 +343,7 @@ export function problemView(
 	const sourceId = seedSourceOf(catalogue, problemId);
 	const start: BuildFiles = sourceId
 		? (saved.source?.files ?? catalogue.problem(sourceId)?.referenceCode[language] ?? {})
-		: { [ENTRY_FILE[language]]: '' };
+		: { [entryFileOf(language)]: '' };
 	return {
 		id: problem.id,
 		title: problem.title,
@@ -327,10 +357,71 @@ export function problemView(
 			input: t.input,
 			expected: t.expected
 		})),
-		language,
+		build: { problemId, language, revision: saved.own?.revision ?? 0 },
 		files: saved.own?.files ?? start,
-		revision: saved.own?.revision ?? 0,
+		seedNotes: Object.fromEntries(
+			LANGUAGES.map((l) => [
+				l.id,
+				seedNoteOf(sourceId !== undefined, saved.sourceSavedIn?.includes(l.id) ?? false)
+			])
+		) as Record<Language, string>,
 		status: listed?.status ?? 'Untouched'
+	};
+}
+
+/**
+ * A Problem's Hints as far as one Learner has revealed them: the revealed Hints' text, the total,
+ * and the Chapter every Hint links back to. Nothing else about unrevealed Hints leaves the core.
+ */
+export interface HintsView {
+	readonly total: number;
+	/** The revealed Hints, numbered from 1, in reveal order. */
+	readonly revealed: readonly { readonly number: number; readonly html: string }[];
+	/** The Problem's Chapter: the content format has no per-Hint section. */
+	readonly chapter: { readonly id: string; readonly title: string };
+}
+
+/** One Problem's Hints for a Learner who has revealed `revealedCount` of them. Pure. */
+export function hintsView(
+	catalogue: ProblemCatalogue,
+	progress: Progress,
+	problemId: string,
+	revealedCount: number,
+	renderMarkdown: (markdown: string) => string
+): HintsView {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	const chapter = catalogue.chapter(problem.chapterId);
+	const shown = Math.min(Math.max(revealedCount, 0), problem.hints.length);
+	return {
+		total: problem.hints.length,
+		revealed: problem.hints
+			.slice(0, shown)
+			.map((hint, i) => ({ number: i + 1, html: renderMarkdown(hint) })),
+		chapter: { id: problem.chapterId, title: chapter?.title ?? problem.chapterId }
+	};
+}
+
+/** A Problem's Solution: the explanation and the Reference Code after the Problem, in every Language. */
+export interface SolutionView {
+	readonly explanationHtml: string;
+	readonly referenceCode: Readonly<Record<Language, BuildFiles>>;
+}
+
+/** One Problem's Solution. Pure; the Solution is open to any Learner who can open the Problem. */
+export function solutionView(
+	catalogue: ProblemCatalogue,
+	progress: Progress,
+	problemId: string,
+	renderMarkdown: (markdown: string) => string
+): SolutionView {
+	const problem = catalogue.problem(problemId);
+	if (!problem) throw new LearningError('NotFound');
+	topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	return {
+		explanationHtml: renderMarkdown(problem.solution),
+		referenceCode: problem.referenceCode
 	};
 }
 

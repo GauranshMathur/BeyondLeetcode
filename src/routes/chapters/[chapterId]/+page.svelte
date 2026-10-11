@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { SubmitFunction } from '@sveltejs/kit';
 import { enhance } from '$app/forms';
+import { reportIssueUrl } from '$lib/issue-link';
 import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();
@@ -92,6 +93,9 @@ $effect(() => {
 			</section>
 		{/if}
 
+		<div class="reportrow">
+			<a class="report mono" href={reportIssueUrl('Chapter', chapter.title, chapter.id)} target="_blank" rel="noopener noreferrer">Report an issue<span aria-hidden="true">↗</span><span class="sr-only">(opens GitHub in a new tab)</span></a>
+		</div>
 	</main>
 </div>
 
@@ -336,5 +340,32 @@ $effect(() => {
 			border-bottom: 1px solid var(--ink);
 			gap: 24px;
 		}
+	}
+	.reportrow {
+		max-width: 800px;
+		border-top: 1px solid var(--rule);
+	}
+	.report {
+		display: inline-flex;
+		gap: 8px;
+		align-items: center;
+		padding: 14px 0;
+		font-size: 13px;
+		color: var(--muted);
+		text-decoration: underline;
+		text-decoration-color: var(--rule);
+		text-decoration-thickness: 1px;
+		text-underline-offset: 5px;
+	}
+	.report:hover,
+	.report:focus-visible {
+		color: var(--ink);
+	}
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
 	}
 </style>

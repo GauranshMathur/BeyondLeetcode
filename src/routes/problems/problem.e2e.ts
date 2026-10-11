@@ -163,7 +163,26 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await page.goto('/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('1 of 2');
 	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
+
+	// Solved or not, the Solution is open and the status stays Solved.
+	await page.goto('/problems/stacks-push?tab=solution');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Solution');
+	await page.goto('/topics/stacks');
+	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
 });
+
+// A string literal is coloured by the editor's highlight style, not the plain text colour.
+async function expectStringHighlighted(page: Page, literal: string) {
+	const colourOf = (selector: string) => async () =>
+		page
+			.locator(selector)
+			.first()
+			.evaluate((el) => getComputedStyle(el).color);
+	const token = page.locator('.cm-line span', { hasText: literal }).first();
+	await expect(token).toBeVisible();
+	const plain = await colourOf('.cm-content')();
+	await expect.poll(() => token.evaluate((el) => getComputedStyle(el).color)).not.toBe(plain);
+}
 
 test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1000', async ({
 	page
@@ -223,6 +242,7 @@ test('switching to TypeScript asks first, keeps the Python build, and Run passes
 		await expect(picker).toHaveValue('typescript');
 
 		await setCode(page, correctTypeScript, 'main.ts');
+		await expectStringHighlighted(page, "'node:fs'");
 		await page.getByRole('button', { name: 'Run' }).click();
 		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText('pass', {
 			timeout: 60_000
@@ -294,6 +314,7 @@ test('switching to Go keeps the Python build, and Run passes', async ({ page }) 
 		await expect(picker).toHaveValue('go');
 
 		await setCode(page, correctGo, 'main.go');
+		await expectStringHighlighted(page, '"bufio"');
 		await page.getByRole('button', { name: 'Run' }).click();
 		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText('pass', {
 			timeout: 60_000
@@ -303,4 +324,103 @@ test('switching to Go keeps the Python build, and Run passes', async ({ page }) 
 		await page.getByRole('button', { name: 'Switch language' }).click();
 		await expect(page.getByLabel('Code: main.py')).toContainText('# my python build');
 	}
+});
+
+test('a Problem links to a prefilled new GitHub issue in a new tab', async ({ page }) => {
+	await page.goto('/problems/stacks-push');
+	const link = page.getByRole('link', { name: /Report an issue/ });
+	await expect(link).toHaveAttribute('target', '_blank');
+	await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+	const url = new URL((await link.getAttribute('href')) ?? '');
+	expect(`${url.origin}${url.pathname}`).toBe(
+		'https://github.com/GauranshMathur/BeyondLeetcode/issues/new'
+	);
+	expect(url.searchParams.get('title')).toBe('Problem: Push and size (stacks-push)');
+	expect(url.searchParams.get('body')).toContain('What is wrong');
+});
+
+test('Hints reveal one at a time, in order, link to the Chapter, and survive a reload', async ({
+	page
+}) => {
+	await page.goto('/problems/stacks-push');
+	await page.getByRole('link', { name: 'Hints' }).click();
+	await expect(page).toHaveURL('/problems/stacks-push?tab=hints');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Hints');
+	await expect(page.getByText('Hint 1 of 2')).toBeVisible();
+	await expect(page.getByText('First hint.')).toHaveCount(0);
+	await expect(page.getByText('Second hint.')).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Reveal hint 2' })).toHaveCount(0);
+
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByText('First hint.')).toBeVisible();
+	await expect(page.getByText('Second hint.')).toHaveCount(0);
+	await expect(page.getByText('Hint 2 of 2')).toBeVisible();
+
+	await page.getByRole('button', { name: 'Reveal hint 2' }).click();
+	await expect(page.getByText('Second hint.')).toBeVisible();
+	await expect(page.getByRole('button', { name: /Reveal hint/ })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: /An undo log/ })).toHaveCount(2);
+
+	await page.reload();
+	await expect(page.getByText('First hint.')).toBeVisible();
+	await expect(page.getByText('Second hint.')).toBeVisible();
+
+	await page
+		.getByRole('link', { name: /An undo log/ })
+		.first()
+		.click();
+	await expect(page).toHaveURL('/chapters/stacks-undo-log');
+});
+
+test('the browser receives only the Hints already revealed', async ({ page }) => {
+	const body = await (await page.request.get('/problems/stacks-peek?tab=hints')).text();
+	expect(body).not.toContain('First hint.');
+	expect(body).not.toContain('Second hint.');
+
+	await page.goto('/problems/stacks-peek?tab=hints');
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByText('First hint.')).toBeVisible();
+
+	const after = await (await page.request.get('/problems/stacks-peek?tab=hints')).text();
+	expect(after).toContain('First hint.');
+	expect(after).not.toContain('Second hint.');
+});
+
+test('the Solution tab shows the explanation and the Reference Code in each Language, and keeps the Learner code', async ({
+	page
+}) => {
+	// Not in the Problem's own page data.
+	const plain = await (await page.request.get('/problems/stacks-push')).text();
+	expect(plain).not.toContain('readFileSync');
+
+	await page.goto('/problems/stacks-push');
+	await typeInEditor(page, '# mine');
+	await page.getByRole('link', { name: 'Solution' }).click();
+	await expect(page).toHaveURL('/problems/stacks-push?tab=solution');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Solution');
+	await expect(page.getByText('Placeholder fixture text')).toBeVisible();
+	await expect(page.getByText('reference code · read only')).toBeVisible();
+
+	const language = page.getByRole('navigation', { name: 'Reference code language' });
+	const code = page.locator('.viewer .cm-content');
+	await expect(language.getByRole('button', { name: 'Python' })).toHaveAttribute(
+		'aria-current',
+		'true'
+	);
+	await expect(code).toContainText('items');
+	await expect(code).toHaveAttribute('aria-readonly', 'true');
+	await code.click();
+	await page.keyboard.type('zzz', { delay: 25 });
+	await expect(code).not.toContainText('zzz');
+	await language.getByRole('button', { name: 'TypeScript' }).click();
+	await expect(code).toContainText('readFileSync');
+	await language.getByRole('button', { name: 'Go' }).click();
+	await expect(code).toContainText('package main');
+
+	// The Learner's own code was saved and is back when the Problem tab is.
+	await page.getByRole('link', { name: 'Problem', exact: true }).click();
+	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
+	await page.reload();
+	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
 });

@@ -25,6 +25,8 @@ COPY --from=build /app/build ./build
 COPY package.json prisma.config.ts ./
 COPY prisma ./prisma
 COPY src/lib/server/runner ./src/lib/server/runner
+# The shared list of Languages (src/lib/languages.ts) is read by the Runner.
+COPY src/lib/languages.ts ./src/lib/languages.ts
 COPY src/lib/server/init ./src/lib/server/init
 COPY content /app/content
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

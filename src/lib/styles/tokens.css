@@ -1,31 +1,28 @@
-/* Colour tokens copied from the canvas tokens() (vermilion accent); light by default, dark by preference. */
+/* Colour tokens copied from the canvas tokens() (vermilion accent). Each is light-dark(light, dark), so
+   the two palettes are written once. With no data-theme the device decides; hooks.server.ts sets
+   data-theme="light" or "dark" on <html> when the learner has chosen. */
 :root {
-	--paper: #f3eee4;
-	--panel: #ece5d8;
-	--field: #fbf8f2;
-	--ink: #1c1a17;
-	--body: #3a352e;
-	--muted: #5b5348;
-	--rule: #d9cfbe;
-	--on-ink: #f3eee4;
-	--accent: #b4421f;
+	color-scheme: light dark;
+	--paper: light-dark(#f3eee4, #171512);
+	--panel: light-dark(#ece5d8, #211e1a);
+	--field: light-dark(#fbf8f2, #1c1915);
+	--ink: light-dark(#1c1a17, #ece5d8);
+	--body: light-dark(#3a352e, #cfc6b8);
+	--muted: light-dark(#5b5348, #a89f92);
+	--rule: light-dark(#d9cfbe, #3a352e);
+	--on-ink: light-dark(#f3eee4, #171512);
+	--accent: light-dark(#b4421f, #e0704a);
 	--font-serif: Georgia, "Times New Roman", serif;
 	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--paper: #171512;
-		--panel: #211e1a;
-		--field: #1c1915;
-		--ink: #ece5d8;
-		--body: #cfc6b8;
-		--muted: #a89f92;
-		--rule: #3a352e;
-		--on-ink: #171512;
-		--accent: #e0704a;
-	}
+:root[data-theme="light"] {
+	color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
 }
 
 body {

@@ -19,13 +19,14 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
   - Any problem can be opened at any time, and any problem can be started from reference code instead of the learner's own, so nothing locks inside a topic and one broken step never traps anyone.
   - Extra problems branch off the build; their changes never flow into later problems.
 - **Run** executes the visible example tests and changes no progress. **Submit** executes every test of the problem plus every test of the earlier core problems in the build, hidden ones included; only an Accepted submit solves a problem.
-- Hints are free and reveal one at a time. Each hint guides the learner back to the concept in the chapter they read, not just toward the answer.
+- Hints are free and reveal one at a time. Each revealed hint links back to the chapter the problem belongs to.
 - The solution is always visible; whether to look is the learner's choice. It is an explanation plus a working solution in all three languages, written or sourced by humans and verified under `docs/content-standards.md`.
 - An accepted submission shows an Accepted panel; when it completes the topic, the panel says so and names the topics it unlocks.
 - Every problem and chapter has a prefilled "report an issue" link that opens a GitHub issue.
 
 **Instance modes.**
 - **Local:** single user, no login. The nav shows "Local" instead of a username.
+  - Local mode has a Settings screen with two things: the theme (light, dark, or follow the device) and Reset progress, which deletes everything the learner has done after a confirm step.
 - **Multi-user:** local accounts, plus optional GitHub and Google sign-in. Registration is open or invite-only (admin toggle); invite-only uses an Accept invite page. There is no email reset: the admin resets passwords from the Users page. A first-run setup screen creates the admin.
 - Switching an instance from Local to Multi-user keeps the Local progress as the first admin's.
 - Instance settings beyond the registration toggle live in config, not UI, for MVP1.
