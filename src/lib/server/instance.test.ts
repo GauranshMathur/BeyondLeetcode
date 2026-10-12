@@ -52,8 +52,8 @@ it('reads a stored multi mode and open registration', async () => {
 
 it('migrating a database that holds the local Learner makes it Local', async () => {
 	const client = createClient({ url: ':memory:' });
-	const last = paths.length - 1;
-	expect(paths[last]).toContain('_instance');
+	const last = paths.findIndex((p) => p.includes('_instance'));
+	expect(last).toBeGreaterThan(-1);
 	await client.executeMultiple(
 		paths
 			.slice(0, last)
