@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.33.0...v0.34.0) (2026-10-12)
+
+
+### Features
+
+* **beyondleetcode:** C24 Runner: the app's wiring chooses the Runner adapter ([#147](https://github.com/GauranshMathur/BeyondLeetcode/issues/147)) ([eddd2d2](https://github.com/GauranshMathur/BeyondLeetcode/commit/eddd2d26e9d6997a3e8df94a14835e187835e408))
+
 ## [0.33.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.32.1...v0.33.0) (2026-10-11)
 
 
