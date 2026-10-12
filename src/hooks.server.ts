@@ -13,6 +13,7 @@ export const init: ServerInit = async () => {
 		RUNNER_URL: env.RUNNER_URL,
 		RUNNER_TOKEN: env.RUNNER_TOKEN,
 		IDENTITY_TEST_LEARNER: env.IDENTITY_TEST_LEARNER,
+		RUNNER_ADAPTER: env.RUNNER_ADAPTER,
 		NODE_ENV: env.NODE_ENV
 	});
 	run = createHandle(app);
