@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.34.0...v0.35.0) (2026-10-12)
+
+
+### Features
+
+* **beyondleetcode:** C29 Identity: Better Auth stores Accounts in our database ([#145](https://github.com/GauranshMathur/BeyondLeetcode/issues/145)) ([091f1b6](https://github.com/GauranshMathur/BeyondLeetcode/commit/091f1b611d5c5b344f0815108064787bccf45718))
+
 ## [0.34.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.33.0...v0.34.0) (2026-10-12)
 
 
