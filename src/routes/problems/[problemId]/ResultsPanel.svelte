@@ -31,7 +31,8 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		{/if}
 	</div>
 
-	<div class="body">
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	<div class="body" role="region" aria-label="Test results" tabindex="0">
 		{#if !outcome}
 			<p class="muted mono">Run your code to see how it does on the Example Tests.</p>
 		{:else if outcome.kind === 'running' || outcome.kind === 'submitting'}
@@ -110,6 +111,16 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		display: flex;
 		flex-direction: column;
 		border-top: 1px solid var(--ink);
+	}
+	/* Wide screens: a long result takes at most half the pane and scrolls inside the console. */
+	@media (min-width: 901px) {
+		.console {
+			max-height: 50%;
+			min-height: 0;
+		}
+		.body {
+			min-height: 0;
+		}
 	}
 	.head {
 		display: flex;

@@ -206,6 +206,51 @@ test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1
 	await expect(bar.getByRole('link', { name: 'map' })).toBeVisible();
 });
 
+test('the Problem page stays one screen tall: the statement, the editor and the console scroll on their own', async ({
+	page
+}) => {
+	// A short window makes the fixture's statement and one failing result overflow their panes.
+	await page.setViewportSize({ width: 1440, height: 500 });
+	await page.goto('/problems/stacks-push');
+
+	// Enough lines that the editor needs its own scrollbar.
+	await setCode(page, `${'x = 1\n'.repeat(60)}print(99)\n`);
+	await page.getByRole('button', { name: 'Run' }).click();
+	const row = page.getByRole('listitem', { name: 'Example Test 01' });
+	await expect(row).toContainText('fail · wrong answer', { timeout: 60_000 });
+
+	const doc = await page.evaluate(() => ({
+		scrollHeight: window.document.documentElement.scrollHeight,
+		innerHeight: window.innerHeight
+	}));
+	expect(doc.scrollHeight).toBe(doc.innerHeight);
+
+	const statement = page.getByRole('region', { name: 'Problem statement' });
+	await expect(statement).toHaveAttribute('tabindex', '0');
+	expect(await statement.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+	const console_ = page.getByRole('region', { name: 'Test results' });
+	await expect(console_).toHaveAttribute('tabindex', '0');
+	expect(await console_.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+	expect(
+		await page.locator('.cm-scroller').evaluate((el) => el.scrollHeight > el.clientHeight)
+	).toBe(true);
+
+	// Scrolling a pane moves that pane only; the tab row and Run stay where they are.
+	await statement.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+	expect(await page.evaluate(() => window.scrollY)).toBe(0);
+	await expect(page.getByRole('navigation', { name: 'Problem sections' })).toBeInViewport();
+	for (const name of ['Run', 'Submit']) {
+		await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+	}
+
+	// The console never takes more than about half of the right pane.
+	const pane = await page.locator('.pane').boundingBox();
+	const consoleBox = await page.getByLabel('Console').boundingBox();
+	if (!pane || !consoleBox) throw new Error('missing pane boxes');
+	expect(consoleBox.height).toBeLessThanOrEqual(pane.height / 2 + 1);
+	expect(consoleBox.y + consoleBox.height).toBeLessThanOrEqual(500);
+});
+
 const correctTypeScript = referenceCode('main.ts', 'typescript');
 
 test('switching to TypeScript asks first, keeps the Python build, and Run passes', async ({

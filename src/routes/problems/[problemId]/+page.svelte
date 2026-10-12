@@ -7,6 +7,7 @@ import SolutionTab from './SolutionTab.svelte';
 
 let { data }: PageProps = $props();
 const problem = $derived(data.problem);
+const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Solution' } as const;
 </script>
 
 <svelte:head>
@@ -22,6 +23,9 @@ const problem = $derived(data.problem);
 					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-noscroll aria-current={data.tab === 'hints' ? 'page' : undefined}>Hints</a>
 					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-noscroll data-sveltekit-preload-data="off" aria-current={data.tab === 'solution' ? 'page' : undefined}>Solution</a>
 				</nav>
+				<!-- The pane scrolls on its own; tabindex lets the keyboard reach it. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<div class="scroll" role="region" aria-label={paneLabel[data.tab]} tabindex="0">
 				{#if data.tab === 'hints' && data.hints}
 					<HintsTab {problem} hints={data.hints} />
 				{:else if data.tab === 'solution' && data.solution}
@@ -49,6 +53,7 @@ const problem = $derived(data.problem);
 						</div>
 					</section>
 				{/if}
+				</div>
 			</div>
 		{/snippet}
 	</ProblemWorkspace>
@@ -177,6 +182,22 @@ const problem = $derived(data.problem);
 		height: 1px;
 		overflow: hidden;
 		clip: rect(0 0 0 0);
+	}
+	@media (min-width: 901px) {
+		.left {
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
+		}
+		.tabs {
+			flex-shrink: 0;
+		}
+		.scroll {
+			position: relative; /* holds the absolutely placed .sr-only text inside the pane */
+			flex: 1 1 0;
+			min-height: 0;
+			overflow-y: auto;
+		}
 	}
 	@media (max-width: 900px) {
 		.left {
