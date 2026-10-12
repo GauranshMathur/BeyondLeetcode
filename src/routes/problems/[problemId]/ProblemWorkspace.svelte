@@ -398,6 +398,25 @@ const label: Record<SaveState, string> = {
 	.status.warn {
 		color: var(--accent);
 	}
+	/* Wide screens: the workspace is exactly one screen tall and each pane scrolls on its own. */
+	@media (min-width: 901px) {
+		.page {
+			height: 100dvh;
+			min-height: 0;
+			overflow: hidden;
+		}
+		.grid {
+			grid-template-rows: minmax(0, 1fr);
+		}
+		.pane,
+		.build {
+			overflow: hidden;
+		}
+		/* The editor takes what the rows around it leave; CodeMirror's scroller does the scrolling. */
+		.pane :global(.editor) {
+			min-height: 0;
+		}
+	}
 	@media (max-width: 900px) {
 		.workspace-bar {
 			height: auto;
