@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.35.0...v0.36.0) (2026-10-12)
+
+
+### Features
+
+* **beyondleetcode:** C44 Problem page stays one screen tall, each pane scrolls on its own ([#159](https://github.com/GauranshMathur/BeyondLeetcode/issues/159)) ([5af75e7](https://github.com/GauranshMathur/BeyondLeetcode/commit/5af75e7753e17a358d8d441cf791b0bd9f374bea))
+
 ## [0.35.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.34.0...v0.35.0) (2026-10-12)
 
 
