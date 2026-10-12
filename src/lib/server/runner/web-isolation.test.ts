@@ -11,7 +11,14 @@ const srcRoot = join(import.meta.dirname, '..', '..', '..');
 const runnerDir = join(srcRoot, 'lib', 'server', 'runner');
 
 /** The only runner modules the web role may import (`config` is constants: Sandbox limits). */
-const allowed = new Set(['http-adapter', 'port', 'fake', 'contract', 'config']);
+const allowed = new Set([
+	'http-adapter',
+	'port',
+	'fake',
+	'scripted-catalogue',
+	'contract',
+	'config'
+]);
 
 /** Names the socket on purpose: asserts the compose file keeps it away from the web role. */
 const namesSocketOnPurpose = new Set(['lib/server/init/init.test.ts']);
