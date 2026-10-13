@@ -7,6 +7,13 @@ import SolutionTab from './SolutionTab.svelte';
 
 let { data }: PageProps = $props();
 const problem = $derived(data.problem);
+// The phone tab lives above the key, so a language switch (which remounts the workspace) keeps it; another Problem starts on Problem.
+let phoneTab = $state<'problem' | 'code' | 'tests'>('problem');
+const problemId = $derived(data.problem.id); // a derived id only notifies when the id itself changes
+$effect.pre(() => {
+	problemId;
+	phoneTab = 'problem';
+});
 const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Solution' } as const;
 </script>
 
@@ -15,7 +22,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 </svelte:head>
 
 {#key `${problem.id}:${problem.build.language}`}
-	<ProblemWorkspace {problem} solution={data.tab === 'solution' ? data.solution : undefined}>
+	<ProblemWorkspace {problem} bind:tab={phoneTab} solution={data.tab === 'solution' ? data.solution : undefined}>
 		{#snippet statement()}
 			<div class="left">
 				<nav class="tabs mono" aria-label="Problem sections">

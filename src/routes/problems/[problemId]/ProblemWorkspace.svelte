@@ -14,10 +14,13 @@ import { begin, type Event, isBusy, type Request, type SaveState, transition } f
 let {
 	problem,
 	statement,
+	tab = $bindable('problem'),
 	solution
 }: {
 	problem: ProblemView;
 	statement: Snippet;
+	/** The phone tab, held by the page so it survives the remount a language switch causes. */
+	tab?: (typeof TABS)[number]['id'];
 	/** While set, the Reference Code replaces the editor. The editor stays mounted, so the Learner's code and any pending save are untouched. */
 	solution?: SolutionView;
 } = $props();
@@ -85,7 +88,6 @@ const TABS = [
 	{ id: 'code', name: 'Code' },
 	{ id: 'tests', name: 'Tests' }
 ] as const;
-let tab = $state<(typeof TABS)[number]['id']>('problem');
 // When a Run or Submit answer arrives, show it. Compared by identity so edits and other session changes leave the tab alone.
 let seenOutcome = untrack(() => session.outcome);
 $effect(() => {
