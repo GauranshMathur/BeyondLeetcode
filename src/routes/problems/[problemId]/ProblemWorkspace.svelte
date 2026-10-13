@@ -512,7 +512,7 @@ const label: Record<SaveState, string> = {
 		.page[data-tab='problem'] .pane {
 			display: none;
 		}
-		.page[data-tab='tests'] .build > :not(:global(.console)),
+		.page[data-tab='tests'] .build > :global(:not(.console)),
 		.page[data-tab='code'] .build > :global(.console) {
 			display: none;
 		}

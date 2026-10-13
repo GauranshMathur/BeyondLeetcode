@@ -511,7 +511,7 @@ test.describe('on a phone', () => {
 			const bar = await tabBar(page).boundingBox();
 			if (!run || !bar) throw new Error('missing boxes');
 			expect(run.y + run.height).toBeLessThanOrEqual(bar.y);
-			expect(bar.height).toBe(56);
+			expect((await tab(page, 'Tests').boundingBox())?.height).toBe(56);
 		};
 		await strip();
 		await expectNoPageScroll(page);
