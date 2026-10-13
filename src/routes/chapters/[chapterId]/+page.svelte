@@ -17,6 +17,7 @@ const saveRead: SubmitFunction =
 		if (result.type === 'success' && !navigating.to) await update();
 	};
 
+let article = $state<HTMLElement>();
 let endForm = $state<HTMLFormElement>();
 let sentinel = $state<HTMLElement>();
 
@@ -34,6 +35,28 @@ $effect(() => {
 	});
 	observer.observe(sentinel);
 	return () => observer.disconnect();
+});
+
+// Code, tables and figures scroll sideways inside their own box on a phone, so the box takes the
+// keyboard focus and has a name. The Chapter's Markdown carries neither; idempotent, so a re-run is harmless.
+$effect(() => {
+	void chapter.bodyHtml;
+	if (!article) return;
+	const label = (el: Element, name: string) => {
+		el.setAttribute('tabindex', '0');
+		el.setAttribute('role', 'group');
+		el.setAttribute('aria-label', name);
+	};
+	for (const pre of article.querySelectorAll('pre')) label(pre, 'Code block');
+	for (const figure of article.querySelectorAll('figure')) label(figure, 'Figure');
+	for (const table of article.querySelectorAll('table')) {
+		if (table.parentElement?.classList.contains('scrollbox')) continue;
+		const box = document.createElement('div');
+		box.className = 'scrollbox';
+		label(box, 'Table');
+		table.before(box);
+		box.append(table);
+	}
 });
 </script>
 
@@ -67,7 +90,7 @@ $effect(() => {
 			<h1>{chapter.title}</h1>
 		</header>
 
-		<article class="prose">{@html chapter.bodyHtml}</article>
+		<article class="prose" bind:this={article}>{@html chapter.bodyHtml}</article>
 
 		<div bind:this={sentinel} aria-hidden="true"></div>
 		<form method="POST" action="?/reachEnd" use:enhance={saveRead} bind:this={endForm} hidden></form>
@@ -75,7 +98,7 @@ $effect(() => {
 		{#if chapter.problems.length > 0}
 			<section aria-labelledby="problems">
 				<h2 id="problems">Problems</h2>
-				<table>
+				<table class="problems">
 					<thead>
 						<tr>
 							<th scope="col">problem</th>
@@ -95,6 +118,13 @@ $effect(() => {
 				</table>
 			</section>
 		{/if}
+
+		<nav class="endlinks mono" aria-label="More in this Topic">
+			<a href="/topics/{chapter.topicId}">↑ {chapter.topicTitle}</a>
+			{#if chapter.nextChapterId}
+				<a href="/chapters/{chapter.nextChapterId}">Next chapter →</a>
+			{/if}
+		</nav>
 
 		<div class="reportrow">
 			<a class="report mono" href={reportIssueUrl('Chapter', chapter.title, chapter.id)} target="_blank" rel="noopener noreferrer">Report an issue<span aria-hidden="true">↗</span><span class="sr-only">(opens GitHub in a new tab)</span></a>
@@ -333,16 +363,12 @@ $effect(() => {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
-	@media (max-width: 800px) {
-		.page {
-			flex-direction: column;
-		}
-		aside {
-			width: auto;
-			border-right: 0;
-			border-bottom: 1px solid var(--ink);
-			gap: 24px;
-		}
+	.endlinks {
+		display: none;
+	}
+	.prose :global(.scrollbox) {
+		overflow-x: auto;
+		margin: 0 0 20px;
 	}
 	.reportrow {
 		max-width: 800px;
@@ -370,5 +396,167 @@ $effect(() => {
 		height: 1px;
 		overflow: hidden;
 		clip: rect(0 0 0 0);
+	}
+	/* Phone (card C47): one column in source order; the Topic and next links move to the end. */
+	@media (max-width: 767.98px) {
+		.page {
+			flex-direction: column;
+			min-height: 0;
+		}
+		aside {
+			width: auto;
+			padding: 0 20px;
+			background: transparent;
+			border-right: 0;
+			border-bottom: 1px solid var(--rule);
+		}
+		.crumbs {
+			font-size: 12px;
+		}
+		.crumbs a {
+			padding: 12px 0;
+			line-height: 20px;
+			min-height: 20px;
+		}
+		.which,
+		.links {
+			display: none;
+		}
+		main {
+			padding: 32px 20px 48px;
+			gap: 40px;
+		}
+		header {
+			gap: 16px;
+		}
+		header .mono {
+			font-size: 12px;
+			letter-spacing: 0.08em;
+			text-transform: uppercase;
+		}
+		h1 {
+			font-size: 40px;
+			line-height: 1.08;
+			letter-spacing: -0.01em;
+		}
+		.prose {
+			font-size: 18px;
+		}
+		.prose :global(h1),
+		.prose :global(h2),
+		h2 {
+			font-size: 30px;
+		}
+		.prose :global(h3) {
+			font-size: 20px;
+		}
+		.prose :global(pre) {
+			padding: 20px;
+			font-size: 13px;
+		}
+		.prose :global(.scrollbox table) {
+			min-width: 480px;
+			font-family: var(--font-mono);
+			font-size: 13px;
+		}
+		.prose :global(figure) {
+			margin: 0 0 20px;
+			overflow-x: auto;
+		}
+		section {
+			gap: 20px;
+		}
+		table.problems,
+		table.problems tbody {
+			display: block;
+		}
+		table.problems {
+			border-top: 1px solid var(--ink);
+			counter-reset: row;
+		}
+		table.problems thead {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip: rect(0 0 0 0);
+		}
+		table.problems tr {
+			position: relative;
+			display: grid;
+			grid-template-columns: 40px auto minmax(0, 1fr);
+			column-gap: 0;
+			align-items: baseline;
+			padding: 16px 0;
+			border-bottom: 1px solid var(--rule);
+		}
+		table.problems tbody tr {
+			counter-increment: row;
+		}
+		table.problems tr:last-child {
+			border-bottom-color: var(--ink);
+		}
+		table.problems td,
+		table.problems td.title {
+			padding: 0;
+			border: 0;
+			font-size: 13px;
+			color: var(--muted);
+		}
+		table.problems td.title {
+			grid-column: 1 / -1;
+			display: grid;
+			grid-template-columns: 40px minmax(0, 1fr);
+			column-gap: 0;
+			align-items: baseline;
+			padding-bottom: 6px;
+		}
+		table.problems td.title::before {
+			content: counter(row, decimal-leading-zero);
+			font-size: 14px;
+			color: var(--muted);
+		}
+		table.problems td:nth-child(2) {
+			grid-column: 2;
+		}
+		table.problems td.status {
+			grid-column: 3;
+			text-align: left;
+		}
+		table.problems td.status::before {
+			content: '·';
+			padding: 0 8px;
+		}
+		.ptitle {
+			padding: 0;
+			line-height: 1.25;
+		}
+		/* The whole row is the link. */
+		.ptitle::after {
+			content: '';
+			position: absolute;
+			inset: 0;
+		}
+		.core {
+			color: var(--ink);
+		}
+		.endlinks {
+			display: flex;
+			flex-direction: column;
+			padding-top: 8px;
+			border-top: 1px solid var(--ink);
+			font-size: 13px;
+		}
+		.report {
+			box-sizing: border-box;
+			min-height: 44px;
+		}
+		.endlinks a {
+			display: flex;
+			align-items: center;
+			min-height: 44px;
+			color: var(--ink);
+			text-decoration: none;
+		}
 	}
 </style>
