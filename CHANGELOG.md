@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.38.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.37.0...v0.38.0) (2026-10-13)
+
+
+### Features
+
+* **beyondleetcode:** C46 Topic mobile layout below 768 px ([#163](https://github.com/GauranshMathur/BeyondLeetcode/issues/163)) ([2bc503d](https://github.com/GauranshMathur/BeyondLeetcode/commit/2bc503ddb30524b7e2f68fb8cf358e5fc5e8a8de))
+* **beyondleetcode:** C47 Chapter mobile layout below 768 px ([#164](https://github.com/GauranshMathur/BeyondLeetcode/issues/164)) ([6c2d90d](https://github.com/GauranshMathur/BeyondLeetcode/commit/6c2d90da2803a18e1587d4a4fb93846395e59798))
+* **beyondleetcode:** C48 Problem: mobile tabs ([#162](https://github.com/GauranshMathur/BeyondLeetcode/issues/162)) ([46e4f27](https://github.com/GauranshMathur/BeyondLeetcode/commit/46e4f2709377ba0eed207fe06efa3bb42295a98d))
+
 ## [0.37.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.36.0...v0.37.0) (2026-10-13)
 
 
