@@ -519,8 +519,15 @@ const label: Record<SaveState, string> = {
 		.page[data-tab='tests'] .build {
 			overflow: hidden;
 		}
+		/* While the Solution is open the editor is off; the Tests tab still shows the console, and only it. */
+		.page[data-tab='tests'] .pane > :global(:not(.build)) {
+			display: none;
+		}
+		.page[data-tab='tests'] .build.off {
+			display: flex;
+		}
 		.page[data-tab='tests'] .build > :global(.console) {
-			flex-grow: 1;
+			flex: 1 1 0;
 			max-height: none;
 			border-top: 0;
 			min-height: 0;

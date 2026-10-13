@@ -567,4 +567,12 @@ test.describe('on a phone', () => {
 		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByRole('region', { name: 'Test results' })).toBeVisible();
 	});
+
+	test('with the Solution open, the Tests tab still shows the console', async ({ page }) => {
+		await page.goto('/problems/stacks-push?tab=solution');
+		await tab(page, 'Tests').click();
+		await expect(page.getByLabel('Console')).toBeVisible();
+		await expect(page.locator('.cm-content:visible')).toHaveCount(0);
+		await expectNoPageScroll(page);
+	});
 });
