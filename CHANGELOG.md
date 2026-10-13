@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.36.0...v0.37.0) (2026-10-13)
+
+
+### Features
+
+* **beyondleetcode:** C45 Map: one column of Topic boxes below 768 px ([#161](https://github.com/GauranshMathur/BeyondLeetcode/issues/161)) ([e974f6a](https://github.com/GauranshMathur/BeyondLeetcode/commit/e974f6ac611d6fafb8204645838545bc779f323b))
+
 ## [0.36.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.35.0...v0.36.0) (2026-10-12)
 
 
