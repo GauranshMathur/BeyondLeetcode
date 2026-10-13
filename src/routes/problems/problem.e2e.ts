@@ -560,6 +560,22 @@ test.describe('on a phone', () => {
 		}
 	});
 
+	test('switching language on the Code tab stays on the Code tab', async ({ page }) => {
+		await page.goto('/problems/stacks-push');
+		await tab(page, 'Code').click();
+		const picker = page.getByLabel('build language');
+		try {
+			await picker.selectOption('typescript');
+			await page.getByRole('button', { name: 'Switch language' }).click();
+			await expect(page.getByLabel('Code: main.ts')).toBeVisible();
+			await expect(tab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
+		} finally {
+			await page.getByLabel('build language').selectOption('python');
+			await page.getByRole('button', { name: 'Switch language' }).click();
+			await expect(page.getByLabel('Code: main.py')).toBeVisible();
+		}
+	});
+
 	test('the tabs work from the keyboard', async ({ page }) => {
 		await page.goto('/problems/stacks-push');
 		await tab(page, 'Tests').focus();
