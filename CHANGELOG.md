@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.38.0...v0.38.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C52 Problem keeps the phone tab across a language switch ([#167](https://github.com/GauranshMathur/BeyondLeetcode/issues/167)) ([8cf7251](https://github.com/GauranshMathur/BeyondLeetcode/commit/8cf7251821ff1bf8932fd8b125e5a5197ccce2f1))
+
 ## [0.38.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.37.0...v0.38.0) (2026-10-13)
 
 
