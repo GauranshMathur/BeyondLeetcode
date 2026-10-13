@@ -4,6 +4,18 @@ import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();
 const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTopicId));
+const titleById = $derived(new Map(data.map.topics.map((t) => [t.id, t.title])));
+const BAR_WIDTH = 112;
+
+function after(prerequisites: readonly string[]): string {
+	return prerequisites.map((id) => titleById.get(id) ?? id).join(', ');
+}
+
+function stateText(t: (typeof data.map.topics)[number]): string {
+	const count = `${t.coreSolved}/${t.coreTotal}`;
+	if (t.id === data.map.currentTopicId && t.state !== 'locked') return `current · ${count}`;
+	return t.state === 'complete' ? `done · ${count}` : `${count} solved`;
+}
 </script>
 
 <svelte:head>
@@ -27,7 +39,43 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 	</section>
 
 	<figure>
-		<TopicMap map={data.map} />
+		<div class="graph"><TopicMap map={data.map} /></div>
+		<ol class="column" aria-label="Topics in build order">
+			{#each data.map.topics as t (t.id)}
+				{#snippet body()}
+					<span class="title">{t.title}</span>
+					{#if t.state === 'locked'}
+						<span class="state">locked</span>
+					{:else}
+						<span class="state">
+							<span class="bar" aria-hidden="true">
+								<span
+									class="fill"
+									style:width="{t.coreTotal ? (BAR_WIDTH * t.coreSolved) / t.coreTotal : 0}px"
+								></span>
+							</span>
+							{stateText(t)}
+						</span>
+					{/if}
+					{#if t.prerequisites.length > 0}
+						<span class="state">after {after(t.prerequisites)}</span>
+					{/if}
+				{/snippet}
+				<li>
+					{#if t.state === 'locked'}
+						<div class="box locked">{@render body()}</div>
+					{:else}
+						<a
+							class="box {t.state}"
+							class:current={t.id === data.map.currentTopicId}
+							href="/topics/{t.id}"
+						>
+							{@render body()}
+						</a>
+					{/if}
+				</li>
+			{/each}
+		</ol>
 		<figcaption>
 			<span class="fig">Fig. M</span>
 			<span>A topic unlocks when the topics it builds on are done. Select any open topic to see its chapters and problems.</span>
@@ -128,10 +176,127 @@ const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTo
 		color: var(--ink);
 		white-space: nowrap;
 	}
-	@media (max-width: 900px) {
+	.column {
+		display: none;
+	}
+	@media (max-width: 767.98px) {
+		main {
+			padding: 24px 20px 32px;
+		}
+		.intro {
+			grid-template-columns: minmax(0, 1fr);
+			row-gap: 24px;
+			align-items: start;
+		}
 		.lead,
 		.current {
 			grid-column: 1 / -1;
+		}
+		.lead {
+			gap: 12px;
+		}
+		.eyebrow {
+			font-size: 12px;
+		}
+		h1 {
+			font-size: 30px;
+			line-height: 1.15;
+		}
+		.current {
+			padding: 20px;
+			gap: 10px;
+			min-height: 44px;
+		}
+		.name {
+			line-height: 1.15;
+		}
+		figure {
+			margin: 24px 0 0;
+			padding: 0;
+			background: none;
+			border: 0;
+			overflow-x: visible;
+		}
+		.graph {
+			display: none;
+		}
+		.column {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+			margin: 0;
+			padding: 0;
+			list-style: none;
+		}
+		.box {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			box-sizing: border-box;
+			min-height: 44px;
+			padding: 14px 16px;
+			border: 1px solid var(--ink);
+			background: var(--paper);
+			color: var(--ink);
+			text-decoration: none;
+			font-family: var(--font-mono);
+		}
+		.box .title {
+			font-size: 15px;
+			font-weight: 500;
+			overflow-wrap: anywhere;
+		}
+		.box .state {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			font-size: 12px;
+			color: var(--muted);
+		}
+		.bar {
+			flex-shrink: 0;
+			box-sizing: border-box;
+			width: 112px;
+			height: 6px;
+			border: 1px solid var(--ink);
+			border-radius: 2px;
+			overflow: hidden;
+		}
+		.fill {
+			display: block;
+			height: 100%;
+			background: var(--ink);
+		}
+		.box.complete {
+			background: var(--ink);
+			color: var(--on-ink);
+		}
+		.box.complete .state {
+			color: var(--on-ink);
+		}
+		.box.complete .bar {
+			border-color: var(--on-ink);
+		}
+		.box.complete .fill {
+			background: var(--on-ink);
+		}
+		.box.current {
+			padding: 13px 15px;
+			border: 2px solid var(--accent);
+		}
+		.box.current .title {
+			color: var(--accent);
+		}
+		.box.locked {
+			background: transparent;
+			border: 1px dashed var(--muted);
+			color: var(--muted);
+		}
+		figcaption {
+			flex-direction: column;
+			gap: 8px;
+			padding: 0;
+			font-size: 16px;
 		}
 	}
 </style>
