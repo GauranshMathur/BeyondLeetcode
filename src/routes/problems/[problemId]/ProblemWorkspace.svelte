@@ -78,6 +78,23 @@ async function post(request: Request): Promise<Reply> {
 	}
 }
 
+// Below 768px the workspace shows one pane at a time. The current tab is view state only: every pane stays
+// mounted (the editor is hidden by CSS, never destroyed), so unsaved code and the state machine are untouched.
+const TABS = [
+	{ id: 'problem', name: 'Problem' },
+	{ id: 'code', name: 'Code' },
+	{ id: 'tests', name: 'Tests' }
+] as const;
+let tab = $state<(typeof TABS)[number]['id']>('problem');
+// When a Run or Submit answer arrives, show it. Compared by identity so edits and other session changes leave the tab alone.
+let seenOutcome = untrack(() => session.outcome);
+$effect(() => {
+	const outcome = session.outcome;
+	if (outcome === seenOutcome) return;
+	seenOutcome = outcome;
+	if (outcome && outcome.kind !== 'running' && outcome.kind !== 'submitting') tab = 'tests';
+});
+
 const busy = $derived(isBusy(session));
 const paths = $derived(Object.keys(problem.files));
 
@@ -126,7 +143,12 @@ const label: Record<SaveState, string> = {
 
 <svelte:window onpagehide={() => dispatch({ type: 'flush', final: false })} onkeydowncapture={onkeydown} />
 
-<div class="page">
+{#snippet runAndSubmit()}
+	<button type="button" class="run mono" disabled={busy} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
+	<button type="button" class="run submit mono" disabled={busy} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
+{/snippet}
+
+<div class="page" data-tab={tab}>
 	<header class="workspace-bar">
 		<div class="left">
 			<a class="brand" href="/">BLC</a>
@@ -134,10 +156,7 @@ const label: Record<SaveState, string> = {
 				<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
 			</nav>
 		</div>
-		<div class="actions">
-			<button type="button" class="run mono" disabled={busy} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
-			<button type="button" class="run submit mono" disabled={busy} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
-		</div>
+		<div class="actions bar-actions">{@render runAndSubmit()}</div>
 	</header>
 
 	<div class="grid">
@@ -199,6 +218,14 @@ const label: Record<SaveState, string> = {
 			</div>
 		</div>
 	</div>
+
+	<!-- Phones only: the same Run and Submit, above the tab bar. -->
+	<div class="actions strip">{@render runAndSubmit()}</div>
+	<nav class="tabbar mono" aria-label="Workspace">
+		{#each TABS as t (t.id)}
+			<button type="button" aria-pressed={tab === t.id} onclick={() => (tab = t.id)}>{t.name}</button>
+		{/each}
+	</nav>
 </div>
 
 <style>
@@ -398,6 +425,10 @@ const label: Record<SaveState, string> = {
 	.status.warn {
 		color: var(--accent);
 	}
+	.strip,
+	.tabbar {
+		display: none;
+	}
 	/* Wide screens: the workspace is exactly one screen tall and each pane scrolls on its own. */
 	@media (min-width: 901px) {
 		.page {
@@ -417,7 +448,7 @@ const label: Record<SaveState, string> = {
 			min-height: 0;
 		}
 	}
-	@media (max-width: 900px) {
+	@media (min-width: 768px) and (max-width: 900px) {
 		.workspace-bar {
 			height: auto;
 			min-height: 64px;
@@ -427,6 +458,156 @@ const label: Record<SaveState, string> = {
 		}
 		.grid {
 			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+	/* Phones: one pane at a time between the 56px bar and the strip and tab bar; the document never scrolls. */
+	@media (max-width: 767px) {
+		.page {
+			height: 100dvh;
+			min-height: 0;
+			overflow: hidden;
+		}
+		.workspace-bar {
+			height: 56px;
+			min-height: 0;
+			flex-wrap: nowrap;
+			padding: 0 20px;
+		}
+		.workspace-bar .left {
+			flex-grow: 1;
+			justify-content: space-between;
+			gap: 16px;
+		}
+		.brand {
+			padding: 12px 0;
+		}
+		.crumbs {
+			align-items: center;
+			gap: 8px;
+			font-size: 12px;
+			line-height: 20px;
+		}
+		.crumbs :global(a),
+		.crumbs span {
+			padding: 12px 0;
+		}
+		.bar-actions {
+			display: none;
+		}
+		.grid {
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-rows: minmax(0, 1fr);
+		}
+		.pane {
+			overflow: hidden;
+		}
+		.build {
+			overflow-y: auto;
+		}
+		.pane :global(.editor) {
+			min-height: 320px;
+		}
+		/* Hide, never destroy: the editor keeps its state while another tab shows. */
+		.page:not([data-tab='problem']) .grid > :global(.left),
+		.page[data-tab='problem'] .pane {
+			display: none;
+		}
+		.page[data-tab='tests'] .build > :global(:not(.console)),
+		.page[data-tab='code'] .build > :global(.console) {
+			display: none;
+		}
+		.page[data-tab='tests'] .build {
+			overflow: hidden;
+		}
+		/* While the Solution is open the editor is off; the Tests tab still shows the console, and only it. */
+		.page[data-tab='tests'] .pane > :global(:not(.build)) {
+			display: none;
+		}
+		.page[data-tab='tests'] .build.off {
+			display: flex;
+		}
+		.page[data-tab='tests'] .build > :global(.console) {
+			flex: 1 1 0;
+			max-height: none;
+			border-top: 0;
+			min-height: 0;
+		}
+		.bar {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 16px;
+			height: auto;
+			padding: 16px 20px;
+		}
+		.bar-right {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 16px;
+		}
+		.status {
+			order: -1;
+		}
+		.picker {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 8px;
+			font-size: 13px;
+			letter-spacing: 0.06em;
+			text-transform: uppercase;
+		}
+		.picker select {
+			width: 100%;
+			height: 52px;
+			padding: 0 16px;
+			border-color: var(--ink);
+			font-size: 18px;
+		}
+		.confirm,
+		.signed-out,
+		.reference {
+			flex-direction: column;
+			align-items: stretch;
+			gap: 12px;
+			padding: 16px 20px;
+		}
+		.confirm-actions {
+			justify-content: space-between;
+		}
+		.cancel {
+			min-height: 44px;
+			padding: 12px 8px;
+		}
+		.strip {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			column-gap: 12px;
+			flex-shrink: 0;
+			padding: 12px 20px;
+			border-top: 1px solid var(--rule);
+		}
+		.strip .run {
+			padding: 0;
+		}
+		.tabbar {
+			display: grid;
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			flex-shrink: 0;
+			border-top: 1px solid var(--ink);
+			font-size: 13px;
+		}
+		.tabbar button {
+			height: 56px;
+			box-sizing: border-box;
+			background: transparent;
+			border: 0;
+			border-top: 2px solid transparent;
+			color: var(--muted);
+			font: inherit;
+			cursor: pointer;
+		}
+		.tabbar button[aria-pressed='true'] {
+			color: var(--ink);
+			border-top-color: var(--accent);
 		}
 	}
 </style>
