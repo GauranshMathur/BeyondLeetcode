@@ -48,8 +48,10 @@ test.describe('mobile layout', () => {
 	test('shows progress, read state, Problem rows and no sideways scroll', async ({ page }) => {
 		// Read the first Chapter to its end, so the Topic shows one read and one unread Chapter.
 		await page.goto('/chapters/stacks-undo-log');
+		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved.
+		const marked = page.waitForResponse(/\?\/reachEnd/);
 		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
-		await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
+		await marked;
 		await page.goto('/topics/stacks');
 		await expect(page.getByLabel('Topic progress')).toContainText('chapters read');
 		await expect(page.getByLabel('Topic progress')).toContainText('extra solved · not counted');
