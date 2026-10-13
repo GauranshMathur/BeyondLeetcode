@@ -7,6 +7,15 @@ const counts = $derived(topic.counts);
 const titles = $derived(
 	new Map(topic.chapters.flatMap((c) => c.problems).map((p) => [p.id, p.title]))
 );
+// Core Problems are the Topic's steps, numbered in content order; an Extra sits off its parent's step.
+const steps = $derived(
+	new Map(
+		topic.chapters
+			.flatMap((c) => c.problems)
+			.filter((p) => p.kind === 'Core')
+			.map((p, i) => [p.id, String(i + 1).padStart(2, '0')])
+	)
+);
 const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total) : 0);
 </script>
 
@@ -48,7 +57,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 			<div class="body">
 				<div class="chapter-head">
 					<div>
-						<span class="mono muted">chapter {i + 1}</span>
+						<span class="mono muted"><span class="only-mobile">§{i + 1} · </span>chapter {i + 1}</span>
 						<h2 id="ch-{chapter.id}"><a href="/chapters/{chapter.id}">{chapter.title}</a></h2>
 					</div>
 					<span class="read mono">
@@ -84,6 +93,29 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 							{/each}
 						</tbody>
 					</table>
+					<ol class="rows">
+						{#each chapter.problems as problem, j (problem.id)}
+							<li>
+								<a href="/problems/{problem.id}">
+									<span class="muted">{i + 1}.{j + 1}</span>
+									<span class="cell">
+										<span class="rtitle">{problem.title}</span>
+										<span class="mark">
+											{#if problem.kind === 'Core'}
+												<span class="core">core</span><span class="step">· step {steps.get(problem.id)}</span>
+											{:else}
+												<span class="muted upper">extra</span>
+												{#if problem.parentProblemId}
+													<span class="muted step">· off step {steps.get(problem.parentProblemId)}</span>
+												{/if}
+											{/if}
+										</span>
+									</span>
+									<span class="muted">{problem.status === 'Untouched' ? '—' : problem.status.toLowerCase()}</span>
+								</a>
+							</li>
+						{/each}
+					</ol>
 				{/if}
 			</div>
 		</section>
@@ -310,7 +342,19 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
-	@media (max-width: 900px) {
+	.rows,
+	.only-mobile {
+		display: none;
+	}
+	@media (max-width: 767.98px) {
+		main {
+			padding: 32px 20px 48px;
+			overflow-x: clip;
+		}
+		.crumbs {
+			font-size: 12px;
+			padding-bottom: 32px;
+		}
 		.head,
 		.chapter {
 			grid-template-columns: minmax(0, 1fr);
@@ -321,9 +365,93 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		.body {
 			grid-column: 1 / -1;
 		}
+		.lead {
+			gap: 12px;
+		}
+		.eyebrow {
+			font-size: 12px;
+		}
+		h1 {
+			font-size: 40px;
+			line-height: 1.08;
+		}
+		.head {
+			row-gap: 32px;
+			align-items: start;
+		}
 		.chapter {
-			padding-top: 64px;
-			row-gap: 16px;
+			padding-top: 56px;
+		}
+		.num,
+		table {
+			display: none;
+		}
+		.only-mobile {
+			display: inline;
+		}
+		.body {
+			gap: 20px;
+		}
+		.chapter-head {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 12px;
+		}
+		.chapter-head > div {
+			gap: 12px;
+		}
+		.chapter-head .mono {
+			font-size: 12px;
+		}
+		h2 {
+			font-size: 30px;
+			line-height: 1.15;
+		}
+		.rule-note {
+			font-size: 16px;
+			line-height: 1.5;
+		}
+		.rows {
+			display: block;
+			list-style: none;
+			margin: 0;
+			padding: 0;
+			border-top: 1px solid var(--ink);
+			font-family: var(--font-mono);
+			font-size: 13px;
+		}
+		.rows li {
+			border-bottom: 1px solid var(--rule);
+		}
+		.rows li:last-child {
+			border-bottom-color: var(--ink);
+		}
+		.rows a {
+			display: grid;
+			grid-template-columns: 36px minmax(0, 1fr) auto;
+			column-gap: 12px;
+			align-items: baseline;
+			box-sizing: border-box;
+			min-height: 44px;
+			padding: 16px 0;
+			color: var(--ink);
+			text-decoration: none;
+		}
+		.cell {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+		.rtitle {
+			font-family: var(--font-serif);
+			font-size: 20px;
+			line-height: 1.3;
+		}
+		.mark {
+			font-size: 12px;
+		}
+		.mark .step {
+			padding-left: 10px;
 		}
 	}
 </style>

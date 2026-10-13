@@ -41,3 +41,35 @@ test('an unknown Topic returns 404', async ({ page }) => {
 	const response = await page.goto('/topics/nope');
 	expect(response?.status()).toBe(404);
 });
+
+test.describe('mobile layout', () => {
+	test.use({ viewport: { width: 390, height: 844 } });
+
+	test('shows progress, read state, Problem rows and no sideways scroll', async ({ page }) => {
+		// Read the first Chapter to its end, so the Topic shows one read and one unread Chapter.
+		await page.goto('/chapters/stacks-undo-log');
+		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
+		await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
+		await page.goto('/topics/stacks');
+		await expect(page.getByLabel('Topic progress')).toContainText('chapters read');
+		await expect(page.getByLabel('Topic progress')).toContainText('extra solved · not counted');
+		await expect(page.getByText('not read', { exact: true })).toHaveCount(1);
+		await expect(page.locator('.read', { hasText: /^\s*read\s*$/ })).toHaveCount(1);
+
+		const rows = page.locator('.rows a');
+		expect(await rows.count()).toBeGreaterThan(1);
+		await expect(rows.first()).toContainText('core');
+		await expect(rows.first()).toContainText('step 01');
+		await expect(page.locator('.rows').getByText('extra').first()).toBeVisible();
+		await expect(rows.first()).toContainText('—');
+
+		for (const row of await rows.all()) {
+			const box = await row.boundingBox();
+			expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+		}
+		const overflow = await page.evaluate(
+			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+		);
+		expect(overflow).toBeLessThanOrEqual(0);
+	});
+});
