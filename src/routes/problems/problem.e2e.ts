@@ -469,3 +469,102 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 	await page.getByRole('button', { name: 'Run' }).click();
 	await expect(page.locator('.status')).toHaveText('saved');
 });
+
+test.describe('on a phone', () => {
+	test.use({ viewport: { width: 390, height: 844 } });
+
+	const tabBar = (page: Page) => page.getByRole('navigation', { name: 'Workspace' });
+	const tab = (page: Page, name: string) => tabBar(page).getByRole('button', { name });
+
+	async function expectNoPageScroll(page: Page) {
+		const doc = await page.evaluate(() => ({
+			scrollHeight: document.documentElement.scrollHeight,
+			innerHeight: window.innerHeight,
+			scrollWidth: document.documentElement.scrollWidth,
+			innerWidth: window.innerWidth
+		}));
+		expect(doc.scrollHeight).toBe(doc.innerHeight);
+		expect(doc.scrollWidth).toBe(doc.innerWidth);
+	}
+
+	test('three tabs switch one pane at a time; Run and Submit land on Tests; typed code survives; every target is 44px', async ({
+		page
+	}) => {
+		await page.goto('/problems/stacks-push');
+
+		// The bar is the 56px one: brand left, breadcrumb right, no Run or Submit in it.
+		const bar = page.getByRole('banner');
+		expect((await bar.boundingBox())?.height).toBe(56);
+		await expect(bar.getByRole('button')).toHaveCount(0);
+
+		// Problem tab first: the statement shows, the editor and the console do not.
+		await expect(tab(page, 'Problem')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+		await expect(page.getByLabel('Code: main.py')).toBeHidden();
+		await expect(page.getByLabel('Console')).toBeHidden();
+		// The Problem / Hints / Solution row stays inside the tab.
+		await expect(page.getByRole('navigation', { name: 'Problem sections' })).toBeVisible();
+
+		// The strip sits above the tab bar on every tab.
+		const strip = async () => {
+			const run = await page.getByRole('button', { name: 'Run' }).boundingBox();
+			const bar = await tabBar(page).boundingBox();
+			if (!run || !bar) throw new Error('missing boxes');
+			expect(run.y + run.height).toBeLessThanOrEqual(bar.y);
+			expect(bar.height).toBe(56);
+		};
+		await strip();
+		await expectNoPageScroll(page);
+
+		await tab(page, 'Code').click();
+		await expect(tab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByRole('heading', { level: 1 })).toBeHidden();
+		await expect(page.getByLabel('Console')).toBeHidden();
+		await strip();
+		await expectNoPageScroll(page);
+
+		// The language picker is the full 52px select.
+		const picker = page.getByLabel('build language');
+		expect((await picker.boundingBox())?.height).toBe(52);
+
+		await setCode(page, 'print(99)\n');
+		await page.getByRole('button', { name: 'Run' }).click();
+		// The result arrives and the Tests tab opens by itself.
+		const row = page.getByRole('listitem', { name: 'Example Test 01' });
+		await expect(row).toContainText('fail · wrong answer', { timeout: 60_000 });
+		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByLabel('Code: main.py')).toBeHidden();
+		await strip();
+		await expectNoPageScroll(page);
+
+		// Back to Code: the typed code is still there, unsaved edits and all.
+		await tab(page, 'Code').click();
+		await expect(page.getByLabel('Code: main.py')).toContainText('print(99)');
+
+		await setCode(page, correct);
+		await page.getByRole('button', { name: 'Submit' }).click();
+		await expect(page.getByLabel('Verdict')).toContainText('Accepted', { timeout: 60_000 });
+		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByLabel('Accepted panel')).toBeVisible();
+		await expectNoPageScroll(page);
+
+		// Every tab and button on the screen is at least 44px tall.
+		for (const name of ['Problem', 'Code', 'Tests']) {
+			await tab(page, name).click();
+			const targets = page.locator('a:visible, button:visible, select:visible');
+			for (const handle of await targets.all()) {
+				const box = await handle.boundingBox();
+				const label = await handle.evaluate((el) => `${name}: ${el.outerHTML.slice(0, 80)}`);
+				expect(box?.height ?? 0, label).toBeGreaterThanOrEqual(44);
+			}
+		}
+	});
+
+	test('the tabs work from the keyboard', async ({ page }) => {
+		await page.goto('/problems/stacks-push');
+		await tab(page, 'Tests').focus();
+		await page.keyboard.press('Enter');
+		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByRole('region', { name: 'Test results' })).toBeVisible();
+	});
+});

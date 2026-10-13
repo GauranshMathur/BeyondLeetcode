@@ -183,7 +183,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 	}
-	@media (min-width: 901px) {
+	@media (min-width: 901px), (max-width: 767px) {
 		.left {
 			display: flex;
 			flex-direction: column;
@@ -203,6 +203,39 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		.left {
 			border-right: 0;
 			border-bottom: 1px solid var(--ink);
+		}
+	}
+	/* Phones: the Problem tab fills its pane; its own row scrolls sideways if it does not fit. */
+	@media (max-width: 767px) {
+		.left {
+			border-right: 0;
+		}
+		.tabs {
+			gap: 24px;
+			padding: 0 20px;
+			overflow-x: auto;
+		}
+		.tabs a {
+			flex-shrink: 0;
+			white-space: nowrap;
+			box-sizing: border-box;
+			min-height: 44px;
+			padding: 12px 0 10px;
+			line-height: 20px;
+		}
+		.statement {
+			padding: 24px 20px;
+		}
+		h1 {
+			font-size: 30px;
+		}
+		.prose {
+			font-size: 18px;
+		}
+		.report {
+			padding: 12px 0;
+			min-height: 44px;
+			box-sizing: border-box;
 		}
 	}
 </style>
