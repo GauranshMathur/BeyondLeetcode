@@ -130,7 +130,14 @@ export function createAuth({
 		},
 		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
 		// Instance). Covers requests through `auth.handler`; server-side `auth.api` calls skip it.
-		rateLimit: { enabled: true, storage: 'memory' },
+		rateLimit: {
+			enabled: true,
+			storage: 'memory',
+			// Better Auth's own rule for sign-up is 3 per 10 seconds per address, about 1,080 an hour, 54
+			// times what the Sign up form allows (20 per 10 minutes). A script that posts straight to this
+			// endpoint skips the form, so it gets the same budget as the form.
+			customRules: { '/sign-up/email': { window: 600, max: 20 } }
+		},
 		telemetry: { enabled: false },
 		emailAndPassword: {
 			enabled: true,
