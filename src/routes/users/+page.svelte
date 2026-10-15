@@ -94,7 +94,7 @@ let { data }: PageProps = $props();
 	}
 	table {
 		width: 100%;
-		min-width: 720px;
+		min-width: 900px;
 		border-collapse: collapse;
 		font-size: 20px;
 	}
