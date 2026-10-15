@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.44.0...v0.45.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C33b Sign up page ([#180](https://github.com/GauranshMathur/BeyondLeetcode/issues/180)) ([3957409](https://github.com/GauranshMathur/BeyondLeetcode/commit/3957409bf43b658960d901e582520bfe8743e060))
+
 ## [0.44.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.43.0...v0.44.0) (2026-10-15)
 
 
