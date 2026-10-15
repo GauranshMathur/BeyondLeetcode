@@ -206,6 +206,51 @@ test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1
 	await expect(bar.getByRole('link', { name: 'map' })).toBeVisible();
 });
 
+test('the Problem page stays one screen tall: the statement, the editor and the console scroll on their own', async ({
+	page
+}) => {
+	// A short window makes the fixture's statement and one failing result overflow their panes.
+	await page.setViewportSize({ width: 1440, height: 500 });
+	await page.goto('/problems/stacks-push');
+
+	// Enough lines that the editor needs its own scrollbar.
+	await setCode(page, `${'x = 1\n'.repeat(60)}print(99)\n`);
+	await page.getByRole('button', { name: 'Run' }).click();
+	const row = page.getByRole('listitem', { name: 'Example Test 01' });
+	await expect(row).toContainText('fail · wrong answer', { timeout: 60_000 });
+
+	const doc = await page.evaluate(() => ({
+		scrollHeight: window.document.documentElement.scrollHeight,
+		innerHeight: window.innerHeight
+	}));
+	expect(doc.scrollHeight).toBe(doc.innerHeight);
+
+	const statement = page.getByRole('region', { name: 'Problem statement' });
+	await expect(statement).toHaveAttribute('tabindex', '0');
+	expect(await statement.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+	const console_ = page.getByRole('region', { name: 'Test results' });
+	await expect(console_).toHaveAttribute('tabindex', '0');
+	expect(await console_.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+	expect(
+		await page.locator('.cm-scroller').evaluate((el) => el.scrollHeight > el.clientHeight)
+	).toBe(true);
+
+	// Scrolling a pane moves that pane only; the tab row and Run stay where they are.
+	await statement.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+	expect(await page.evaluate(() => window.scrollY)).toBe(0);
+	await expect(page.getByRole('navigation', { name: 'Problem sections' })).toBeInViewport();
+	for (const name of ['Run', 'Submit']) {
+		await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+	}
+
+	// The console never takes more than about half of the right pane.
+	const pane = await page.locator('.pane').boundingBox();
+	const consoleBox = await page.getByLabel('Console').boundingBox();
+	if (!pane || !consoleBox) throw new Error('missing pane boxes');
+	expect(consoleBox.height).toBeLessThanOrEqual(pane.height / 2 + 1);
+	expect(consoleBox.y + consoleBox.height).toBeLessThanOrEqual(500);
+});
+
 const correctTypeScript = referenceCode('main.ts', 'typescript');
 
 test('switching to TypeScript asks first, keeps the Python build, and Run passes', async ({
@@ -423,4 +468,127 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 	// The new Build is saved with a fresh revision: a Run goes straight through.
 	await page.getByRole('button', { name: 'Run' }).click();
 	await expect(page.locator('.status')).toHaveText('saved');
+});
+
+test.describe('on a phone', () => {
+	test.use({ viewport: { width: 390, height: 844 } });
+
+	const tabBar = (page: Page) => page.getByRole('navigation', { name: 'Workspace' });
+	const tab = (page: Page, name: string) => tabBar(page).getByRole('button', { name });
+
+	async function expectNoPageScroll(page: Page) {
+		const doc = await page.evaluate(() => ({
+			scrollHeight: document.documentElement.scrollHeight,
+			innerHeight: window.innerHeight,
+			scrollWidth: document.documentElement.scrollWidth,
+			innerWidth: window.innerWidth
+		}));
+		expect(doc.scrollHeight).toBe(doc.innerHeight);
+		expect(doc.scrollWidth).toBe(doc.innerWidth);
+	}
+
+	test('three tabs switch one pane at a time; Run and Submit land on Tests; typed code survives; every target is 44px', async ({
+		page
+	}) => {
+		await page.goto('/problems/stacks-push');
+
+		// The bar is the 56px one: brand left, breadcrumb right, no Run or Submit in it.
+		const bar = page.getByRole('banner');
+		expect((await bar.boundingBox())?.height).toBe(56);
+		await expect(bar.getByRole('button')).toHaveCount(0);
+
+		// Problem tab first: the statement shows, the editor and the console do not.
+		await expect(tab(page, 'Problem')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+		await expect(page.getByLabel('Code: main.py')).toBeHidden();
+		await expect(page.getByLabel('Console')).toBeHidden();
+		// The Problem / Hints / Solution row stays inside the tab.
+		await expect(page.getByRole('navigation', { name: 'Problem sections' })).toBeVisible();
+
+		// The strip sits above the tab bar on every tab.
+		const strip = async () => {
+			const run = await page.getByRole('button', { name: 'Run' }).boundingBox();
+			const bar = await tabBar(page).boundingBox();
+			if (!run || !bar) throw new Error('missing boxes');
+			expect(run.y + run.height).toBeLessThanOrEqual(bar.y);
+			expect((await tab(page, 'Tests').boundingBox())?.height).toBe(56);
+		};
+		await strip();
+		await expectNoPageScroll(page);
+
+		await tab(page, 'Code').click();
+		await expect(tab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByRole('heading', { level: 1 })).toBeHidden();
+		await expect(page.getByLabel('Console')).toBeHidden();
+		await strip();
+		await expectNoPageScroll(page);
+
+		// The language picker is the full 52px select.
+		const picker = page.getByLabel('build language');
+		expect((await picker.boundingBox())?.height).toBe(52);
+
+		await setCode(page, 'print(99)\n');
+		await page.getByRole('button', { name: 'Run' }).click();
+		// The result arrives and the Tests tab opens by itself.
+		const row = page.getByRole('listitem', { name: 'Example Test 01' });
+		await expect(row).toContainText('fail · wrong answer', { timeout: 60_000 });
+		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByLabel('Code: main.py')).toBeHidden();
+		await strip();
+		await expectNoPageScroll(page);
+
+		// Back to Code: the typed code is still there, unsaved edits and all.
+		await tab(page, 'Code').click();
+		await expect(page.getByLabel('Code: main.py')).toContainText('print(99)');
+
+		await setCode(page, correct);
+		await page.getByRole('button', { name: 'Submit' }).click();
+		await expect(page.getByLabel('Verdict')).toContainText('Accepted', { timeout: 60_000 });
+		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByLabel('Accepted panel')).toBeVisible();
+		await expectNoPageScroll(page);
+
+		// Every tab and button on the screen is at least 44px tall.
+		for (const name of ['Problem', 'Code', 'Tests']) {
+			await tab(page, name).click();
+			const targets = page.locator('a:visible, button:visible, select:visible');
+			for (const handle of await targets.all()) {
+				const box = await handle.boundingBox();
+				const label = await handle.evaluate((el) => `${name}: ${el.outerHTML.slice(0, 80)}`);
+				expect(box?.height ?? 0, label).toBeGreaterThanOrEqual(44);
+			}
+		}
+	});
+
+	test('switching language on the Code tab stays on the Code tab', async ({ page }) => {
+		await page.goto('/problems/stacks-push');
+		await tab(page, 'Code').click();
+		const picker = page.getByLabel('build language');
+		try {
+			await picker.selectOption('typescript');
+			await page.getByRole('button', { name: 'Switch language' }).click();
+			await expect(page.getByLabel('Code: main.ts')).toBeVisible();
+			await expect(tab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
+		} finally {
+			await page.getByLabel('build language').selectOption('python');
+			await page.getByRole('button', { name: 'Switch language' }).click();
+			await expect(page.getByLabel('Code: main.py')).toBeVisible();
+		}
+	});
+
+	test('the tabs work from the keyboard', async ({ page }) => {
+		await page.goto('/problems/stacks-push');
+		await tab(page, 'Tests').focus();
+		await page.keyboard.press('Enter');
+		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(page.getByRole('region', { name: 'Test results' })).toBeVisible();
+	});
+
+	test('with the Solution open, the Tests tab still shows the console', async ({ page }) => {
+		await page.goto('/problems/stacks-push?tab=solution');
+		await tab(page, 'Tests').click();
+		await expect(page.getByLabel('Console')).toBeVisible();
+		await expect(page.locator('.cm-content:visible')).toHaveCount(0);
+		await expectNoPageScroll(page);
+	});
 });

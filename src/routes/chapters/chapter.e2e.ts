@@ -85,3 +85,104 @@ test.describe('a link clicked while the Chapter is being marked Read', () => {
 		await expect(page).toHaveURL('/problems/stacks-push');
 	});
 });
+
+// C47: the Chapter below 768 px. The fixture Chapters carry no code, table or margin note, so the
+// document is served with a code block and a table added to the body; the rest is the real page.
+test.describe('the Chapter on a phone', () => {
+	test.use({
+		storageState: asLearner('e2e-chapter-mobile'),
+		viewport: { width: 390, height: 844 }
+	});
+
+	const longLine = `bisect.insort(self.scores, (score, player))${'  # O(n) shift'.repeat(8)}`;
+	const extra = `<pre><code>${longLine}</code></pre><table><thead><tr><th>operation</th><th>sorted array</th><th>balanced BST</th><th>skip list</th></tr></thead><tbody><tr><td>update with a long label to force width</td><td>O(n)</td><td>O(log n)</td><td>O(log n) expected</td></tr></tbody></table>`;
+
+	test.beforeEach(async ({ page }) => {
+		await page.route('**/chapters/stacks-undo-log', async (route) => {
+			const response = await route.fetch();
+			const body = (await response.text()).replace(
+				'Not learner content.</p>',
+				`Not learner content.</p>${extra}`
+			);
+			await route.fulfill({ response, body });
+		});
+	});
+
+	test('code and tables scroll inside their own box, never the page', async ({ page }) => {
+		await page.goto('/chapters/stacks-undo-log');
+		const code = page.getByRole('group', { name: 'Code block' });
+		await expect(code).toHaveAttribute('tabindex', '0');
+		const table = page.getByRole('group', { name: 'Table' });
+		await expect(table).toHaveAttribute('tabindex', '0');
+		for (const box of [code, table]) {
+			const sizes = await box.evaluate((el) => ({
+				scroll: el.scrollWidth,
+				client: el.clientWidth
+			}));
+			expect(sizes.scroll).toBeGreaterThan(sizes.client);
+		}
+		await code.evaluate((el) => {
+			el.scrollLeft = 200;
+		});
+		expect(await code.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+		const page_ = await page.evaluate(() => ({
+			scroll: document.documentElement.scrollWidth,
+			client: document.documentElement.clientWidth,
+			x: window.scrollX
+		}));
+		expect(page_.scroll).toBeLessThanOrEqual(page_.client);
+		expect(page_.x).toBe(0);
+	});
+
+	test('rows and end links are at least 44 px tall, end links come last', async ({ page }) => {
+		await page.goto('/chapters/stacks-undo-log');
+		const row = page.getByRole('link', { name: 'Push and size' });
+		const topic = page.getByRole('link', { name: '↑ Stacks' });
+		const next = page.getByRole('link', { name: 'Next chapter →' });
+		const report = page.getByRole('link', { name: /Report an issue/ });
+		const boxes = [];
+		for (const link of [row, topic, next, report]) {
+			await expect(link).toBeVisible();
+			boxes.push(await link.boundingBox());
+		}
+		const [rowBox, topicBox, nextBox, reportBox] = boxes;
+		// The whole Problem row is the link: its bottom-right corner hits the link too.
+		const problemTr = page.locator('tr', { has: row });
+		await problemTr.scrollIntoViewIfNeeded();
+		const problemRow = await problemTr.boundingBox();
+		expect(problemRow?.height).toBeGreaterThanOrEqual(44);
+		expect(problemRow?.width).toBeGreaterThan(300);
+		const cornerHitsLink = await row.evaluate(
+			(el, point) => document.elementFromPoint(point.x, point.y)?.closest('a') === el,
+			{
+				x: (problemRow?.x ?? 0) + (problemRow?.width ?? 0) - 4,
+				y: (problemRow?.y ?? 0) + (problemRow?.height ?? 0) - 4
+			}
+		);
+		expect(cornerHitsLink).toBe(true);
+		expect(topicBox?.height).toBeGreaterThanOrEqual(44);
+		expect(nextBox?.height).toBeGreaterThanOrEqual(44);
+		expect(reportBox?.height).toBeGreaterThanOrEqual(44);
+		// Problems, then the end links, then the report-an-issue line.
+		expect(topicBox?.y).toBeGreaterThan((rowBox?.y ?? 0) + (rowBox?.height ?? 0));
+		expect(reportBox?.y).toBeGreaterThan((nextBox?.y ?? 0) + (nextBox?.height ?? 0));
+	});
+
+	// Its own Learner: the other tests here reach the end of this Chapter on load, so it would already be Read.
+	test.describe('at the end', () => {
+		test.use({ storageState: asLearner('e2e-chapter-mobile-read') });
+
+		test('scrolling to the end marks the Chapter Read', async ({ page }) => {
+			const marked = page.waitForResponse(/\?\/reachEnd/);
+			await page.goto('/chapters/stacks-undo-log');
+			await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+			expect((await marked).ok()).toBe(true);
+			await page.goto('/topics/stacks');
+			const chapterRow = page.locator('section.chapter', {
+				has: page.getByRole('link', { name: 'An undo log' })
+			});
+			await expect(chapterRow).toContainText('read');
+			await expect(chapterRow).not.toContainText('not read');
+		});
+	});
+});

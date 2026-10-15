@@ -7,6 +7,14 @@ import SolutionTab from './SolutionTab.svelte';
 
 let { data }: PageProps = $props();
 const problem = $derived(data.problem);
+// The phone tab lives above the key, so a language switch (which remounts the workspace) keeps it; another Problem starts on Problem.
+let phoneTab = $state<'problem' | 'code' | 'tests'>('problem');
+const problemId = $derived(data.problem.id); // a derived id only notifies when the id itself changes
+$effect.pre(() => {
+	problemId;
+	phoneTab = 'problem';
+});
+const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Solution' } as const;
 </script>
 
 <svelte:head>
@@ -14,7 +22,7 @@ const problem = $derived(data.problem);
 </svelte:head>
 
 {#key `${problem.id}:${problem.build.language}`}
-	<ProblemWorkspace {problem} solution={data.tab === 'solution' ? data.solution : undefined}>
+	<ProblemWorkspace {problem} bind:tab={phoneTab} solution={data.tab === 'solution' ? data.solution : undefined}>
 		{#snippet statement()}
 			<div class="left">
 				<nav class="tabs mono" aria-label="Problem sections">
@@ -22,6 +30,9 @@ const problem = $derived(data.problem);
 					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-noscroll aria-current={data.tab === 'hints' ? 'page' : undefined}>Hints</a>
 					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-noscroll data-sveltekit-preload-data="off" aria-current={data.tab === 'solution' ? 'page' : undefined}>Solution</a>
 				</nav>
+				<!-- The pane scrolls on its own; tabindex lets the keyboard reach it. -->
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<div class="scroll" role="region" aria-label={paneLabel[data.tab]} tabindex="0">
 				{#if data.tab === 'hints' && data.hints}
 					<HintsTab {problem} hints={data.hints} />
 				{:else if data.tab === 'solution' && data.solution}
@@ -49,6 +60,7 @@ const problem = $derived(data.problem);
 						</div>
 					</section>
 				{/if}
+				</div>
 			</div>
 		{/snippet}
 	</ProblemWorkspace>
@@ -178,10 +190,59 @@ const problem = $derived(data.problem);
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 	}
+	@media (min-width: 901px), (max-width: 767px) {
+		.left {
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
+		}
+		.tabs {
+			flex-shrink: 0;
+		}
+		.scroll {
+			position: relative; /* holds the absolutely placed .sr-only text inside the pane */
+			flex: 1 1 0;
+			min-height: 0;
+			overflow-y: auto;
+		}
+	}
 	@media (max-width: 900px) {
 		.left {
 			border-right: 0;
 			border-bottom: 1px solid var(--ink);
+		}
+	}
+	/* Phones: the Problem tab fills its pane; its own row scrolls sideways if it does not fit. */
+	@media (max-width: 767px) {
+		.left {
+			border-right: 0;
+		}
+		.tabs {
+			gap: 24px;
+			padding: 0 20px;
+			overflow-x: auto;
+		}
+		.tabs a {
+			flex-shrink: 0;
+			white-space: nowrap;
+			box-sizing: border-box;
+			min-height: 44px;
+			padding: 12px 0 10px;
+			line-height: 20px;
+		}
+		.statement {
+			padding: 24px 20px;
+		}
+		h1 {
+			font-size: 30px;
+		}
+		.prose {
+			font-size: 18px;
+		}
+		.report {
+			padding: 12px 0;
+			min-height: 44px;
+			box-sizing: border-box;
 		}
 	}
 </style>

@@ -75,7 +75,10 @@ describe('learner.resetProgress()', () => {
 describe('the tables resetProgress clears', () => {
 	it('are every model in the Prisma schema with a learnerId field', () => {
 		const schema = readFileSync(schemaPath, 'utf8');
+		// User links an Account to its Learner; it is not progress, so resetProgress keeps it.
+		const notProgress = ['User'];
 		const owned = [...schema.matchAll(/^model (\w+) \{([^}]*)\}/gm)]
+			.filter(([, name]) => !notProgress.includes(name ?? ''))
 			.filter(([, , body]) => /^\s*learnerId\s/m.test(body ?? ''))
 			.map(([, name]) => (name ?? '').replace(/^./, (c) => c.toLowerCase()));
 
