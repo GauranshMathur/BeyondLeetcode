@@ -279,28 +279,33 @@ describe('Multi-user Mode', () => {
 		expect(resolve).not.toHaveBeenCalled();
 	});
 
-	it('sends the extended session cookie on the response of an active session', async () => {
+	it('sends the extended session cookie with the response of an active session, redirects included', async () => {
 		const { handle, asking, db } = await multiSetup();
 		const day = 24 * 60 * 60 * 1000;
 		await db.session.updateMany({ data: { expiresAt: new Date(Date.now() + 5 * day) } });
-		const { event, resolve } = asking('/', '/');
+		await db.user.updateMany({ data: { mustChangePassword: true } });
 
-		await handle({ event, resolve });
+		const page = asking('/account/password', '/account/password');
+		const rendered = await handle({ event: page.event, resolve: page.resolve });
+		await db.session.updateMany({ data: { expiresAt: new Date(Date.now() + 5 * day) } });
+		const home = asking('/', '/');
+		const redirected = await handle({ event: home.event, resolve: home.resolve });
 
-		expect(event.cookies.set).toHaveBeenCalledWith(
-			'better-auth.session_token',
-			expect.any(String),
-			expect.objectContaining({ httpOnly: true, path: '/', secure: false })
-		);
+		for (const response of [rendered, redirected]) {
+			expect(response.headers.getSetCookie()).toEqual([
+				expect.stringMatching(/^better-auth\.session_token=.*HttpOnly/i)
+			]);
+		}
+		expect(redirected.status).toBe(303);
 	});
 
-	it('sends nothing while the session is fresh', async () => {
+	it('sends no cookie while the session is fresh', async () => {
 		const { handle, asking } = await multiSetup();
 		const { event, resolve } = asking('/', '/');
 
-		await handle({ event, resolve });
+		const response = await handle({ event, resolve });
 
-		expect(event.cookies.set).not.toHaveBeenCalled();
+		expect(response.headers.getSetCookie()).toEqual([]);
 	});
 
 	it('sends a user who must change their password to that page', async () => {

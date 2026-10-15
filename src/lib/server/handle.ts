@@ -1,7 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { parseTheme, THEME_COOKIE, withTheme } from '$lib/theme';
 import type { App } from './app.ts';
-import { forwardSetCookies } from './identity/auth-handler.ts';
 import { gate } from './identity/gate.ts';
 import type { IdentityResolver } from './identity/index.ts';
 
@@ -32,9 +31,15 @@ export function createHandle(
 			if (!app.multiUser) return refuseFraming(refusal(503));
 			event.locals.auth = app.multiUser.auth;
 			who = await app.multiUser.identity.resolve(event);
-			// An active session was extended: send its new cookie, or users are signed out after 7 days.
-			if (who?.refreshedCookies?.length) forwardSetCookies(event.cookies, who.refreshedCookies);
 		}
+		// An active session was extended: its new cookie goes out with whatever this request answers (a
+		// redirect or refusal included), or users are signed out after 7 days of use. Better Auth's own
+		// Set-Cookie line, unchanged.
+		const refreshed = who?.refreshedCookies ?? [];
+		const finish = (response: Response) => {
+			for (const cookie of refreshed) response.headers.append('set-cookie', cookie);
+			return refuseFraming(response);
+		};
 
 		const verdict = gate({
 			mode,
@@ -46,7 +51,7 @@ export function createHandle(
 			search: url.search
 		});
 		if (verdict.kind === 'redirect') {
-			return refuseFraming(
+			return finish(
 				new Response(null, {
 					status: verdict.status,
 					headers: { location: verdict.location, 'Cache-Control': 'no-store' }
@@ -54,7 +59,7 @@ export function createHandle(
 			);
 		}
 		if (verdict.kind === 'status') {
-			return refuseFraming(refusal(verdict.status));
+			return finish(refusal(verdict.status));
 		}
 
 		// Unset where nobody is resolved: /setup before Setup, and the public pages of a multi-user Instance.
@@ -68,7 +73,7 @@ export function createHandle(
 		}
 		// No theme cookie means follow the device; a choice goes on <html> in the server render, so no flash.
 		// Read when the page renders, not before: an action that just set the cookie is seen by its own response.
-		return refuseFraming(
+		return finish(
 			await resolve(event, {
 				transformPageChunk: ({ html }) =>
 					withTheme(html, parseTheme(event.cookies.get(THEME_COOKIE)))
