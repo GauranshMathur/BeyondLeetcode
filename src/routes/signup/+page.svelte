@@ -224,6 +224,7 @@ const keeps = [
 	.switch {
 		margin: 0;
 		font-size: 18px;
+		line-height: 1.5;
 		color: var(--body);
 	}
 	.switch a {
