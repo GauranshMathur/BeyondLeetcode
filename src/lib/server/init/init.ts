@@ -25,7 +25,9 @@ export const USAGE = `Usage: docker run --rm -v "$PWD":/out ghcr.io/gauranshmath
 
 Upgrading an existing install? init will not touch your files. For Multi-user, add a line
 BETTER_AUTH_SECRET=<48 random hex characters> to your .env (e.g. from \`openssl rand -hex 24\`)
-and BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET:-} under web's environment in your compose.yaml, then recreate web.`;
+and BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET:-} under web's environment in your compose.yaml, then recreate web.
+Multi-user also needs ORIGIN set in your .env. Behind a reverse proxy, add
+ADDRESS_HEADER: \${ADDRESS_HEADER:-} and XFF_DEPTH: \${XFF_DEPTH:-1} under web's environment too, then set both in .env.`;
 
 export function parseArgs(args: string[]): InitOptions {
 	let origin: string | undefined;
@@ -80,9 +82,15 @@ export function envFile(
 ): string {
 	return `# Written by \`init\`. Keep this file private: it holds the Runner token and the auth secret.
 
-# Public URL of this Instance. SvelteKit's CSRF check compares form posts against it.
-# Behind a reverse proxy, see the PROTOCOL_HEADER/HOST_HEADER block in compose.yaml instead.
+# Public URL of this Instance. SvelteKit's CSRF check compares form posts against it, and Multi-user requires it.
 ORIGIN=${options.origin}
+
+# Behind a reverse proxy, uncomment both so the app sees each client's own address. Without them every client
+# looks like the proxy and they all share one sign-in rate limit. ADDRESS_HEADER is the header your proxy fills
+# in with the client address; XFF_DEPTH is how many proxies append to it. Set them only if every request comes
+# through the proxy: a client that reaches the app directly could forge the header.
+# ADDRESS_HEADER=X-Forwarded-For
+# XFF_DEPTH=1
 
 # Host port the web container is published on.
 PORT=${options.port}

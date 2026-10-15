@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_IMAGE, InitError, newToken, parseArgs, runInit } from './init';
+import { DEFAULT_IMAGE, InitError, newToken, parseArgs, runInit, USAGE } from './init';
 
 let dir: string;
 beforeEach(async () => {
@@ -73,6 +73,27 @@ describe('init', () => {
 	});
 });
 
+describe('.env', () => {
+	it('says Multi-user needs ORIGIN, and offers the proxy settings commented out', async () => {
+		await runInit(['--origin', 'https://learn.example.com'], dir);
+		const env = await read('.env');
+		expect(env).toMatch(/Multi-user requires it/);
+		// The old advice sent proxy users to the header block instead of ORIGIN.
+		expect(env).not.toMatch(/instead\.?$/m);
+		// Commented out: unset, clients that connect straight to the app need nothing.
+		expect(env).toContain('# ADDRESS_HEADER=X-Forwarded-For');
+		expect(env).toContain('# XFF_DEPTH=1');
+		expect(envValue(env, 'ADDRESS_HEADER')).toBeUndefined();
+		expect(envValue(env, 'XFF_DEPTH')).toBeUndefined();
+	});
+
+	it('tells an upgrading operator which lines their compose.yaml needs', () => {
+		expect(USAGE).toContain(`ADDRESS_HEADER: \${ADDRESS_HEADER:-}`);
+		expect(USAGE).toContain(`XFF_DEPTH: \${XFF_DEPTH:-1}`);
+		expect(USAGE).toMatch(/ORIGIN/);
+	});
+});
+
 describe('compose.yaml', () => {
 	it('mounts the engine socket in the runner only, and keeps the runner off the outside network', async () => {
 		await runInit(['--origin', 'http://a.io'], dir);
@@ -109,9 +130,9 @@ describe('compose.yaml', () => {
 		await runInit(['--origin', 'http://a.io'], dir);
 		const compose = await read('compose.yaml');
 		const web = compose.slice(compose.indexOf('  web:'), compose.indexOf('  runner:'));
-		expect(web).toContain('ADDRESS_HEADER: ${ADDRESS_HEADER:-}');
+		expect(web).toContain(`ADDRESS_HEADER: \${ADDRESS_HEADER:-}`);
 		// Never "": adapter-node parses XFF_DEPTH with parseInt, which turns an empty value into NaN.
-		expect(web).toContain('XFF_DEPTH: ${XFF_DEPTH:-1}');
+		expect(web).toContain(`XFF_DEPTH: \${XFF_DEPTH:-1}`);
 		expect(compose.slice(compose.indexOf('  runner:'))).not.toMatch(/ADDRESS_HEADER|XFF_DEPTH/);
 	});
 
