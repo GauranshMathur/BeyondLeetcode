@@ -34,10 +34,14 @@ export function createHandle(
 		}
 		// An active session was extended: its new cookie goes out with whatever this request answers (a
 		// redirect or refusal included), or users are signed out after 7 days of use. Better Auth's own
-		// Set-Cookie line, unchanged.
+		// Set-Cookie line, unchanged. Never over a cookie of the same name that the response sets itself:
+		// a sign-in as someone else, a sign-out or a password change answers with the cookie that must win.
 		const refreshed = who?.refreshedCookies ?? [];
 		const finish = (response: Response) => {
-			for (const cookie of refreshed) response.headers.append('set-cookie', cookie);
+			const own = new Set(response.headers.getSetCookie().map(cookieName));
+			for (const cookie of refreshed) {
+				if (!own.has(cookieName(cookie))) response.headers.append('set-cookie', cookie);
+			}
 			return refuseFraming(response);
 		};
 
@@ -81,6 +85,9 @@ export function createHandle(
 		);
 	};
 }
+
+/** The name of a `Set-Cookie` line: what comes before the first `=`. */
+const cookieName = (setCookie: string) => setCookie.slice(0, setCookie.indexOf('=')).trim();
 
 /** A gate decision depends on the Instance state, so it is never cached. */
 function refusal(status: 403 | 404 | 503): Response {

@@ -299,6 +299,55 @@ describe('Multi-user Mode', () => {
 		expect(redirected.status).toBe(303);
 	});
 
+	describe('when the session is due for a refresh and the response has cookies of its own', () => {
+		const DAY = 24 * 60 * 60 * 1000;
+		const session = 'better-auth.session_token';
+
+		async function due(own: string[]) {
+			const { handle, asking, db } = await multiSetup();
+			await db.session.updateMany({ data: { expiresAt: new Date(Date.now() + 5 * DAY) } });
+			const { event, resolve } = asking('/', '/');
+			resolve.mockImplementation(async () => {
+				const response = new Response('page');
+				for (const cookie of own) response.headers.append('set-cookie', cookie);
+				return response;
+			});
+			return (await handle({ event, resolve })).headers.getSetCookie();
+		}
+
+		it("keeps the response's new session cookie (sign-in as another user, change password), not the refreshed one", async () => {
+			const cookies = await due([`${session}=NEWTOKEN.sig; Path=/; HttpOnly`]);
+
+			expect(cookies).toEqual([`${session}=NEWTOKEN.sig; Path=/; HttpOnly`]);
+		});
+
+		it("keeps the response's clearing cookie (sign-out), not the refreshed one", async () => {
+			const cookies = await due([`${session}=; Max-Age=0; Path=/; HttpOnly`]);
+
+			expect(cookies).toEqual([`${session}=; Max-Age=0; Path=/; HttpOnly`]);
+		});
+
+		it('adds the refreshed cookie next to cookies of other names', async () => {
+			const cookies = await due(['theme=dark; Path=/']);
+
+			expect(cookies).toHaveLength(2);
+			expect(cookies[0]).toBe('theme=dark; Path=/');
+			expect(cookies[1]).toMatch(new RegExp(`^${session.replace('.', '\\.')}=.*HttpOnly`, 'i'));
+		});
+
+		it('adds the refreshed cookie when the response sets none', async () => {
+			const cookies = await due([]);
+
+			expect(cookies).toEqual([expect.stringMatching(/^better-auth\.session_token=.*HttpOnly/i)]);
+		});
+
+		it('matches whole names: a cookie that merely starts with the same letters does not hide it', async () => {
+			const cookies = await due([`${session}_other=1; Path=/`]);
+
+			expect(cookies).toHaveLength(2);
+		});
+	});
+
 	it('sends no cookie while the session is fresh', async () => {
 		const { handle, asking } = await multiSetup();
 		const { event, resolve } = asking('/', '/');
