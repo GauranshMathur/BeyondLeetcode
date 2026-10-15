@@ -88,6 +88,31 @@ describe('handleAuthRequest', () => {
 		expect(res.status).toBe(429);
 	});
 
+	it('gives a direct POST to /sign-up/email the form budget: 20 per 10 minutes per address', async () => {
+		const { auth } = await setup();
+		const signUp = () =>
+			new Request(`${origin}/api/auth/sign-up/email`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin },
+				body: JSON.stringify({
+					name: 'Ada',
+					email: 'ada@example.com',
+					password: 'correct horse battery'
+				})
+			});
+
+		const statuses = [];
+		for (let i = 0; i < 21; i++) {
+			statuses.push((await handleAuthRequest(auth, signUp(), '192.0.2.50')).status);
+		}
+		const other = await handleAuthRequest(auth, signUp(), '192.0.2.51');
+
+		// Sign-up is closed in this setup (403), so the first twenty are answered, not limited.
+		expect(statuses.slice(0, 20)).not.toContain(429);
+		expect(statuses[20]).toBe(429);
+		expect(other.status).not.toBe(429);
+	});
+
 	it('answers with headers the caller can still add to', async () => {
 		const { auth } = await setup();
 

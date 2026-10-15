@@ -69,6 +69,7 @@ export async function createApp(env: {
 			'IDENTITY_TEST_LEARNER=1 in production: the test Learner switch is for the browser tests only.'
 		);
 	}
+	refuseAuthEnvOverrides();
 	const catalogue = await loadCatalogue(env.CONTENT_DIR);
 	const runner = chooseRunner(env, catalogue);
 	const db = createDb(env.DATABASE_URL);
@@ -113,6 +114,32 @@ export async function createApp(env: {
 		},
 		core: createLearningCore({ catalogue, db, runner })
 	};
+}
+
+/**
+ * Settings Better Auth reads from the process environment on its own, and that win over what
+ * `createAuth` passes it. Each is refused while it is set, in every mode: it would take effect the
+ * moment Multi-user is chosen. The messages are fixed strings; they never print the value.
+ *
+ * Read from `process.env`, where Better Auth reads, not from the `env` argument: a copy of the
+ * environment that misses a variable would let it through.
+ *
+ * BETTER_AUTH_URL, PUBLIC_BETTER_AUTH_URL and BASE_URL are not on the list: Better Auth reads them
+ * only when no base URL is passed, and `buildAuth` always passes ORIGIN. AUTH_SECRET is read only
+ * when no secret is passed. BETTER_AUTH_TELEMETRY does not touch the secret, the origin or the cookies.
+ */
+const AUTH_ENV_OVERRIDES: Record<string, string> = {
+	BETTER_AUTH_SECRETS:
+		'BETTER_AUTH_SECRETS is set. Better Auth would sign sessions with it instead of BETTER_AUTH_SECRET, which this app checks. Remove it from the environment, then restart.',
+	BETTER_AUTH_TRUSTED_ORIGINS:
+		'BETTER_AUTH_TRUSTED_ORIGINS is set. Better Auth would accept requests from origins other than ORIGIN. Remove it from the environment, then restart.'
+};
+
+function refuseAuthEnvOverrides(): void {
+	for (const [name, message] of Object.entries(AUTH_ENV_OVERRIDES)) {
+		// Empty is ignored by Better Auth, so it is not an override.
+		if (process.env[name]) throw new Error(message);
+	}
 }
 
 type BuiltAuth = { kind: 'built'; auth: Auth } | { kind: 'missing'; message: string };

@@ -115,6 +115,11 @@ export function createAuth({
 		secret,
 		...(origin ? { baseURL: origin } : {}),
 		advanced: {
+			// Explicit, because left unset Better Auth 1.7.7 skips the origin and CSRF checks whenever
+			// NODE_ENV is "test" or TEST is set, in production too (`skipOriginCheck` in create-context).
+			// An explicit false wins over that detection. Never turn this on: it is what stops a page on
+			// another site from posting to the auth endpoints with a signed-in visitor's cookie.
+			disableOriginCheck: false,
 			...(origin ? { useSecureCookies: origin.startsWith('https:') } : {}),
 			// Only the header our own route sets: X-Forwarded-For is client-controlled and never read.
 			// IPv6 clients are grouped by /64 (Better Auth's default, stated here so it cannot change under us).
@@ -125,7 +130,14 @@ export function createAuth({
 		},
 		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
 		// Instance). Covers requests through `auth.handler`; server-side `auth.api` calls skip it.
-		rateLimit: { enabled: true, storage: 'memory' },
+		rateLimit: {
+			enabled: true,
+			storage: 'memory',
+			// Better Auth's own rule for sign-up is 3 per 10 seconds per address, about 1,080 an hour, 54
+			// times what the Sign up form allows (20 per 10 minutes). A script that posts straight to this
+			// endpoint skips the form, so it gets the same budget as the form.
+			customRules: { '/sign-up/email': { window: 600, max: 20 } }
+		},
 		telemetry: { enabled: false },
 		emailAndPassword: {
 			enabled: true,

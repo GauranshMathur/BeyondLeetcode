@@ -10,14 +10,31 @@ services:
     command: web
     ports:
       - "${PORT}:3000"
+      # Docker publishes the port on every interface and gets past ufw. If you set ADDRESS_HEADER below, only your
+      # proxy may reach it: a client that goes round the proxy can forge the header. With a proxy on this machine,
+      # replace the line above with:
+      # - "127.0.0.1:${PORT}:3000"
+      # Otherwise remove `ports` and put web on the proxy's network only.
     environment:
-      ORIGIN: ${ORIGIN:-}
-      # Behind a reverse proxy, empty ORIGIN in .env and set these instead (the proxy must send them):
+      # The public URL of this Instance, e.g. https://learn.example.com. ORIGIN is required for Multi-user:
+      # Setup will not offer it without ORIGIN, and a Multi-user Instance will not start without it.
+      # Local mode behind a reverse proxy can do without it: delete the ORIGIN line from .env (an empty
+      # ORIGIN= stops the server) and uncomment these two lines instead (the proxy must send them):
+      ORIGIN:
       # PROTOCOL_HEADER: x-forwarded-proto
       # HOST_HEADER: x-forwarded-host
+      # Behind a reverse proxy, also set these two in .env so the app sees each client's own address.
+      # Without them every client looks like the proxy and they all share one sign-in rate limit.
+      # ADDRESS_HEADER names the header your proxy fills in with the client address (X-Forwarded-For);
+      # XFF_DEPTH is how many trusted proxies sit in front of this container (1 for a single proxy).
+      # Set them only if every request comes through the proxy (see the port binding above). Leave both unset
+      # when clients reach this container directly.
+      ADDRESS_HEADER: ${ADDRESS_HEADER:-}
+      XFF_DEPTH: ${XFF_DEPTH:-1}
       RUNNER_URL: http://runner:8787
       RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
       # Multi-user only, all optional: Local mode starts without them.
+      # Never add BETTER_AUTH_SECRETS or BETTER_AUTH_TRUSTED_ORIGINS here: the app refuses to start with either set.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
