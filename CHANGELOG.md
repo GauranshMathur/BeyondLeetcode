@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.42.0...v0.43.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C31c Setup chooses Multi-user and creates the admin ([#176](https://github.com/GauranshMathur/BeyondLeetcode/issues/176)) ([d4b3440](https://github.com/GauranshMathur/BeyondLeetcode/commit/d4b3440c326184dc3b9bf82fe0d95b84bbe331e4))
+
 ## [0.42.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.41.0...v0.42.0) (2026-10-15)
 
 
