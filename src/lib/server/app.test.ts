@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
 
@@ -205,6 +205,57 @@ describe('Multi-user', () => {
 		).rejects.toThrow(/Multi-user.*placeholder/s);
 		expect(await boot(url, env)).toMatchObject({ multiUser: expect.anything() });
 	}, 30_000);
+});
+
+describe('Better Auth settings the environment could override', () => {
+	// Better Auth reads both from process.env on its own: the first replaces the secret createAuth is
+	// given, the second adds origins to the ones its origin check accepts.
+	const overrides = ['BETTER_AUTH_SECRETS', 'BETTER_AUTH_TRUSTED_ORIGINS'];
+	const value = 'v1:never-printed-by-the-error-0123456789abcdef0123456789abcdef';
+
+	it.each(overrides)(
+		'%s: refuses to start on a fresh, Local or multi-user Instance',
+		async (name) => {
+			const { url, db } = await migratedDatabase();
+			const env = { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' };
+			const message = new RegExp(`${name} is set`);
+			vi.stubEnv(name, value);
+			onTestFinished(() => void vi.unstubAllEnvs());
+
+			await expect(boot(url, env)).rejects.toThrow(message); // not set up yet
+			await db.instance.create({ data: { mode: 'local' } });
+			await expect(boot(url, env)).rejects.toThrow(message);
+			await db.instance.deleteMany();
+			await db.instance.create({ data: { mode: 'multi' } });
+			await expect(boot(url, env)).rejects.toThrow(message);
+
+			// A fixed string: it names the variable and never echoes its value.
+			const error = await boot(url, env).catch((e: Error) => e);
+			expect((error as Error).message).not.toContain(value);
+
+			// Unset, the same multi-user Instance starts.
+			vi.unstubAllEnvs();
+			expect(await boot(url, env)).toMatchObject({ multiUser: expect.anything() });
+		},
+		30_000
+	);
+
+	it('lets an empty value through: Better Auth ignores it', async () => {
+		const { url } = await migratedDatabase();
+		for (const name of overrides) vi.stubEnv(name, '');
+		onTestFinished(() => void vi.unstubAllEnvs());
+
+		expect((await boot(url)).instance.mode()).toBeNull();
+	}, 30_000);
+
+	it.each(overrides)('%s: refuses before reading content or the database', async (name) => {
+		vi.stubEnv(name, value);
+		onTestFinished(() => void vi.unstubAllEnvs());
+
+		await expect(
+			createApp({ CONTENT_DIR: 'does-not-exist', DATABASE_URL: 'file:/does/not/exist.db' })
+		).rejects.toThrow(new RegExp(`${name} is set`));
+	});
 });
 
 describe('Runner adapter', () => {
