@@ -21,8 +21,8 @@ services:
       # Behind a reverse proxy, also set these two in .env so the app sees each client's own address.
       # Without them every client looks like the proxy and they all share one sign-in rate limit.
       # ADDRESS_HEADER names the header your proxy fills in with the client address (X-Forwarded-For);
-      # XFF_DEPTH counts the proxies that append to it (1 for a single proxy). Leave both unset
-      # when clients reach this container directly.
+      # XFF_DEPTH is how many trusted proxies sit in front of this container (1 for a single proxy).
+      # Set them only if every request comes through the proxy. Leave both unset when clients reach this container directly.
       ADDRESS_HEADER: ${ADDRESS_HEADER:-}
       XFF_DEPTH: ${XFF_DEPTH:-1}
       RUNNER_URL: http://runner:8787

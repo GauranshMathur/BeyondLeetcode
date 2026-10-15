@@ -87,8 +87,8 @@ ORIGIN=${options.origin}
 
 # Behind a reverse proxy, uncomment both so the app sees each client's own address. Without them every client
 # looks like the proxy and they all share one sign-in rate limit. ADDRESS_HEADER is the header your proxy fills
-# in with the client address; XFF_DEPTH is how many proxies append to it. Set them only if every request comes
-# through the proxy: a client that reaches the app directly could forge the header.
+# in with the client address; XFF_DEPTH is how many trusted proxies sit in front of the app. Set them only if every
+# request comes through the proxy: a client that reaches the app directly could forge the header.
 # ADDRESS_HEADER=X-Forwarded-For
 # XFF_DEPTH=1
 
