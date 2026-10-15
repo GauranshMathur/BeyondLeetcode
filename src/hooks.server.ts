@@ -5,7 +5,10 @@ import { createHandle } from '$lib/server/handle';
 
 let run: Handle;
 
-/** Runs once at server start; a missing CONTENT_DIR, DATABASE_URL, RUNNER_URL or RUNNER_TOKEN stops the server here. */
+/**
+ * Runs once at server start; a missing CONTENT_DIR, DATABASE_URL, RUNNER_URL or RUNNER_TOKEN stops the server here,
+ * and so does a multi-user Instance without its BETTER_AUTH_SECRET or ORIGIN.
+ */
 export const init: ServerInit = async () => {
 	const app = await createApp({
 		CONTENT_DIR: env.CONTENT_DIR,
@@ -14,7 +17,9 @@ export const init: ServerInit = async () => {
 		RUNNER_TOKEN: env.RUNNER_TOKEN,
 		IDENTITY_TEST_LEARNER: env.IDENTITY_TEST_LEARNER,
 		RUNNER_ADAPTER: env.RUNNER_ADAPTER,
-		NODE_ENV: env.NODE_ENV
+		NODE_ENV: env.NODE_ENV,
+		BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
+		ORIGIN: env.ORIGIN
 	});
 	run = createHandle(app);
 };

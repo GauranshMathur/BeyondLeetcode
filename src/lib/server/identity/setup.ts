@@ -31,6 +31,14 @@ const exclusively = <T>(fn: () => Promise<T>): Promise<T> => {
 	return run;
 };
 
+/** Multi-user cannot be chosen on this server (not released yet, or its secret or origin is missing). */
+export class MultiUserNotAvailableError extends Error {
+	constructor() {
+		super('Multi-user is not available on this server.');
+		this.name = 'MultiUserNotAvailableError';
+	}
+}
+
 /** The first admin's form is wrong in one field; the message is fixed text, never the input. */
 export class InvalidFirstAdminError extends Error {
 	constructor(

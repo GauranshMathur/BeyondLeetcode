@@ -4,7 +4,11 @@ import { type Auth, createAuth, MIN_SECRET_LENGTH } from './identity/auth.ts';
 import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
 import { createMultiUserIdentity } from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
-import { createFirstAdmin, type FirstAdminInput } from './identity/setup.ts';
+import {
+	createFirstAdmin,
+	type FirstAdminInput,
+	MultiUserNotAvailableError
+} from './identity/setup.ts';
 import { createInstance, type Instance } from './instance.ts';
 import { createLearningCore, type LearningCore } from './learning/core.ts';
 import { createHttpRunner } from './runner/http-adapter.ts';
@@ -24,13 +28,6 @@ export interface Setup {
 	multiUser: MultiUserChoice;
 	/** Refused unless `multiUser` is `open`. Returns the headers whose `Set-Cookie` signs the admin in. */
 	createFirstAdmin(input: FirstAdminInput): Promise<{ headers: Headers }>;
-}
-
-export class MultiUserNotAvailableError extends Error {
-	constructor() {
-		super('Multi-user is not available on this server.');
-		this.name = 'MultiUserNotAvailableError';
-	}
 }
 
 export interface App {
