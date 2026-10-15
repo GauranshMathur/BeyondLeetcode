@@ -2,11 +2,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { createDb } from '../../lib/server/db.ts';
 import { createAuth } from '../../lib/server/identity/auth.ts';
 
-// Test-only. Browser tests of the Multi-user server (4174) that need Accounts the screens cannot make yet:
-// a learner, a user whose role only contains admin. It never touches production code paths: it opens the
-// server's own database file next to the running server, with a second Better Auth instance built from
-// the server's own settings, and it makes the Accounts and sessions with that. The server then sees
-// ordinary rows and ordinary signed cookies.
+// Test-only, and it adds no production code path. Browser tests of the Multi-user server (4174) that need
+// Accounts the screens cannot make yet (a learner, a user whose role only contains admin) open the server's
+// own database file from the test process, with a second Better Auth instance built from the server's own
+// settings, and make the Accounts and sessions with that. The server then sees ordinary rows and ordinary
+// signed cookies. Finding the file needs the server's environment, which only /proc has: a fixed path in
+// playwright.config.ts would replace that (see the PR for C34a).
 
 const MULTI_PORT = '4174';
 
