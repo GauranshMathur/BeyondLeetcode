@@ -88,6 +88,33 @@ describe('compose.yaml', () => {
 		expect(compose).toContain('PROTOCOL_HEADER');
 	});
 
+	it('passes ORIGIN through and says Multi-user requires it', async () => {
+		await runInit(['--origin', 'http://a.io'], dir);
+		const compose = await read('compose.yaml');
+		const web = compose.slice(compose.indexOf('  web:'), compose.indexOf('  runner:'));
+		// Present as a bare key, so a removed ORIGIN line in .env leaves it unset in the container.
+		expect(web).toMatch(/^ {6}ORIGIN:$/m);
+		// Not defaulted to "": adapter-node 5.5 stops with "Invalid ORIGIN" on an empty value.
+		expect(web).not.toMatch(/ORIGIN: \$\{ORIGIN:-/);
+		expect(web).toMatch(/ORIGIN is required for Multi-user/);
+		// The old advice told proxy users to leave it empty.
+		expect(web).not.toMatch(/empty ORIGIN in \.env/i);
+		// Local mode behind a proxy still has the header route.
+		expect(web).toContain('# PROTOCOL_HEADER: x-forwarded-proto');
+		expect(web).toContain('# HOST_HEADER: x-forwarded-host');
+		expect(compose.slice(compose.indexOf('  runner:'))).not.toContain('ORIGIN');
+	});
+
+	it('passes the client-address settings to web, so a proxy does not put every client in one rate-limit bucket', async () => {
+		await runInit(['--origin', 'http://a.io'], dir);
+		const compose = await read('compose.yaml');
+		const web = compose.slice(compose.indexOf('  web:'), compose.indexOf('  runner:'));
+		expect(web).toContain('ADDRESS_HEADER: ${ADDRESS_HEADER:-}');
+		// Never "": adapter-node parses XFF_DEPTH with parseInt, which turns an empty value into NaN.
+		expect(web).toContain('XFF_DEPTH: ${XFF_DEPTH:-1}');
+		expect(compose.slice(compose.indexOf('  runner:'))).not.toMatch(/ADDRESS_HEADER|XFF_DEPTH/);
+	});
+
 	it('passes the auth secret and OAuth variables to web only, all optional', async () => {
 		await runInit(['--origin', 'http://a.io'], dir);
 		const compose = await read('compose.yaml');
