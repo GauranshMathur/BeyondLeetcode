@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.41.0...v0.42.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C33a Sign up gate reads the Registration Mode ([#173](https://github.com/GauranshMathur/BeyondLeetcode/issues/173)) ([d950b8e](https://github.com/GauranshMathur/BeyondLeetcode/commit/d950b8e2909dfde9161decf297be5b36419d4057))
+
 ## [0.41.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.40.0...v0.41.0) (2026-10-15)
 
 
