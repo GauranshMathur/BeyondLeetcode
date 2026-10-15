@@ -47,19 +47,25 @@ describe('handleAuthRequest', () => {
 		expect(same.status).toBe(429);
 	});
 
-	it('gives two IPv6 clients in one /64 their own buckets', async () => {
+	it('groups IPv6 clients by /64: rotating addresses inside one /64 does not escape the limit', async () => {
 		const { auth } = await setup();
-		// One LAN client hammering sign-in must not lock out its neighbour.
-		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, signIn(), 'fd00:1:2:3::10');
+		for (let i = 1; i <= 4; i++) {
+			await handleAuthRequest(auth, signIn(), `fd00:aa:bb:cc::${i}`);
+		}
 
-		const neighbour = await handleAuthRequest(auth, signIn(), 'fd00:1:2:3::20');
-		const same = await handleAuthRequest(auth, signIn(), 'fd00:1:2:3::10');
-		// IPv4-mapped IPv6 is still the same client as its IPv4 form.
+		const sameSubnet = await handleAuthRequest(auth, signIn(), 'fd00:aa:bb:cc:1:2:3:4');
+		const otherSubnet = await handleAuthRequest(auth, signIn(), 'fd00:aa:bb:dd::1');
+
+		expect(sameSubnet.status).toBe(429);
+		expect(otherSubnet.status).not.toBe(429);
+	});
+
+	it('treats an IPv4-mapped IPv6 address as its IPv4 client', async () => {
+		const { auth } = await setup();
 		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, signIn(), '::ffff:192.0.2.77');
+
 		const mapped = await handleAuthRequest(auth, signIn(), '192.0.2.77');
 
-		expect(neighbour.status).not.toBe(429);
-		expect(same.status).toBe(429);
 		expect(mapped.status).toBe(429);
 	});
 
