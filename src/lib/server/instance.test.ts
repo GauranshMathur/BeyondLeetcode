@@ -37,7 +37,20 @@ it('a second module on the same database cannot claim a set-up Instance', async 
 	await first.chooseLocal();
 
 	await expect(stale.chooseLocal()).rejects.toThrow(/already set up/);
-	expect(stale.mode()).toBeNull();
+	// The refusal re-reads the row, so the loser's cached mode is no longer stale.
+	expect(stale.mode()).toBe('local');
+});
+
+it('a stale module that loses a create to another mode adopts the stored mode, and its other call too', async () => {
+	const db = await createTestDb();
+	const first = await createInstance(db);
+	const stale = await createInstance(db);
+	await first.chooseMulti();
+
+	await expect(stale.chooseMulti()).rejects.toThrow(InstanceAlreadySetUpError);
+
+	expect(stale.mode()).toBe('multi');
+	await expect(stale.chooseLocal()).rejects.toThrow(InstanceAlreadySetUpError);
 });
 
 it('chooseMulti on a fresh database creates the row as multi and persists it', async () => {
@@ -81,7 +94,7 @@ it('a stale module cannot convert an Instance another module already made multi'
 	await first.chooseMulti();
 
 	await expect(stale.chooseMulti()).rejects.toThrow(InstanceAlreadySetUpError);
-	expect(stale.mode()).toBe('local');
+	expect(stale.mode()).toBe('multi');
 });
 
 it('chooseMulti undo puts a fresh Instance back to not set up, and a Local one back to local', async () => {

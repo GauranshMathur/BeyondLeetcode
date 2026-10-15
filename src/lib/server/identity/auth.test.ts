@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
-import { type Admission, createAuth, MIN_PASSWORD_LENGTH } from './auth.ts';
+import { type Admission, createAuth, isPlaceholderSecret, MIN_PASSWORD_LENGTH } from './auth.ts';
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
@@ -215,9 +216,26 @@ describe('createAuth', () => {
 		expect(kept.status).not.toBe(404);
 	});
 
+	it('refuses the BETTER_AUTH_SECRET that .env.example ships, whatever its wording', async () => {
+		const example = readFileSync(new URL('../../../../.env.example', import.meta.url), 'utf8');
+		const shipped = /^BETTER_AUTH_SECRET="(.*)"$/m.exec(example)?.[1];
+
+		expect(shipped).toBeTruthy();
+		expect(shipped?.length).toBeGreaterThanOrEqual(32);
+		expect(isPlaceholderSecret(shipped ?? '')).toBe(true);
+		expect(isPlaceholderSecret('d41d8cd98f00b204e9800998ecf8427e1a2b3c4d5e6f708192')).toBe(false);
+	});
+
 	it('needs a secret of at least 32 characters', async () => {
 		const db = await createFileTestDb();
 		expect(() => createAuth({ db, origin: '', secret: '' })).toThrow(/secret/i);
 		expect(() => createAuth({ db, origin: '', secret: 'short' })).toThrow(/32/);
+		for (const known of [
+			'change-me-to-a-random-string-of-48-characters',
+			'Change-Me-to-a-random-string-of-48-characters',
+			'better-auth-secret-12345678901234567890'
+		]) {
+			expect(() => createAuth({ db, origin: '', secret: known })).toThrow(/placeholder|anyone/);
+		}
 	});
 });

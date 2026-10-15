@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
-import { type Admission, createAuth } from './auth.ts';
+import { type Admission, CLIENT_IP_HEADER, createAuth } from './auth.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
 
@@ -20,11 +20,18 @@ const fakeInstance = (mode: 'local' | 'multi' | null, registration: Registration
 	};
 };
 
+// Each request comes from its own address: Better Auth's limiter allows three sign-ups per address
+// in ten seconds, and these tests are about the registration gate, not the limiter.
+let caller = 0;
 const post = (auth: ReturnType<typeof createAuth>, payload: object = body) =>
 	auth.handler(
 		new Request(`${origin}/api/auth/sign-up/email`, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json', origin },
+			headers: {
+				'content-type': 'application/json',
+				origin,
+				[CLIENT_IP_HEADER]: `10.1.${caller >> 8}.${caller++ & 255}`
+			},
 			body: JSON.stringify(payload)
 		})
 	);

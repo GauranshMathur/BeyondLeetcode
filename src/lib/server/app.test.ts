@@ -47,12 +47,13 @@ async function migratedDatabase() {
 	return { url, db };
 }
 
-const boot = (url: string) =>
+const boot = (url: string, extra: Record<string, string | undefined> = {}) =>
 	createApp({
 		CONTENT_DIR: 'src/lib/server/content/fixture',
 		DATABASE_URL: url,
 		RUNNER_URL: 'http://127.0.0.1:1',
-		RUNNER_TOKEN: 'test-token'
+		RUNNER_TOKEN: 'test-token',
+		...extra
 	});
 
 it('a fresh database stays not set up across restarts, with no Learner, until someone chooses', async () => {
@@ -77,6 +78,134 @@ it('an upgraded database that already has the Local mode gets its Local Learner 
 	expect(app.instance.mode()).toBe('local');
 	expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 }, 30_000);
+
+const secret = 'a-test-secret-of-at-least-thirty-two-characters';
+const admin = { name: 'Ada', email: 'ada@example.com', password: 'correct horse battery' };
+
+const bootMulti = (url: string, extra: Record<string, string | undefined> = {}) =>
+	createApp({
+		CONTENT_DIR: 'src/lib/server/content/fixture',
+		DATABASE_URL: url,
+		RUNNER_ADAPTER: 'scripted',
+		IDENTITY_TEST_LEARNER: '1',
+		BETTER_AUTH_SECRET: secret,
+		ORIGIN: 'http://localhost:4174',
+		...extra
+	});
+
+describe('Multi-user', () => {
+	it('is a later release on a server without the test switch, with or without a secret', async () => {
+		const { url } = await migratedDatabase();
+
+		for (const extra of [{}, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' }]) {
+			const app = await boot(url, extra);
+			expect(app.setup.multiUser).toEqual({ kind: 'later' });
+			await expect(app.setup.createFirstAdmin(admin)).rejects.toThrow(/not available/);
+		}
+		expect((await boot(url)).instance.mode()).toBeNull();
+	}, 30_000);
+
+	it('can be chosen on the test server once the secret and origin are set, and signs the admin in', async () => {
+		const { url, db } = await migratedDatabase();
+		const app = await bootMulti(url);
+		expect(app.setup.multiUser).toEqual({ kind: 'open' });
+
+		const { headers } = await app.setup.createFirstAdmin(admin);
+
+		expect(app.instance.mode()).toBe('multi');
+		const cookie = headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+		const who = await app.multiUser?.identity.resolve({
+			cookies: { get: () => undefined },
+			request: { headers: new Headers({ cookie }) }
+		});
+		expect(who).toMatchObject({ displayName: 'Ada', role: 'admin', learnerId: 'local' });
+		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
+	}, 30_000);
+
+	it.each([
+		['no secret', { BETTER_AUTH_SECRET: undefined }, /BETTER_AUTH_SECRET.*\.env/s],
+		['an empty secret', { BETTER_AUTH_SECRET: '' }, /BETTER_AUTH_SECRET.*\.env/s],
+		['a short secret', { BETTER_AUTH_SECRET: 'short' }, /BETTER_AUTH_SECRET.*32/s],
+		[
+			'the .env.example placeholder',
+			{ BETTER_AUTH_SECRET: 'change-me-to-a-random-string-of-48-characters' },
+			/BETTER_AUTH_SECRET.*placeholder/s
+		],
+		[
+			"Better Auth's built-in default",
+			{ BETTER_AUTH_SECRET: 'better-auth-secret-12345678901234567890' },
+			/BETTER_AUTH_SECRET.*placeholder/s
+		],
+		['no origin', { ORIGIN: undefined }, /ORIGIN.*\.env/s],
+		['an empty origin', { ORIGIN: '' }, /ORIGIN.*\.env/s],
+		['an origin that is not a URL', { ORIGIN: 'learn.example.com' }, /ORIGIN.*\.env/s],
+		['an origin of another scheme', { ORIGIN: 'ftp://learn.example.com' }, /ORIGIN.*\.env/s]
+	])(
+		'explains what to add to .env instead of building Better Auth: %s',
+		async (_, extra, message) => {
+			const { url } = await migratedDatabase();
+
+			const app = await bootMulti(url, extra);
+
+			expect(app.multiUser).toBeNull();
+			expect(app.setup.multiUser).toEqual({
+				kind: 'needs-env',
+				message: expect.stringMatching(message)
+			});
+			await expect(app.setup.createFirstAdmin(admin)).rejects.toThrow(/not available/);
+			expect(app.instance.mode()).toBeNull();
+		},
+		30_000
+	);
+
+	it('derives the auth origin from ORIGIN: http gives cookies a plain http browser keeps', async () => {
+		const { url } = await migratedDatabase();
+		const app = await bootMulti(url, { ORIGIN: 'http://192.168.1.20:3000/' });
+
+		const { headers } = await app.setup.createFirstAdmin(admin);
+
+		const [cookie] = headers.getSetCookie();
+		expect(cookie).toMatch(/^better-auth\.session_token=/);
+		expect(cookie).not.toMatch(/secure/i);
+	}, 30_000);
+
+	it('gives an https origin Secure cookies', async () => {
+		const { url } = await migratedDatabase();
+		const app = await bootMulti(url, { ORIGIN: 'https://learn.example.com' });
+
+		const { headers } = await app.setup.createFirstAdmin(admin);
+
+		expect(headers.getSetCookie()[0]).toMatch(/^__Secure-better-auth\.session_token=.*; Secure/i);
+	}, 30_000);
+
+	it('refuses to start as a multi-user Instance with the test switch on: the test cookie must never be read', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'multi' } });
+
+		await expect(bootMulti(url)).rejects.toThrow(/IDENTITY_TEST_LEARNER/);
+	}, 30_000);
+
+	it('refuses to start as a multi-user Instance without its secret or origin', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'multi' } });
+		const env = { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' };
+
+		await expect(boot(url, { ...env, BETTER_AUTH_SECRET: undefined })).rejects.toThrow(
+			/Multi-user.*BETTER_AUTH_SECRET/s
+		);
+		await expect(boot(url, { ...env, ORIGIN: '' })).rejects.toThrow(/Multi-user.*ORIGIN/s);
+		await expect(
+			boot(url, { ...env, BETTER_AUTH_SECRET: 'change-me-to-a-random-string-of-48-characters' })
+		).rejects.toThrow(/Multi-user.*placeholder/s);
+		await expect(
+			boot(url, { ...env, BETTER_AUTH_SECRET: 'better-auth-secret-12345678901234567890' })
+		).rejects.toThrow(/Multi-user.*placeholder/s);
+		expect(await boot(url, env)).toMatchObject({ multiUser: expect.anything() });
+	}, 30_000);
+});
 
 describe('Runner adapter', () => {
 	const base = { CONTENT_DIR: 'src/lib/server/content/fixture', DATABASE_URL: 'file:x.db' };

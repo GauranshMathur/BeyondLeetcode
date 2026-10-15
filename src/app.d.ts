@@ -1,4 +1,6 @@
+import type { Setup } from '$lib/server/app';
 import type { Identity } from '$lib/server/identity';
+import type { Auth } from '$lib/server/identity/auth';
 import type { Instance } from '$lib/server/instance';
 import type { Learner } from '$lib/server/learning/core';
 
@@ -13,6 +15,10 @@ declare global {
 		interface Locals {
 			/** The Instance: its mode and the one-time choice Setup makes. */
 			instance: Instance;
+			/** What the Setup screen needs: the Multi-user choice and creating the first admin. */
+			setup: Setup;
+			/** Better Auth; set only in Multi-user Mode, where the auth route mounts its handler. */
+			auth?: Auth;
 			/** Who this request is, from Identity. Unset only on /setup before the Instance is set up. */
 			identity: Identity;
 			/** The Learning core acting for this request's Learner. Unset exactly when `identity` is. */

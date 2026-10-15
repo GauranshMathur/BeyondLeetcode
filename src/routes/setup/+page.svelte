@@ -1,7 +1,16 @@
 <script lang="ts">
 import type { PageProps } from './$types';
 
-let { form }: PageProps = $props();
+let { data, form }: PageProps = $props();
+
+const multi = $derived(data.multiUser);
+const onAdmin = $derived(form?.step === 'admin');
+// Only the admin step names a field; a step-1 refusal has none.
+const fieldError = (field: 'name' | 'email' | 'password') =>
+	form?.step === 'admin' && form.field === field ? form.message : undefined;
+const formError = $derived(
+	form?.message && !(form.step === 'admin' && form.field) ? form.message : undefined
+);
 </script>
 
 <svelte:head>
@@ -9,43 +18,116 @@ let { form }: PageProps = $props();
 </svelte:head>
 
 <main>
-	<section class="intro">
-		<span class="eyebrow">First-run setup</span>
-		<h1>Set up this instance.</h1>
-		<p class="lede">Choose how this instance is used. You only do this once.</p>
-	</section>
+	{#if onAdmin}
+		<section class="intro">
+			<span class="eyebrow">First-run setup · Multi-user</span>
+			<h1>Create the admin.</h1>
+			<p class="lede">This is the first account on the instance.</p>
+		</section>
 
-	<section class="body">
-		<form method="POST">
-			<fieldset>
-				<legend>Mode</legend>
-				<label class="option selected">
-					<input type="radio" name="mode" value="local" checked />
-					<span class="text">
-						<span class="name">Local</span>
-						<span class="desc">One person, no login. Everything is saved on this instance for that one learner.</span>
-					</span>
+		<section class="admin">
+			<div class="about">
+				<h2>Admin account</h2>
+				<p>The admin invites users, resets passwords and sets who can register.</p>
+			</div>
+			<form method="POST" action="?/admin" class="fields">
+				<label class="field">
+					Name
+					<input
+						type="text"
+						name="name"
+						autocomplete="name"
+						required
+						value={form?.step === 'admin' ? form.name : ''}
+						aria-invalid={fieldError('name') ? 'true' : undefined}
+						aria-describedby={fieldError('name') ? 'name-error' : undefined}
+					/>
+					{#if fieldError('name')}<span id="name-error" class="hint" role="alert">{fieldError('name')}</span>{/if}
 				</label>
-				<label class="option disabled">
-					<input type="radio" name="mode" value="multi" disabled aria-describedby="multi-soon" />
-					<span class="text">
-						<span class="name">Multi-user</span>
-						<span class="desc">Several people, each with their own account. You create the admin account next.</span>
-						<span id="multi-soon" class="soon">Multi-user arrives in the next update.</span>
-					</span>
+				<label class="field">
+					Email
+					<input
+						type="email"
+						name="email"
+						autocomplete="email"
+						required
+						value={form?.step === 'admin' ? form.email : ''}
+						aria-invalid={fieldError('email') ? 'true' : undefined}
+						aria-describedby={fieldError('email') ? 'email-error' : undefined}
+					/>
+					{#if fieldError('email')}<span id="email-error" class="hint" role="alert">{fieldError('email')}</span>{/if}
 				</label>
-			</fieldset>
-			{#if form?.message}
-				<p class="error" role="alert">{form.message}</p>
-			{/if}
-			<button type="submit">Start in Local mode →</button>
-		</form>
+				<label class="field">
+					Password
+					<input
+						type="password"
+						name="password"
+						autocomplete="new-password"
+						required
+						aria-invalid={fieldError('password') ? 'true' : undefined}
+						aria-describedby={fieldError('password') ? 'password-error' : undefined}
+					/>
+					{#if fieldError('password')}<span id="password-error" class="hint" role="alert">{fieldError('password')}</span>{/if}
+				</label>
+				{#if formError}
+					<p class="error" role="alert">{formError}</p>
+				{/if}
+				<div class="actions">
+					<button type="submit">Create admin account →</button>
+					<a class="back" href="/setup">Back</a>
+				</div>
+			</form>
+		</section>
+	{:else}
+		<section class="intro">
+			<span class="eyebrow">First-run setup</span>
+			<h1>Set up this instance.</h1>
+			<p class="lede">Choose how this instance is used. You only do this once.</p>
+		</section>
 
-		<aside>
-			<span class="note">Note 1</span>
-			<span>You can change this later from Local to Multi-user. Your Local progress then becomes the first admin's.</span>
-		</aside>
-	</section>
+		<section class="body">
+			<form method="POST" action="?/mode">
+				<fieldset>
+					<legend>Mode</legend>
+					<label class="option local">
+						<input type="radio" name="mode" value="local" checked />
+						<span class="text">
+							<span class="name">Local</span>
+							<span class="desc">One person, no login. Everything is saved on this instance for that one learner.</span>
+						</span>
+					</label>
+					<label class="option multi" class:disabled={multi.kind !== 'open'}>
+						<input
+							type="radio"
+							name="mode"
+							value="multi"
+							disabled={multi.kind !== 'open'}
+							aria-describedby={multi.kind === 'open' ? undefined : 'multi-note'}
+						/>
+						<span class="text">
+							<span class="name">Multi-user</span>
+							<span class="desc">Several people, each with their own account. You create the admin account next.</span>
+							{#if multi.kind === 'later'}
+								<span id="multi-note" class="soon">Multi-user arrives in the next update.</span>
+							{:else if multi.kind === 'needs-env'}
+								<span id="multi-note" class="soon">{multi.message}</span>
+							{/if}
+						</span>
+					</label>
+				</fieldset>
+				{#if form?.message}
+					<p class="error" role="alert">{form.message}</p>
+				{/if}
+				<!-- Both labels are in the page and CSS shows the one for the chosen mode, so no script is needed. -->
+				<button type="submit"><span class="start-local">Start in Local mode →</span><span class="continue">Continue →</span></button>
+			</form>
+
+			<aside>
+				<span class="note">Note 1</span>
+				<span>You can change this later from Local to Multi-user. Your Local progress then becomes the first admin's.</span>
+			</aside>
+		</section>
+	{/if}
 </main>
 
 <style>
@@ -116,7 +198,7 @@ let { form }: PageProps = $props();
 		border-radius: 2px;
 		background: var(--field);
 	}
-	.option.selected {
+	.option:has(input:checked) {
 		border-width: 2px;
 		padding: 19px 23px;
 	}
@@ -188,10 +270,95 @@ let { form }: PageProps = $props();
 		letter-spacing: 0.08em;
 		color: var(--accent);
 	}
+	form:has(input[value='multi']:checked) .start-local,
+	form:not(:has(input[value='multi']:checked)) .continue {
+		display: none;
+	}
+	.admin {
+		display: grid;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+		column-gap: 32px;
+		row-gap: 32px;
+		margin: 56px clamp(16px, 6.7vw, 96px) 72px;
+		padding-top: 32px;
+		border-top: 1px solid var(--ink);
+	}
+	.about {
+		grid-column: span 4;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	h2 {
+		margin: 0;
+		font-weight: 400;
+		font-size: 30px;
+		line-height: 1.2;
+	}
+	.about p {
+		margin: 0;
+		font-size: 17px;
+		line-height: 1.5;
+		color: var(--muted);
+	}
+	.fields {
+		grid-column: 6 / span 6;
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
+	}
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		font-family: var(--font-mono);
+		font-size: 13px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--muted);
+	}
+	.field input {
+		height: 52px;
+		box-sizing: border-box;
+		padding: 0 16px;
+		background: var(--field);
+		border: 1px solid var(--ink);
+		border-radius: 2px;
+		color: var(--ink);
+		font-family: var(--font-serif);
+		font-size: 19px;
+		letter-spacing: 0;
+		text-transform: none;
+	}
+	.field:has(input[aria-invalid='true']) {
+		color: var(--accent);
+	}
+	.field input[aria-invalid='true'] {
+		border: 2px solid var(--accent);
+	}
+	.hint {
+		font-size: 13px;
+		letter-spacing: 0;
+		text-transform: none;
+	}
+	.actions {
+		display: flex;
+		gap: 20px;
+		align-items: center;
+	}
+	.back {
+		padding: 12px 0;
+		line-height: 20px;
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 14px;
+	}
 	/* Mobile: one column, as on the other screens. */
 	@media (max-width: 900px) {
 		form,
-		aside {
+		aside,
+		.about,
+		.fields {
 			grid-column: 1 / -1;
 		}
 		aside {

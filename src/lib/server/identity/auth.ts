@@ -23,6 +23,26 @@ export type AdmitSignUp = (attempt: {
 	email: string | undefined;
 }) => Admission | null | Promise<Admission | null>;
 
+/**
+ * The private header the limiter reads the client address from. The auth route overwrites it with
+ * the address SvelteKit resolved, so a client cannot choose its own bucket (see `handleAuthRequest`).
+ */
+export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
+
+export const MIN_SECRET_LENGTH = 32;
+
+/** The secret Better Auth falls back to when none is set (`utils/constants` in better-auth 1.7.x). */
+const BETTER_AUTH_DEFAULT_SECRET = 'better-auth-secret-12345678901234567890';
+
+/**
+ * A secret everyone can read: Better Auth's built-in default, or the `change-me...` placeholder that
+ * `.env.example` ships (it is long enough to pass the length check). Signing sessions with either
+ * lets anyone forge them, so it is treated like no secret at all.
+ */
+export function isPlaceholderSecret(secret: string): boolean {
+	const value = secret.trim().toLowerCase();
+	return value === BETTER_AUTH_DEFAULT_SECRET || value.startsWith('change-me');
+}
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -84,15 +104,28 @@ export function createAuth({
 	admitSignUp = () => null,
 	extraPlugins = []
 }: CreateAuthOptions) {
-	if (secret.length < 32) {
+	if (secret.length < MIN_SECRET_LENGTH) {
 		throw new Error('createAuth: secret is missing or shorter than 32 characters');
+	}
+	if (isPlaceholderSecret(secret)) {
+		throw new Error('createAuth: secret is a placeholder or default value anyone can read');
 	}
 	return betterAuth({
 		database: prismaAdapter(db, { provider: 'sqlite' }),
 		secret,
-		...(origin
-			? { baseURL: origin, advanced: { useSecureCookies: origin.startsWith('https:') } }
-			: {}),
+		...(origin ? { baseURL: origin } : {}),
+		advanced: {
+			...(origin ? { useSecureCookies: origin.startsWith('https:') } : {}),
+			// Only the header our own route sets: X-Forwarded-For is client-controlled and never read.
+			// IPv6 clients are grouped by /64 (Better Auth's default, stated here so it cannot change under us).
+			// Not /128: sign-in over HTTP has no per-Account backstop, and whoever holds a /64 controls all
+			// of its addresses, so a finer key would let them rotate addresses and guess without limit. The
+			// cost is that clients in one LAN /64 share a budget, the same trade-off throttle.ts makes.
+			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER], ipv6Subnet: 64 }
+		},
+		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
+		// Instance). Covers requests through `auth.handler`; server-side `auth.api` calls skip it.
+		rateLimit: { enabled: true, storage: 'memory' },
 		telemetry: { enabled: false },
 		emailAndPassword: {
 			enabled: true,

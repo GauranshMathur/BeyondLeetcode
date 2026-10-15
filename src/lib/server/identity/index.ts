@@ -18,8 +18,13 @@ export interface ResolveEvent {
 
 /** The seam: given a request, who is it? `null` means nobody. */
 export interface IdentityResolver {
-	/** `mustChangePassword` is set by the Multi-user adapter; the gate takes it as its own input. */
-	resolve(event: ResolveEvent): Promise<(Identity & { mustChangePassword?: boolean }) | null>;
+	/**
+	 * `mustChangePassword` is set by the Multi-user adapter; the gate takes it as its own input.
+	 * `refreshedCookies` are `Set-Cookie` values for the response (an extended session); the hook sends them.
+	 */
+	resolve(
+		event: ResolveEvent
+	): Promise<(Identity & { mustChangePassword?: boolean; refreshedCookies?: string[] }) | null>;
 }
 
 /** The Local Learner's fixed id: one row per Instance, so concurrent first requests cannot make two. */

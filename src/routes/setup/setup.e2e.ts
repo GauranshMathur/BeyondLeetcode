@@ -17,10 +17,11 @@ test('a fresh Instance shows Setup everywhere; choosing Local opens the Map', as
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Set up this instance.');
 	}
 
-	// Local is the default; Multi-user cannot be chosen yet.
+	// Local is the default. This server has the test switch but no BETTER_AUTH_SECRET: Multi-user is
+	// off and says what to add to .env (the Multi-user server, 4174, has it: setup.multi.e2e.ts).
 	await expect(page.getByLabel('Local')).toBeChecked();
 	await expect(page.getByLabel('Multi-user')).toBeDisabled();
-	await expect(page.getByText('Multi-user arrives in the next update.')).toBeVisible();
+	await expect(page.getByText(/Add BETTER_AUTH_SECRET=.*to your \.env/)).toBeVisible();
 
 	await page.getByRole('button', { name: 'Start in Local mode →' }).click();
 	await expect(page).toHaveURL('/');

@@ -9,10 +9,15 @@ import type { IdentityResolver } from './index.ts';
 export function createMultiUserIdentity(auth: Auth): IdentityResolver {
 	return {
 		resolve: async ({ request }) => {
-			const session = await auth.api.getSession({ headers: request.headers });
+			// `returnHeaders`: an active session is extended and its new cookie comes back as a header.
+			const { headers, response: session } = await auth.api.getSession({
+				headers: request.headers,
+				returnHeaders: true
+			});
 			const user = session?.user;
 			if (!user?.learnerId || user.banned) return null;
 			return {
+				refreshedCookies: headers.getSetCookie(),
 				learnerId: user.learnerId,
 				displayName: user.name,
 				role: user.role === 'admin' ? 'admin' : 'learner',
