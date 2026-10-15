@@ -173,3 +173,28 @@ jobs:
             ${{ env.IMAGE }}:${{ env.TAG }}
             ${{ env.IMAGE }}:latest
           build-args: IMAGE_REF=${{ env.IMAGE }}:${{ env.TAG }}
+
+      # Pings the maintainer's Hermes instance over Tailscale the moment this image
+      # actually publishes — a real event hook, not a poller. The runner joins the
+      # tailnet just for this one step (ephemeral node, torn down when the job ends)
+      # and never touches anything else on the tailnet.
+      - name: Join tailnet to notify the release webhook
+        if: steps.exists.outputs.published != 'true'
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ""
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          tags: tag:ci
+      - name: Notify release webhook
+        if: steps.exists.outputs.published != 'true'
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          PAYLOAD=$(jq -n --arg tag "$TAG" --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/$TAG" \
+            '{action:"released", release:{tag_name:$tag, name:$tag, html_url:$url}}')
+          SIG="sha256=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* //')"
+          curl -sf -X POST "http://100.103.185.100:8644/webhooks/beyondleetcode-release" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: release" \
+            -H "X-Hub-Signature-256: $SIG" \
+            --data-binary "$PAYLOAD" || echo "::warning::Release webhook notify failed (non-fatal)"
