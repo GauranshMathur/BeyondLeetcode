@@ -1,6 +1,6 @@
 import { type Catalogue, loadCatalogue } from './content/catalogue.ts';
 import { createDb, type Db } from './db.ts';
-import { type Auth, createAuth, MIN_SECRET_LENGTH } from './identity/auth.ts';
+import { type Auth, createAuth, isPlaceholderSecret, MIN_SECRET_LENGTH } from './identity/auth.ts';
 import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
 import { createMultiUserIdentity } from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
@@ -134,6 +134,13 @@ function buildAuth(
 			kind: 'missing',
 			message:
 				'Multi-user needs a secret to sign sessions. Add BETTER_AUTH_SECRET=<48 random hex characters> to your .env (for example from `openssl rand -hex 24`), then restart.'
+		};
+	}
+	if (isPlaceholderSecret(secret)) {
+		return {
+			kind: 'missing',
+			message:
+				'BETTER_AUTH_SECRET in your .env is still a placeholder or default value that anyone can read. Replace it with 48 random hex characters (for example from `openssl rand -hex 24`), then restart.'
 		};
 	}
 	if (secret.length < MIN_SECRET_LENGTH) {

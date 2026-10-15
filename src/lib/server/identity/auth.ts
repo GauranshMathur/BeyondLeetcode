@@ -30,6 +30,19 @@ export type AdmitSignUp = (attempt: {
 export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
 
 export const MIN_SECRET_LENGTH = 32;
+
+/** The secret Better Auth falls back to when none is set (`utils/constants` in better-auth 1.7.x). */
+const BETTER_AUTH_DEFAULT_SECRET = 'better-auth-secret-12345678901234567890';
+
+/**
+ * A secret everyone can read: Better Auth's built-in default, or the `change-me...` placeholder that
+ * `.env.example` ships (it is long enough to pass the length check). Signing sessions with either
+ * lets anyone forge them, so it is treated like no secret at all.
+ */
+export function isPlaceholderSecret(secret: string): boolean {
+	const value = secret.trim().toLowerCase();
+	return value === BETTER_AUTH_DEFAULT_SECRET || value.startsWith('change-me');
+}
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -93,6 +106,9 @@ export function createAuth({
 }: CreateAuthOptions) {
 	if (secret.length < MIN_SECRET_LENGTH) {
 		throw new Error('createAuth: secret is missing or shorter than 32 characters');
+	}
+	if (isPlaceholderSecret(secret)) {
+		throw new Error('createAuth: secret is a placeholder or default value anyone can read');
 	}
 	return betterAuth({
 		database: prismaAdapter(db, { provider: 'sqlite' }),

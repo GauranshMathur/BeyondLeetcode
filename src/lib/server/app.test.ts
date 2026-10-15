@@ -129,6 +129,16 @@ describe('Multi-user', () => {
 		['no secret', { BETTER_AUTH_SECRET: undefined }, /BETTER_AUTH_SECRET.*\.env/s],
 		['an empty secret', { BETTER_AUTH_SECRET: '' }, /BETTER_AUTH_SECRET.*\.env/s],
 		['a short secret', { BETTER_AUTH_SECRET: 'short' }, /BETTER_AUTH_SECRET.*32/s],
+		[
+			'the .env.example placeholder',
+			{ BETTER_AUTH_SECRET: 'change-me-to-a-random-string-of-48-characters' },
+			/BETTER_AUTH_SECRET.*placeholder/s
+		],
+		[
+			"Better Auth's built-in default",
+			{ BETTER_AUTH_SECRET: 'better-auth-secret-12345678901234567890' },
+			/BETTER_AUTH_SECRET.*placeholder/s
+		],
 		['no origin', { ORIGIN: undefined }, /ORIGIN.*\.env/s],
 		['an empty origin', { ORIGIN: '' }, /ORIGIN.*\.env/s],
 		['an origin that is not a URL', { ORIGIN: 'learn.example.com' }, /ORIGIN.*\.env/s],
@@ -187,6 +197,12 @@ describe('Multi-user', () => {
 			/Multi-user.*BETTER_AUTH_SECRET/s
 		);
 		await expect(boot(url, { ...env, ORIGIN: '' })).rejects.toThrow(/Multi-user.*ORIGIN/s);
+		await expect(
+			boot(url, { ...env, BETTER_AUTH_SECRET: 'change-me-to-a-random-string-of-48-characters' })
+		).rejects.toThrow(/Multi-user.*placeholder/s);
+		await expect(
+			boot(url, { ...env, BETTER_AUTH_SECRET: 'better-auth-secret-12345678901234567890' })
+		).rejects.toThrow(/Multi-user.*placeholder/s);
 		expect(await boot(url, env)).toMatchObject({ multiUser: expect.anything() });
 	}, 30_000);
 });
