@@ -72,9 +72,8 @@ describe('createFirstAdmin', () => {
 		});
 	});
 
-	it('on a Local Instance with progress, the admin sees that progress on the Map', async () => {
+	it('when the Local Learner already has progress, the admin takes it over and sees it on the Map', async () => {
 		const { db, auth, instance, core } = await setup();
-		await instance.chooseLocal();
 		await db.learner.create({ data: { id: 'local' } });
 		await core.forLearner('local').reachChapterEnd('stacks-undo-log');
 		const before = await core.forLearner('local').map();
@@ -140,21 +139,40 @@ describe('createFirstAdmin', () => {
 		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
 	});
 
-	it('puts a Local Instance back to local when sign-up fails after the claim', async () => {
-		const { auth, instance, db } = await setup();
-		await instance.chooseLocal();
+	it.each([
+		['one Instance object', false],
+		['a stale one', true]
+	])(
+		'refuses a Local Instance, whatever the caller thinks (%s): converting is another card',
+		async (_, stale) => {
+			const { db, auth, instance } = await setup();
+			const caller = stale ? await createInstance(db) : instance;
+			await instance.chooseLocal();
 
-		await expect(
-			createFirstAdmin({ instance, auth: failingAfterUser(auth), db }, admin)
-		).rejects.toThrow();
+			await expect(createFirstAdmin({ instance: caller, auth, db }, admin)).rejects.toThrow(
+				InstanceAlreadySetUpError
+			);
 
-		expect(instance.mode()).toBe('local');
-		expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+			expect(await db.user.count()).toBe(0);
+			expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+			expect(caller.mode()).toBe('local');
+		}
+	);
+
+	it('refuses a multi Instance even when it has no Accounts: recovery is not a re-run of Setup', async () => {
+		const { db, auth } = await setup();
+		await db.instance.create({ data: { mode: 'multi' } });
+		const instance = await createInstance(db);
+
+		await expect(createFirstAdmin({ instance, auth, db }, admin)).rejects.toThrow(
+			InstanceAlreadySetUpError
+		);
+
+		expect(await db.user.count()).toBe(0);
 	});
 
 	it('removes the half-made Account but keeps Local progress when sign-up fails after the user row', async () => {
 		const { db, auth, instance, core } = await setup();
-		await instance.chooseLocal();
 		await db.learner.create({ data: { id: 'local' } });
 		await core.forLearner('local').reachChapterEnd('stacks-undo-log');
 		const failing = failingAfterUser(auth);
@@ -164,7 +182,7 @@ describe('createFirstAdmin', () => {
 		);
 
 		expect(await db.user.count()).toBe(0);
-		expect(instance.mode()).toBe('local');
+		expect(instance.mode()).toBeNull();
 		expect((await core.forLearner('local').chapter('stacks-undo-log')).read).toBe(true);
 		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
 	});
@@ -227,48 +245,23 @@ describe('createFirstAdmin', () => {
 		}
 	);
 
-	it('can run again on a multi Instance with no Accounts', async () => {
-		const { db, auth } = await setup();
-		await db.instance.create({ data: { mode: 'multi' } });
-		const instance = await createInstance(db);
-
-		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
-
-		expect(await db.user.count()).toBe(1);
-		await expect(
-			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'two@example.com' })
-		).rejects.toThrow(InstanceAlreadySetUpError);
-	});
-
-	it('gives one admin when two calls race on a multi Instance with no Accounts', async () => {
-		const { db, auth } = await setup();
-		await db.instance.create({ data: { mode: 'multi' } });
-		const [a, b] = [await createInstance(db), await createInstance(db)];
-
-		const results = await Promise.allSettled([
-			createFirstAdmin({ instance: a, auth, db }, admin),
-			createFirstAdmin({ instance: b, auth, db }, { ...admin, email: 'two@example.com' })
-		]);
-
-		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
-		expect(await db.user.count()).toBe(1);
-		expect(await db.user.findFirstOrThrow()).toMatchObject({ email: admin.email, role: 'admin' });
-	});
-
-	it('gives one admin when two calls race on a Local Instance, with one Instance object or two', async () => {
-		for (const shared of [true, false]) {
+	it.each([
+		['one Instance object', false],
+		['two Instance objects', true]
+	])('gives exactly one outcome when the first admin races chooseLocal (%s)', async (_, two) => {
+		for (let round = 0; round < 3; round++) {
 			const { db, auth, instance } = await setup();
-			await instance.chooseLocal();
-			const second = shared ? instance : await createInstance(db);
+			const local = two ? await createInstance(db) : instance;
 
-			const results = await Promise.allSettled([
+			const [admin1, local1] = await Promise.allSettled([
 				createFirstAdmin({ instance, auth, db }, admin),
-				createFirstAdmin({ instance: second, auth, db }, { ...admin, email: 'two@example.com' })
+				local.chooseLocal()
 			]);
 
-			expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
-			expect(await db.user.count()).toBe(1);
-			expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
+			expect([admin1.status, local1.status].sort()).toEqual(['fulfilled', 'rejected']);
+			const stored = (await db.instance.findFirstOrThrow()).mode;
+			expect(stored).toBe(admin1.status === 'fulfilled' ? 'multi' : 'local');
+			expect(await db.user.count()).toBe(admin1.status === 'fulfilled' ? 1 : 0);
 		}
 	});
 
@@ -299,7 +292,10 @@ describe('createFirstAdmin', () => {
 		await expect(
 			auth.api.signUpEmail({ body: { ...admin, email: 'eve@example.com' } })
 		).rejects.toMatchObject({ statusCode: 403 });
-		await expect(createFirstAdmin({ instance, auth, db }, admin)).resolves.toBeTruthy();
+		// Closed for good: Setup cannot run again (the way back is the reset-admin-password command).
+		await expect(createFirstAdmin({ instance, auth, db }, admin)).rejects.toThrow(
+			InstanceAlreadySetUpError
+		);
 	});
 
 	it.each([

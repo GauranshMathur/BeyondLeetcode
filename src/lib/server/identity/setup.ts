@@ -68,11 +68,13 @@ function validate({ name, email, password }: FirstAdminInput) {
  * (so Local progress carries over). Returns the sign-up response's headers: their `Set-Cookie`
  * signs the admin in.
  *
- * Refuses (InstanceAlreadySetUpError) when the Instance is multi and has Accounts, or any Account
- * exists at all. A multi Instance with no Accounts (a crash between claim and sign-up) is claimable
- * again, so Setup is never locked out. If sign-up fails after the claim, the half-made Account is
- * removed (never the Learner or its progress) and the Instance is put back as it was. If that
- * cleanup fails too, the error is logged and the Instance stays multi (closed), still claimable.
+ * Only an Instance with no stored mode can be claimed: one that is Local or multi (with Accounts or
+ * without), or that has any Account, is refused (InstanceAlreadySetUpError). The check is made inside
+ * the lock, so it cannot race another call or a Local choice. Converting a Local Instance is another
+ * card's job (C39), and getting back into a multi Instance with no Accounts is C42's. If sign-up fails
+ * after the claim, the half-made Account is removed (never the Learner or its progress) and the
+ * Instance is put back to not set up. If that cleanup fails too, the error is logged and the Instance
+ * stays multi (closed).
  */
 export async function createFirstAdmin(
 	{ instance, auth, db }: { instance: Instance; auth: Auth; db: Db },
@@ -80,7 +82,7 @@ export async function createFirstAdmin(
 ): Promise<{ headers: Headers }> {
 	validate(input);
 	return exclusively(async () => {
-		const claim = await claimInstance(instance, db);
+		const claim = await claimInstance(instance);
 		if ((await db.user.count()) > 0) {
 			await rollback(claim, db, false);
 			throw new InstanceAlreadySetUpError();
@@ -102,20 +104,11 @@ export async function createFirstAdmin(
 
 type Claim = { undo(): Promise<void> };
 
-async function claimInstance(instance: Instance, db: Db): Promise<Claim> {
-	try {
-		return await instance.chooseMulti();
-	} catch (error) {
-		// Multi with no Accounts: nobody can ever sign in, so Setup may run again, with nothing to undo.
-		if (
-			error instanceof InstanceAlreadySetUpError &&
-			instance.mode() === 'multi' &&
-			(await db.user.count()) === 0
-		) {
-			return { undo: async () => {} };
-		}
-		throw error;
-	}
+async function claimInstance(instance: Instance): Promise<Claim> {
+	// A stored mode is checked here, in the lock; a mode another process stored shows as the create's
+	// unique violation, which `chooseMulti` turns into the same refusal (and re-reads the mode).
+	if (instance.mode() !== null) throw new InstanceAlreadySetUpError();
+	return instance.chooseMulti();
 }
 
 async function rollback(claim: Claim, db: Db, removeAccount: boolean) {
