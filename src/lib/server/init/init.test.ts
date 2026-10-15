@@ -87,10 +87,25 @@ describe('.env', () => {
 		expect(envValue(env, 'XFF_DEPTH')).toBeUndefined();
 	});
 
+	it('tells proxy users to publish the port on the loopback address only', async () => {
+		await runInit(['--origin', 'https://learn.example.com'], dir);
+		// A client that goes round the proxy to the published port could forge ADDRESS_HEADER.
+		expect(await read('.env')).toContain(`127.0.0.1:\${PORT}:3000`);
+	});
+
+	it('says the auth secret is read at start', async () => {
+		await runInit(['--origin', 'https://learn.example.com'], dir);
+		const env = await read('.env');
+		expect(env).not.toMatch(/not read at start/i);
+		expect(env).toMatch(/Read at start/);
+	});
+
 	it('tells an upgrading operator which lines their compose.yaml needs', () => {
 		expect(USAGE).toContain(`ADDRESS_HEADER: \${ADDRESS_HEADER:-}`);
 		expect(USAGE).toContain(`XFF_DEPTH: \${XFF_DEPTH:-1}`);
-		expect(USAGE).toMatch(/ORIGIN/);
+		expect(USAGE).toContain(`127.0.0.1:\${PORT}:3000`);
+		// The old line passes an empty ORIGIN when .env has none, and that stops the server.
+		expect(USAGE).toContain(`replace ORIGIN: \${ORIGIN:-} with a bare ORIGIN:`);
 	});
 });
 
@@ -134,6 +149,18 @@ describe('compose.yaml', () => {
 		// Never "": adapter-node parses XFF_DEPTH with parseInt, which turns an empty value into NaN.
 		expect(web).toContain(`XFF_DEPTH: \${XFF_DEPTH:-1}`);
 		expect(compose.slice(compose.indexOf('  runner:'))).not.toMatch(/ADDRESS_HEADER|XFF_DEPTH/);
+	});
+
+	it('keeps the default port binding, and says how to bind to the loopback address behind a proxy', async () => {
+		await runInit(['--origin', 'http://a.io'], dir);
+		const compose = await read('compose.yaml');
+		const web = compose.slice(compose.indexOf('  web:'), compose.indexOf('  runner:'));
+		// Local users reach the Instance over the LAN, so the default stays on every interface.
+		expect(web).toContain(`      - "\${PORT}:3000"`);
+		expect(web).not.toMatch(/^\s+- "127\.0\.0\.1/m);
+		// The comment that follows names the alternative, for operators who set ADDRESS_HEADER.
+		expect(web).toContain(`# - "127.0.0.1:\${PORT}:3000"`);
+		expect(web).toMatch(/proxy's network/);
 	});
 
 	it('passes the auth secret and OAuth variables to web only, all optional', async () => {
