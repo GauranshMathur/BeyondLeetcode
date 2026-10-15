@@ -33,6 +33,13 @@ export async function createInstance(db: Db): Promise<Instance> {
 	let mode = (row?.mode as InstanceMode | undefined) ?? null;
 	const registration = (row?.registrationMode as RegistrationMode | undefined) ?? 'invite';
 
+	/** A refused claim means another writer got there first: adopt the stored mode instead of a stale cache. */
+	const refuse = async (): Promise<never> => {
+		const stored = await db.instance.findUnique({ where: { id: 'instance' } });
+		mode = (stored?.mode as InstanceMode | undefined) ?? null;
+		throw new InstanceAlreadySetUpError();
+	};
+
 	return {
 		mode: () => mode,
 		registrationMode: () => registration,
@@ -42,7 +49,7 @@ export async function createInstance(db: Db): Promise<Instance> {
 				await db.instance.create({ data: { mode: 'local' } });
 			} catch (error) {
 				// The fixed id is the claim: a unique violation means someone set it up first.
-				if (isUniqueViolation(error)) throw new InstanceAlreadySetUpError();
+				if (isUniqueViolation(error)) return refuse();
 				throw error;
 			}
 			mode = 'local';
@@ -54,7 +61,7 @@ export async function createInstance(db: Db): Promise<Instance> {
 				try {
 					await db.instance.create({ data: { mode: 'multi' } });
 				} catch (error) {
-					if (isUniqueViolation(error)) throw new InstanceAlreadySetUpError();
+					if (isUniqueViolation(error)) return refuse();
 					throw error;
 				}
 			} else {
@@ -63,7 +70,7 @@ export async function createInstance(db: Db): Promise<Instance> {
 					where: { id: 'instance', mode: 'local' },
 					data: { mode: 'multi' }
 				});
-				if (count !== 1) throw new InstanceAlreadySetUpError();
+				if (count !== 1) return refuse();
 			}
 			mode = 'multi';
 			return {
