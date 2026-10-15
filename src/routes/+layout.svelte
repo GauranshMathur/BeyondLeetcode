@@ -17,6 +17,10 @@ let { children, data } = $props();
 	{#if page.route.id !== '/setup'}
 	<nav aria-label="Primary">
 		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
+		<!-- Users is the admin's, in Multi-user Mode only (the layout load decides). -->
+		{#if data.showUsers}
+		<a href="/users" aria-current={page.url.pathname === '/users' ? 'page' : undefined}>Users</a>
+		{/if}
 		<!-- The display name opens Settings; Local Mode's Identity names it "Local". -->
 		<a href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}>{data.displayName}</a>
 	</nav>
