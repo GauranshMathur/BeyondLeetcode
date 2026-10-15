@@ -4,7 +4,8 @@ import { createTestDb } from '../test-db.ts';
 import { createLocalIdentity } from './index.ts';
 
 const request = (cookies: Record<string, string> = {}) => ({
-	cookies: { get: (name: string) => cookies[name] }
+	cookies: { get: (name: string) => cookies[name] },
+	request: { headers: new Headers() }
 });
 
 it('answers every request with the Local Learner: admin, displayed as Local', async () => {

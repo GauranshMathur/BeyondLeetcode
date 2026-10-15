@@ -10,9 +10,16 @@ export interface Identity {
 	role: Role;
 }
 
-/** The seam: given a request, who is it? `null` means nobody (no adapter returns it yet). */
+/** What an adapter may read of a request: SvelteKit's `RequestEvent` satisfies it, and tests need no SvelteKit. */
+export interface ResolveEvent {
+	cookies: { get(name: string): string | undefined };
+	request: { headers: Headers };
+}
+
+/** The seam: given a request, who is it? `null` means nobody. */
 export interface IdentityResolver {
-	resolve(event: { cookies: { get(name: string): string | undefined } }): Promise<Identity | null>;
+	/** `mustChangePassword` is set by the Multi-user adapter; the gate takes it as its own input. */
+	resolve(event: ResolveEvent): Promise<(Identity & { mustChangePassword?: boolean }) | null>;
 }
 
 /** The Local Learner's fixed id: one row per Instance, so concurrent first requests cannot make two. */
