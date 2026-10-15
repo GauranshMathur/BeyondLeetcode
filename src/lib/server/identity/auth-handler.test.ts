@@ -47,6 +47,22 @@ describe('handleAuthRequest', () => {
 		expect(same.status).toBe(429);
 	});
 
+	it('gives two IPv6 clients in one /64 their own buckets', async () => {
+		const { auth } = await setup();
+		// One LAN client hammering sign-in must not lock out its neighbour.
+		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, signIn(), 'fd00:1:2:3::10');
+
+		const neighbour = await handleAuthRequest(auth, signIn(), 'fd00:1:2:3::20');
+		const same = await handleAuthRequest(auth, signIn(), 'fd00:1:2:3::10');
+		// IPv4-mapped IPv6 is still the same client as its IPv4 form.
+		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, signIn(), '::ffff:192.0.2.77');
+		const mapped = await handleAuthRequest(auth, signIn(), '192.0.2.77');
+
+		expect(neighbour.status).not.toBe(429);
+		expect(same.status).toBe(429);
+		expect(mapped.status).toBe(429);
+	});
+
 	it('ignores a client-supplied copy of the private address header', async () => {
 		const { auth } = await setup();
 		for (let i = 0; i < 4; i++) {

@@ -101,7 +101,9 @@ export function createAuth({
 		advanced: {
 			...(origin ? { useSecureCookies: origin.startsWith('https:') } : {}),
 			// Only the header our own route sets: X-Forwarded-For is client-controlled and never read.
-			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] }
+			// A bucket per full address: Better Auth's default groups IPv6 by /64, so LAN clients in one
+			// /64 would share a sign-in budget and one of them could keep the rest at 429.
+			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER], ipv6Subnet: 128 }
 		},
 		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
 		// Instance). Covers requests through `auth.handler`; server-side `auth.api` calls skip it.
