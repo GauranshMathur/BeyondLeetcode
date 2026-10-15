@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.45.0...v0.46.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C31d compose and env ready for Multi-user ([#179](https://github.com/GauranshMathur/BeyondLeetcode/issues/179)) ([1128eb6](https://github.com/GauranshMathur/BeyondLeetcode/commit/1128eb62b419fe2467cff9030b611dbdf8c0ee03))
+
 ## [0.45.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.44.0...v0.45.0) (2026-10-15)
 
 
