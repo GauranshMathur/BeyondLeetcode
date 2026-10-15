@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
-import { createAuth } from './auth.ts';
+import { type Admission, createAuth, MIN_PASSWORD_LENGTH } from './auth.ts';
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
 
-async function setup(allowSignUp: () => boolean | Promise<boolean> = () => true) {
+async function setup(admitSignUp: () => Admission | null | Promise<Admission | null> = () => ({})) {
 	const db = await createFileTestDb();
-	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, allowSignUp });
+	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, admitSignUp });
 	return { db, auth };
 }
 
@@ -33,6 +33,52 @@ describe('createAuth', () => {
 		const auth = createAuth({ db, origin: '', secret });
 
 		await expect(auth.api.signUpEmail({ body })).rejects.toThrow();
+		expect(await db.user.count()).toBe(0);
+		expect(await db.learner.count()).toBe(0);
+	});
+
+	it('puts the admitted sign-up on the Learner and role the gate names, upserting the Learner', async () => {
+		const { auth, db } = await setup(() => ({ learnerId: 'local', role: 'admin' }));
+		await db.learner.create({ data: { id: 'local' } });
+
+		await auth.api.signUpEmail({ body });
+
+		expect(await db.user.findFirstOrThrow()).toMatchObject({ learnerId: 'local', role: 'admin' });
+		expect(await db.learner.count()).toBe(1);
+	});
+
+	it('creates the named Learner when it does not exist yet', async () => {
+		const { auth, db } = await setup(() => ({ learnerId: 'local' }));
+
+		await auth.api.signUpEmail({ body });
+
+		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
+		expect(await db.user.findFirstOrThrow()).toMatchObject({ learnerId: 'local', role: 'learner' });
+	});
+
+	it('refuses sign-up when the gate answers null, over HTTP and through auth.api', async () => {
+		const { auth, db } = await setup(() => null);
+
+		await expect(auth.api.signUpEmail({ body })).rejects.toMatchObject({ statusCode: 403 });
+		const res = await auth.handler(
+			new Request('http://localhost:3000/api/auth/sign-up/email', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+				body: JSON.stringify(body)
+			})
+		);
+		expect(res.status).toBe(403);
+		expect(await db.user.count()).toBe(0);
+		expect(await db.learner.count()).toBe(0);
+	});
+
+	it('refuses in the database hook on its own when the request hook admitted', async () => {
+		let calls = 0;
+		const { auth, db } = await setup(() => (++calls === 1 ? {} : null));
+
+		await expect(auth.api.signUpEmail({ body })).rejects.toMatchObject({ statusCode: 403 });
+
+		expect(calls).toBe(2);
 		expect(await db.user.count()).toBe(0);
 		expect(await db.learner.count()).toBe(0);
 	});
@@ -79,10 +125,10 @@ describe('createAuth', () => {
 	it('refuses a password of 11 characters and takes 12', async () => {
 		const { auth } = await setup();
 		await expect(
-			auth.api.signUpEmail({ body: { ...body, password: 'a'.repeat(11) } })
+			auth.api.signUpEmail({ body: { ...body, password: 'a'.repeat(MIN_PASSWORD_LENGTH - 1) } })
 		).rejects.toMatchObject({ statusCode: 400 });
 		await expect(
-			auth.api.signUpEmail({ body: { ...body, password: 'a'.repeat(12) } })
+			auth.api.signUpEmail({ body: { ...body, password: 'a'.repeat(MIN_PASSWORD_LENGTH) } })
 		).resolves.toBeTruthy();
 	});
 

@@ -5,13 +5,33 @@ import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { admin } from 'better-auth/plugins';
 import type { Db } from '../db.ts';
 
+/** Admitted: which Learner the new Account owns (default a fresh one) and its role (default learner). */
+export interface Admission {
+	learnerId?: string;
+	role?: 'admin' | 'learner';
+}
+
+/**
+ * The registration gate: `null` refuses the sign-up, otherwise it is admitted as described.
+ *
+ * It runs twice per sign-up (the request hook, then the database hook), so it must stay free of
+ * side effects. Anything consumed on admit, such as an invite, is consumed in a `user.create.after`
+ * hook, never here.
+ */
+export type AdmitSignUp = (attempt: {
+	email: string | undefined;
+}) => Admission | null | Promise<Admission | null>;
+
+export const MIN_PASSWORD_LENGTH = 12;
+export const MAX_PASSWORD_LENGTH = 128;
+
 export type CreateAuthOptions = {
 	db: Db;
 	/** The public origin, e.g. `https://learn.example.com`; empty when not known. */
 	origin: string;
 	secret: string;
 	/** Who may sign up. Consulted on every new Account; the default is nobody. */
-	allowSignUp?: () => boolean | Promise<boolean>;
+	admitSignUp?: AdmitSignUp;
 	/** Plugins the caller owns, e.g. SvelteKit's cookie plugin (keeps `$app/*` out of this file). */
 	extraPlugins?: BetterAuthPlugin[];
 };
@@ -60,7 +80,7 @@ export function createAuth({
 	db,
 	origin,
 	secret,
-	allowSignUp = () => false,
+	admitSignUp = () => null,
 	extraPlugins = []
 }: CreateAuthOptions) {
 	if (secret.length < 32) {
@@ -73,7 +93,11 @@ export function createAuth({
 			? { baseURL: origin, advanced: { useSecureCookies: origin.startsWith('https:') } }
 			: {}),
 		telemetry: { enabled: false },
-		emailAndPassword: { enabled: true, minPasswordLength: 12 },
+		emailAndPassword: {
+			enabled: true,
+			minPasswordLength: MIN_PASSWORD_LENGTH,
+			maxPasswordLength: MAX_PASSWORD_LENGTH
+		},
 		// Emails are never verified, so an email must never join two Accounts.
 		account: { accountLinking: { enabled: false } },
 		// A removed or reset user must lose access on the next request.
@@ -88,13 +112,24 @@ export function createAuth({
 		databaseHooks: {
 			user: {
 				create: {
-					// Who may sign up lives here; a later card moves the registration rules into it.
+					// The one choke point for every Account creation; the rules live in registration.ts.
 					before: async (user, ctx) => {
-						if (!ctx || !(await allowSignUp())) {
-							throw signUpClosed();
-						}
-						const learner = await db.learner.create({ data: {} });
-						return { data: { ...user, learnerId: learner.id } };
+						const admission = ctx && (await admitSignUp({ email: user.email }));
+						if (!admission) throw signUpClosed();
+						const learner = admission.learnerId
+							? await db.learner.upsert({
+									where: { id: admission.learnerId },
+									update: {},
+									create: { id: admission.learnerId }
+								})
+							: await db.learner.create({ data: {} });
+						return {
+							data: {
+								...user,
+								learnerId: learner.id,
+								...(admission.role ? { role: admission.role } : {})
+							}
+						};
 					}
 				}
 			}
@@ -103,7 +138,8 @@ export function createAuth({
 		// duplicate-email 422 would reveal which emails have Accounts). The database hook is the backstop.
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
-				if (ctx.path === '/sign-up/email' && !(await allowSignUp())) throw signUpClosed();
+				if (ctx.path !== '/sign-up/email') return;
+				if (!(await admitSignUp({ email: ctx.body?.email }))) throw signUpClosed();
 			})
 		},
 		disabledPaths: [...UNUSED_ADMIN_PATHS, ...UNUSED_CORE_PATHS],

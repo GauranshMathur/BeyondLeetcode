@@ -8,7 +8,7 @@ const body = { email: 'ada@example.com', password: 'correct horse battery', name
 
 async function setup() {
 	const db = await createFileTestDb();
-	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, allowSignUp: () => true });
+	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, admitSignUp: () => ({}) });
 	const identity = createMultiUserIdentity(auth);
 	const res = await auth.api.signUpEmail({ body, returnHeaders: true });
 	const cookie = res.headers
@@ -85,6 +85,21 @@ describe('createMultiUserIdentity', () => {
 		await db.user.deleteMany();
 		expect(await identity.resolve(asking(cookie))).toBeNull();
 	});
+
+	it('resolves an expired session to nobody', async () => {
+		const { identity, asking, cookie, db } = await setup();
+		await db.session.updateMany({ data: { expiresAt: new Date(Date.now() - 1000) } });
+		expect(await identity.resolve(asking(cookie))).toBeNull();
+	});
+
+	it.each(['admin,learner', 'Admin', '', null, 'owner'])(
+		'treats the role %j as learner',
+		async (role) => {
+			const { identity, asking, cookie, db } = await setup();
+			await db.user.updateMany({ data: { role } });
+			expect(await identity.resolve(asking(cookie))).toMatchObject({ role: 'learner' });
+		}
+	);
 
 	it('resolves a banned user to nobody', async () => {
 		const { identity, asking, cookie, db } = await setup();
