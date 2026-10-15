@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.38.1...v0.39.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C31a Multi-user adapter resolves a session ([#158](https://github.com/GauranshMathur/BeyondLeetcode/issues/158)) ([d197a8a](https://github.com/GauranshMathur/BeyondLeetcode/commit/d197a8aa2fd9657f7a133d57d453630d6714badb))
+
 ## [0.38.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.38.0...v0.38.1) (2026-10-13)
 
 
