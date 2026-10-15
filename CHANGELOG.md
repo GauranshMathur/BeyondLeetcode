@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.40.0...v0.41.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C31b create the first admin, keeping Local progress ([#153](https://github.com/GauranshMathur/BeyondLeetcode/issues/153)) ([9970559](https://github.com/GauranshMathur/BeyondLeetcode/commit/997055926656bf5d0d6ff996d3638649e38a8f5f))
+
 ## [0.40.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.39.0...v0.40.0) (2026-10-15)
 
 
