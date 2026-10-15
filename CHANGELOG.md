@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.39.0...v0.40.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C28 Setup: a fresh Instance shows Setup everywhere; choosing Local opens the Map ([#149](https://github.com/GauranshMathur/BeyondLeetcode/issues/149)) ([2134279](https://github.com/GauranshMathur/BeyondLeetcode/commit/2134279166d06dad0e1fb7dcb38bf0bb12b800b9))
+
 ## [0.39.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.38.1...v0.39.0) (2026-10-15)
 
 
