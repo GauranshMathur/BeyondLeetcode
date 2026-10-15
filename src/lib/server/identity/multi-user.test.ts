@@ -51,6 +51,17 @@ describe('createMultiUserIdentity', () => {
 		expect(await identity.resolve(asking())).toBeNull();
 	});
 
+	it('never reads the test Learner cookie: it resolves to nobody', async () => {
+		const { identity } = await setup();
+
+		const who = await identity.resolve({
+			cookies: { get: (name) => (name === 'test_learner' ? 'someone' : undefined) },
+			request: { headers: new Headers({ cookie: 'test_learner=someone' }) }
+		});
+
+		expect(who).toBeNull();
+	});
+
 	it('resolves a tampered or forged cookie to nobody', async () => {
 		const { identity, asking, cookie, db } = await setup();
 		const [name, value] = cookie.split('=');

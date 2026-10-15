@@ -79,3 +79,27 @@ test('once set up, a visitor without the admin session is sent to Sign in, test 
 	await expect(page).toHaveURL(/\/signin\?next=%2Ftopics%2Fstacks$/);
 	await context.close();
 });
+
+test('Better Auth answers over HTTP on this server: the right password signs in, a wrong one does not, and nothing can be framed', async ({
+	request
+}) => {
+	const headers = { origin: 'http://localhost:4174' };
+	const signIn = (password: string) =>
+		request.post('/api/auth/sign-in/email', {
+			headers,
+			data: { email: E2E_ADMIN.email, password }
+		});
+
+	const wrong = await signIn('not the password at all');
+	expect(wrong.status()).toBe(401);
+
+	const right = await signIn(E2E_ADMIN.password);
+	expect(right.status()).toBe(200);
+	expect(right.headers()['set-cookie']).toContain('better-auth.session_token=');
+	expect(right.headers()['x-frame-options']).toBe('DENY');
+	expect(right.headers()['content-security-policy']).toBe("frame-ancestors 'none'");
+
+	// That session is the admin: the Map answers for it.
+	const map = await request.get('/', { maxRedirects: 0 });
+	expect(map.status()).toBe(200);
+});

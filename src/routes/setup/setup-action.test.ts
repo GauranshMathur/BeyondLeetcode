@@ -8,6 +8,8 @@ import { actions, load } from './+page.server';
 
 afterEach(() => vi.restoreAllMocks());
 
+const notSetUp = { mode: () => null };
+
 type Form = Record<string, string>;
 
 function formOf(values: Form) {
@@ -22,7 +24,11 @@ async function run(
 	locals: Record<string, unknown>,
 	cookies: { set: (...args: unknown[]) => void } = { set: vi.fn() }
 ) {
-	const event = { request: { formData: async () => formOf(values) }, locals, cookies };
+	const event = {
+		request: { formData: async () => formOf(values) },
+		locals: { instance: notSetUp, ...locals },
+		cookies
+	};
 	try {
 		return await action(event as never);
 	} catch (thrown) {
@@ -171,6 +177,24 @@ describe('step 2: create the admin', () => {
 			/SECRETCOOKIE|correct horse/
 		);
 	});
+
+	it.each(['local', 'multi'] as const)(
+		'refuses an Instance that is already %s, without calling createFirstAdmin',
+		async (mode) => {
+			const createFirstAdmin = vi.fn();
+
+			const result = await run(actions.admin, admin, {
+				instance: { mode: () => mode },
+				setup: setupWith({ kind: 'open' }, createFirstAdmin)
+			});
+
+			expect(result).toMatchObject({
+				status: 409,
+				data: { message: 'This instance has already been set up.' }
+			});
+			expect(createFirstAdmin).not.toHaveBeenCalled();
+		}
+	);
 
 	it('refuses where Multi-user is not open, without calling createFirstAdmin', async () => {
 		const createFirstAdmin = vi.fn();

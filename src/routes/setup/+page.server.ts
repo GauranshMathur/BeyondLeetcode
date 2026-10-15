@@ -14,6 +14,7 @@ const FIELD_MESSAGES = {
 	email: 'Enter a valid email address.',
 	password: 'Use 12 to 128 characters.'
 } as const;
+const ALREADY_SET_UP = 'This instance has already been set up.';
 const LATER = 'Multi-user arrives in the next update.';
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
@@ -62,6 +63,11 @@ export const actions: Actions = {
 		if (multiUser.kind !== 'open') {
 			return fail(400, { message: multiUser.kind === 'later' ? LATER : multiUser.message });
 		}
+		// The gate also lets /setup?convert through on a Local Instance, which anyone can reach: only an
+		// Instance that is not set up may make its first admin here (converting Local has its own card).
+		if (locals.instance.mode() !== null) {
+			return fail(409, adminStep(typed, { message: ALREADY_SET_UP }));
+		}
 		let headers: Headers;
 		try {
 			({ headers } = await locals.setup.createFirstAdmin(input));
@@ -73,7 +79,7 @@ export const actions: Actions = {
 				);
 			}
 			if (error instanceof InstanceAlreadySetUpError) {
-				return fail(409, adminStep(typed, { message: 'This instance has already been set up.' }));
+				return fail(409, adminStep(typed, { message: ALREADY_SET_UP }));
 			}
 			if (error instanceof MultiUserNotAvailableError) {
 				return fail(
