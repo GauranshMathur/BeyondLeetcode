@@ -56,6 +56,29 @@ describe('createAuth', () => {
 		expect(await db.user.findFirstOrThrow()).toMatchObject({ learnerId: 'local', role: 'learner' });
 	});
 
+	it('leaves no Learner behind when the Account insert fails, and keeps the Local Learner', async () => {
+		const { auth, db } = await setup();
+		await db.learner.create({ data: { id: 'local' } });
+		await auth.api.signUpEmail({ body });
+
+		await expect(auth.api.signUpEmail({ body })).rejects.toThrow();
+
+		expect(await db.user.count()).toBe(1);
+		const user = await db.user.findFirstOrThrow();
+		expect((await db.learner.findMany()).map((l) => l.id).sort()).toEqual(
+			['local', user.learnerId].sort()
+		);
+	});
+
+	it('makes one Learner for six concurrent sign-ups of one email', async () => {
+		const { auth, db } = await setup();
+
+		await Promise.allSettled(Array.from({ length: 6 }, () => auth.api.signUpEmail({ body })));
+
+		expect(await db.user.count()).toBe(1);
+		expect(await db.learner.count()).toBe(1);
+	});
+
 	it('refuses sign-up when the gate answers null, over HTTP and through auth.api', async () => {
 		const { auth, db } = await setup(() => null);
 

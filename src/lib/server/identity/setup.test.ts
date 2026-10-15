@@ -15,13 +15,13 @@ const admin = { name: 'Root', email: 'root@example.com', password: 'correct hors
 
 async function setup() {
 	const db = await createFileTestDb();
+	const instance = await createInstance(db);
 	const auth = createAuth({
 		db,
 		origin: 'http://localhost:3000',
 		secret,
-		admitSignUp: createRegistration()
+		admitSignUp: createRegistration({ instance })
 	});
-	const instance = await createInstance(db);
 	const core = createLearningCore({ catalogue: await loadCatalogue(fixtureDir), db });
 	return { db, auth, instance, core };
 }
@@ -316,7 +316,8 @@ describe('createFirstAdmin', () => {
 
 	it('refuses a real sign-up made while the first-admin scope is live, over HTTP and auth.api', async () => {
 		const db = await createFileTestDb();
-		const gate = createRegistration();
+		const instance = await createInstance(db);
+		const gate = createRegistration({ instance });
 		let release: () => void = () => {};
 		const latch = new Promise<void>((resolve) => {
 			release = resolve;
@@ -344,7 +345,6 @@ describe('createFirstAdmin', () => {
 			})
 		);
 		const direct = auth.api.signUpEmail({ body: { ...eve, email: 'eve2@example.com' } });
-		const instance = await createInstance(db);
 
 		const [first, httpRes, directRes] = await Promise.allSettled([
 			createFirstAdmin({ instance, auth, db }, admin),

@@ -1,3 +1,4 @@
+import { randomUUID as createId } from 'node:crypto';
 import type { BetterAuthPlugin } from 'better-auth';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
@@ -116,20 +117,33 @@ export function createAuth({
 					before: async (user, ctx) => {
 						const admission = ctx && (await admitSignUp({ email: user.email }));
 						if (!admission) throw signUpClosed();
-						const learner = admission.learnerId
-							? await db.learner.upsert({
-									where: { id: admission.learnerId },
-									update: {},
-									create: { id: admission.learnerId }
-								})
-							: await db.learner.create({ data: {} });
+						// A named Learner (the Local one) already exists or is made here and is never removed.
+						// A fresh one is only named here and made in `after`, once the Account row is in, so a
+						// failed insert (a duplicate email, a concurrent sign-up) leaves no Learner behind.
+						if (admission.learnerId) {
+							await db.learner.upsert({
+								where: { id: admission.learnerId },
+								update: {},
+								create: { id: admission.learnerId }
+							});
+						}
+						const learnerId = admission.learnerId ?? createId();
 						return {
 							data: {
 								...user,
-								learnerId: learner.id,
+								learnerId,
 								...(admission.role ? { role: admission.role } : {})
 							}
 						};
+					},
+					after: async (user) => {
+						const { learnerId } = user as { learnerId?: string | null };
+						if (!learnerId) return;
+						await db.learner.upsert({
+							where: { id: learnerId },
+							update: {},
+							create: { id: learnerId }
+						});
 					}
 				}
 			}
