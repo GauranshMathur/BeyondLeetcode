@@ -27,21 +27,30 @@ const LOCAL_LEARNER_ID = 'local';
 
 const TEST_LEARNER_ID = /^[a-z0-9-]{1,64}$/;
 
+/** The Local Mode adapter, plus the one step that creates its Learner. */
+export interface LocalIdentity extends IdentityResolver {
+	/** Creates the Local Learner row if missing. Called once the Instance mode is Local, never before. */
+	ensureLocalLearner(): Promise<void>;
+}
+
 /**
- * Local Mode adapter: every request is the Local Learner, created on first use.
+ * Local Mode adapter: every request is the Local Learner. Its row is not created here: a fresh,
+ * not-yet-set-up Instance must stay empty, so the caller runs `ensureLocalLearner` once the mode is Local.
  * `testLearnerCookie` is the gate (off by default; only the e2e web server turns it on):
  * when on, a well-formed TEST_LEARNER_COOKIE makes the request that other Learner.
  */
 export async function createLocalIdentity(
 	db: Db,
 	options: { testLearnerCookie?: boolean } = {}
-): Promise<IdentityResolver> {
-	await db.learner.upsert({
-		where: { id: LOCAL_LEARNER_ID },
-		update: {},
-		create: { id: LOCAL_LEARNER_ID }
-	});
+): Promise<LocalIdentity> {
 	return {
+		ensureLocalLearner: async () => {
+			await db.learner.upsert({
+				where: { id: LOCAL_LEARNER_ID },
+				update: {},
+				create: { id: LOCAL_LEARNER_ID }
+			});
+		},
 		resolve: async ({ cookies }) => {
 			const asked = options.testLearnerCookie ? cookies.get(TEST_LEARNER_COOKIE) : undefined;
 			if (asked && TEST_LEARNER_ID.test(asked)) {

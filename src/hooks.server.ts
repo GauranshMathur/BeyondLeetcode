@@ -1,13 +1,13 @@
-import { error, type Handle, type ServerInit } from '@sveltejs/kit';
+import type { Handle, ServerInit } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import { type App, createApp } from '$lib/server/app';
-import { parseTheme, THEME_COOKIE, withTheme } from '$lib/theme';
+import { createApp } from '$lib/server/app';
+import { createHandle } from '$lib/server/handle';
 
-let app: App;
+let run: Handle;
 
 /** Runs once at server start; a missing CONTENT_DIR, DATABASE_URL, RUNNER_URL or RUNNER_TOKEN stops the server here. */
 export const init: ServerInit = async () => {
-	app = await createApp({
+	const app = await createApp({
 		CONTENT_DIR: env.CONTENT_DIR,
 		DATABASE_URL: env.DATABASE_URL,
 		RUNNER_URL: env.RUNNER_URL,
@@ -16,27 +16,8 @@ export const init: ServerInit = async () => {
 		RUNNER_ADAPTER: env.RUNNER_ADAPTER,
 		NODE_ENV: env.NODE_ENV
 	});
+	run = createHandle(app);
 };
 
-/** Identity says who the request is; the Learning core then acts for that Learner. */
-export const handle: Handle = async ({ event, resolve }) => {
-	const identity = await app.identity.resolve(event);
-	// Local Mode never answers nobody; a later adapter that does will redirect to sign-in here.
-	if (!identity) error(401, 'Not signed in');
-	event.locals.identity = identity;
-	event.locals.learning = app.core.forLearner(identity.learnerId);
-	// No theme cookie means follow the device; a choice goes on <html> in the server render, so no flash.
-	// Read when the page renders, not before: an action that just set the cookie is seen by its own response.
-	return refuseFraming(
-		await resolve(event, {
-			transformPageChunk: ({ html }) => withTheme(html, parseTheme(event.cookies.get(THEME_COOKIE)))
-		})
-	);
-};
-
-/** Reset progress is destructive: no other site may frame the app and trick a click (clickjacking). */
-function refuseFraming(response: Response): Response {
-	response.headers.set('Content-Security-Policy', "frame-ancestors 'none'");
-	response.headers.set('X-Frame-Options', 'DENY');
-	return response;
-}
+/** The gate runs first (see createHandle), then Identity and the Learning core act for the request. */
+export const handle: Handle = (input) => run(input);

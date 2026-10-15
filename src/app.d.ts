@@ -1,4 +1,5 @@
 import type { Identity } from '$lib/server/identity';
+import type { Instance } from '$lib/server/instance';
 import type { Learner } from '$lib/server/learning/core';
 
 // See https://svelte.dev/docs/kit/types#app.d.ts
@@ -10,9 +11,11 @@ declare global {
 			revision?: number;
 		}
 		interface Locals {
-			/** Who this request is, from Identity. */
+			/** The Instance: its mode and the one-time choice Setup makes. */
+			instance: Instance;
+			/** Who this request is, from Identity. Unset only on /setup before the Instance is set up. */
 			identity: Identity;
-			/** The Learning core acting for this request's Learner. */
+			/** The Learning core acting for this request's Learner. Unset exactly when `identity` is. */
 			learning: Learner;
 		}
 		// interface PageData {}

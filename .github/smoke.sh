@@ -31,10 +31,11 @@ wait_for_200() {
   return 1
 }
 
-echo "== web role serves the Map"
+echo "== web role boots and shows Setup"
 docker volume create bl-data >/dev/null
 docker run -d --name web -p 3000:3000 -e ORIGIN=http://localhost:3000 -e RUNNER_URL=http://runner:8787 -e RUNNER_TOKEN=ci-web-smoke-token-0123456789abcdef-0123456789 -v bl-data:/data "$image" web
-wait_for_200 http://localhost:3000/ || { docker logs web; exit 1; }
+# A fresh Instance sends every page to Setup, which serves 200.
+wait_for_200 http://localhost:3000/setup || { docker logs web; exit 1; }
 
 # The runner pulls every Sandbox image at start-up; the tags are only published once this reaches main,
 # so both are built here under the exact name:tag config.ts uses and found locally through the socket.
@@ -46,14 +47,15 @@ token="$(openssl rand -hex 24)"
 docker run -d --name runner -p 8787:8787 -e RUNNER_TOKEN="$token" -v /var/run/docker.sock:/var/run/docker.sock "$image" runner
 wait_for_200 http://localhost:8787/health -H "Authorization: Bearer $token" || { docker logs runner; exit 1; }
 
-echo "== init then compose up serves the Map"
+echo "== init then compose up shows Setup"
 docker rm -f web runner >/dev/null
 docker volume rm bl-data >/dev/null
 cd "$instance"
 docker run --rm -v "$PWD":/out -e BEYONDLEETCODE_IMAGE="$image" "$image" init --origin http://localhost:3000
 grep -q "^BEYONDLEETCODE_IMAGE=$image\$" .env
 docker compose up -d
-wait_for_200 http://localhost:3000/
+wait_for_200 http://localhost:3000/setup
+[ "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' http://localhost:3000/)" = "303 http://localhost:3000/setup" ]
 # Only the runner holds the engine socket.
 if docker compose exec -T web test -e /var/run/docker.sock; then
   echo "web container has the Docker socket"; exit 1
