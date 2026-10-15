@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.43.0...v0.44.0) (2026-10-15)
+
+
+### Features
+
+* **beyondleetcode:** C34a Users page lists every Account ([#178](https://github.com/GauranshMathur/BeyondLeetcode/issues/178)) ([65382c4](https://github.com/GauranshMathur/BeyondLeetcode/commit/65382c421a9c343b64e360aa7d3ec5e5f9522295))
+
 ## [0.43.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.42.0...v0.43.0) (2026-10-15)
 
 
