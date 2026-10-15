@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
 import { type Admission, createAuth, isPlaceholderSecret, MIN_PASSWORD_LENGTH } from './auth.ts';
 
@@ -214,6 +214,37 @@ describe('createAuth', () => {
 			new Request('http://localhost:3000/api/auth/admin/list-users', { method: 'GET' })
 		);
 		expect(kept.status).not.toBe(404);
+	});
+
+	it('still refuses a cross-origin POST when the environment looks like a test', async () => {
+		// Better Auth 1.7.7 turns its origin and CSRF checks off when NODE_ENV is "test" or TEST is set,
+		// production included, unless the config says otherwise. This run has NODE_ENV=test as well.
+		vi.stubEnv('TEST', '1');
+		onTestFinished(() => void vi.unstubAllEnvs());
+		const { auth } = await setup();
+		const signOut = (origin: string) =>
+			auth.handler(
+				new Request('http://localhost:3000/api/auth/sign-out', {
+					method: 'POST',
+					headers: { cookie: 'better-auth.session_token=x', origin }
+				})
+			);
+		const signIn = (headers: Record<string, string>) =>
+			auth.handler(
+				new Request('http://localhost:3000/api/auth/sign-in/email', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json', ...headers },
+					body: JSON.stringify({ email: body.email, password: body.password })
+				})
+			);
+
+		expect((await signOut('https://evil.example')).status).toBe(403);
+		expect((await signOut('http://localhost:3000')).status).not.toBe(403);
+		// No cookie: the cross-site navigation check and a foreign Origin are refused too.
+		expect(
+			(await signIn({ 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' })).status
+		).toBe(403);
+		expect((await signIn({ origin: 'https://evil.example' })).status).toBe(403);
 	});
 
 	it('refuses the BETTER_AUTH_SECRET that .env.example ships, whatever its wording', async () => {

@@ -115,6 +115,11 @@ export function createAuth({
 		secret,
 		...(origin ? { baseURL: origin } : {}),
 		advanced: {
+			// Explicit, because left unset Better Auth 1.7.7 skips the origin and CSRF checks whenever
+			// NODE_ENV is "test" or TEST is set, in production too (`skipOriginCheck` in create-context).
+			// An explicit false wins over that detection. Never turn this on: it is what stops a page on
+			// another site from posting to the auth endpoints with a signed-in visitor's cookie.
+			disableOriginCheck: false,
 			...(origin ? { useSecureCookies: origin.startsWith('https:') } : {}),
 			// Only the header our own route sets: X-Forwarded-For is client-controlled and never read.
 			// IPv6 clients are grouped by /64 (Better Auth's default, stated here so it cannot change under us).
