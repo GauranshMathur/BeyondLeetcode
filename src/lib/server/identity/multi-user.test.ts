@@ -31,7 +31,8 @@ describe('createMultiUserIdentity', () => {
 			learnerId: user.learnerId,
 			displayName: 'Ada',
 			role: 'learner',
-			mustChangePassword: false
+			mustChangePassword: false,
+			refreshedCookies: []
 		});
 	});
 
@@ -111,5 +112,42 @@ describe('createMultiUserIdentity', () => {
 		const { identity, asking, cookie, db } = await setup();
 		await db.user.updateMany({ data: { learnerId: '' } });
 		expect(await identity.resolve(asking(cookie))).toBeNull();
+	});
+
+	describe('refreshing an active session', () => {
+		const DAY = 24 * 60 * 60 * 1000;
+
+		it('hands back the extended session cookie once the session is a day old', async () => {
+			const { identity, asking, cookie, db } = await setup();
+			// Better Auth refreshes when expiresAt - 7 days + 1 day has passed: make it five days from expiry.
+			await db.session.updateMany({ data: { expiresAt: new Date(Date.now() + 5 * DAY) } });
+			const before = await db.session.findFirstOrThrow();
+
+			const who = await identity.resolve(asking(cookie));
+
+			expect(who?.refreshedCookies).toEqual([
+				expect.stringMatching(/^better-auth\.session_token=/)
+			]);
+			expect((await db.session.findFirstOrThrow()).expiresAt.getTime()).toBeGreaterThan(
+				before.expiresAt.getTime()
+			);
+		});
+
+		it('sends nothing while the session is fresh', async () => {
+			const { identity, asking, cookie } = await setup();
+
+			const who = await identity.resolve(asking(cookie));
+
+			expect(who?.refreshedCookies ?? []).toEqual([]);
+		});
+
+		it('sends nothing for a request that is nobody', async () => {
+			const { identity, asking, cookie, db } = await setup();
+			// Better Auth refreshes when expiresAt - 7 days + 1 day has passed: make it five days from expiry.
+			await db.session.updateMany({ data: { expiresAt: new Date(Date.now() + 5 * DAY) } });
+			await db.user.updateMany({ data: { banned: true } });
+
+			expect(await identity.resolve(asking(cookie))).toBeNull();
+		});
 	});
 });

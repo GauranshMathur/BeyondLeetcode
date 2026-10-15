@@ -23,6 +23,12 @@ export type AdmitSignUp = (attempt: {
 	email: string | undefined;
 }) => Admission | null | Promise<Admission | null>;
 
+/**
+ * The private header the limiter reads the client address from. The auth route overwrites it with
+ * the address SvelteKit resolved, so a client cannot choose its own bucket (see `handleAuthRequest`).
+ */
+export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
+
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -90,9 +96,15 @@ export function createAuth({
 	return betterAuth({
 		database: prismaAdapter(db, { provider: 'sqlite' }),
 		secret,
-		...(origin
-			? { baseURL: origin, advanced: { useSecureCookies: origin.startsWith('https:') } }
-			: {}),
+		...(origin ? { baseURL: origin } : {}),
+		advanced: {
+			...(origin ? { useSecureCookies: origin.startsWith('https:') } : {}),
+			// Only the header our own route sets: X-Forwarded-For is client-controlled and never read.
+			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] }
+		},
+		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
+		// Instance). Covers requests through `auth.handler`; server-side `auth.api` calls skip it.
+		rateLimit: { enabled: true, storage: 'memory' },
 		telemetry: { enabled: false },
 		emailAndPassword: {
 			enabled: true,
