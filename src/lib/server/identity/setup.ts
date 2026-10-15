@@ -31,11 +31,25 @@ const exclusively = <T>(fn: () => Promise<T>): Promise<T> => {
 	return run;
 };
 
+/** The first admin's form is wrong in one field; the message is fixed text, never the input. */
+export class InvalidFirstAdminError extends Error {
+	constructor(
+		readonly field: keyof FirstAdminInput,
+		message: string
+	) {
+		super(message);
+		this.name = 'InvalidFirstAdminError';
+	}
+}
+
 function validate({ name, email, password }: FirstAdminInput) {
-	if (name.trim() === '') throw new Error('The name is required.');
-	if (!z.email().safeParse(email).success) throw new Error('The email address is not valid.');
+	if (name.trim() === '') throw new InvalidFirstAdminError('name', 'The name is required.');
+	if (!z.email().safeParse(email).success) {
+		throw new InvalidFirstAdminError('email', 'The email address is not valid.');
+	}
 	if (password.length < MIN_PASSWORD_LENGTH || password.length > MAX_PASSWORD_LENGTH) {
-		throw new Error(
+		throw new InvalidFirstAdminError(
+			'password',
 			`The password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
 		);
 	}

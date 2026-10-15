@@ -29,6 +29,7 @@ export type AdmitSignUp = (attempt: {
  */
 export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
 
+export const MIN_SECRET_LENGTH = 32;
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -90,7 +91,7 @@ export function createAuth({
 	admitSignUp = () => null,
 	extraPlugins = []
 }: CreateAuthOptions) {
-	if (secret.length < 32) {
+	if (secret.length < MIN_SECRET_LENGTH) {
 		throw new Error('createAuth: secret is missing or shorter than 32 characters');
 	}
 	return betterAuth({

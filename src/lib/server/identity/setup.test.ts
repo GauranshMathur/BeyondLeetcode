@@ -67,7 +67,8 @@ describe('createFirstAdmin', () => {
 			learnerId: 'local',
 			displayName: 'Root',
 			role: 'admin',
-			mustChangePassword: false
+			mustChangePassword: false,
+			refreshedCookies: []
 		});
 	});
 
@@ -302,13 +303,19 @@ describe('createFirstAdmin', () => {
 	});
 
 	it.each([
-		['an empty name', { name: '  ' }],
-		['a bad email', { email: 'a@b' }],
-		['a 129-character password', { password: 'a'.repeat(129) }]
-	])('refuses %s before touching the Instance', async (_, bad) => {
+		['an empty name', { name: '  ' }, 'name'],
+		['a bad email', { email: 'a@b' }, 'email'],
+		['a 129-character password', { password: 'a'.repeat(129) }, 'password'],
+		['an 11-character password', { password: 'a'.repeat(11) }, 'password']
+	])('refuses %s before touching the Instance, naming the field', async (_, bad, field) => {
 		const { db, auth, instance } = await setup();
 
-		await expect(createFirstAdmin({ instance, auth, db }, { ...admin, ...bad })).rejects.toThrow();
+		await expect(
+			createFirstAdmin({ instance, auth, db }, { ...admin, ...bad })
+		).rejects.toMatchObject({
+			name: 'InvalidFirstAdminError',
+			field
+		});
 
 		expect(instance.mode()).toBeNull();
 		expect(await db.instance.count()).toBe(0);
