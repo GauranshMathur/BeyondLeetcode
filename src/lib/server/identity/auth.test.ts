@@ -1,7 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
-import { type Admission, createAuth, isPlaceholderSecret, MIN_PASSWORD_LENGTH } from './auth.ts';
+import {
+	type Admission,
+	createAuth,
+	isNameTooLong,
+	isPlaceholderSecret,
+	MAX_NAME_LENGTH,
+	MIN_PASSWORD_LENGTH
+} from './auth.ts';
+import { createRegistration } from './registration.ts';
+import { createFirstAdmin } from './setup.ts';
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
@@ -311,5 +321,147 @@ describe('createAuth', () => {
 		]) {
 			expect(() => createAuth({ db, origin: '', secret: known })).toThrow(/placeholder|anyone/);
 		}
+	});
+});
+
+describe('the name cap', () => {
+	const NAME_TOO_LONG = 'The name is too long.';
+	const emoji = '\u{1F600}'; // one code point, two UTF-16 units
+
+	describe('isNameTooLong counts Unicode code points on the trimmed name', () => {
+		it('is 100', () => {
+			expect(MAX_NAME_LENGTH).toBe(100);
+		});
+
+		it.each([
+			['', false],
+			['Ada', false],
+			['a'.repeat(100), false],
+			['a'.repeat(101), true],
+			// Two UTF-16 units each, one code point each: 100 fit, 101 do not.
+			[emoji.repeat(100), false],
+			[emoji.repeat(101), true],
+			[`${'a'.repeat(99)}${emoji}`, false],
+			[`${'a'.repeat(100)}${emoji}`, true],
+			// Lone surrogates are one code point per unit.
+			['\ud800'.repeat(100), false],
+			['\ud800'.repeat(101), true],
+			// Trimmed first, with the same trim the forms use (Unicode whitespace included).
+			[`   ${'a'.repeat(100)}   `, false],
+			[`\u00a0\u3000${'a'.repeat(100)}\ufeff\n`, false],
+			[`${' '.repeat(5000)}x${' '.repeat(5000)}`, false],
+			[`${'a'.repeat(50)} ${'b'.repeat(50)} c`, true],
+			['x'.repeat(512 * 1024), true]
+		])('%j.length=%#', (name, tooLong) => {
+			expect(isNameTooLong(name)).toBe(tooLong);
+		});
+	});
+
+	async function http(auth: Awaited<ReturnType<typeof setup>>['auth'], name: string) {
+		return auth.handler(
+			new Request('http://localhost:3000/api/auth/sign-up/email', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+				body: JSON.stringify({ ...body, name })
+			})
+		);
+	}
+
+	it('refuses a direct POST /api/auth/sign-up/email with a longer name, with a fixed error, storing nothing', async () => {
+		const { auth, db } = await setup();
+
+		const res = await http(auth, 'x'.repeat(MAX_NAME_LENGTH + 1));
+
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ code: 'NAME_TOO_LONG', message: NAME_TOO_LONG });
+		expect(await db.user.count()).toBe(0);
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+		expect(await db.learner.count()).toBe(0);
+	});
+
+	it('refuses the server-side call too, and any size of name, without echoing it', async () => {
+		const { auth, db } = await setup();
+		const huge = `${'x'.repeat(512 * 1024)}@secret-marker`;
+
+		const refusal = await auth.api.signUpEmail({ body: { ...body, name: huge } }).then(
+			() => null,
+			(error: unknown) => error
+		);
+
+		expect(refusal).toMatchObject({ statusCode: 400, body: { code: 'NAME_TOO_LONG' } });
+		expect(JSON.stringify((refusal as { body: unknown }).body)).not.toContain('secret-marker');
+		expect(await db.user.count()).toBe(0);
+	});
+
+	it.each([
+		['100 characters', 'a'.repeat(100)],
+		['100 emoji', emoji.repeat(100)],
+		['100 characters with spaces around them', `   ${'a'.repeat(100)}   `]
+	])('accepts %s, and stores the trimmed name', async (_label, name) => {
+		const { auth, db } = await setup();
+
+		const res = await http(auth, name);
+
+		expect(res.status).toBe(200);
+		expect((await db.user.findFirstOrThrow()).name).toBe(name.trim());
+	});
+
+	it('refuses 101 emoji', async () => {
+		const { auth, db } = await setup();
+
+		const res = await http(auth, emoji.repeat(101));
+
+		expect(res.status).toBe(400);
+		expect(await db.user.count()).toBe(0);
+	});
+
+	it('cannot be got round with padding: a name that is short once trimmed is stored trimmed', async () => {
+		const { auth, db } = await setup();
+
+		const res = await http(auth, `${' '.repeat(300_000)}Ada${' '.repeat(300_000)}`);
+
+		expect(res.status).toBe(200);
+		expect((await db.user.findFirstOrThrow()).name).toBe('Ada');
+	});
+
+	it('answers a closed sign-up as closed, whatever the name: a too-long name is not told apart', async () => {
+		const { auth, db } = await setup(() => null);
+
+		const long = await http(auth, 'x'.repeat(1000));
+		const short = await http(auth, 'Ada');
+
+		expect(long.status).toBe(403);
+		expect(short.status).toBe(403);
+		expect(await db.user.count()).toBe(0);
+	});
+
+	it('makes no Learner for a refused name, not even the named Local one', async () => {
+		const { auth, db } = await setup(() => ({ learnerId: 'local', role: 'admin' }));
+
+		const res = await http(auth, 'x'.repeat(1000));
+
+		expect(res.status).toBe(400);
+		expect(await db.learner.count()).toBe(0);
+		expect(await db.user.count()).toBe(0);
+	});
+
+	it('refuses the first admin with a longer name, and leaves the Instance not set up', async () => {
+		const db = await createFileTestDb();
+		const instance = await createInstance(db);
+		const auth = createAuth({
+			db,
+			origin: 'http://localhost:3000',
+			secret,
+			admitSignUp: createRegistration({ instance })
+		});
+
+		await expect(
+			createFirstAdmin({ instance, auth, db }, { ...body, name: 'x'.repeat(101) })
+		).rejects.toMatchObject({ body: { code: 'NAME_TOO_LONG' } });
+
+		expect(instance.mode()).toBeNull();
+		expect(await db.user.count()).toBe(0);
+		expect(await db.learner.count()).toBe(0);
 	});
 });

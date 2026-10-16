@@ -1,4 +1,5 @@
 import { isRedirect } from '@sveltejs/kit';
+import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MultiUserChoice } from '$lib/server/app';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
@@ -186,6 +187,79 @@ describe('step 2: create the admin', () => {
 			expect(createFirstAdmin).not.toHaveBeenCalled();
 		}
 	);
+
+	describe('the name cap: 100 characters, counted in code points on the trimmed name', () => {
+		const emoji = '\u{1F600}';
+		const open = (createFirstAdmin = vi.fn(async () => ({ headers: new Headers() }))) => ({
+			createFirstAdmin,
+			locals: { setup: setupWith({ kind: 'open' }, createFirstAdmin) }
+		});
+
+		it('refuses a longer name on its field before calling createFirstAdmin, keeping what was typed', async () => {
+			const { createFirstAdmin, locals } = open();
+			const name = 'x'.repeat(101);
+
+			const result = await run(actions.admin, { ...admin, name }, locals);
+
+			expect(result).toMatchObject({
+				status: 400,
+				data: {
+					step: 'admin',
+					field: 'name',
+					message: 'Use at most 100 characters.',
+					name,
+					email: admin.email
+				}
+			});
+			expect(JSON.stringify(result)).not.toContain(admin.password);
+			expect(createFirstAdmin).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			['exactly 100 characters', 'x'.repeat(100), true],
+			['101 characters', 'x'.repeat(101), false],
+			['100 emoji, 200 UTF-16 units', emoji.repeat(100), true],
+			['101 emoji', emoji.repeat(101), false],
+			['100 characters with spaces around them', `  ${'x'.repeat(100)}   `, true],
+			['101 characters with spaces around them', `  ${'x'.repeat(101)}   `, false],
+			['half a megabyte', 'x'.repeat(512 * 1024), false]
+		])('%s: %s', async (_label, name, accepted) => {
+			const { createFirstAdmin, locals } = open();
+
+			await run(actions.admin, { ...admin, name }, locals);
+
+			expect(createFirstAdmin).toHaveBeenCalledTimes(accepted ? 1 : 0);
+		});
+
+		it('says the Instance is already set up before it says anything about the name', async () => {
+			const { createFirstAdmin, locals } = open();
+
+			const result = await run(
+				actions.admin,
+				{ ...admin, name: 'x'.repeat(101) },
+				{ ...locals, instance: { mode: () => 'local' } }
+			);
+
+			expect(result).toMatchObject({ status: 409 });
+			expect(createFirstAdmin).not.toHaveBeenCalled();
+		});
+
+		it('maps Better Auth\u2019s own refusal of a long name, should one get through, to the same field error', async () => {
+			const refusal = new APIError('BAD_REQUEST', {
+				message: 'The name is too long.',
+				code: 'NAME_TOO_LONG'
+			});
+			const { locals } = open(vi.fn(async () => Promise.reject(refusal)));
+			vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const result = await run(actions.admin, admin, locals);
+
+			expect(result).toMatchObject({
+				status: 400,
+				data: { field: 'name', message: 'Use at most 100 characters.' }
+			});
+		});
+	});
 
 	it('refuses where Multi-user is not open, saying what to add to .env, without calling createFirstAdmin', async () => {
 		const createFirstAdmin = vi.fn();

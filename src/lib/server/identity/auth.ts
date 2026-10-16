@@ -43,6 +43,21 @@ export function isPlaceholderSecret(secret: string): boolean {
 	const value = secret.trim().toLowerCase();
 	return value === BETTER_AUTH_DEFAULT_SECRET || value.startsWith('change-me');
 }
+/** The longest name an Account may have: 100 characters, counted in Unicode code points on the trimmed name. */
+export const MAX_NAME_LENGTH = 100;
+
+/**
+ * Whether a name is over the cap. The name is trimmed first (the forms store it trimmed), then counted by
+ * code point, so an emoji is one character and not its two UTF-16 units. Cheap on any size of input: a code
+ * point is one or two units, so up to 100 units is always within the cap and over 200 never is.
+ */
+export function isNameTooLong(name: string): boolean {
+	const trimmed = name.trim();
+	if (trimmed.length <= MAX_NAME_LENGTH) return false;
+	if (trimmed.length > 2 * MAX_NAME_LENGTH) return true;
+	return [...trimmed].length > MAX_NAME_LENGTH;
+}
+
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -101,6 +116,10 @@ const UNUSED_CORE_PATHS = [
 const HTTP_SIGN_IN_PATHS = ['/sign-in/email'];
 
 const signUpClosed = () => new APIError('FORBIDDEN', { message: 'Sign-up is closed' });
+
+/** A fixed message and code: the forms map the code to their own text, and the name is never echoed. */
+const nameTooLong = () =>
+	new APIError('BAD_REQUEST', { message: 'The name is too long.', code: 'NAME_TOO_LONG' });
 
 /** Better Auth over our database: email + password and the admin plugin, nothing else. */
 export function createAuth({
@@ -168,6 +187,10 @@ export function createAuth({
 					before: async (user, ctx) => {
 						const admission = ctx && (await admitSignUp({ email: user.email }));
 						if (!admission) throw signUpClosed();
+						// After the admission, so a closed sign-up answers the same whatever the name; before the
+						// Learner below, so a refused name leaves nothing behind. Whatever path made the Account
+						// (the form, POST /sign-up/email, a later one) comes through here.
+						if (isNameTooLong(user.name)) throw nameTooLong();
 						// A named Learner (the Local one) already exists or is made here and is never removed.
 						// A fresh one is only named here and made in `after`, once the Account row is in, so a
 						// failed insert (a duplicate email, a concurrent sign-up) leaves no Learner behind.
@@ -182,6 +205,9 @@ export function createAuth({
 						return {
 							data: {
 								...user,
+								// Stored trimmed, as the forms send it: the cap counts the trimmed name, so padding
+								// must not be kept either.
+								name: user.name.trim(),
 								learnerId,
 								...(admission.role ? { role: admission.role } : {})
 							}

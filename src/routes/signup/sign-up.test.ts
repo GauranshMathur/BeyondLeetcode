@@ -188,6 +188,80 @@ describe('what is wrong with the form', () => {
 		}
 	);
 
+	describe('the name cap: 100 characters, counted in code points on the trimmed name', () => {
+		const emoji = '\u{1F600}';
+		const refusal = (values: Form) => harness().post(values);
+
+		it('refuses a longer name on its field before calling Better Auth, keeping what was typed', async () => {
+			const { post, signUpEmail } = harness();
+			const name = 'x'.repeat(101);
+
+			const result = await post({ ...ada, name });
+
+			expect(result).toMatchObject({
+				status: 400,
+				data: { field: 'name', message: 'Use at most 100 characters.', name, email: ada.email }
+			});
+			expect(JSON.stringify(result)).not.toContain(ada.password);
+			expect(signUpEmail).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			['exactly 100 characters', 'x'.repeat(100), true],
+			['101 characters', 'x'.repeat(101), false],
+			['100 emoji, 200 UTF-16 units', emoji.repeat(100), true],
+			['101 emoji', emoji.repeat(101), false],
+			['100 characters with spaces around them', `  ${'x'.repeat(100)}   `, true],
+			['101 characters with spaces around them', `  ${'x'.repeat(101)}   `, false],
+			['half a megabyte', 'x'.repeat(512 * 1024), false]
+		])('%s: %s', async (_label, name, accepted) => {
+			const { post, signUpEmail } = harness();
+
+			await post({ ...ada, name });
+
+			expect(signUpEmail).toHaveBeenCalledTimes(accepted ? 1 : 0);
+			if (accepted)
+				expect(signUpEmail.mock.calls[0][0]).toMatchObject({ body: { name: name.trim() } });
+		});
+
+		it('answers a blank name before a long one, and a long name before a bad email or password', async () => {
+			expect(await refusal({ ...ada, name: '   ' })).toMatchObject({
+				data: { field: 'name', message: 'Enter a name.' }
+			});
+			expect(
+				await refusal({ ...ada, name: 'x'.repeat(101), email: 'nope', password: 'short' })
+			).toMatchObject({ data: { field: 'name', message: 'Use at most 100 characters.' } });
+		});
+
+		it('counts the refused attempt against the limit like any other', async () => {
+			const throttled = harness({ throttle: createThrottle({ addressLimit: 2 }) });
+			await throttled.post({ ...ada, name: 'x'.repeat(101) });
+			await throttled.post({ ...ada, name: 'x'.repeat(101) });
+
+			expect(await throttled.post(ada)).toMatchObject({ status: 429 });
+		});
+
+		it('maps Better Auth\u2019s own refusal of a long name to the same field error', async () => {
+			const raced = harness({
+				auth: {
+					api: {
+						signUpEmail: async () => {
+							throw new APIError('BAD_REQUEST', {
+								message: 'The name is too long.',
+								code: 'NAME_TOO_LONG'
+							});
+						}
+					}
+				}
+			});
+
+			expect(await raced.post(ada)).toMatchObject({
+				status: 400,
+				data: { field: 'name', message: 'Use at most 100 characters.' }
+			});
+		});
+	});
+
 	it('accepts a password of exactly 12 and exactly 128 characters', async () => {
 		for (const password of ['x'.repeat(12), 'x'.repeat(128)]) {
 			const { post, signUpEmail } = harness();
