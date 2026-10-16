@@ -1,5 +1,6 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
+import { createDb } from '../../lib/server/db.ts';
 import { type FreshServer, startFreshServer } from './fresh-server.ts';
 
 // Sign in and Sign out in the browser, on three kinds of server:
@@ -26,7 +27,9 @@ const people = {
 	locked: { name: 'Lou Locked', email: 'lou.signin@example.com' },
 	hostile: { name: 'Hal Hostile', email: 'hal.signin@example.com' },
 	typo: { name: 'Tia Typo', email: 'tia.signin@example.com' },
-	phone: { name: 'Pat Phone', email: 'pat.signin@example.com' }
+	phone: { name: 'Pat Phone', email: 'pat.signin@example.com' },
+	forced: { name: 'Fay Forced', email: 'fay.signin@example.com' },
+	forcedData: { name: 'Dee Data', email: 'dee.signin@example.com' }
 };
 
 async function signInWith(page: Page, email: string, password: string) {
@@ -162,6 +165,75 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 				await expect(page.getByText(WRONG), `try ${attempt}`).toBeVisible();
 			}
 			await expect(page).toHaveURL(/\/signin$/);
+		}
+	);
+});
+
+onOpen.describe('a user who must change their password', () => {
+	// C36a sets the flag and C36b adds /account/password; until then the 404 page is where they are sent.
+	// The flag is set on the own server's database, between two requests, as an admin's reset would.
+	onOpen(
+		'is held to that page: no page, no load data, and no Settings data through the sign-out exception',
+		async ({ page, open }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.forced.email, PASSWORD);
+			await expect(page).toHaveURL('/');
+			const db = createDb(open.databaseUrl);
+			try {
+				await db.user.update({
+					where: { email: people.forced.email },
+					data: { mustChangePassword: true }
+				});
+			} finally {
+				await db.$disconnect();
+			}
+			const headers = { origin: open.url, accept: 'text/html' };
+
+			// A page and its load data are both sent to /account/password.
+			await page.goto('/settings');
+			await expect(page).toHaveURL('/account/password');
+			const data = await page.request.get('/settings/__data.json');
+			expect(await data.json()).toMatchObject({ type: 'redirect', location: '/account/password' });
+
+			// The sign-out action is the way out ...
+			const out = await page.request.post('/settings?/signout', {
+				headers,
+				form: {},
+				maxRedirects: 0
+			});
+			expect(out.status()).toBe(303);
+			expect(out.headers().location).toBe('/signin');
+		}
+	);
+
+	onOpen(
+		'cannot read the Settings load data by posting to the data URL with the sign-out action',
+		async ({ page, open }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.forcedData.email, PASSWORD);
+			await expect(page).toHaveURL('/');
+			const db = createDb(open.databaseUrl);
+			try {
+				await db.user.update({
+					where: { email: people.forcedData.email },
+					data: { mustChangePassword: true }
+				});
+			} finally {
+				await db.$disconnect();
+			}
+
+			const response = await page.request.post('/settings/__data.json?/signout', {
+				headers: { origin: open.url },
+				form: {},
+				maxRedirects: 0
+			});
+
+			// SvelteKit answers a data request's redirect as JSON; the load data is never run.
+			const body = await response.text();
+			expect(JSON.parse(body)).toMatchObject({ type: 'redirect', location: '/account/password' });
+			expect(body).not.toContain('"type":"data"');
+			expect(body).not.toContain(people.forcedData.name);
+			expect(body).not.toContain('multiUser');
 		}
 	);
 });

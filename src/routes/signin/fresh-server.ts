@@ -15,7 +15,8 @@ import { createDb } from '../../lib/server/db.ts';
 // already Multi-user with Registration Open, as a finished Setup plus the Users toggle (C34b) leave it, and
 // Accounts are made through the Sign up form. The app gains no way to open registration from this.
 
-export type FreshServer = { url: string; stop(): Promise<void> };
+/** `databaseUrl` is the server's own file, for a test that must change a row (the server and the test are the only users). */
+export type FreshServer = { url: string; databaseUrl: string; stop(): Promise<void> };
 
 export async function startFreshServer(
 	options: { openRegistration?: boolean } = {}
@@ -65,7 +66,7 @@ export async function startFreshServer(
 		await stopAll();
 		throw error;
 	}
-	return { url, stop: stopAll };
+	return { url, databaseUrl: env.DATABASE_URL as string, stop: stopAll };
 }
 
 async function freePort(): Promise<number> {

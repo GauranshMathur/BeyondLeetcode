@@ -50,6 +50,7 @@ export function createHandle(
 			who,
 			mustChangePassword: who?.mustChangePassword,
 			routeId: event.route.id,
+			isDataRequest: event.isDataRequest,
 			method: request.method,
 			pathname: url.pathname,
 			search: url.search

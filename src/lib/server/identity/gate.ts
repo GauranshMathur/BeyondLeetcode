@@ -10,6 +10,14 @@ export interface GateInput {
 	mustChangePassword?: boolean;
 	/** SvelteKit's `event.route.id`; null when no route matched. */
 	routeId: string | null;
+	/**
+	 * SvelteKit's `event.isDataRequest`: the request is for a page's load data (`.../__data.json`). By the time
+	 * `handle` runs SvelteKit has already cut that suffix off `event.url.pathname` and set this flag instead
+	 * (kit 2.70.3, `src/runtime/server/respond.js`: `has_data_suffix` sets `is_data_request`, `strip_data_suffix`
+	 * rewrites `url.pathname`, the event gets `isDataRequest`), so the pathname cannot tell. `render_data` runs
+	 * whatever the method, and never runs an action.
+	 */
+	isDataRequest: boolean;
 	method: string;
 	pathname: string;
 	search: string;
@@ -42,18 +50,14 @@ const formAction = (search: string): string | null => {
 	return null;
 };
 
-/** SvelteKit's data requests (client navigation and invalidation) end like this; they return load data. */
-const isDataRequest = (pathname: string) =>
-	pathname.endsWith('/__data.json') || pathname.endsWith('.html__data.json');
-
 /**
  * The two ways to sign out: Better Auth's own endpoint, and the Settings page's `signout` form action.
  * Never as a data request: that answers with the layout's and the page's load data, which a user who
  * must change their password has no business reading.
  */
-const isSigningOut = ({ routeId, method, pathname, search }: GateInput) =>
+const isSigningOut = ({ routeId, method, pathname, search, isDataRequest }: GateInput) =>
 	method === 'POST' &&
-	!isDataRequest(pathname) &&
+	!isDataRequest &&
 	(pathname === '/api/auth/sign-out' ||
 		(routeId === '/settings' && formAction(search) === '/signout'));
 

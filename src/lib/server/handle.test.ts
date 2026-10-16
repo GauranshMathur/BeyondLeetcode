@@ -430,18 +430,32 @@ describe('Multi-user Mode', () => {
 	it('keeps the Settings load data from a user who must change their password, sign-out action or not', async () => {
 		const { handle, db, cookie } = await multiSetup();
 		await db.user.updateMany({ data: { mustChangePassword: true } });
+		// As SvelteKit builds it for POST /settings/__data.json?/signout: the suffix is already off event.url
+		// (respond.js strips it) and event.isDataRequest says what it was.
 		const { event, resolve } = request(
-			'/settings/__data.json?/signout',
+			'/settings?/signout',
 			'/settings',
 			'POST',
 			new Headers({ cookie })
 		);
+		(event as { isDataRequest: boolean }).isDataRequest = true;
 
 		const response = await handle({ event, resolve });
 
 		expect(response.status).toBe(303);
 		expect(response.headers.get('location')).toBe('/account/password');
 		expect(resolve).not.toHaveBeenCalled();
+	});
+
+	it('still serves a signed-in user a page\u2019s load data', async () => {
+		const { handle, asking } = await multiSetup();
+		const data = asking('/settings', '/settings');
+		(data.event as { isDataRequest: boolean }).isDataRequest = true;
+
+		const response = await handle({ event: data.event, resolve: data.resolve });
+
+		expect(response.status).toBe(200);
+		expect(data.resolve).toHaveBeenCalledOnce();
 	});
 
 	it('still lets a user who must change their password sign out, from the nav and from Settings', async () => {

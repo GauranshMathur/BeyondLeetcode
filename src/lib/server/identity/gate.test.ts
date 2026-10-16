@@ -8,6 +8,7 @@ const request = (routeId: string | null, extra: Partial<GateInput> = {}): GateIn
 	mode: 'multi',
 	who: null,
 	routeId,
+	isDataRequest: false,
 	method: 'GET',
 	pathname: routeId ?? '/nowhere',
 	search: '',
@@ -201,35 +202,27 @@ describe('gate', () => {
 			}),
 			pass
 		],
+		// SvelteKit hands `handle` a data request with the suffix already cut off the pathname.
 		[
 			'must change, POST Settings data request with the sign-out action -> password',
 			request('/settings', {
 				who: learner,
 				mustChangePassword: true,
 				method: 'POST',
-				pathname: '/settings/__data.json',
-				search: '?/signout'
+				pathname: '/settings',
+				search: '?/signout',
+				isDataRequest: true
 			}),
 			redirect('/account/password')
 		],
 		[
-			'must change, POST data request of a page that is not a folder -> password',
-			request('/settings', {
-				who: learner,
-				mustChangePassword: true,
-				method: 'POST',
-				pathname: '/settings.html__data.json',
-				search: '?/signout'
-			}),
-			redirect('/account/password')
-		],
-		[
-			'must change, POST /api/auth/sign-out with a data suffix is no sign-out -> password',
+			'must change, POST /api/auth/sign-out as a data request is no sign-out -> password',
 			request('/api/auth/[...all]', {
 				who: learner,
 				mustChangePassword: true,
 				method: 'POST',
-				pathname: '/api/auth/sign-out/__data.json'
+				pathname: '/api/auth/sign-out',
+				isDataRequest: true
 			}),
 			redirect('/account/password')
 		],
