@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
@@ -20,9 +21,13 @@ type SignInEvent = Pick<
 	'request' | 'locals' | 'cookies' | 'getClientAddress' | 'url'
 >;
 
-/** What the form page gets back from a refused attempt: always the same keys, never the password. */
-const refused = (status: 400 | 500 | 503, email: string, message: string) =>
-	fail(status, { email, message });
+/**
+ * What the form page gets back from a refused attempt: always the same keys, never the password.
+ * `wrong` marks the one message of a wrong sign-in (the page puts it on the fields); a failure is not that.
+ */
+const refused = (status: 400 | 500 | 503, email: string, message: string, wrong = false) =>
+	fail(status, { email, message, wrong });
+const wrongSignIn = (email: string) => refused(400, email, MESSAGES.wrong, true);
 
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
@@ -57,6 +62,16 @@ function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
 		return '';
 	}
 }
+
+/**
+ * The limits' key for an email that has no Account: a digest of the normalised email (lowercased like
+ * Better Auth's lookup, not trimmed), so the email itself is never held in memory. Known and unknown
+ * emails then reach the throttled state on the same schedule; if only known ones did, a throttled
+ * refusal (which skips the password hash, so it answers faster) would tell an attacker which emails
+ * have an Account. User ids hold no ':', so the two kinds of key never meet.
+ */
+const unknownAccountKey = (email: string) =>
+	`email:${createHash('sha256').update(email.toLowerCase()).digest('hex')}`;
 
 /** The kind of failure only: the error text may hold paths, query text and the input. */
 function logFailure(what: string, error: unknown) {
@@ -102,12 +117,14 @@ export function createSignIn(throttle: Throttle) {
 			if (!auth) return refused(503, email, MESSAGES.failed);
 
 			// The Account Better Auth would sign in: looked up the way it does (lowercased, not trimmed), so the
-			// Account limits cannot be dodged by how the email is spelled. Null when there is none.
+			// Account limits cannot be dodged by how the email is spelled. With none, the email's digest stands
+			// in for its id, so an unknown email is limited exactly like a known one. A blank form names nobody.
 			let accountId: string | null = null;
 			if (email !== '') {
 				try {
 					const { internalAdapter } = await auth.$context;
-					accountId = (await internalAdapter.findUserByEmail(email.toLowerCase()))?.user.id ?? null;
+					const found = await internalAdapter.findUserByEmail(email.toLowerCase());
+					accountId = found?.user.id ?? unknownAccountKey(email);
 				} catch (error) {
 					logFailure('looking up the account failed', error);
 					return refused(500, email, MESSAGES.failed);
@@ -115,9 +132,9 @@ export function createSignIn(throttle: Throttle) {
 			}
 
 			// Before the password is looked at, so a flood of guesses of any kind is counted and none is free.
-			const input = { address: clientAddress(event), accountId };
-			if (!throttle.attempt(input).allowed) return refused(400, email, MESSAGES.wrong);
-			if (email === '' || password === '') return refused(400, email, MESSAGES.wrong);
+			const turn = throttle.attempt({ address: clientAddress(event), accountId });
+			if (!turn.allowed) return wrongSignIn(email);
+			if (email === '' || password === '') return wrongSignIn(email);
 
 			let headers: Headers;
 			try {
@@ -127,12 +144,12 @@ export function createSignIn(throttle: Throttle) {
 					returnHeaders: true
 				}));
 			} catch (error) {
-				if (isWrongSignIn(error)) return refused(400, email, MESSAGES.wrong);
+				if (isWrongSignIn(error)) return wrongSignIn(email);
 				logFailure('signing in failed', error);
 				return refused(500, email, MESSAGES.failed);
 			}
 			// A right password takes its own attempt back, so signing in never uses up a shared address's budget.
-			throttle.succeed(input);
+			throttle.succeed(turn.token);
 			forwardSetCookies(cookies, headers.getSetCookie());
 			redirect(303, next);
 		}

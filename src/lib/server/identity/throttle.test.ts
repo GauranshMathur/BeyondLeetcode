@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createThrottle } from './throttle.ts';
+import { createThrottle, type ThrottleCheck, type ThrottleToken } from './throttle.ts';
 
 const MIN = 60_000;
 
@@ -10,6 +10,12 @@ const setup = (options: Parameters<typeof createThrottle>[0] = {}) => {
 };
 
 const from = (address: string, accountId: string | null = 'acct') => ({ address, accountId });
+
+/** The token of an attempt that was admitted; a refused one has none. */
+const tokenOf = (check: ThrottleCheck): ThrottleToken => {
+	if (!check.allowed) throw new Error('the attempt was refused');
+	return check.token;
+};
 
 describe('address spellings', () => {
 	const share = (spellings: string[]) => {
@@ -106,21 +112,22 @@ describe('throttle', () => {
 		for (let i = 0; i < 4; i++) throttle.attempt(from('1.1.1.1'));
 		expect(throttle.attempt(from('1.1.1.1'))).toEqual({ allowed: false, retryAfterMs: MIN });
 		advance(MIN);
-		expect(throttle.attempt(from('1.1.1.1'))).toEqual({ allowed: true });
+		expect(throttle.attempt(from('1.1.1.1'))).toMatchObject({ allowed: true });
 	});
 
 	it('succeed clears only the account + address counter', () => {
 		const { throttle } = setup();
-		for (let i = 0; i < 4; i++) throttle.attempt(from('1.1.1.1'));
-		throttle.succeed(from('1.1.1.1'));
+		for (let i = 0; i < 3; i++) throttle.attempt(from('1.1.1.1'));
+		const last = tokenOf(throttle.attempt(from('1.1.1.1')));
+		throttle.succeed(last);
 		for (let i = 0; i < 5; i++) expect(throttle.attempt(from('1.1.1.1')).allowed).toBe(true);
 		expect(throttle.attempt(from('1.1.1.1')).allowed).toBe(false);
 	});
 
 	it('succeed gives back exactly one count to the address, so right passwords never use up its budget', () => {
 		const { throttle } = setup({ addressLimit: 6 });
-		for (let i = 0; i < 5; i++) throttle.attempt(from('1.1.1.1', 'mine'));
-		throttle.succeed(from('1.1.1.1', 'mine'));
+		for (let i = 0; i < 4; i++) throttle.attempt(from('1.1.1.1', 'mine'));
+		throttle.succeed(tokenOf(throttle.attempt(from('1.1.1.1', 'mine'))));
 		// 5 counted, one taken back: two more fit under 6, the third does not.
 		expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
 		expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
@@ -129,8 +136,8 @@ describe('throttle', () => {
 
 	it('succeed gives back exactly one count to the Account, however many addresses it signs in from', () => {
 		const { throttle } = setup({ accountLimit: 6 });
-		for (let i = 0; i < 5; i++) throttle.attempt(from(`1.1.1.${i}`, 'mine'));
-		throttle.succeed(from('1.1.1.0', 'mine'));
+		for (let i = 1; i < 5; i++) throttle.attempt(from(`1.1.1.${i}`, 'mine'));
+		throttle.succeed(tokenOf(throttle.attempt(from('1.1.1.0', 'mine'))));
 		expect(throttle.attempt(from('2.2.2.1', 'mine')).allowed).toBe(true);
 		expect(throttle.attempt(from('2.2.2.2', 'mine')).allowed).toBe(true);
 		expect(throttle.attempt(from('2.2.2.3', 'mine')).allowed).toBe(false);
@@ -139,8 +146,9 @@ describe('throttle', () => {
 	it('a class behind one address can all sign in: a right password is attempt + succeed, net zero', () => {
 		const { throttle } = setup();
 		for (let student = 0; student < 100; student++) {
-			expect(throttle.attempt(from('203.0.113.7', `student-${student}`)).allowed).toBe(true);
-			throttle.succeed(from('203.0.113.7', `student-${student}`));
+			const turn = throttle.attempt(from('203.0.113.7', `student-${student}`));
+			expect(turn.allowed).toBe(true);
+			throttle.succeed(tokenOf(turn));
 		}
 		expect(throttle.attempt(from('203.0.113.7', 'student-0')).allowed).toBe(true);
 	});
@@ -148,8 +156,9 @@ describe('throttle', () => {
 	it('the same Account signing in over and over never runs out either', () => {
 		const { throttle } = setup();
 		for (let i = 0; i < 200; i++) {
-			expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
-			throttle.succeed(from('1.1.1.1', 'mine'));
+			const turn = throttle.attempt(from('1.1.1.1', 'mine'));
+			expect(turn.allowed).toBe(true);
+			throttle.succeed(tokenOf(turn));
 		}
 	});
 
@@ -160,7 +169,7 @@ describe('throttle', () => {
 		// ...then a sign-in with the attacker's own valid Account, many times over.
 		for (let i = 0; i < 20; i++) {
 			const turn = throttle.attempt(from('1.1.1.1', 'attacker'));
-			if (turn.allowed) throttle.succeed(from('1.1.1.1', 'attacker'));
+			if (turn.allowed) throttle.succeed(turn.token);
 		}
 		// The victim's pair budget is untouched, and so is the address's count of their failures.
 		expect(throttle.attempt(from('1.1.1.1', 'victim')).allowed).toBe(false);
@@ -170,22 +179,105 @@ describe('throttle', () => {
 		expect(throttle.attempt(from('1.1.1.1', 'other-4')).allowed).toBe(false);
 	});
 
-	it('succeed leaves no empty entry behind, even when its window has ended', () => {
-		const { throttle, advance } = setup();
-		throttle.attempt(from('1.1.1.1', 'mine'));
-		throttle.succeed(from('1.1.1.1', 'mine'));
+	it('succeed leaves no empty entry behind', () => {
+		const { throttle } = setup();
+		throttle.succeed(tokenOf(throttle.attempt(from('1.1.1.1', 'mine'))));
 		expect(throttle.size()).toBe(0);
-		throttle.attempt(from('1.1.1.1', 'mine'));
-		advance(10 * MIN);
-		throttle.succeed(from('1.1.1.1', 'mine'));
-		throttle.attempt(from('9.9.9.9', null));
-		expect(throttle.size()).toBe(1);
+	});
+
+	it('succeed takes a count back only once per attempt, however often it is called', () => {
+		const { throttle } = setup({ addressLimit: 3 });
+		throttle.attempt(from('1.1.1.1', 'a'));
+		throttle.attempt(from('1.1.1.1', 'b'));
+		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'c')));
+		for (let i = 0; i < 5; i++) throttle.succeed(mine);
+		// Three attempts, one given back: one more fits, the next does not.
+		expect(throttle.attempt(from('1.1.1.1', 'd')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'e')).allowed).toBe(false);
+	});
+
+	describe('when the window ended between the attempt and its success', () => {
+		// The counted attempt belonged to a window that is gone; what the counters hold now is other
+		// attempts' failures, and a right password must not give them a free guess back.
+		it('leaves the new window of the address as it is', () => {
+			const { throttle, advance } = setup({ addressLimit: 3 });
+			const slow = tokenOf(throttle.attempt(from('1.1.1.1', 'mine')));
+			advance(10 * MIN);
+			throttle.attempt(from('1.1.1.1', 'guess-1'));
+			throttle.attempt(from('1.1.1.1', 'guess-2'));
+
+			throttle.succeed(slow);
+
+			expect(throttle.attempt(from('1.1.1.1', 'guess-3')).allowed).toBe(true);
+			expect(throttle.attempt(from('1.1.1.1', 'guess-4')).allowed).toBe(false);
+		});
+
+		it('leaves the new window of the Account as it is', () => {
+			const { throttle, advance } = setup({ accountLimit: 3 });
+			const slow = tokenOf(throttle.attempt(from('1.1.1.1', 'mine')));
+			advance(10 * MIN);
+			throttle.attempt(from('2.2.2.2', 'mine'));
+			throttle.attempt(from('3.3.3.3', 'mine'));
+
+			throttle.succeed(slow);
+
+			expect(throttle.attempt(from('4.4.4.4', 'mine')).allowed).toBe(true);
+			expect(throttle.attempt(from('5.5.5.5', 'mine')).allowed).toBe(false);
+		});
+
+		it('does not clear the Account + address counter of the new window', () => {
+			const { throttle, advance } = setup({ limit: 3 });
+			const slow = tokenOf(throttle.attempt(from('1.1.1.1', 'mine')));
+			advance(10 * MIN);
+			throttle.attempt(from('1.1.1.1', 'mine'));
+			throttle.attempt(from('1.1.1.1', 'mine'));
+
+			throttle.succeed(slow);
+
+			expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
+			expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(false);
+		});
+
+		it('still gives the count back while the window is the same, even if it ended just now', () => {
+			const { throttle, advance } = setup({ addressLimit: 3 });
+			throttle.attempt(from('1.1.1.1', 'a'));
+			const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'b')));
+			advance(10 * MIN);
+
+			throttle.succeed(mine);
+			// Nothing in the new window is touched: it starts empty.
+			for (let i = 0; i < 3; i++)
+				expect(throttle.attempt(from('1.1.1.1', `n${i}`)).allowed).toBe(true);
+			expect(throttle.attempt(from('1.1.1.1', 'n3')).allowed).toBe(false);
+		});
+
+		it('cannot take a count from a later attempt that landed in the same millisecond as one it already gave back', () => {
+			const { throttle } = setup({ addressLimit: 2 });
+			const first = tokenOf(throttle.attempt(from('1.1.1.1', 'a')));
+			throttle.succeed(first);
+			throttle.attempt(from('1.1.1.1', 'b'));
+			throttle.attempt(from('1.1.1.1', 'c'));
+
+			throttle.succeed(first);
+
+			expect(throttle.attempt(from('1.1.1.1', 'd')).allowed).toBe(false);
+		});
+	});
+
+	it('succeed still gives the address its count back when a full Account map had no room for the Account', () => {
+		const { throttle } = setup({ maxKeys: 2, addressLimit: 3 });
+		throttle.attempt(from('1.1.1.1', 'a'));
+		throttle.attempt(from('1.1.1.2', 'b'));
+		// The Account maps are full of live entries: this Account goes uncounted there.
+		const mine = tokenOf(throttle.attempt(from('1.1.1.3', 'c')));
+		throttle.succeed(mine);
+		expect(throttle.attempt(from('1.1.1.4', 'd')).allowed).toBe(true);
 	});
 
 	it('succeed with no account does nothing', () => {
 		const { throttle } = setup();
-		throttle.attempt(from('1.1.1.1', null));
-		throttle.succeed(from('1.1.1.1', null));
+		const turn = throttle.attempt(from('1.1.1.1', null));
+		throttle.succeed(tokenOf(turn));
 		expect(throttle.size()).toBe(1);
 	});
 

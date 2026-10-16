@@ -3,11 +3,37 @@ import { isIP } from 'node:net';
 export interface ThrottleInput {
 	/** The client address as the server saw it; any spelling of one address shares a counter. */
 	address: string;
-	/** The Account's id, or null when the sign-in names none. */
+	/**
+	 * Whom the sign-in names, as a key: an Account's id, or for an email that has no Account a digest of
+	 * that email (the caller makes it, see `signin/sign-in.ts`). Null when it names nobody (a blank form).
+	 */
 	accountId: string | null;
 }
 
-export type ThrottleCheck = { allowed: true } | { allowed: false; retryAfterMs: number };
+/**
+ * Opaque: what `attempt` counted and in which window, handed back to `succeed`. Not to be built or read
+ * by callers.
+ */
+export interface ThrottleToken {
+	/** Whether the attempt named an Account; one that named none gives nothing back. */
+	readonly named: boolean;
+	readonly counted: {
+		readonly address: CountedIn;
+		readonly pair?: CountedIn;
+		readonly account?: CountedIn;
+	};
+	spent: boolean;
+}
+
+/** The entry an attempt was counted in: its key and the end of its window, which names the window. */
+interface CountedIn {
+	readonly key: string;
+	readonly resetAt: number;
+}
+
+export type ThrottleCheck =
+	| { allowed: true; token: ThrottleToken }
+	| { allowed: false; retryAfterMs: number };
 
 export interface ThrottleOptions {
 	/** Attempts per window for one Account from one address. */
@@ -29,12 +55,17 @@ export interface Throttle {
 	 */
 	attempt(input: ThrottleInput): ThrottleCheck;
 	/**
-	 * Call after a right password. Clears the Account + address counter, and takes back the one count
-	 * `attempt` added to the address and to the Account, so right passwords never use up either budget
-	 * (a class behind one shared address would otherwise be locked out after 20 sign-ins). Never clears
-	 * the address or Account counters: a valid Account cannot reset what someone's wrong guesses used.
+	 * Call with the token of an admitted attempt after a right password. Clears the Account + address
+	 * counter, and takes back the one count `attempt` added to the address and to the Account, so right
+	 * passwords never use up either budget (a class behind one shared address would otherwise be locked out
+	 * after 20 sign-ins). Never clears the address or Account counters: a valid Account cannot reset what
+	 * someone's wrong guesses used.
+	 *
+	 * A counter gives back only if it is still in the window the attempt was counted in. If the window
+	 * ended and a new one began meanwhile, that count is gone and the new window's failures stay. A token
+	 * is good once. A token with no Account (a blank form, as Sign up uses) gives nothing back.
 	 */
-	succeed(input: ThrottleInput): void;
+	succeed(token: ThrottleToken): void;
 	size(): number;
 }
 
@@ -87,15 +118,19 @@ interface Entry {
 /**
  * In-memory sign-in throttle, per process: counters reset on restart and are not shared between instances.
  *
- * Three counters, none keyed on a string the client types: the address (20), the Account at an address
- * (5, which the address counter caps at 20 per address) and the Account (50). The caller looks the
- * Account up the way Better Auth does and passes its id, or null when there is none; then only the
- * address counter applies. If that lookup ever disagrees with the library, the Account limits are
- * skipped but the address limit still holds.
+ * Three counters: the address (20), the Account at an address (5, which the address counter caps at 20 per
+ * address) and the Account (50). The caller names the Account by a key (`accountId`): the id of the Account
+ * the email names, looked up the way Better Auth does, or, when the email has no Account, a digest of the
+ * email (`email:` + its SHA-256), so the real address is never held in memory. Known and unknown emails
+ * therefore reach the throttled state on the same schedule. Without that, only a known email would be
+ * throttled, and since a throttled refusal skips the password hash and answers faster, six tries and a
+ * stopwatch would tell an attacker which emails have an Account. The only key built from what the client
+ * typed is that digest, which is bounded in size and counted in the capped Account maps (below). A blank
+ * form names nobody (null) and only the address counter applies.
  *
- * A right password takes its own attempt back from the address and the Account counters (`succeed`),
- * so only wrong passwords spend budget. Callers that count successes too (Sign up) never call it.
- * Residual: a success whose window ended before it finished takes a count from the next window.
+ * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
+ * their window is still the one it was counted in, so only wrong passwords spend budget. Callers that
+ * count successes too (Sign up) never call it.
  *
  * The caller must show one message for "wrong password", "no such account" and "too many attempts",
  * or the Account limit tells an attacker whether an email has an Account. The Account limit also lets
@@ -105,8 +140,11 @@ interface Entry {
  * live entry (the one whose window ends earliest), and only when it holds more distinct unexpired
  * addresses than maxKeys. Residual: an attacker with more addresses than that inside one window gets
  * fresh per-address budgets and is still held to the per-Account limit. The Account maps never drop a
- * live entry (a full one skips storing the new key), and a full map never refuses an attempt.
- * Worst case: 3 * maxKeys entries.
+ * live entry (a full one skips storing the new key), and a full map never refuses an attempt. Because
+ * unknown emails are counted too, an attacker typing many different emails can fill the Account maps: new
+ * keys then go uncounted until entries expire, and the address limit still holds. Doing that takes more
+ * than maxKeys attempts inside one window, so more than maxKeys / 20 addresses. Worst case: 3 * maxKeys
+ * entries.
  */
 export const createThrottle = ({
 	limit = 5,
@@ -123,19 +161,28 @@ export const createThrottle = ({
 	const accounts = counter(accountLimit);
 	type Counter = ReturnType<typeof counter>;
 
-	const slotsFor = ({ address, accountId }: ThrottleInput): [Counter, string][] => {
+	type Slot = 'address' | 'pair' | 'account';
+	const slotsFor = ({ address, accountId }: ThrottleInput): [Slot, Counter, string][] => {
 		const where = normaliseAddress(address);
-		const slots: [Counter, string][] = [[addresses, where]];
+		const slots: [Slot, Counter, string][] = [['address', addresses, where]];
 		// The address has no '|', so the key is unambiguous whatever the id holds.
-		if (accountId !== null) slots.push([pairs, `${where}|${accountId}`], [accounts, accountId]);
+		if (accountId !== null) {
+			slots.push(['pair', pairs, `${where}|${accountId}`], ['account', accounts, accountId]);
+		}
 		return slots;
 	};
 
+	/** The entry `counted` names, only if it is still in the window the attempt was counted in. */
+	const sameWindow = ({ entries }: Counter, counted: CountedIn | undefined) => {
+		const entry = counted && entries.get(counted.key);
+		return entry && counted && entry.resetAt === counted.resetAt ? entry : undefined;
+	};
+
 	/** One count less; an entry left at zero is dropped, as if the attempt had never been made. */
-	const giveBack = ({ entries }: Counter, key: string) => {
-		const entry = entries.get(key);
-		if (!entry) return;
-		if (entry.count <= 1) entries.delete(key);
+	const giveBack = (c: Counter, counted: CountedIn | undefined) => {
+		const entry = sameWindow(c, counted);
+		if (!entry || !counted) return;
+		if (entry.count <= 1) c.entries.delete(counted.key);
 		else entry.count -= 1;
 	};
 
@@ -152,16 +199,18 @@ export const createThrottle = ({
 			for (const c of [addresses, pairs, accounts]) sweep(c, at);
 			const slots = slotsFor(input);
 			let retryAfterMs = 0;
-			for (const [c, id] of slots) {
+			for (const [, c, id] of slots) {
 				const entry = c.entries.get(id);
 				if (entry && entry.count >= c.max)
 					retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
 			}
 			if (retryAfterMs > 0) return { allowed: false, retryAfterMs };
-			for (const [c, id] of slots) {
+			const counted: Partial<Record<Slot, CountedIn>> = {};
+			for (const [slot, c, id] of slots) {
 				const entry = c.entries.get(id);
 				if (entry) {
 					entry.count += 1;
+					counted[slot] = { key: id, resetAt: entry.resetAt };
 					continue;
 				}
 				if (c.entries.size >= maxKeys) {
@@ -171,15 +220,28 @@ export const createThrottle = ({
 					if (earliest !== undefined) c.entries.delete(earliest);
 				}
 				c.entries.set(id, { count: 1, resetAt: at + windowMs });
+				counted[slot] = { key: id, resetAt: at + windowMs };
 			}
-			return { allowed: true };
+			// The address slot is always counted: the address map evicts instead of skipping.
+			const { address, pair, account } = counted;
+			return {
+				allowed: true,
+				token: {
+					named: input.accountId !== null,
+					counted: { address: address as CountedIn, pair, account },
+					spent: false
+				}
+			};
 		},
-		succeed(input) {
-			if (input.accountId === null) return;
-			const where = normaliseAddress(input.address);
-			pairs.entries.delete(`${where}|${input.accountId}`);
-			giveBack(addresses, where);
-			giveBack(accounts, input.accountId);
+		succeed(token) {
+			const { address, pair, account } = token.counted;
+			// No Account was named, or this token already gave its count back.
+			if (token.spent || !token.named) return;
+			token.spent = true;
+			// The pair counter is cleared, but only the window the right password belongs to.
+			if (pair && sameWindow(pairs, pair)) pairs.entries.delete(pair.key);
+			giveBack(addresses, address);
+			giveBack(accounts, account);
 		},
 		size: () => addresses.entries.size + pairs.entries.size + accounts.entries.size
 	};

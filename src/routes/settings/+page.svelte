@@ -59,7 +59,7 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		</form>
 	</section>
 
-	<section class="group last">
+	<section class="group" class:last={!data.multiUser}>
 		<div class="label">
 			<h2>Reset progress</h2>
 			<p>Start over from the beginning.</p>
@@ -87,6 +87,19 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 			{/if}
 		</div>
 	</section>
+
+	<!-- Sign out is for a Multi-user Instance only: Local Mode has no accounts and no sign-in. -->
+	{#if data.multiUser}
+		<section class="group last">
+			<div class="label">
+				<h2>Session</h2>
+			</div>
+			<form class="control" method="POST" action="?/signout">
+				<button type="submit" class="outline">Sign out</button>
+				{#if form?.signOut}<p class="error" role="alert">{form.signOut}</p>{/if}
+			</form>
+		</section>
+	{/if}
 </main>
 
 <style>

@@ -5,5 +5,7 @@ export const load: LayoutServerLoad = ({ locals }) => ({
 	displayName: locals.identity?.displayName,
 	// Only the admin of a Multi-user Instance has Accounts to manage. The Local Learner is an admin
 	// too, but Local Mode has no Accounts and no Users page.
-	showUsers: locals.instance.mode() === 'multi' && locals.identity?.role === 'admin'
+	showUsers: locals.instance.mode() === 'multi' && locals.identity?.role === 'admin',
+	// Only a signed-in Account has a session to end. Local Mode has no accounts, so no Sign out.
+	showSignOut: locals.instance.mode() === 'multi' && locals.identity !== undefined
 });

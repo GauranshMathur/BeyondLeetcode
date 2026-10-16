@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -281,7 +282,7 @@ describe('one message for everything that is wrong with a sign-in', () => {
 		const notAnEmail = await harness().post({ email: 'ada', password: ada.password });
 
 		for (const result of [wrong, unknown, blank, noEmail, notAnEmail]) {
-			expect(result).toMatchObject({ status: 400, data: { message: WRONG } });
+			expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		}
 		// Byte for byte the same apart from the typed email.
 		expect(refused(wrong)).toBe(refused(unknown).replace('nobody@example.com', 'ada@example.com'));
@@ -295,7 +296,11 @@ describe('one message for everything that is wrong with a sign-in', () => {
 			data: { email: 'ada@example.com', message: WRONG }
 		});
 		expect(refused(result)).not.toContain('hunter2');
-		expect(Object.keys((result as { data: object }).data).sort()).toEqual(['email', 'message']);
+		expect(Object.keys((result as { data: object }).data).sort()).toEqual([
+			'email',
+			'message',
+			'wrong'
+		]);
 	});
 
 	it('does not ask Better Auth anything when the form is blank, but still counts the attempt', async () => {
@@ -327,7 +332,7 @@ describe('one message for everything that is wrong with a sign-in', () => {
 
 		const result = await post(ada);
 
-		expect(result).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		expect(refused(result)).not.toContain(code);
 	});
 
@@ -349,7 +354,7 @@ describe('one message for everything that is wrong with a sign-in', () => {
 
 		const result = await post(ada);
 
-		expect(result).toMatchObject({ status: 500, data: { message: FAILED } });
+		expect(result).toMatchObject({ status: 500, data: { message: FAILED, wrong: false } });
 		expect(refused(result)).not.toMatch(/SQLITE|app\.db|SELECT/);
 		expect(JSON.stringify(spy.mock.calls)).not.toMatch(/app\.db|SELECT|ada@example/);
 		expect(spy).toHaveBeenCalledOnce();
@@ -374,7 +379,7 @@ describe('one message for everything that is wrong with a sign-in', () => {
 
 		const result = await post(ada);
 
-		expect(result).toMatchObject({ status: 500, data: { message: FAILED } });
+		expect(result).toMatchObject({ status: 500, data: { message: FAILED, wrong: false } });
 		expect(refused(result)).not.toMatch(/banned/i);
 	});
 
@@ -398,7 +403,7 @@ describe('one message for everything that is wrong with a sign-in', () => {
 
 		const result = await post(ada);
 
-		expect(result).toMatchObject({ status: 500, data: { message: FAILED } });
+		expect(result).toMatchObject({ status: 500, data: { message: FAILED, wrong: false } });
 		expect(signInEmail).not.toHaveBeenCalled();
 		expect(JSON.stringify(spy.mock.calls)).not.toMatch(/SELECT|ada@example/);
 	});
@@ -406,7 +411,7 @@ describe('one message for everything that is wrong with a sign-in', () => {
 	it('is unavailable, not a crash, when the request has no Better Auth', async () => {
 		const { post } = harness({ auth: undefined });
 
-		expect(await post(ada)).toMatchObject({ status: 503, data: { message: FAILED } });
+		expect(await post(ada)).toMatchObject({ status: 503, data: { message: FAILED, wrong: false } });
 	});
 });
 
@@ -421,8 +426,8 @@ describe('the sign-in limits', () => {
 		const withRightPassword = await post(ada);
 		const withWrongPassword = await post(wrongPassword);
 
-		expect(withRightPassword).toMatchObject({ status: 400, data: { message: WRONG } });
-		expect(withWrongPassword).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(withRightPassword).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
+		expect(withWrongPassword).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		expect(signInEmail).not.toHaveBeenCalled();
 	});
 
@@ -437,20 +442,66 @@ describe('the sign-in limits', () => {
 		expect(throttled.setHeaders).not.toHaveBeenCalled();
 	});
 
-	it('counts the attempt against the Account and address Better Auth would sign in, and the address alone for an unknown email', async () => {
+	it('counts the attempt against the Account Better Auth would sign in and the address, a digest of the email when there is no Account, and the address alone for a blank form', async () => {
 		const throttle = createThrottle();
 		const attempt = vi.spyOn(throttle, 'attempt');
 		const { post } = harness({ throttle, address: '203.0.113.9' });
 
 		await post(wrongPassword);
-		await post({ email: 'nobody@example.com', password: 'x' });
+		await post({ email: 'Nobody@Example.com', password: 'x' });
 		await post({ email: '', password: '' });
 
-		expect(attempt.mock.calls.map(([input]) => input)).toEqual([
-			{ address: '203.0.113.9', accountId: 'user-ada' },
-			{ address: '203.0.113.9', accountId: null },
-			{ address: '203.0.113.9', accountId: null }
-		]);
+		const inputs = attempt.mock.calls.map(([input]) => input);
+		expect(inputs[0]).toEqual({ address: '203.0.113.9', accountId: 'user-ada' });
+		expect(inputs[1]).toEqual({
+			address: '203.0.113.9',
+			accountId: `email:${createHash('sha256').update('nobody@example.com').digest('hex')}`
+		});
+		expect(inputs[2]).toEqual({ address: '203.0.113.9', accountId: null });
+	});
+
+	it('never hands the throttle an email, and keys unknown emails the way the lookup spells them', async () => {
+		const throttle = createThrottle();
+		const attempt = vi.spyOn(throttle, 'attempt');
+		const { post } = harness({ throttle });
+
+		await post({ email: 'nobody@example.com', password: 'x' });
+		await post({ email: 'NOBODY@example.com', password: 'x' });
+		await post({ email: ' nobody@example.com', password: 'x' });
+
+		const keys = attempt.mock.calls.map(([input]) => input.accountId);
+		expect(JSON.stringify(keys)).not.toContain('nobody@');
+		// Lowercased like Better Auth's lookup, so one spelling cannot escape the other's count; not trimmed.
+		expect(keys[0]).toBe(keys[1]);
+		expect(keys[2]).not.toBe(keys[0]);
+	});
+
+	it('refuses the 6th wrong try for an unknown email exactly as for a known one, from one address', async () => {
+		const unknown = { email: 'nobody@example.com', password: 'not the password' };
+		for (const typed of [wrongPassword, unknown]) {
+			const { post, signInEmail } = harness();
+			const answers = [];
+			for (let i = 0; i < 6; i++) answers.push(await post(typed));
+
+			// Five were asked (and wrong); the sixth was refused before the password was looked at.
+			expect(signInEmail, typed.email).toHaveBeenCalledTimes(5);
+			expect(answers.map((a) => (a as { status: number }).status)).toEqual([
+				400, 400, 400, 400, 400, 400
+			]);
+		}
+	});
+
+	it('limits an unknown email across many addresses at 50, like a known one', async () => {
+		const throttle = createThrottle();
+		const unknown = { email: 'nobody@example.com', password: 'x' };
+		let asked = 0;
+		for (let i = 0; i < 52; i++) {
+			const { post, signInEmail } = harness({ throttle, address: `198.51.100.${i}` });
+			await post(unknown);
+			asked += signInEmail.mock.calls.length;
+		}
+
+		expect(asked).toBe(50);
 	});
 
 	it('counts before anything else: a flood of guesses at unknown emails is limited per address at 20', async () => {
@@ -460,7 +511,7 @@ describe('the sign-in limits', () => {
 
 		const result = await post(ada);
 
-		expect(result).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		expect(signInEmail).not.toHaveBeenCalled();
 	});
 
@@ -482,7 +533,7 @@ describe('the sign-in limits', () => {
 
 		const result = await harness({ throttle, address: '203.0.113.200' }).post(ada);
 
-		expect(result).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 	});
 
 	it('does not let right passwords use up the budget: a class behind one address signs in 30 times', async () => {
@@ -515,7 +566,7 @@ describe('the sign-in limits', () => {
 		for (let i = 0; i < 10; i++)
 			await post({ email: 'eve@example.com', password: 'eve-eve-eve-eve' });
 
-		expect(await post(ada)).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(await post(ada)).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 	});
 
 	it('forgives an Account’s own typos at an address once the right password is entered', async () => {
@@ -542,7 +593,7 @@ describe('the sign-in limits', () => {
 
 		const result = await harness({ throttle, address: throwing }).post(ada);
 
-		expect(result).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 	});
 
 	it('uses a throttle of its own: the sign-up limit and this one never share counters', async () => {
@@ -616,7 +667,7 @@ describe('with the real Better Auth', () => {
 		const wrong = await post({ email: 'ada@example.com', password: 'wrong wrong wrong' });
 		const unknown = await post({ email: 'nobody@example.com', password: 'wrong wrong wrong' });
 
-		expect(wrong).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(wrong).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		expect(JSON.stringify(wrong)).toBe(
 			JSON.stringify(unknown).replace('nobody@example.com', 'ada@example.com')
 		);
@@ -630,7 +681,7 @@ describe('with the real Better Auth', () => {
 
 		const result = await post({ email: 'ada@example.com', password });
 
-		expect(result).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		expect(cookies.size).toBe(0);
 	});
 
@@ -639,7 +690,7 @@ describe('with the real Better Auth', () => {
 
 		const result = await post({ email: ' ada@example.com ', password });
 
-		expect(result).toMatchObject({ status: 400, data: { message: WRONG } });
+		expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		expect(cookies.size).toBe(0);
 	});
 });

@@ -4,6 +4,10 @@ import favicon from '$lib/assets/favicon.svg';
 import '$lib/styles/tokens.css';
 
 let { children, data } = $props();
+
+// These pages show the wordmark alone: before the Instance is set up, or before anyone is signed in,
+// there is no Map and no name to link to.
+const BARE = new Set(['/setup', '/signin', '/signup']);
 </script>
 
 <svelte:head>
@@ -13,8 +17,7 @@ let { children, data } = $props();
 {#if !(page.route.id === '/problems/[problemId]' && !page.error)}
 <header>
 	<a class="brand" href="/">Beyond Leetcode</a>
-	<!-- Setup shows the wordmark alone: before the Instance is set up there is no Map and no name. -->
-	{#if page.route.id !== '/setup'}
+	{#if !BARE.has(page.route.id ?? '')}
 	<nav aria-label="Primary">
 		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
 		<!-- Users is the admin's, in Multi-user Mode only (the layout load decides). -->
@@ -23,6 +26,12 @@ let { children, data } = $props();
 		{/if}
 		<!-- The display name opens Settings; Local Mode's Identity names it "Local". -->
 		<a href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}>{data.displayName}</a>
+		<!-- Sign out is a POST, never a link; Settings has it too, and on a phone only Settings does. -->
+		{#if data.showSignOut}
+		<form class="signout" method="POST" action="/settings?/signout">
+			<button type="submit">Sign out</button>
+		</form>
+		{/if}
 	</nav>
 	{/if}
 </header>
@@ -62,6 +71,27 @@ let { children, data } = $props();
 		padding: 12px 0;
 		line-height: 20px;
 		text-decoration: none;
+	}
+	/* A real button set exactly like a nav link (F.11): mono 14, ink, no fill, no border, 44px tall. */
+	.signout {
+		display: contents;
+	}
+	.signout button {
+		padding: 12px 0;
+		line-height: 20px;
+		background: transparent;
+		border: 0;
+		border-radius: 2px;
+		color: var(--ink);
+		font-family: inherit;
+		font-size: inherit;
+		cursor: pointer;
+	}
+	/* Below 768px the header keeps at most Users and the name; Sign out is on Settings (F.10). */
+	@media (max-width: 767px) {
+		.signout {
+			display: none;
+		}
 	}
 	nav a[aria-current='page'] {
 		text-decoration: underline;
