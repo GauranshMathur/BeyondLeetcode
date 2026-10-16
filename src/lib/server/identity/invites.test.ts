@@ -12,7 +12,13 @@ async function setup() {
 	const db = await createTestDb();
 	await db.learner.create({ data: { id: admin.learnerId } });
 	await db.user.create({
-		data: { id: 'u-admin', name: 'Ada', email: 'ada@example.com', role: 'admin', learnerId: 'L-admin' }
+		data: {
+			id: 'u-admin',
+			name: 'Ada',
+			email: 'ada@example.com',
+			role: 'admin',
+			learnerId: 'L-admin'
+		}
 	});
 	return { db, invites: createInvites({ db, origin }) };
 }

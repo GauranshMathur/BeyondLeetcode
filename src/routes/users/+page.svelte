@@ -18,6 +18,31 @@ const explanation = {
 
 // A refused or failed switch changed nothing: the select goes back to what the Instance holds, so it
 // never shows a mode that is not in force.
+// "Done" hides the link; it cannot be shown again, so it stays hidden until the next Invite is made.
+let dismissed = $state(false);
+let copied = $state(false);
+let linkField = $state<HTMLInputElement>();
+const invite = $derived(dismissed ? undefined : form && 'invite' in form ? form.invite : undefined);
+
+async function copyLink() {
+	if (!invite) return;
+	try {
+		await navigator.clipboard.writeText(invite.link);
+		copied = true;
+	} catch {
+		// No clipboard access (plain http, or refused): select the link so Ctrl+C works.
+		linkField?.select();
+	}
+}
+
+const makeInvite: SubmitFunction = () => {
+	dismissed = false;
+	copied = false;
+	return async ({ update }) => {
+		await update({ reset: false });
+	};
+};
+
 const switchRegistration: SubmitFunction = ({ formElement }) => {
 	return async ({ result, update }) => {
 		await update({ reset: false });
@@ -63,6 +88,46 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		</form>
 	</section>
 
+	<section class="setting">
+		<div class="label">
+			<h2>Invite a user</h2>
+			<p>Creates a link for one new account.</p>
+		</div>
+		<div class="control">
+			<form method="POST" action="?/invite" use:enhance={makeInvite}>
+				<button type="submit" class="outline">Invite a user</button>
+			</form>
+			
+			{#if invite}
+				<div class="detail" role="status">
+					<span class="eyebrow ink">Invite link ready</span>
+					<div class="copy">
+						<input
+							bind:this={linkField}
+							type="text"
+							readonly
+							value={invite.link}
+							aria-label="Invite link"
+							onfocus={(e) => e.currentTarget.select()}
+						/>
+						{#if enhanced}
+							<button type="button" class="outline" onclick={copyLink}>
+								{copied ? 'Copied' : 'Copy link'}
+							</button>
+						{/if}
+					</div>
+					<span class="lead small">
+						There is no email. Copy this link and send it to the person yourself. It works for one
+						account, for 7 days.
+					</span>
+					{#if enhanced}
+						<button type="button" class="quiet" onclick={() => (dismissed = true)}>Done</button>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	</section>
+
 	<section class="group">
 		<h2 id="all-users">All users</h2>
 		<div class="scroll">
@@ -90,6 +155,20 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 								<!-- Reset password (C36a) and Remove (C37) land here. F.15 draws no dead buttons, so until
 									they work a row shows none; the admin's own row says why it never gets Remove. -->
 								{#if account.you}<span class="why">you cannot remove yourself</span>{/if}
+							</td>
+						</tr>
+					{/each}
+					{#each data.pending as pending (pending.id)}
+						<tr>
+							<td><span class="pending">Pending invite</span></td>
+							<td>—</td>
+							<td>—</td>
+							<td>invited <time datetime={pending.createdAt}>{pending.createdAt.slice(0, 10)}</time></td>
+							<td class="actions">
+								<form method="POST" action="?/cancel" use:enhance>
+									<input type="hidden" name="id" value={pending.id} />
+									<button type="submit" class="quiet">Cancel invite</button>
+								</form>
 							</td>
 						</tr>
 					{/each}
@@ -205,6 +284,61 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		font-family: var(--font-mono);
 		font-size: 15px;
 		font-weight: 500;
+	}
+	.control .outline {
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
+	}
+	.detail {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 20px 0 0;
+		border-top: 1px solid var(--rule);
+	}
+	.eyebrow.ink {
+		color: var(--ink);
+		font-size: 12px;
+	}
+	.copy {
+		display: flex;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.copy input {
+		flex: 1 1 280px;
+		min-width: 0;
+		height: 52px;
+		box-sizing: border-box;
+		padding: 0 16px;
+		background: var(--field);
+		border: 1px solid var(--ink);
+		border-radius: 2px;
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 14px;
+	}
+	.small {
+		font-size: 16px;
+	}
+	.control .quiet,
+	td .quiet {
+		height: auto;
+		padding: 12px 0;
+		line-height: 20px;
+		background: transparent;
+		border: 0;
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 14px;
+		font-weight: 400;
+		cursor: pointer;
+	}
+	.pending {
+		font-size: 21px;
+		font-style: italic;
+		color: var(--muted);
 	}
 	.lead {
 		margin: 0;

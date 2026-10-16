@@ -30,6 +30,7 @@ export function createHandle(
 			// Cannot happen at start (createApp refuses it); fail closed rather than serve nobody.
 			if (!app.multiUser) return refuseFraming(refusal(503));
 			event.locals.auth = app.multiUser.auth;
+			event.locals.invites = app.multiUser.invites;
 			who = await app.multiUser.identity.resolve(event);
 		}
 		// An active session was extended: its new cookie goes out with whatever this request answers (a

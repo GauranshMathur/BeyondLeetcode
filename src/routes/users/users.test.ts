@@ -5,6 +5,7 @@ import type { Db } from '$lib/server/db';
 import { createHandle } from '$lib/server/handle';
 import { createAuth } from '$lib/server/identity/auth';
 import { createLocalIdentity } from '$lib/server/identity/index';
+import { createInvites } from '$lib/server/identity/invites';
 import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
 import { createRegistration } from '$lib/server/identity/registration';
 import { createFirstAdmin } from '$lib/server/identity/setup';
@@ -51,16 +52,17 @@ async function setup() {
 		return cookieOf(signedUp.headers);
 	}
 
+	const invites = createInvites({ db, origin: 'http://localhost:3000' });
 	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 	const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
 	const handle = createHandle({
 		instance,
 		identity: await createLocalIdentity(db),
 		core,
-		multiUser: { auth, identity: createMultiUserIdentity(auth) },
+		multiUser: { auth, identity: createMultiUserIdentity(auth), invites },
 		setup: setupPort
 	});
-	return { db, auth, instance, admin, learner, handle };
+	return { db, auth, instance, admin, learner, handle, invites };
 }
 
 /** Runs one request through the hook; the page's load runs where SvelteKit would run it. */
@@ -466,4 +468,159 @@ describe('the Registration action, if the hook ever let a request through', () =
 
 		expect(i.setRegistrationMode).toHaveBeenCalledExactlyOnceWith('open');
 	});
+});
+
+/** Posts to the Invite actions through the real hook. */
+async function post(
+	handle: ReturnType<typeof createHandle>,
+	cookie: string,
+	name: 'invite' | 'cancel',
+	fields: Record<string, string> = {}
+) {
+	const setHeaders = vi.fn();
+	const resolve = vi.fn(async (event: RequestEvent, _opts?: ResolveOptions) => {
+		const result = await actions[name]({ ...event, setHeaders } as never);
+		return Response.json(result ?? null, { status: result?.status ?? 200 });
+	});
+	const event = {
+		url: new URL(`/users?/${name}`, 'http://localhost'),
+		route: { id: '/users' },
+		request: new Request(`http://localhost/users?/${name}`, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/x-www-form-urlencoded',
+				...(cookie ? { cookie } : {})
+			},
+			body: new URLSearchParams(fields)
+		}),
+		cookies: { get: () => undefined, set: vi.fn() },
+		locals: {}
+	} as unknown as RequestEvent;
+	const response = await handle({ event, resolve });
+	return { response, resolve, setHeaders };
+}
+
+describe('Invites on the Users page', () => {
+	it('lets the admin create an Invite: the link is in that one response, the database holds only a hash', async () => {
+		const { handle, admin, db } = await setup();
+
+		const { response, setHeaders } = await post(handle, admin, 'invite');
+
+		expect(response.status).toBe(200);
+		const text = JSON.stringify(await response.json());
+		const link = text.match(/http:\\?\/\\?\/localhost:3000\\?\/invite\\?\/([\w-]{43})/);
+		expect(link).toBeTruthy();
+		const token = (link as RegExpMatchArray)[1];
+		expect(JSON.stringify(await db.invite.findMany())).not.toContain(token);
+		expect(setHeaders).toHaveBeenCalledWith({ 'Cache-Control': 'no-store' });
+	});
+
+	it('lists pending Invites in the load, without any token', async () => {
+		const { handle, admin, invites } = await setup();
+		const made = await invites.create({
+			who: { learnerId: 'local', displayName: 'Ada', role: 'admin' },
+			now: new Date()
+		});
+
+		const { response } = await visit(handle, '/users', admin);
+
+		const body = await response.json();
+		expect(body.pending).toEqual([expect.objectContaining({ id: made.id })]);
+		expect(JSON.stringify(body)).not.toContain(made.token);
+	});
+
+	it('cancels a pending Invite; the cancelled link no longer works', async () => {
+		const { handle, admin, invites } = await setup();
+		const made = await invites.create({
+			who: { learnerId: 'local', displayName: 'Ada', role: 'admin' },
+			now: new Date()
+		});
+
+		const { response } = await post(handle, admin, 'cancel', { id: made.id });
+
+		expect(response.status).toBe(200);
+		expect(await invites.lookup(made.token, new Date())).toBeNull();
+	});
+
+	it.each([
+		['an unknown id', { id: 'nope' }],
+		['no id', {}]
+	])('answers %s with a fixed message', async (_, fields) => {
+		const { handle, admin } = await setup();
+
+		const { response } = await post(handle, admin, 'cancel', fields);
+
+		expect(response.status).toBe(404);
+		expect(JSON.stringify(await response.json())).toContain('no longer pending');
+	});
+
+	it.each(['invite', 'cancel'] as const)(
+		'%s: refuses a learner with 403 and writes nothing',
+		async (name) => {
+			const { handle, learner, db, invites } = await setup();
+			const lin = await learner('Lin Learner', 'lin@example.com');
+			const made = await invites.create({
+				who: { learnerId: 'local', displayName: 'Ada', role: 'admin' },
+				now: new Date()
+			});
+
+			const { response, resolve } = await post(handle, lin, name, { id: made.id });
+
+			expect(response.status).toBe(403);
+			expect(resolve).not.toHaveBeenCalled();
+			expect(await db.invite.count()).toBe(1);
+		}
+	);
+
+	it.each(['invite', 'cancel'] as const)(
+		'%s: sends a signed-out request to Sign in',
+		async (name) => {
+			const { handle, db } = await setup();
+
+			const { response, resolve } = await post(handle, '', name, { id: 'x' });
+
+			expect(response.status).toBe(303);
+			expect(resolve).not.toHaveBeenCalled();
+			expect(await db.invite.count()).toBe(0);
+		}
+	);
+
+	it.each(['invite', 'cancel'] as const)('%s: does not exist in Local Mode', async (name) => {
+		const db = await createFileTestDb();
+		const instance = await createInstance(db);
+		await instance.chooseLocal();
+		const identity = await createLocalIdentity(db);
+		await identity.ensureLocalLearner();
+		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
+		const handle = createHandle({
+			instance,
+			identity,
+			core,
+			multiUser: null,
+			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']
+		});
+
+		const { response, resolve } = await post(handle, '', name, { id: 'x' });
+
+		expect(response.status).toBe(404);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(await db.invite.count()).toBe(0);
+	});
+
+	it.each(['invite', 'cancel'] as const)(
+		'%s: is 403 for a non-admin, 404 without Invites, even past the hook',
+		async (name) => {
+			const learner = { learnerId: 'l', displayName: 'N', role: 'learner' as const };
+			const admin = { ...learner, role: 'admin' as const };
+			const event = (locals: Record<string, unknown>) =>
+				({ locals, setHeaders: vi.fn(), request: { formData: vi.fn() } }) as never;
+			await expect(actions[name](event({ identity: learner, invites: {} }))).rejects.toMatchObject({
+				status: 403
+			});
+			await expect(actions[name](event({}))).rejects.toMatchObject({ status: 403 });
+			await expect(actions[name](event({ identity: admin }))).rejects.toMatchObject({
+				status: 404
+			});
+		}
+	);
 });

@@ -111,6 +111,9 @@ describe('Multi-user', () => {
 			request: { headers: new Headers({ cookie }) }
 		});
 		expect(who).toMatchObject({ displayName: 'Ada', role: 'admin', learnerId: 'local' });
+		// Invite links carry the validated ORIGIN, the one Better Auth uses.
+		const made = await app.multiUser?.invites.create({ who: who as never, now: new Date() });
+		expect(made?.link).toBe(`http://localhost:4174/invite/${made?.token}`);
 		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 	}, 30_000);
 
