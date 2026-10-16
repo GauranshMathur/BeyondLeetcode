@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.48.0...v0.49.0) (2026-10-16)
+
+
+### Features
+
+* **beyondleetcode:** C33c cap names at 100 characters ([#188](https://github.com/GauranshMathur/BeyondLeetcode/issues/188)) ([c8c6730](https://github.com/GauranshMathur/BeyondLeetcode/commit/c8c67308f533e2524bfe0b50ed133b633d928fa6))
+
 ## [0.48.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.47.0...v0.48.0) (2026-10-16)
 
 
