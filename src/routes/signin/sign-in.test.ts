@@ -107,6 +107,9 @@ describe('landing: where a sign-in goes', () => {
 	it.each([
 		['/topics/stacks', '/topics/stacks'],
 		['/problems/p?tab=hints#top', '/problems/p?tab=hints#top'],
+		['/topics/%E6%97%A5', '/topics/%E6%97%A5'],
+		['/topics/日本?q=é', '/topics/%E6%97%A5%E6%9C%AC?q=%C3%A9'],
+		['/ok ', '/ok%20'],
 		[null, '/'],
 		['', '/'],
 		['/', '/']
@@ -146,6 +149,10 @@ describe('landing: where a sign-in goes', () => {
 		['/signup?x=1']
 	])('never lands on a sign-in or sign-up page: %j -> the Map', (next) => {
 		expect(landing(next)).toBe('/');
+	});
+
+	it('answers with text a Location header can hold, even for a lone surrogate', () => {
+		expect(landing('/\ud800')).toBe('/');
 	});
 
 	it('keeps a page whose name merely starts with signin', () => {

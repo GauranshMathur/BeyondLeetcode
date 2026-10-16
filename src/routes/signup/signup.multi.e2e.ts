@@ -269,10 +269,14 @@ test.describe('registration open', () => {
 			form: { name: 'Late', email: 'late@example.com', password: 'a long enough secret' }
 		});
 		expect(valid.status()).toBe(429);
-		const signIn = await request.post(`${open.url}/api/auth/sign-in/email`, {
-			headers: { origin: open.url },
-			data: { email: 'late@example.com', password: 'a long enough secret' }
+		// Nothing was created: there is no Account to sign in to. (Password sign-in is not served over HTTP;
+		// the Sign in form answers a missing Account and a wrong password alike.)
+		const signIn = await request.post(`${open.url}/signin`, {
+			headers: { origin: open.url, accept: 'text/html' },
+			form: { email: 'late@example.com', password: 'a long enough secret' }
 		});
-		expect(signIn.status()).toBe(401);
+		expect(signIn.status()).toBe(400);
+		expect(await signIn.text()).toContain('Email or password is wrong.');
+		expect(signIn.headers()['set-cookie']).toBeUndefined();
 	});
 });

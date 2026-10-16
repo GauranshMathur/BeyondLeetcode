@@ -44,14 +44,18 @@ const AUTH_PAGES = new Set(['/signin', '/signup']);
 export function landing(next: string | null): string {
 	const target = safeNext(next);
 	let pathname: string;
+	let encoded: string;
 	try {
 		// Decoded, because SvelteKit matches `/%73ignin` to the same route as `/signin`.
 		pathname = decodeURIComponent(new URL(target, 'http://localhost').pathname);
+		// A Location header holds ASCII: whatever else was typed (non-Latin letters, spaces) goes as %XX, so a
+		// hand-made `?next=/日本` is a redirect and not a crash. Already-encoded text is left as it is.
+		encoded = target.replace(/[^\x21-\x7e]/gu, encodeURIComponent);
 	} catch {
 		return '/';
 	}
 	const page = pathname.length > 1 ? pathname.replace(/\/+$/, '').toLowerCase() : pathname;
-	return AUTH_PAGES.has(page) ? '/' : target;
+	return AUTH_PAGES.has(page) ? '/' : encoded;
 }
 
 /** The caller's address, or '' when the server cannot tell: the throttle keeps those in one shared bucket. */
