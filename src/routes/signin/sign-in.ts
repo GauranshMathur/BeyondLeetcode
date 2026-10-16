@@ -3,7 +3,7 @@ import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { safeNext } from '$lib/server/identity/gate';
-import type { Throttle } from '$lib/server/identity/throttle';
+import type { Throttle, ThrottleInput } from '$lib/server/identity/throttle';
 
 /**
  * Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form.
@@ -64,14 +64,15 @@ function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
 }
 
 /**
- * The limits' key for an email that has no Account: a digest of the normalised email (lowercased like
- * Better Auth's lookup, not trimmed), so the email itself is never held in memory. Known and unknown
- * emails then reach the throttled state on the same schedule; if only known ones did, a throttled
- * refusal (which skips the password hash, so it answers faster) would tell an attacker which emails
- * have an Account. User ids hold no ':', so the two kinds of key never meet.
+ * The limits' stand-in for an email that has no Account: a digest of the normalised email (lowercased like
+ * Better Auth's lookup, not trimmed), so the email itself is never held in memory. Known and unknown emails
+ * then reach the throttled state on the same schedule; if only known ones did, a throttled refusal (which
+ * skips the password hash, so it answers faster) would tell an attacker which emails have an Account. It
+ * goes in its own field, not in `accountId`: the throttle keeps these keys, which the client chooses, apart
+ * from real Account ids (`throttle.ts`).
  */
-const unknownAccountKey = (email: string) =>
-	`email:${createHash('sha256').update(email.toLowerCase()).digest('hex')}`;
+const emailDigest = (email: string) =>
+	createHash('sha256').update(email.toLowerCase()).digest('hex');
 
 /** The kind of failure only: the error text may hold paths, query text and the input. */
 function logFailure(what: string, error: unknown) {
@@ -118,13 +119,15 @@ export function createSignIn(throttle: Throttle) {
 
 			// The Account Better Auth would sign in: looked up the way it does (lowercased, not trimmed), so the
 			// Account limits cannot be dodged by how the email is spelled. With none, the email's digest stands
-			// in for its id, so an unknown email is limited exactly like a known one. A blank form names nobody.
-			let accountId: string | null = null;
+			// in, so an unknown email is limited exactly like a known one. A blank form names nobody.
+			let named: Pick<ThrottleInput, 'accountId' | 'unknownEmail'> = { accountId: null };
 			if (email !== '') {
 				try {
 					const { internalAdapter } = await auth.$context;
 					const found = await internalAdapter.findUserByEmail(email.toLowerCase());
-					accountId = found?.user.id ?? unknownAccountKey(email);
+					named = found
+						? { accountId: found.user.id }
+						: { accountId: null, unknownEmail: emailDigest(email) };
 				} catch (error) {
 					logFailure('looking up the account failed', error);
 					return refused(500, email, MESSAGES.failed);
@@ -132,7 +135,7 @@ export function createSignIn(throttle: Throttle) {
 			}
 
 			// Before the password is looked at, so a flood of guesses of any kind is counted and none is free.
-			const turn = throttle.attempt({ address: clientAddress(event), accountId });
+			const turn = throttle.attempt({ address: clientAddress(event), ...named });
 			if (!turn.allowed) return wrongSignIn(email);
 			if (email === '' || password === '') return wrongSignIn(email);
 

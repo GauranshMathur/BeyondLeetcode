@@ -3,11 +3,14 @@ import { isIP } from 'node:net';
 export interface ThrottleInput {
 	/** The client address as the server saw it; any spelling of one address shares a counter. */
 	address: string;
-	/**
-	 * Whom the sign-in names, as a key: an Account's id, or for an email that has no Account a digest of
-	 * that email (the caller makes it, see `signin/sign-in.ts`). Null when it names nobody (a blank form).
-	 */
+	/** The id of the Account the sign-in names, or null when it names none. */
 	accountId: string | null;
+	/**
+	 * Set when `accountId` is null and the sign-in typed an email: a digest that stands for that email (the
+	 * caller makes it, see `signin/sign-in.ts`). Such keys are the client's to choose, so they have counters
+	 * of their own, apart from real Account ids. Ignored when `accountId` is set.
+	 */
+	unknownEmail?: string;
 }
 
 /**
@@ -15,8 +18,8 @@ export interface ThrottleInput {
  * by callers.
  */
 export interface ThrottleToken {
-	/** Whether the attempt named an Account; one that named none gives nothing back. */
-	readonly named: boolean;
+	/** Which kind of key the attempt named, so `succeed` finds the same counters; null gives nothing back. */
+	readonly named: 'account' | 'email' | null;
 	readonly counted: {
 		readonly address: CountedIn;
 		readonly pair?: CountedIn;
@@ -43,7 +46,7 @@ export interface ThrottleOptions {
 	/** Attempts per window for one Account across all addresses. */
 	accountLimit?: number;
 	windowMs?: number;
-	/** Cap on stored counters per map (address, account + address, account). */
+	/** Cap on stored counters per map (five maps: see `createThrottle`). */
 	maxKeys?: number;
 	now?: () => number;
 }
@@ -119,14 +122,26 @@ interface Entry {
  * In-memory sign-in throttle, per process: counters reset on restart and are not shared between instances.
  *
  * Three counters: the address (20), the Account at an address (5, which the address counter caps at 20 per
- * address) and the Account (50). The caller names the Account by a key (`accountId`): the id of the Account
- * the email names, looked up the way Better Auth does, or, when the email has no Account, a digest of the
- * email (`email:` + its SHA-256), so the real address is never held in memory. Known and unknown emails
- * therefore reach the throttled state on the same schedule. Without that, only a known email would be
- * throttled, and since a throttled refusal skips the password hash and answers faster, six tries and a
- * stopwatch would tell an attacker which emails have an Account. The only key built from what the client
- * typed is that digest, which is bounded in size and counted in the capped Account maps (below). A blank
- * form names nobody (null) and only the address counter applies.
+ * address) and the Account (50). The caller looks the Account up the way Better Auth does and passes its
+ * id (`accountId`). A blank form names nobody (both null) and only the address counter applies.
+ *
+ * Emails that have no Account are limited too (`unknownEmail`, a digest of the normalised email, so the
+ * address itself is never held in memory), on the same schedule as a known one. Without that, only a
+ * known email would ever be throttled, and since a throttled refusal skips the password hash and answers
+ * faster, six tries and a stopwatch would tell an attacker which emails have an Account.
+ *
+ * The two kinds of key have separate maps, five in all (address; pair and Account for real ids; pair and
+ * Account for unknown emails), because they differ in who chooses the key. A real Account id exists only
+ * for a real Account, so its maps hold as many keys as there are Accounts and never fill in practice; they
+ * never drop a live entry (a full one skips the new key), which is what holds an Account to 5 tries per
+ * address and 50 overall however many addresses an attacker has. An unknown email is whatever the client
+ * types, so its maps are the ones a flood of made-up emails fills. When one is full it evicts the entry
+ * whose window ends earliest and never skips or refuses, so a flood can only evict other made-up emails:
+ * a known Account's counters stay. Residual: to make one unknown email forget its count, an attacker must
+ * push it out, which takes more than maxKeys other emails inside one window, so more than maxKeys / 20
+ * addresses, for each fresh set of guesses. The address map evicts the same way, with the same residual:
+ * an attacker with more addresses than maxKeys inside one window gets fresh per-address budgets and is
+ * still held to the per-Account limit.
  *
  * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
  * their window is still the one it was counted in, so only wrong passwords spend budget. Callers that
@@ -136,15 +151,8 @@ interface Entry {
  * or the Account limit tells an attacker whether an email has an Account. The Account limit also lets
  * someone lock a known Account out for a window; that is accepted.
  *
- * Each map is capped at maxKeys; expired entries are dropped first. Only the address map ever drops a
- * live entry (the one whose window ends earliest), and only when it holds more distinct unexpired
- * addresses than maxKeys. Residual: an attacker with more addresses than that inside one window gets
- * fresh per-address budgets and is still held to the per-Account limit. The Account maps never drop a
- * live entry (a full one skips storing the new key), and a full map never refuses an attempt. Because
- * unknown emails are counted too, an attacker typing many different emails can fill the Account maps: new
- * keys then go uncounted until entries expire, and the address limit still holds. Doing that takes more
- * than maxKeys attempts inside one window, so more than maxKeys / 20 addresses. Worst case: 3 * maxKeys
- * entries.
+ * Each map is capped at maxKeys, expired entries dropped first, and a full map never refuses an attempt.
+ * Worst case: 5 * maxKeys entries.
  */
 export const createThrottle = ({
 	limit = 5,
@@ -155,22 +163,42 @@ export const createThrottle = ({
 	now = Date.now
 }: ThrottleOptions = {}): Throttle => {
 	// Insertion order is window-start order, since windows are fixed, so the first entry ends first.
-	const counter = (max: number) => ({ max, entries: new Map<string, Entry>() });
-	const addresses = counter(addressLimit);
-	const pairs = counter(limit);
-	const accounts = counter(accountLimit);
+	// `evicts`: a full map drops its earliest-ending entry for the new key; otherwise it skips the new key.
+	const counter = (max: number, evicts: boolean) => ({
+		max,
+		evicts,
+		entries: new Map<string, Entry>()
+	});
+	const addresses = counter(addressLimit, true);
+	const pairs = counter(limit, false);
+	const accounts = counter(accountLimit, false);
+	const emailPairs = counter(limit, true);
+	const emailAccounts = counter(accountLimit, true);
+	const everyCounter = [addresses, pairs, accounts, emailPairs, emailAccounts];
 	type Counter = ReturnType<typeof counter>;
 
 	type Slot = 'address' | 'pair' | 'account';
-	const slotsFor = ({ address, accountId }: ThrottleInput): [Slot, Counter, string][] => {
+	const slotsFor = ({
+		address,
+		accountId,
+		unknownEmail
+	}: ThrottleInput): [Slot, Counter, string][] => {
 		const where = normaliseAddress(address);
 		const slots: [Slot, Counter, string][] = [['address', addresses, where]];
-		// The address has no '|', so the key is unambiguous whatever the id holds.
+		// The address has no '|', so the key is unambiguous whatever the id or digest holds.
 		if (accountId !== null) {
 			slots.push(['pair', pairs, `${where}|${accountId}`], ['account', accounts, accountId]);
+		} else if (unknownEmail !== undefined) {
+			slots.push(
+				['pair', emailPairs, `${where}|${unknownEmail}`],
+				['account', emailAccounts, unknownEmail]
+			);
 		}
 		return slots;
 	};
+
+	const countersOf = (named: 'account' | 'email') =>
+		named === 'account' ? { pairs, accounts } : { pairs: emailPairs, accounts: emailAccounts };
 
 	/** The entry `counted` names, only if it is still in the window the attempt was counted in. */
 	const sameWindow = ({ entries }: Counter, counted: CountedIn | undefined) => {
@@ -196,7 +224,7 @@ export const createThrottle = ({
 	return {
 		attempt(input) {
 			const at = now();
-			for (const c of [addresses, pairs, accounts]) sweep(c, at);
+			for (const c of everyCounter) sweep(c, at);
 			const slots = slotsFor(input);
 			let retryAfterMs = 0;
 			for (const [, c, id] of slots) {
@@ -214,8 +242,8 @@ export const createThrottle = ({
 					continue;
 				}
 				if (c.entries.size >= maxKeys) {
-					// Only the address map may drop a live entry; Account maps keep theirs and skip the new key.
-					if (c !== addresses) continue;
+					// Only maps for keys the client chooses may drop a live entry; the rest keep theirs and skip the new key.
+					if (!c.evicts) continue;
 					const earliest = c.entries.keys().next().value;
 					if (earliest !== undefined) c.entries.delete(earliest);
 				}
@@ -227,7 +255,12 @@ export const createThrottle = ({
 			return {
 				allowed: true,
 				token: {
-					named: input.accountId !== null,
+					named:
+						input.accountId !== null
+							? 'account'
+							: input.unknownEmail !== undefined
+								? 'email'
+								: null,
 					counted: { address: address as CountedIn, pair, account },
 					spent: false
 				}
@@ -235,14 +268,15 @@ export const createThrottle = ({
 		},
 		succeed(token) {
 			const { address, pair, account } = token.counted;
-			// No Account was named, or this token already gave its count back.
-			if (token.spent || !token.named) return;
+			// No Account or email was named, or this token already gave its count back.
+			if (token.spent || token.named === null) return;
 			token.spent = true;
+			const named = countersOf(token.named);
 			// The pair counter is cleared, but only the window the right password belongs to.
-			if (pair && sameWindow(pairs, pair)) pairs.entries.delete(pair.key);
+			if (pair && sameWindow(named.pairs, pair)) named.pairs.entries.delete(pair.key);
 			giveBack(addresses, address);
-			giveBack(accounts, account);
+			giveBack(named.accounts, account);
 		},
-		size: () => addresses.entries.size + pairs.entries.size + accounts.entries.size
+		size: () => everyCounter.reduce((total, c) => total + c.entries.size, 0)
 	};
 };

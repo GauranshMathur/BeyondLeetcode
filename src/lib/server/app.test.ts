@@ -94,18 +94,40 @@ const bootMulti = (url: string, extra: Record<string, string | undefined> = {}) 
 	});
 
 describe('Multi-user', () => {
-	it('is a later release on a server without the test switch, with or without a secret', async () => {
-		const { url } = await migratedDatabase();
+	it('can be chosen on a server without the test switch once the secret and origin are set, and signs the admin in', async () => {
+		const { url, db } = await migratedDatabase();
+		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+		expect(app.setup.multiUser).toEqual({ kind: 'open' });
 
-		for (const extra of [{}, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' }]) {
-			const app = await boot(url, extra);
-			expect(app.setup.multiUser).toEqual({ kind: 'later' });
-			await expect(app.setup.createFirstAdmin(admin)).rejects.toThrow(/not available/);
-		}
-		expect((await boot(url)).instance.mode()).toBeNull();
+		const { headers } = await app.setup.createFirstAdmin(admin);
+
+		expect(app.instance.mode()).toBe('multi');
+		const cookie = headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+		const who = await app.multiUser?.identity.resolve({
+			cookies: { get: () => undefined },
+			request: { headers: new Headers({ cookie }) }
+		});
+		expect(who).toMatchObject({ displayName: 'Ada', role: 'admin', learnerId: 'local' });
+		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 	}, 30_000);
 
-	it('can be chosen on the test server once the secret and origin are set, and signs the admin in', async () => {
+	it('says what to add to .env on a server without the test switch and without a secret', async () => {
+		const { url } = await migratedDatabase();
+
+		const app = await boot(url);
+
+		expect(app.setup.multiUser).toEqual({
+			kind: 'needs-env',
+			message: expect.stringMatching(/BETTER_AUTH_SECRET.*\.env/s)
+		});
+		await expect(app.setup.createFirstAdmin(admin)).rejects.toThrow(/not available/);
+		expect(app.instance.mode()).toBeNull();
+	}, 30_000);
+
+	it('can be chosen on the test server too, once the secret and origin are set', async () => {
 		const { url, db } = await migratedDatabase();
 		const app = await bootMulti(url);
 		expect(app.setup.multiUser).toEqual({ kind: 'open' });

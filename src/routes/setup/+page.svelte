@@ -107,9 +107,7 @@ const formError = $derived(
 						<span class="text">
 							<span class="name">Multi-user</span>
 							<span class="desc">Several people, each with their own account. You create the admin account next.</span>
-							{#if multi.kind === 'later'}
-								<span id="multi-note" class="soon">Multi-user arrives in the next update.</span>
-							{:else if multi.kind === 'needs-env'}
+							{#if multi.kind === 'needs-env'}
 								<span id="multi-note" class="soon">{multi.message}</span>
 							{/if}
 						</span>

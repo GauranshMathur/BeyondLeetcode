@@ -1,8 +1,13 @@
 import { fail, redirect } from '@sveltejs/kit';
+import type { MultiUserChoice } from '$lib/server/app';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
 import { InstanceAlreadySetUpError } from '$lib/server/instance';
 import type { Actions, PageServerLoad } from './$types';
+
+/** Why Multi-user cannot be chosen here: what to add to `.env`. (`later` is never produced, see `MultiUserChoice`.) */
+const unavailable = (choice: Exclude<MultiUserChoice, { kind: 'open' }>) =>
+	choice.kind === 'needs-env' ? choice.message : 'Multi-user is not available on this server.';
 
 /** The Instance module's refusal when someone set it up first (see instance.ts). */
 const isAlreadySetUp = (error: unknown) =>
@@ -15,7 +20,6 @@ const FIELD_MESSAGES = {
 	password: 'Use 12 to 128 characters.'
 } as const;
 const ALREADY_SET_UP = 'This instance has already been set up.';
-const LATER = 'Multi-user arrives in the next update.';
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
 	return typeof value === 'string' ? value : '';
@@ -36,7 +40,7 @@ export const actions: Actions = {
 		if (mode === 'multi') {
 			const { multiUser } = locals.setup;
 			if (multiUser.kind === 'open') return adminStep({ name: '', email: '' });
-			return fail(400, { message: multiUser.kind === 'later' ? LATER : multiUser.message });
+			return fail(400, { message: unavailable(multiUser) });
 		}
 		if (mode !== 'local') return fail(400, { message: 'Choose a mode to continue.' });
 		try {
@@ -61,7 +65,7 @@ export const actions: Actions = {
 
 		const { multiUser } = locals.setup;
 		if (multiUser.kind !== 'open') {
-			return fail(400, { message: multiUser.kind === 'later' ? LATER : multiUser.message });
+			return fail(400, { message: unavailable(multiUser) });
 		}
 		// The gate also lets /setup?convert through on a Local Instance, which anyone can reach: only an
 		// Instance that is not set up may make its first admin here (converting Local has its own card).

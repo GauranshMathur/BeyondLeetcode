@@ -162,6 +162,19 @@ describe('the page', () => {
 		expect(harness({ registration: 'invite' }).load()).toEqual({ open: false });
 	});
 
+	it('reads the Registration Mode on every request: closing sign-up takes the link away at once', () => {
+		let mode: 'open' | 'invite' = 'open';
+		const { signIn } = harness();
+		const locals = { instance: { registrationMode: () => mode } };
+		const url = new URL('http://localhost/signin');
+
+		expect(signIn.load({ locals, url } as never)).toEqual({ open: true });
+		mode = 'invite';
+		expect(signIn.load({ locals, url } as never)).toEqual({ open: false });
+		mode = 'open';
+		expect(signIn.load({ locals, url } as never)).toEqual({ open: true });
+	});
+
 	it('sends someone who is already signed in to the page they asked for, or the Map', () => {
 		expect(harness({ identity: { learnerId: 'l1' }, next: '/topics/stacks' }).load()).toMatchObject(
 			{ status: 303, location: '/topics/stacks' }
@@ -455,7 +468,8 @@ describe('the sign-in limits', () => {
 		expect(inputs[0]).toEqual({ address: '203.0.113.9', accountId: 'user-ada' });
 		expect(inputs[1]).toEqual({
 			address: '203.0.113.9',
-			accountId: `email:${createHash('sha256').update('nobody@example.com').digest('hex')}`
+			accountId: null,
+			unknownEmail: createHash('sha256').update('nobody@example.com').digest('hex')
 		});
 		expect(inputs[2]).toEqual({ address: '203.0.113.9', accountId: null });
 	});
@@ -469,7 +483,7 @@ describe('the sign-in limits', () => {
 		await post({ email: 'NOBODY@example.com', password: 'x' });
 		await post({ email: ' nobody@example.com', password: 'x' });
 
-		const keys = attempt.mock.calls.map(([input]) => input.accountId);
+		const keys = attempt.mock.calls.map(([input]) => input.unknownEmail);
 		expect(JSON.stringify(keys)).not.toContain('nobody@');
 		// Lowercased like Better Auth's lookup, so one spelling cannot escape the other's count; not trimmed.
 		expect(keys[0]).toBe(keys[1]);
@@ -489,6 +503,18 @@ describe('the sign-in limits', () => {
 				400, 400, 400, 400, 400, 400
 			]);
 		}
+	});
+
+	it('keeps a known Account limited while a flood of made-up emails fills the unknown-email counters', async () => {
+		const throttle = createThrottle({ maxKeys: 20, addressLimit: 1_000_000 });
+		const { post, signInEmail } = harness({ throttle });
+		for (let i = 0; i < 200; i++) await post({ email: `made-up-${i}@example.com`, password: 'x' });
+		signInEmail.mockClear();
+
+		for (let i = 0; i < 6; i++) await post(wrongPassword);
+
+		// Five were asked and wrong; the sixth was refused before the password was looked at.
+		expect(signInEmail).toHaveBeenCalledTimes(5);
 	});
 
 	it('limits an unknown email across many addresses at 50, like a known one', async () => {

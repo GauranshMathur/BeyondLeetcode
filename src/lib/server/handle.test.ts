@@ -19,7 +19,7 @@ async function setup(options: { local?: boolean } = {}) {
 		await identity.ensureLocalLearner();
 	}
 	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-	const setupPort = { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup'];
+	const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
 	return {
 		db,
 		handle: createHandle({ instance, identity, core, multiUser: null, setup: setupPort })
@@ -241,7 +241,7 @@ describe('Multi-user Mode', () => {
 
 	it('lets the auth route through to a signed-out visitor, with the Better Auth instance on locals', async () => {
 		const { handle, asking, auth } = await multiSetup();
-		const { event, locals, resolve } = asking('/api/auth/sign-in/email', '/api/auth/[...all]', '');
+		const { event, locals, resolve } = asking('/api/auth/get-session', '/api/auth/[...all]', '');
 
 		const response = await handle({ event, resolve });
 
@@ -253,7 +253,7 @@ describe('Multi-user Mode', () => {
 
 	it('still refuses a remote call that claims the auth path', async () => {
 		const { handle, asking } = await multiSetup();
-		const { event, resolve } = asking('/api/auth/sign-in/email', '/api/auth/[...all]', '');
+		const { event, resolve } = asking('/api/auth/get-session', '/api/auth/[...all]', '');
 		(event as { isRemoteRequest: boolean }).isRemoteRequest = true;
 
 		const response = await handle({ event, resolve });
@@ -378,15 +378,89 @@ describe('Multi-user Mode', () => {
 		expect(response.headers.get('location')).toBe('/');
 	});
 
-	it('answers an unmatched path as the gate says (the 404 page for everyone), with the headers', async () => {
+	it('treats a path with no route as a private page: a signed-out visitor is sent to Sign in, not shown the 404', async () => {
 		const { handle, asking } = await multiSetup();
-		const { event, resolve } = asking('/no/such/page', null, '');
+		const { event, resolve } = asking('/no/such/page?x=1', null, '');
+
+		const response = await handle({ event, resolve });
+
+		expect(response.status).toBe(303);
+		expect(response.headers.get('location')).toBe(
+			`/signin?next=${encodeURIComponent('/no/such/page?x=1')}`
+		);
+		expect(Object.fromEntries(response.headers)).toMatchObject(framing);
+		expect(resolve).not.toHaveBeenCalled();
+	});
+
+	it('shows a signed-in user the 404 page for a path with no route, with the headers', async () => {
+		const { handle, asking } = await multiSetup();
+		const { event, resolve } = asking('/no/such/page', null);
 
 		const response = await handle({ event, resolve });
 
 		expect(response.status).toBe(200);
 		expect(resolve).toHaveBeenCalledOnce();
 		expect(Object.fromEntries(response.headers)).toMatchObject(framing);
+	});
+
+	it('sends a user who must change their password from a path with no route to that page', async () => {
+		const { handle, asking, db } = await multiSetup();
+		await db.user.updateMany({ data: { mustChangePassword: true } });
+		const { event, resolve } = asking('/no/such/page', null);
+
+		const response = await handle({ event, resolve });
+
+		expect(response.status).toBe(303);
+		expect(response.headers.get('location')).toBe('/account/password');
+		expect(resolve).not.toHaveBeenCalled();
+	});
+
+	it('still lets a user who must change their password sign out, from the nav and from Settings', async () => {
+		const { handle, db, cookie } = await multiSetup();
+		await db.user.updateMany({ data: { mustChangePassword: true } });
+		for (const [path, routeId] of [
+			['/settings?/signout', '/settings'],
+			['/api/auth/sign-out', '/api/auth/[...all]']
+		] as const) {
+			const { event, resolve } = request(path, routeId, 'POST', new Headers({ cookie }));
+
+			const response = await handle({ event, resolve });
+
+			expect(response.status, path).toBe(200);
+			expect(resolve, path).toHaveBeenCalledOnce();
+		}
+		// Any other action of that page is still held back.
+		const reset = request('/settings?/reset', '/settings', 'POST', new Headers({ cookie }));
+		const held = await handle({ event: reset.event, resolve: reset.resolve });
+		expect(held.status).toBe(303);
+		expect(held.headers.get('location')).toBe('/account/password');
+	});
+
+	it('does not set the refreshed session cookie over the one a sign-out clears', async () => {
+		const { handle, db, cookie } = await multiSetup();
+		await db.session.updateMany({
+			data: { expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000) }
+		});
+		const { event, resolve } = request(
+			'/settings?/signout',
+			'/settings',
+			'POST',
+			new Headers({ cookie })
+		);
+		resolve.mockImplementation(async () => {
+			const response = new Response(null, { status: 303, headers: { location: '/signin' } });
+			response.headers.append(
+				'set-cookie',
+				'better-auth.session_token=; Max-Age=0; Path=/; HttpOnly'
+			);
+			return response;
+		});
+
+		const response = await handle({ event, resolve });
+
+		expect(response.headers.getSetCookie()).toEqual([
+			'better-auth.session_token=; Max-Age=0; Path=/; HttpOnly'
+		]);
 	});
 
 	it('fails closed when a multi Instance has no Better Auth', async () => {

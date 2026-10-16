@@ -334,3 +334,133 @@ describe('throttle', () => {
 		expect(throttle.size()).toBe(1);
 	});
 });
+
+describe('emails that have no Account', () => {
+	// The caller names them by a digest (`unknownEmail`), kept apart from real Account ids, so that a
+	// stranger typing many emails can use up only the room reserved for emails.
+	const unknown = (address: string, digest: string) => ({
+		address,
+		accountId: null,
+		unknownEmail: digest
+	});
+
+	it('are refused on the 6th try from one address, on the same schedule as a known Account', () => {
+		for (const input of [from('1.1.1.1', 'user-id'), unknown('1.1.1.1', 'digest')]) {
+			const { throttle } = setup();
+			const answers = Array.from({ length: 7 }, () => throttle.attempt(input).allowed);
+			expect(answers).toEqual([true, true, true, true, true, false, false]);
+		}
+	});
+
+	it('are refused on the 51st try across many addresses, on the same schedule as a known Account', () => {
+		for (const make of [
+			(address: string) => from(address, 'user-id'),
+			(address: string) => unknown(address, 'digest')
+		]) {
+			const { throttle } = setup();
+			const answers = Array.from(
+				{ length: 52 },
+				(_, i) => throttle.attempt(make(`10.0.${i}.1`)).allowed
+			);
+			expect(answers.filter(Boolean)).toHaveLength(50);
+		}
+	});
+
+	it('count against the address like any attempt', () => {
+		const { throttle } = setup({ addressLimit: 3 });
+		for (let i = 0; i < 3; i++) throttle.attempt(unknown('1.1.1.1', `d${i}`));
+		expect(throttle.attempt(unknown('1.1.1.1', 'd3')).allowed).toBe(false);
+		expect(throttle.attempt(from('1.1.1.1', 'user-id')).allowed).toBe(false);
+	});
+
+	it('never share a counter with a real Account id, whatever the two are called', () => {
+		const { throttle } = setup();
+		for (let i = 0; i < 5; i++) throttle.attempt(unknown('1.1.1.1', 'same'));
+		expect(throttle.attempt(unknown('1.1.1.1', 'same')).allowed).toBe(false);
+		// A real Account whose id happens to read like the digest has a count of its own.
+		expect(throttle.attempt(from('1.1.1.1', 'same')).allowed).toBe(true);
+	});
+
+	it('give a count back on succeed, in the window they were counted in, like a known Account', () => {
+		const { throttle, advance } = setup({ addressLimit: 3 });
+		throttle.attempt(unknown('1.1.1.1', 'a'));
+		throttle.succeed(tokenOf(throttle.attempt(unknown('1.1.1.1', 'a'))));
+		expect(throttle.attempt(unknown('1.1.1.1', 'b')).allowed).toBe(true);
+		expect(throttle.attempt(unknown('1.1.1.1', 'c')).allowed).toBe(true);
+		expect(throttle.attempt(unknown('1.1.1.1', 'd')).allowed).toBe(false);
+
+		advance(10 * MIN);
+		const slow = tokenOf(throttle.attempt(unknown('2.2.2.2', 'x')));
+		advance(10 * MIN);
+		throttle.attempt(unknown('2.2.2.2', 'x'));
+		throttle.attempt(unknown('2.2.2.2', 'x'));
+		throttle.succeed(slow);
+		// Two failures in the new window, nothing given back: one more fits under 3.
+		expect(throttle.attempt(unknown('2.2.2.2', 'x')).allowed).toBe(true);
+		expect(throttle.attempt(unknown('2.2.2.2', 'x')).allowed).toBe(false);
+	});
+
+	describe('typed in a flood', () => {
+		const maxKeys = 20;
+		// One address with no limit of its own, so only the email maps are under test.
+		const flood = (throttle: ReturnType<typeof createThrottle>, count: number, start = 0) => {
+			for (let i = start; i < start + count; i++) throttle.attempt(unknown('9.9.9.9', `fake-${i}`));
+		};
+
+		it('evict the oldest emails and never grow past maxKeys, never refusing', () => {
+			const { throttle } = setup({ maxKeys, addressLimit: 1_000_000 });
+			for (let i = 0; i < 5 * maxKeys; i++) {
+				expect(throttle.attempt(unknown('9.9.9.9', `fake-${i}`)).allowed).toBe(true);
+			}
+
+			// The address, plus the two email maps at their cap; no real-Account map holds anything.
+			expect(throttle.size()).toBe(1 + 2 * maxKeys);
+		});
+
+		it('leave a known Account counted: refused on its 6th wrong try from one address', () => {
+			const { throttle } = setup({ maxKeys, addressLimit: 1_000_000 });
+			// Two tries before the flood, so its counters already exist; the rest come after.
+			for (let i = 0; i < 2; i++) throttle.attempt(from('1.1.1.1', 'victim'));
+			flood(throttle, 10 * maxKeys);
+
+			const rest = Array.from({ length: 4 }, () => throttle.attempt(from('1.1.1.1', 'victim')));
+
+			expect(rest.map((r) => r.allowed)).toEqual([true, true, true, false]);
+		});
+
+		it('leave a known Account the flood never saw counted too: refused on its 6th try', () => {
+			const { throttle } = setup({ maxKeys, addressLimit: 1_000_000 });
+			flood(throttle, 10 * maxKeys);
+
+			const tries = Array.from({ length: 7 }, () => throttle.attempt(from('1.1.1.1', 'victim')));
+
+			expect(tries.map((r) => r.allowed)).toEqual([true, true, true, true, true, false, false]);
+		});
+
+		it('leave a known Account held to 50 across addresses: refused on its 51st try', () => {
+			const { throttle } = setup({ maxKeys, addressLimit: 1_000_000 });
+			for (let i = 0; i < 25; i++) throttle.attempt(from(`10.0.0.${i}`, 'victim'));
+			flood(throttle, 10 * maxKeys);
+			let admitted = 25;
+			for (let i = 25; i < 60; i++) {
+				if (throttle.attempt(from(`10.0.0.${i}`, 'victim')).allowed) admitted++;
+				flood(throttle, 3, 1000 + i * 3);
+			}
+
+			expect(admitted).toBe(50);
+		});
+
+		it('can evict an unknown email, which then starts a fresh count: the cost is more than maxKeys attempts per check', () => {
+			const { throttle } = setup({ maxKeys, addressLimit: 1_000_000 });
+			for (let i = 0; i < 5; i++) throttle.attempt(unknown('1.1.1.1', 'target'));
+			expect(throttle.attempt(unknown('1.1.1.1', 'target')).allowed).toBe(false);
+
+			// Fewer than maxKeys others does not move it ...
+			flood(throttle, maxKeys - 2);
+			expect(throttle.attempt(unknown('1.1.1.1', 'target')).allowed).toBe(false);
+			// ... more than maxKeys does.
+			flood(throttle, maxKeys + 1, 100);
+			expect(throttle.attempt(unknown('1.1.1.1', 'target')).allowed).toBe(true);
+		});
+	});
+});

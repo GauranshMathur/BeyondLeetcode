@@ -18,7 +18,11 @@ import { createCatalogueScriptedRunner } from './runner/scripted-catalogue.ts';
 /** Whether Setup can offer Multi-user on this server, and if not, why. */
 export type MultiUserChoice =
 	| { kind: 'open' }
-	/** Released builds, until Sign in exists (C32): only the browser tests' server can choose it. */
+	/**
+	 * Never produced since C32: every Instance with what Better Auth needs is `open`. Only still named
+	 * because test stubs outside Setup's files (`signup-gate.test.ts`, `users.test.ts`) build one; delete
+	 * the variant, and the handling of it in Setup, once they stop.
+	 */
 	| { kind: 'later' }
 	/** `message` says what to add to `.env`. */
 	| { kind: 'needs-env'; message: string };
@@ -104,9 +108,9 @@ export async function createApp(env: {
 		identity,
 		multiUser,
 		setup: {
-			multiUser: choice(env, auth),
+			multiUser: choice(auth),
 			async createFirstAdmin(input) {
-				if (choice(env, auth).kind !== 'open' || auth.kind !== 'built') {
+				if (auth.kind !== 'built') {
 					throw new MultiUserNotAvailableError();
 				}
 				return createFirstAdmin({ instance, auth: auth.auth, db }, input);
@@ -201,9 +205,8 @@ function originOf(value: string | undefined): string | null {
 
 const chooseMultiUser = (auth: Auth) => ({ auth, identity: createMultiUserIdentity(auth) });
 
-/** Released builds keep Multi-user off until Sign in exists (C32 removes the test-switch condition). */
-function choice(env: { IDENTITY_TEST_LEARNER?: string }, auth: BuiltAuth): MultiUserChoice {
-	if (env.IDENTITY_TEST_LEARNER !== '1') return { kind: 'later' };
+/** Multi-user is open to every Instance that has what Better Auth needs; otherwise Setup says what to add. */
+function choice(auth: BuiltAuth): MultiUserChoice {
 	return auth.kind === 'built' ? { kind: 'open' } : { kind: 'needs-env', message: auth.message };
 }
 
