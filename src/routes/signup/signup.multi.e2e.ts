@@ -5,12 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test as base, expect } from '@playwright/test';
 
-// Two kinds of server, because the Multi-user server on 4174 starts invite-only and nothing in the app
-// opens registration yet (the Users toggle is C34b):
-//   - the 4174 server itself shows the closed state (it is invite-only, as every new Instance is);
+// Two kinds of server, because the Multi-user server on 4174 starts invite-only (as every new Instance does)
+// and the Users page's toggle (C34b) can open registration, but a test that flipped it would change the
+// shared server for every other file:
+//   - the 4174 server itself shows the closed state;
 //   - for the open state this file starts its own server from the same build, on a fresh database and a free
-//     port, whose Instance a fixture made Multi-user and Open (seed-open-instance.ts). It is a test fixture
-//     only: the app gains no way to open registration.
+//     port, whose Instance a fixture made Multi-user and Open (seed-open-instance.ts), the state the toggle
+//     leaves behind. The seed is a test fixture only: nothing in the app imports it.
 
 const LEARNER = {
 	name: 'Grace Hopper',
@@ -195,6 +196,77 @@ test.describe('registration open', () => {
 		await expect(page.getByLabel('Password')).toHaveValue('');
 		await expect(page).toHaveURL(/\/signup/);
 		await context.close();
+	});
+
+	test('a name over 100 characters is refused on its field, keeping what was typed but never the password', async ({
+		browser,
+		open
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+		await page.goto(`${open.url}/signup`);
+		const tooLong = 'N'.repeat(101);
+
+		await page.getByLabel('Name').fill(tooLong);
+		await page.getByLabel('Email').fill('longname@example.com');
+		await page.getByLabel('Password').fill(LEARNER.password);
+		await page.getByRole('button', { name: 'Create account →' }).click();
+
+		await expect(page.getByText('Use at most 100 characters.')).toBeVisible();
+		await expect(page.getByLabel('Name')).toHaveAttribute('aria-invalid', 'true');
+		await expect(page.getByLabel('Name')).toHaveValue(tooLong);
+		await expect(page.getByLabel('Email')).toHaveValue('longname@example.com');
+		await expect(page.getByLabel('Password')).toHaveValue('');
+		await expect(page).toHaveURL(/\/signup/);
+		await context.close();
+	});
+
+	test('a name of exactly 100 characters, emoji counted once each, is accepted', async ({
+		browser,
+		open
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+		await page.goto(`${open.url}/signup`);
+		// 100 characters, 200 UTF-16 units: the browser must not count them twice.
+		const hundred = '\u{1F600}'.repeat(100);
+
+		await page.getByLabel('Name').fill(hundred);
+		await page.getByLabel('Email').fill('hundred@example.com');
+		await page.getByLabel('Password').fill(LEARNER.password);
+		await page.getByRole('button', { name: 'Create account →' }).click();
+
+		await expect(page).toHaveURL(`${open.url}/`);
+		await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(hundred);
+		await context.close();
+	});
+
+	test('a direct POST to /api/auth/sign-up/email with a longer name is refused, and nothing is stored', async ({
+		request,
+		open
+	}) => {
+		const response = await request.post(`${open.url}/api/auth/sign-up/email`, {
+			headers: { origin: open.url },
+			data: {
+				name: 'N'.repeat(101),
+				email: 'direct-long@example.com',
+				password: LEARNER.password
+			}
+		});
+
+		expect(response.status()).toBe(400);
+		expect(await response.json()).toMatchObject({
+			code: 'NAME_TOO_LONG',
+			message: 'The name is too long.'
+		});
+		expect(response.headers()['set-cookie']).toBeUndefined();
+		// No Account was made: the Sign in form does not know that email, whatever the password.
+		const signIn = await request.post(`${open.url}/signin`, {
+			headers: { origin: open.url, accept: 'text/html' },
+			form: { email: 'direct-long@example.com', password: LEARNER.password }
+		});
+		expect(signIn.status()).toBe(400);
+		expect(await signIn.text()).toContain('Email or password is wrong.');
 	});
 
 	test('an email that cannot be used gets a message that does not say why', async ({

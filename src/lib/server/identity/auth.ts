@@ -43,6 +43,7 @@ export function isPlaceholderSecret(secret: string): boolean {
 	const value = secret.trim().toLowerCase();
 	return value === BETTER_AUTH_DEFAULT_SECRET || value.startsWith('change-me');
 }
+
 /** The longest name an Account may have: 100 characters, counted in Unicode code points on the trimmed name. */
 export const MAX_NAME_LENGTH = 100;
 
