@@ -171,6 +171,7 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 		color: var(--accent);
 	}
 	button {
+		white-space: nowrap;
 		box-sizing: border-box;
 		align-self: flex-start;
 		height: 52px;
@@ -201,9 +202,10 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 	}
 	.actions {
 		display: flex;
+		flex-wrap: wrap;
 		justify-content: space-between;
 		align-items: center;
-		gap: 24px;
+		gap: 12px 24px;
 	}
 	.forgot {
 		font-size: 18px;
