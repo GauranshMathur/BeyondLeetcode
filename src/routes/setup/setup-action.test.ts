@@ -244,6 +244,21 @@ describe('step 2: create the admin', () => {
 			expect(createFirstAdmin).not.toHaveBeenCalled();
 		});
 
+		it('maps Better Auth\u2019s own refusal of a blank name, should one get through, to the form\u2019s blank-name error', async () => {
+			const refusal = new APIError('BAD_REQUEST', {
+				message: 'Enter a name.',
+				code: 'NAME_REQUIRED'
+			});
+			const { locals } = open(vi.fn(async () => Promise.reject(refusal)));
+
+			const result = await run(actions.admin, admin, locals);
+
+			expect(result).toMatchObject({
+				status: 400,
+				data: { field: 'name', message: 'Enter a name.' }
+			});
+		});
+
 		it('maps Better Auth\u2019s own refusal of a long name, should one get through, to the same field error', async () => {
 			const refusal = new APIError('BAD_REQUEST', {
 				message: 'The name is too long.',

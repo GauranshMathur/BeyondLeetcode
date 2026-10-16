@@ -4,6 +4,7 @@ import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
 import {
 	type Admission,
+	CLIENT_IP_HEADER,
 	createAuth,
 	isNameTooLong,
 	isPlaceholderSecret,
@@ -326,6 +327,21 @@ describe('createAuth', () => {
 
 describe('the name cap', () => {
 	const NAME_TOO_LONG = 'The name is too long.';
+	// Better Auth's limiter keeps its counters for the whole process (20 sign-ups per address per ten
+	// minutes), so each request here comes from an address of its own.
+	let caller = 0;
+	const signUp = (payload: Record<string, unknown>) => {
+		caller += 1;
+		return new Request('http://localhost:3000/api/auth/sign-up/email', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				origin: 'http://localhost:3000',
+				[CLIENT_IP_HEADER]: `10.${caller >> 8}.${caller & 255}.1`
+			},
+			body: JSON.stringify(payload)
+		});
+	};
 	const emoji = '\u{1F600}'; // one code point, two UTF-16 units
 
 	describe('isNameTooLong counts Unicode code points on the trimmed name', () => {
@@ -358,13 +374,7 @@ describe('the name cap', () => {
 	});
 
 	async function http(auth: Awaited<ReturnType<typeof setup>>['auth'], name: string) {
-		return auth.handler(
-			new Request('http://localhost:3000/api/auth/sign-up/email', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
-				body: JSON.stringify({ ...body, name })
-			})
-		);
+		return auth.handler(signUp({ ...body, name }));
 	}
 
 	it('refuses a direct POST /api/auth/sign-up/email with a longer name, with a fixed error, storing nothing', async () => {
@@ -444,6 +454,71 @@ describe('the name cap', () => {
 		expect(res.status).toBe(400);
 		expect(await db.learner.count()).toBe(0);
 		expect(await db.user.count()).toBe(0);
+	});
+
+	it('answers a long name the same for an email that has an Account and one that has not: no probe', async () => {
+		const { auth, db } = await setup();
+		await auth.api.signUpEmail({ body });
+		const before = await db.user.count();
+		const long = (email: string) =>
+			auth.handler(signUp({ ...body, email, name: 'x'.repeat(MAX_NAME_LENGTH + 1) }));
+
+		const known = await long(body.email);
+		const unknown = await long('nobody@example.com');
+
+		expect(known.status).toBe(400);
+		expect(unknown.status).toBe(400);
+		expect(await known.json()).toEqual(await unknown.json());
+		expect(await db.user.count()).toBe(before);
+	});
+
+	it('still answers a closed sign-up first: 403 for a long name, a blank one, a known email or not', async () => {
+		const { auth, db } = await setup(() => null);
+		const post = (email: string, name: string) => auth.handler(signUp({ ...body, email, name }));
+
+		for (const name of ['x'.repeat(1000), '   ', '']) {
+			expect((await post(body.email, name)).status, JSON.stringify(name.slice(0, 5))).toBe(403);
+		}
+		expect(await db.user.count()).toBe(0);
+	});
+
+	describe('a blank name', () => {
+		it.each([
+			['empty', ''],
+			['spaces', '   '],
+			['Unicode whitespace', '\u00a0\u3000\ufeff\n\t']
+		])('is refused over HTTP, %s, with a fixed error, storing nothing', async (_label, name) => {
+			const { auth, db } = await setup();
+
+			const res = await auth.handler(signUp({ ...body, name }));
+
+			expect(res.status).toBe(400);
+			expect(await res.json()).toMatchObject({ code: 'NAME_REQUIRED', message: 'Enter a name.' });
+			expect(await db.user.count()).toBe(0);
+			expect(await db.learner.count()).toBe(0);
+		});
+
+		it('is refused by the server-side call too, storing nothing', async () => {
+			const { auth, db } = await setup();
+
+			await expect(auth.api.signUpEmail({ body: { ...body, name: '  ' } })).rejects.toMatchObject({
+				statusCode: 400,
+				body: { code: 'NAME_REQUIRED' }
+			});
+			expect(await db.user.count()).toBe(0);
+		});
+
+		it('is refused for a known email the same as for an unknown one: no probe', async () => {
+			const { auth } = await setup();
+			await auth.api.signUpEmail({ body });
+			const blank = (email: string) => auth.handler(signUp({ ...body, email, name: ' ' }));
+
+			const known = await blank(body.email);
+			const unknown = await blank('nobody@example.com');
+
+			expect(known.status).toBe(400);
+			expect(await known.json()).toEqual(await unknown.json());
+		});
 	});
 
 	it('refuses the first admin with a longer name, and leaves the Instance not set up', async () => {

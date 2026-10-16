@@ -118,9 +118,20 @@ const HTTP_SIGN_IN_PATHS = ['/sign-in/email'];
 
 const signUpClosed = () => new APIError('FORBIDDEN', { message: 'Sign-up is closed' });
 
-/** A fixed message and code: the forms map the code to their own text, and the name is never echoed. */
+// Fixed messages and codes: the forms map the code to their own text, and the name is never echoed.
 const nameTooLong = () =>
 	new APIError('BAD_REQUEST', { message: 'The name is too long.', code: 'NAME_TOO_LONG' });
+const nameRequired = () =>
+	new APIError('BAD_REQUEST', { message: 'Enter a name.', code: 'NAME_REQUIRED' });
+
+/**
+ * The refusal for a name, or null if it is fine: blank once trimmed, or over the cap. Which characters a
+ * name may hold is another question (a product rule) and is not asked here.
+ */
+function nameRefusal(name: string): APIError | null {
+	if (name.trim() === '') return nameRequired();
+	return isNameTooLong(name) ? nameTooLong() : null;
+}
 
 /** Better Auth over our database: email + password and the admin plugin, nothing else. */
 export function createAuth({
@@ -190,8 +201,10 @@ export function createAuth({
 						if (!admission) throw signUpClosed();
 						// After the admission, so a closed sign-up answers the same whatever the name; before the
 						// Learner below, so a refused name leaves nothing behind. Whatever path made the Account
-						// (the form, POST /sign-up/email, a later one) comes through here.
-						if (isNameTooLong(user.name)) throw nameTooLong();
+						// (the form, POST /sign-up/email, a later one) comes through here. For a sign-up over HTTP
+						// the request hook below has already asked, so this is the backstop.
+						const refusal = nameRefusal(user.name);
+						if (refusal) throw refusal;
 						// A named Learner (the Local one) already exists or is made here and is never removed.
 						// A fresh one is only named here and made in `after`, once the Account row is in, so a
 						// failed insert (a duplicate email, a concurrent sign-up) leaves no Learner behind.
@@ -227,11 +240,16 @@ export function createAuth({
 			}
 		},
 		// Asked first, so a closed sign-up answers 403 whether or not the email exists (otherwise the
-		// duplicate-email 422 would reveal which emails have Accounts). The database hook is the backstop.
+		// duplicate-email 422 would reveal which emails have Accounts). The name is checked next, for the same
+		// reason: Better Auth looks the email up before the database hook runs, so a name refused only there
+		// would answer 400 for an email with no Account and 422 for one that has. The database hook is the backstop.
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
 				if (ctx.path !== '/sign-up/email') return;
 				if (!(await admitSignUp({ email: ctx.body?.email }))) throw signUpClosed();
+				const name = ctx.body?.name;
+				const refusal = typeof name === 'string' ? nameRefusal(name) : null;
+				if (refusal) throw refusal;
 			})
 		},
 		disabledPaths: [...UNUSED_ADMIN_PATHS, ...UNUSED_CORE_PATHS, ...HTTP_SIGN_IN_PATHS],

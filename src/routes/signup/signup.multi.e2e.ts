@@ -269,6 +269,33 @@ test.describe('registration open', () => {
 		expect(await signIn.text()).toContain('Email or password is wrong.');
 	});
 
+	test('a refused name is refused the same for an email that has an Account, so it is no way to find one out', async ({
+		request,
+		open
+	}) => {
+		const post = (email: string, name: string) =>
+			request.post(`${open.url}/api/auth/sign-up/email`, {
+				headers: { origin: open.url },
+				data: { name, email, password: LEARNER.password }
+			});
+
+		// LEARNER signed up in the first test of this file, so that email has an Account.
+		const known = await post(LEARNER.email, 'N'.repeat(101));
+		const unknown = await post('nobody-long@example.com', 'N'.repeat(101));
+		const blankKnown = await post(LEARNER.email, '   ');
+		const blankUnknown = await post('nobody-blank@example.com', '   ');
+
+		expect(known.status()).toBe(400);
+		expect(unknown.status()).toBe(400);
+		expect(await known.json()).toEqual(await unknown.json());
+		expect(blankKnown.status()).toBe(400);
+		expect(await blankKnown.json()).toMatchObject({
+			code: 'NAME_REQUIRED',
+			message: 'Enter a name.'
+		});
+		expect(await blankKnown.json()).toEqual(await blankUnknown.json());
+	});
+
 	test('an email that cannot be used gets a message that does not say why', async ({
 		browser,
 		open

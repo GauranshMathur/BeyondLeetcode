@@ -51,6 +51,8 @@ function known(error: unknown): { status: 400 | 403; field?: Field; message: str
 		case 'USER_ALREADY_EXISTS':
 		case 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL':
 			return { status: 400, field: 'email', message: MESSAGES.emailUnavailable };
+		case 'NAME_REQUIRED':
+			return { status: 400, field: 'name', message: MESSAGES.name };
 		case 'NAME_TOO_LONG':
 			return { status: 400, field: 'name', message: MESSAGES.nameLong };
 		case 'INVALID_EMAIL':

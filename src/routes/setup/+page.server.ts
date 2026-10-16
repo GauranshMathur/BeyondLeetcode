@@ -87,6 +87,9 @@ export const actions: Actions = {
 			if (isAPIError(error) && error.body?.code === 'NAME_TOO_LONG') {
 				return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));
 			}
+			if (isAPIError(error) && error.body?.code === 'NAME_REQUIRED') {
+				return fail(400, adminStep(typed, { field: 'name', message: FIELD_MESSAGES.name }));
+			}
 			if (error instanceof InvalidFirstAdminError) {
 				return fail(
 					400,

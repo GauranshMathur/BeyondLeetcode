@@ -241,6 +241,26 @@ describe('what is wrong with the form', () => {
 			expect(await throttled.post(ada)).toMatchObject({ status: 429 });
 		});
 
+		it('maps Better Auth\u2019s own refusal of a blank name to the form\u2019s blank-name error', async () => {
+			const raced = harness({
+				auth: {
+					api: {
+						signUpEmail: async () => {
+							throw new APIError('BAD_REQUEST', {
+								message: 'Enter a name.',
+								code: 'NAME_REQUIRED'
+							});
+						}
+					}
+				}
+			});
+
+			expect(await raced.post(ada)).toMatchObject({
+				status: 400,
+				data: { field: 'name', message: 'Enter a name.' }
+			});
+		});
+
 		it('maps Better Auth\u2019s own refusal of a long name to the same field error', async () => {
 			const raced = harness({
 				auth: {
