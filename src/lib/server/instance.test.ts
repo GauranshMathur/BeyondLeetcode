@@ -173,10 +173,11 @@ it.each([
 
 // setRegistrationMode: the admin's toggle (C34b). The database is written first, memory after.
 
-/** A database whose Instance writes can be held, failed or delayed, to pin the order of the two. */
+/** A database whose Instance writes (and, when named, reads) can be held, failed or delayed, to pin the order of the two. */
 function interceptWrites(
 	db: Db,
-	intercept: (args: unknown, write: () => Promise<unknown>) => Promise<unknown>
+	intercept: (args: unknown, write: () => Promise<unknown>) => Promise<unknown>,
+	methods: string[] = ['updateMany']
 ): Db {
 	return new Proxy(db, {
 		get(target, prop) {
@@ -185,7 +186,7 @@ function interceptWrites(
 			return new Proxy(value, {
 				get(delegate, method) {
 					const member = Reflect.get(delegate, method);
-					if (method !== 'updateMany') return member;
+					if (typeof method !== 'string' || !methods.includes(method)) return member;
 					return (args: unknown) => intercept(args, () => member.call(delegate, args));
 				}
 			});
@@ -379,3 +380,101 @@ it('a switch that fails does not stop the next one', async () => {
 	expect(instance.registrationMode()).toBe('open');
 	expect(await stored(db)).toBe('open');
 });
+
+it('a write that commits and then rejects leaves memory on what the database holds, and still rejects', async () => {
+	const { db } = await multiInstance();
+	let faulty = false;
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			const result = await write();
+			// The row is changed, then the driver reports a fault: the caller cannot tell it was written.
+			if (faulty) throw new Error('driver fault after commit');
+			return result;
+		})
+	);
+	await instance.setRegistrationMode('open');
+	faulty = true;
+
+	await expect(instance.setRegistrationMode('invite')).rejects.toThrow('driver fault after commit');
+
+	// Memory follows the database (Invite-only), not the Open it held before: it never fails open.
+	expect(await stored(db)).toBe('invite');
+	expect(instance.registrationMode()).toBe('invite');
+});
+
+it('a write that commits Open and then rejects leaves memory Open, as the database is', async () => {
+	const { db } = await multiInstance();
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			await write();
+			throw new Error('driver fault after commit');
+		})
+	);
+
+	await expect(instance.setRegistrationMode('open')).rejects.toThrow('driver fault after commit');
+
+	expect(await stored(db)).toBe('open');
+	expect(instance.registrationMode()).toBe('open');
+});
+
+it('a failed write whose re-read fails too leaves memory Invite-only, never Open', async () => {
+	const { db } = await multiInstance();
+	let faulty = false;
+	const instance = await createInstance(
+		interceptWrites(
+			db,
+			async (_, write) => {
+				if (faulty) throw new Error('disk gone');
+				return write();
+			},
+			['updateMany', 'findUnique']
+		)
+	);
+	await instance.setRegistrationMode('open');
+	faulty = true;
+
+	await expect(instance.setRegistrationMode('invite')).rejects.toThrow('disk gone');
+
+	// Nothing could be read to say what the database holds (it still says Open here): closed is the safe guess.
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await stored(db)).toBe('open');
+});
+
+it('after a failed switch the next one still works', async () => {
+	const { db } = await multiInstance();
+	let faulty = false;
+	const instance = await createInstance(
+		interceptWrites(
+			db,
+			async (_, write) => {
+				if (faulty) throw new Error('disk gone');
+				return write();
+			},
+			['updateMany', 'findUnique']
+		)
+	);
+	faulty = true;
+	await instance.setRegistrationMode('invite').catch(() => {});
+	faulty = false;
+
+	await instance.setRegistrationMode('open');
+
+	expect(instance.registrationMode()).toBe('open');
+	expect(await stored(db)).toBe('open');
+});
+
+it.each(['everyone', 'OPEN', '', ' open'])(
+	'a stored Registration Mode of %j is read as invite-only at start',
+	async (value) => {
+		const db = await createTestDb();
+		await db.instance.create({ data: { mode: 'multi', registrationMode: value } });
+
+		const instance = await createInstance(db);
+
+		expect(instance.registrationMode()).toBe('invite');
+		// And the unreadable value does not stop an admin from choosing one.
+		await instance.setRegistrationMode('open');
+		expect(instance.registrationMode()).toBe('open');
+		expect(await stored(db)).toBe('open');
+	}
+);
