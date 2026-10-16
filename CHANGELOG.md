@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.47.0...v0.48.0) (2026-10-16)
+
+
+### Features
+
+* **beyondleetcode:** C32 Sign in and sign out ([#185](https://github.com/GauranshMathur/BeyondLeetcode/issues/185)) ([85edabd](https://github.com/GauranshMathur/BeyondLeetcode/commit/85edabdd5a7cbb25207d770a14f452786dda1037))
+
 ## [0.47.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.46.0...v0.47.0) (2026-10-16)
 
 
