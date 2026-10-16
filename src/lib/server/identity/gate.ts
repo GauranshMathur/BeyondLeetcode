@@ -42,9 +42,18 @@ const formAction = (search: string): string | null => {
 	return null;
 };
 
-/** The two ways to sign out: Better Auth's own endpoint, and the Settings page's `signout` form action. */
+/** SvelteKit's data requests (client navigation and invalidation) end like this; they return load data. */
+const isDataRequest = (pathname: string) =>
+	pathname.endsWith('/__data.json') || pathname.endsWith('.html__data.json');
+
+/**
+ * The two ways to sign out: Better Auth's own endpoint, and the Settings page's `signout` form action.
+ * Never as a data request: that answers with the layout's and the page's load data, which a user who
+ * must change their password has no business reading.
+ */
 const isSigningOut = ({ routeId, method, pathname, search }: GateInput) =>
 	method === 'POST' &&
+	!isDataRequest(pathname) &&
 	(pathname === '/api/auth/sign-out' ||
 		(routeId === '/settings' && formAction(search) === '/signout'));
 
@@ -74,9 +83,11 @@ export function gate(input: GateInput): GateResult {
 	}
 
 	if (input.mustChangePassword) {
-		if (routeId !== '/account/password' && !isSigningOut(input)) {
-			return redirect('/account/password');
-		}
+		// The page they are sent to. Until it has a route (routeId null) its exact path counts as arriving,
+		// so the 404 page shows instead of a redirect to itself.
+		const atPasswordPage =
+			routeId === '/account/password' || (routeId === null && pathname === '/account/password');
+		if (!atPasswordPage && !isSigningOut(input)) return redirect('/account/password');
 	}
 
 	if (routeId !== null && isUnder(routeId, '/users') && who.role !== 'admin') return status(403);

@@ -139,9 +139,13 @@ interface Entry {
  * whose window ends earliest and never skips or refuses, so a flood can only evict other made-up emails:
  * a known Account's counters stay. Residual: to make one unknown email forget its count, an attacker must
  * push it out, which takes more than maxKeys other emails inside one window, so more than maxKeys / 20
- * addresses, for each fresh set of guesses. The address map evicts the same way, with the same residual:
- * an attacker with more addresses than maxKeys inside one window gets fresh per-address budgets and is
- * still held to the per-Account limit.
+ * addresses, for each fresh set of guesses. Timing residual of the same flood: once an unknown email has been
+ * pushed out, its next try is counted afresh and runs the slow password hash, while a known Account's try
+ * (its counters stay) is refused fast, so an attacker who spends more than maxKeys unknown emails from about
+ * maxKeys / 20 addresses or /64s in one window can tell the two apart again by their response time, for as
+ * long as the flood lasts. The cost scales with maxKeys; it is accepted. The address map evicts the same
+ * way, with the same residual: an attacker with more addresses than maxKeys inside one window gets fresh
+ * per-address budgets and is still held to the per-Account limit.
  *
  * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
  * their window is still the one it was counted in, so only wrong passwords spend budget. Callers that

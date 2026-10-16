@@ -157,6 +157,34 @@ describe('gate', () => {
 			}),
 			redirect('/account/password')
 		],
+		// /account/password has no route until its page lands; the user must not be sent round in a loop.
+		[
+			'must change, /account/password with no route yet -> pass (the 404 page, not a redirect to itself)',
+			request(null, {
+				who: learner,
+				mustChangePassword: true,
+				pathname: '/account/password'
+			}),
+			pass
+		],
+		[
+			'must change, other path with no route -> password, even one that starts like it',
+			request(null, {
+				who: learner,
+				mustChangePassword: true,
+				pathname: '/account/password/extra'
+			}),
+			redirect('/account/password')
+		],
+		[
+			'must change, /account/passwords with no route -> password',
+			request(null, {
+				who: learner,
+				mustChangePassword: true,
+				pathname: '/account/passwords'
+			}),
+			redirect('/account/password')
+		],
 		[
 			'must change, unknown page -> password',
 			request(null, { who: learner, mustChangePassword: true }),
@@ -172,6 +200,38 @@ describe('gate', () => {
 				search: '?/signout'
 			}),
 			pass
+		],
+		[
+			'must change, POST Settings data request with the sign-out action -> password',
+			request('/settings', {
+				who: learner,
+				mustChangePassword: true,
+				method: 'POST',
+				pathname: '/settings/__data.json',
+				search: '?/signout'
+			}),
+			redirect('/account/password')
+		],
+		[
+			'must change, POST data request of a page that is not a folder -> password',
+			request('/settings', {
+				who: learner,
+				mustChangePassword: true,
+				method: 'POST',
+				pathname: '/settings.html__data.json',
+				search: '?/signout'
+			}),
+			redirect('/account/password')
+		],
+		[
+			'must change, POST /api/auth/sign-out with a data suffix is no sign-out -> password',
+			request('/api/auth/[...all]', {
+				who: learner,
+				mustChangePassword: true,
+				method: 'POST',
+				pathname: '/api/auth/sign-out/__data.json'
+			}),
+			redirect('/account/password')
 		],
 		[
 			'must change, GET Settings sign-out -> password',
