@@ -11,22 +11,25 @@ async function setup() {
 	return { db, auth: createAuth({ db, origin, secret }) };
 }
 
-const signIn = (headers: Record<string, string> = {}) =>
-	new Request(`${origin}/api/auth/sign-in/email`, {
+// Password sign-in is not served over HTTP (the Sign in form is the one way, see auth.ts), so these tests
+// use change-password: Better Auth gives it the same 3-per-10-seconds rule it gives the sign-in paths,
+// it answers 401 to a visitor without a session, and a 429 is the limiter alone.
+const limited = (headers: Record<string, string> = {}) =>
+	new Request(`${origin}/api/auth/change-password`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json', origin, ...headers },
-		body: JSON.stringify({ email: 'nobody@example.com', password: 'not the password' })
+		body: JSON.stringify({ currentPassword: 'not the password', newPassword: 'not a new password' })
 	});
 
 describe('handleAuthRequest', () => {
-	it('limits sign-in attempts per client address, whatever X-Forwarded-For claims', async () => {
+	it('limits attempts per client address, whatever X-Forwarded-For claims', async () => {
 		const { auth } = await setup();
 		const statuses = [];
 		for (let i = 0; i < 5; i++) {
 			// A client rotating a forged header must still share one bucket.
 			const res = await handleAuthRequest(
 				auth,
-				signIn({ 'x-forwarded-for': `203.0.113.${i + 1}` }),
+				limited({ 'x-forwarded-for': `203.0.113.${i + 1}` }),
 				'192.0.2.10'
 			);
 			statuses.push(res.status);
@@ -38,10 +41,10 @@ describe('handleAuthRequest', () => {
 
 	it('gives each client address its own bucket', async () => {
 		const { auth } = await setup();
-		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, signIn(), '192.0.2.20');
+		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, limited(), '192.0.2.20');
 
-		const other = await handleAuthRequest(auth, signIn(), '192.0.2.21');
-		const same = await handleAuthRequest(auth, signIn(), '192.0.2.20');
+		const other = await handleAuthRequest(auth, limited(), '192.0.2.21');
+		const same = await handleAuthRequest(auth, limited(), '192.0.2.20');
 
 		expect(other.status).not.toBe(429);
 		expect(same.status).toBe(429);
@@ -50,11 +53,11 @@ describe('handleAuthRequest', () => {
 	it('groups IPv6 clients by /64: rotating addresses inside one /64 does not escape the limit', async () => {
 		const { auth } = await setup();
 		for (let i = 1; i <= 4; i++) {
-			await handleAuthRequest(auth, signIn(), `fd00:aa:bb:cc::${i}`);
+			await handleAuthRequest(auth, limited(), `fd00:aa:bb:cc::${i}`);
 		}
 
-		const sameSubnet = await handleAuthRequest(auth, signIn(), 'fd00:aa:bb:cc:1:2:3:4');
-		const otherSubnet = await handleAuthRequest(auth, signIn(), 'fd00:aa:bb:dd::1');
+		const sameSubnet = await handleAuthRequest(auth, limited(), 'fd00:aa:bb:cc:1:2:3:4');
+		const otherSubnet = await handleAuthRequest(auth, limited(), 'fd00:aa:bb:dd::1');
 
 		expect(sameSubnet.status).toBe(429);
 		expect(otherSubnet.status).not.toBe(429);
@@ -62,9 +65,9 @@ describe('handleAuthRequest', () => {
 
 	it('treats an IPv4-mapped IPv6 address as its IPv4 client', async () => {
 		const { auth } = await setup();
-		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, signIn(), '::ffff:192.0.2.77');
+		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, limited(), '::ffff:192.0.2.77');
 
-		const mapped = await handleAuthRequest(auth, signIn(), '192.0.2.77');
+		const mapped = await handleAuthRequest(auth, limited(), '192.0.2.77');
 
 		expect(mapped.status).toBe(429);
 	});
@@ -75,14 +78,14 @@ describe('handleAuthRequest', () => {
 			// Each attempt claims a fresh address in the header the limiter reads.
 			await handleAuthRequest(
 				auth,
-				signIn({ 'x-beyondleetcode-client-ip': `198.51.100.${i + 1}` }),
+				limited({ 'x-beyondleetcode-client-ip': `198.51.100.${i + 1}` }),
 				'192.0.2.30'
 			);
 		}
 
 		const res = await handleAuthRequest(
 			auth,
-			signIn({ 'x-beyondleetcode-client-ip': '198.51.100.99' }),
+			limited({ 'x-beyondleetcode-client-ip': '198.51.100.99' }),
 			'192.0.2.30'
 		);
 		expect(res.status).toBe(429);
@@ -116,7 +119,7 @@ describe('handleAuthRequest', () => {
 	it('answers with headers the caller can still add to', async () => {
 		const { auth } = await setup();
 
-		const res = await handleAuthRequest(auth, signIn(), '192.0.2.40');
+		const res = await handleAuthRequest(auth, limited(), '192.0.2.40');
 
 		res.headers.set('X-Frame-Options', 'DENY');
 		expect(res.headers.get('x-frame-options')).toBe('DENY');

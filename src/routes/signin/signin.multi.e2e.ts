@@ -1,0 +1,409 @@
+import { test as base, expect, type Page } from '@playwright/test';
+import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
+import { createDb } from '../../lib/server/db.ts';
+import { type FreshServer, startFreshServer } from './fresh-server.ts';
+
+// Sign in and Sign out in the browser, on three kinds of server:
+//   - the Multi-user server on 4174 (the "e2e-multi" project, after "setup-multi" made the admin): signed-out
+//     redirects, the board of an invite-only Instance, the admin's nav. It has only the admin, and the
+//     admin only signs in and out here.
+//   - a server of this file's own, from the same build, with a fresh database whose Instance is Multi-user
+//     with Registration Open (see fresh-server.ts). The Accounts the Sign in tests need are made through its
+//     Sign up form, so this file never writes to the shared database: another file's setup there timed out
+//     when two test processes wrote to it at once.
+//   - a second own server whose Instance is not set up, to walk Setup, Sign out and Sign in as a released
+//     Instance would, with no test switch.
+//
+// Sign in keeps a budget per address: twenty wrong passwords from this machine in ten minutes, across every
+// Account, and five per Account. The own servers have budgets of their own; 4174's is spent only by the admin.
+
+const NAV = 'Primary';
+const WRONG = 'Email or password is wrong.';
+const PASSWORD = 'correct horse battery staple';
+
+const people = {
+	asker: { name: 'Ana Asker', email: 'ana.signin@example.com' },
+	settings: { name: 'Sol Settings', email: 'sol.signin@example.com' },
+	locked: { name: 'Lou Locked', email: 'lou.signin@example.com' },
+	hostile: { name: 'Hal Hostile', email: 'hal.signin@example.com' },
+	typo: { name: 'Tia Typo', email: 'tia.signin@example.com' },
+	phone: { name: 'Pat Phone', email: 'pat.signin@example.com' },
+	forced: { name: 'Fay Forced', email: 'fay.signin@example.com' },
+	forcedData: { name: 'Dee Data', email: 'dee.signin@example.com' }
+};
+
+async function signInWith(page: Page, email: string, password: string) {
+	await page.getByLabel('Email').fill(email);
+	await page.getByLabel('Password').fill(password);
+	await page.getByRole('button', { name: 'Sign in →' }).click();
+}
+
+/** The own server with Registration Open and one Account for each person above, made through Sign up. */
+const onOpen = base.extend<object, { open: FreshServer }>({
+	open: [
+		// biome-ignore lint/correctness/noEmptyPattern: Playwright reads the fixtures this one needs from this pattern
+		async ({}, use) => {
+			const server = await startFreshServer({ openRegistration: true });
+			try {
+				for (const person of Object.values(people)) {
+					const response = await fetch(`${server.url}/signup`, {
+						method: 'POST',
+						redirect: 'manual',
+						headers: { origin: server.url, accept: 'text/html' },
+						body: new URLSearchParams({ ...person, password: PASSWORD })
+					});
+					if (response.status !== 303) {
+						throw new Error(`signing up ${person.email} answered ${response.status}`);
+					}
+				}
+				await use(server);
+			} finally {
+				await server.stop();
+			}
+		},
+		{ scope: 'worker', timeout: 120_000 }
+	],
+	baseURL: async ({ open }, use) => {
+		await use(open.url);
+	}
+});
+
+onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up', () => {
+	onOpen(
+		'lands on Sign in from any page and, once signed in, on the page they asked for',
+		async ({ page }) => {
+			for (const path of ['/', '/topics/stacks', '/settings', '/users', '/no/such/page']) {
+				await page.goto(path);
+				await expect(page, path).toHaveURL(`/signin?next=${encodeURIComponent(path)}`);
+			}
+
+			await page.goto('/topics/stacks?x=1');
+			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome back.');
+			await signInWith(page, people.asker.email, PASSWORD);
+
+			await expect(page).toHaveURL('/topics/stacks?x=1');
+			await expect(page.getByRole('navigation', { name: NAV })).toContainText(people.asker.name);
+		}
+	);
+
+	onOpen('sees the board, with a way to create an account', async ({ page }) => {
+		await page.goto('/signin');
+
+		await expect(page.getByRole('navigation', { name: NAV })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: 'Beyond Leetcode' })).toBeVisible();
+		await expect(page.getByLabel('Email')).toBeVisible();
+		await expect(page.getByLabel('Password')).toBeVisible();
+		await expect(page.getByText('Forgot password? Ask your admin.')).toBeVisible();
+		await expect(page.getByRole('link', { name: 'Create an account' })).toHaveAttribute(
+			'href',
+			'/signup'
+		);
+		await page.goto('/signup');
+		await expect(page.getByRole('navigation', { name: NAV })).toHaveCount(0);
+	});
+
+	onOpen('is never sent off the site by a hostile next', async ({ page }) => {
+		await page.goto(`/signin?next=${encodeURIComponent('//evil.example/phish')}`);
+
+		await signInWith(page, people.hostile.email, PASSWORD);
+
+		await expect(page).toHaveURL('/');
+	});
+
+	onOpen(
+		'is told one thing for a wrong password and for no such account, keeping the email but not the password',
+		async ({ page, browser, open }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.typo.email, 'not the password at all');
+
+			await expect(page).toHaveURL(/\/signin$/);
+			await expect(page.getByText(WRONG)).toBeVisible();
+			await expect(page.getByLabel('Email')).toHaveValue(people.typo.email);
+			await expect(page.getByLabel('Password')).toHaveValue('');
+			await expect(page.getByLabel('Email')).toHaveAttribute('aria-invalid', 'true');
+			await expect(page.getByLabel('Password')).toHaveAttribute('aria-invalid', 'true');
+			// The right password then works from that very form.
+			await page.getByLabel('Password').fill(PASSWORD);
+			await page.getByRole('button', { name: 'Sign in →' }).click();
+			await expect(page).toHaveURL('/');
+
+			// No Account at all: the same words, the same fields marked.
+			const stranger = await browser.newContext({ baseURL: open.url });
+			const other = await stranger.newPage();
+			await other.goto('/signin');
+			await signInWith(other, 'nobody.signin@example.com', 'whatever whatever');
+			await expect(other.getByText(WRONG)).toBeVisible();
+			await expect(other.getByLabel('Email')).toHaveAttribute('aria-invalid', 'true');
+			await stranger.close();
+		}
+	);
+
+	onOpen(
+		'is refused on the sixth wrong password, with the same message, even with the right one',
+		async ({ page }) => {
+			await page.goto('/signin');
+			for (let attempt = 1; attempt <= 5; attempt++) {
+				await signInWith(page, people.locked.email, `wrong password number ${attempt}`);
+				await expect(page.getByText(WRONG), `wrong password ${attempt}`).toBeVisible();
+			}
+
+			// The sixth is the right password, and it is still refused, in the same words.
+			await signInWith(page, people.locked.email, PASSWORD);
+
+			await expect(page.getByText(WRONG)).toBeVisible();
+			await expect(page).toHaveURL(/\/signin$/);
+			await expect(page.getByRole('navigation', { name: NAV })).toHaveCount(0);
+		}
+	);
+
+	onOpen(
+		'is refused on the sixth wrong try for an email with no Account too, in the same words',
+		async ({ page }) => {
+			await page.goto('/signin');
+			for (let attempt = 1; attempt <= 6; attempt++) {
+				await signInWith(page, 'nobody.six@example.com', `wrong password number ${attempt}`);
+				await expect(page.getByText(WRONG), `try ${attempt}`).toBeVisible();
+			}
+			await expect(page).toHaveURL(/\/signin$/);
+		}
+	);
+});
+
+onOpen.describe('a user who must change their password', () => {
+	// C36a sets the flag and C36b adds /account/password; until then the 404 page is where they are sent.
+	// The flag is set on the own server's database, between two requests, as an admin's reset would.
+	onOpen(
+		'is held to that page: no page, no load data, and no Settings data through the sign-out exception',
+		async ({ page, open }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.forced.email, PASSWORD);
+			await expect(page).toHaveURL('/');
+			const db = createDb(open.databaseUrl);
+			try {
+				await db.user.update({
+					where: { email: people.forced.email },
+					data: { mustChangePassword: true }
+				});
+			} finally {
+				await db.$disconnect();
+			}
+			const headers = { origin: open.url, accept: 'text/html' };
+
+			// A page and its load data are both sent to /account/password.
+			await page.goto('/settings');
+			await expect(page).toHaveURL('/account/password');
+			const data = await page.request.get('/settings/__data.json');
+			expect(await data.json()).toMatchObject({ type: 'redirect', location: '/account/password' });
+
+			// The sign-out action is the way out ...
+			const out = await page.request.post('/settings?/signout', {
+				headers,
+				form: {},
+				maxRedirects: 0
+			});
+			expect(out.status()).toBe(303);
+			expect(out.headers().location).toBe('/signin');
+		}
+	);
+
+	onOpen(
+		'cannot read the Settings load data by posting to the data URL with the sign-out action',
+		async ({ page, open }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.forcedData.email, PASSWORD);
+			await expect(page).toHaveURL('/');
+			const db = createDb(open.databaseUrl);
+			try {
+				await db.user.update({
+					where: { email: people.forcedData.email },
+					data: { mustChangePassword: true }
+				});
+			} finally {
+				await db.$disconnect();
+			}
+
+			const response = await page.request.post('/settings/__data.json?/signout', {
+				headers: { origin: open.url },
+				form: {},
+				maxRedirects: 0
+			});
+
+			// SvelteKit answers a data request's redirect as JSON; the load data is never run.
+			const body = await response.text();
+			expect(JSON.parse(body)).toMatchObject({ type: 'redirect', location: '/account/password' });
+			expect(body).not.toContain('"type":"data"');
+			expect(body).not.toContain(people.forcedData.name);
+			expect(body).not.toContain('multiUser');
+		}
+	);
+});
+
+onOpen.describe('a signed-in user', () => {
+	onOpen(
+		'signs out from the nav and is back at Sign in, with the old page no longer theirs',
+		async ({ page }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.asker.email, PASSWORD);
+			const nav = page.getByRole('navigation', { name: NAV });
+			await expect(nav.getByRole('link')).toHaveText(['Map', people.asker.name]);
+			await expect(nav.getByRole('button')).toHaveText(['Sign out']);
+
+			await nav.getByRole('button', { name: 'Sign out' }).click();
+
+			await expect(page).toHaveURL('/signin');
+			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome back.');
+			await page.goto('/topics/stacks');
+			await expect(page).toHaveURL('/signin?next=%2Ftopics%2Fstacks');
+			expect((await page.context().cookies()).map((c) => c.name)).not.toContain(
+				'better-auth.session_token'
+			);
+		}
+	);
+
+	onOpen(
+		'signs out from Settings too, and Sign out is not a link: a plain GET changes nothing',
+		async ({ page }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.settings.email, PASSWORD);
+			await page.goto('/settings');
+			await expect(page.getByRole('heading', { name: 'Session' })).toBeVisible();
+
+			// A GET to the action's URL is just the Settings page, and still signed in.
+			await page.goto('/settings?/signout');
+			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
+			await expect(page.getByRole('navigation', { name: NAV })).toContainText(people.settings.name);
+
+			await page.getByRole('main').getByRole('button', { name: 'Sign out' }).click();
+
+			await expect(page).toHaveURL('/signin');
+			await page.goto('/settings');
+			await expect(page).toHaveURL('/signin?next=%2Fsettings');
+		}
+	);
+
+	onOpen('sees the 404 page for a path with no route, signed in', async ({ page }) => {
+		await page.goto('/signin');
+		await signInWith(page, people.asker.email, PASSWORD);
+
+		const response = await page.goto('/no/such/page');
+
+		expect(response?.status()).toBe(404);
+		await expect(page).toHaveURL('/no/such/page');
+	});
+
+	onOpen('has Sign out only on Settings on a phone', async ({ page }) => {
+		await page.goto('/signin');
+		await signInWith(page, people.phone.email, PASSWORD);
+		await page.setViewportSize({ width: 390, height: 844 });
+
+		await page.goto('/');
+		await expect(page.getByRole('navigation', { name: NAV })).toContainText(people.phone.name);
+		await expect(
+			page.getByRole('navigation', { name: NAV }).getByRole('button', { name: 'Sign out' })
+		).toBeHidden();
+
+		await page.goto('/settings');
+		await page.getByRole('main').getByRole('button', { name: 'Sign out' }).click();
+		await expect(page).toHaveURL('/signin');
+	});
+
+	onOpen('is sent from Sign in to where they were going, not shown the form', async ({ page }) => {
+		await page.goto('/signin');
+		await signInWith(page, people.asker.email, PASSWORD);
+
+		await page.goto(`/signin?next=${encodeURIComponent('/topics/stacks')}`);
+
+		await expect(page).toHaveURL('/topics/stacks');
+	});
+});
+
+// The Multi-user server on 4174: invite-only, with the admin the "setup-multi" project made.
+base.describe('the shared Multi-user server', () => {
+	base(
+		'sends a signed-out visitor from any page, even an unknown one, to Sign in',
+		async ({ page }) => {
+			for (const path of ['/', '/topics/stacks', '/settings', '/users', '/no/such/page']) {
+				await page.goto(path);
+				await expect(page, path).toHaveURL(`/signin?next=${encodeURIComponent(path)}`);
+			}
+		}
+	);
+
+	base(
+		'shows the board with no sign-up link while registration is invite-only',
+		async ({ page }) => {
+			await page.goto('/signin');
+
+			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome back.');
+			await expect(page.getByRole('navigation', { name: NAV })).toHaveCount(0);
+			await expect(page.getByRole('link', { name: 'Create an account' })).toHaveCount(0);
+		}
+	);
+
+	base('does not serve password sign-in over HTTP, only through the form', async ({ request }) => {
+		const response = await request.post('/api/auth/sign-in/email', {
+			headers: { origin: 'http://localhost:4174' },
+			data: { email: E2E_ADMIN.email, password: E2E_ADMIN.password }
+		});
+
+		expect(response.status()).toBe(404);
+		expect(response.headers()['set-cookie']).toBeUndefined();
+	});
+
+	base(
+		'gives the admin Users, their name and Sign out in the nav, in that order',
+		async ({ page }) => {
+			await page.goto('/signin');
+			await signInWith(page, E2E_ADMIN.email, E2E_ADMIN.password);
+
+			const nav = page.getByRole('navigation', { name: NAV });
+			await expect(nav.getByRole('link')).toHaveText(['Map', 'Users', E2E_ADMIN.name]);
+			await expect(nav.getByRole('button')).toHaveText(['Sign out']);
+			await nav.getByRole('button', { name: 'Sign out' }).click();
+			await expect(page).toHaveURL('/signin');
+		}
+	);
+});
+
+base.describe('a fresh Instance started like a released one, with no test switch', () => {
+	// Its own server, from the same build, on a fresh database: Setup offers Multi-user because the operator
+	// gave it a secret and an origin, and nothing else is needed.
+	base(
+		'lets the first visitor choose Multi-user, create the admin, sign out and sign back in',
+		async ({ browser }) => {
+			base.setTimeout(120_000);
+			const server = await startFreshServer();
+			try {
+				const context = await browser.newContext({ baseURL: server.url });
+				const page = await context.newPage();
+
+				await page.goto('/');
+				await expect(page).toHaveURL('/setup');
+				await expect(page.getByLabel('Multi-user')).toBeEnabled();
+				await expect(page.getByText(/next update/)).toHaveCount(0);
+				await page.getByLabel('Multi-user').check();
+				await page.getByRole('button', { name: 'Continue →' }).click();
+				await page.getByLabel('Name').fill('Fresh Admin');
+				await page.getByLabel('Email').fill('fresh.admin@example.com');
+				await page.getByLabel('Password').fill('a long enough password');
+				await page.getByRole('button', { name: 'Create admin account →' }).click();
+				await expect(page).toHaveURL('/');
+				const nav = page.getByRole('navigation', { name: NAV });
+				await expect(nav).toContainText('Fresh Admin');
+
+				await nav.getByRole('button', { name: 'Sign out' }).click();
+				await expect(page).toHaveURL('/signin');
+				await page.goto('/topics/stacks');
+				await expect(page).toHaveURL('/signin?next=%2Ftopics%2Fstacks');
+
+				await signInWith(page, 'fresh.admin@example.com', 'a long enough password');
+
+				await expect(page).toHaveURL('/topics/stacks');
+				await expect(page.getByRole('navigation', { name: NAV })).toContainText('Fresh Admin');
+				await context.close();
+			} finally {
+				await server.stop();
+			}
+		}
+	);
+});

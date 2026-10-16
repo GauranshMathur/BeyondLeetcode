@@ -200,7 +200,6 @@ describe('createAuth', () => {
 			expect(res.status, path).toBe(404);
 		}
 		for (const [method, path] of [
-			['POST', 'sign-in/email'],
 			['POST', 'sign-out'],
 			['GET', 'get-session'],
 			['POST', 'change-password']
@@ -216,6 +215,47 @@ describe('createAuth', () => {
 		expect(kept.status).not.toBe(404);
 	});
 
+	it('serves no password sign-in over HTTP: the Sign in form, with its per-Account limits, is the one way', async () => {
+		const { auth } = await setup();
+		await auth.api.signUpEmail({ body });
+		const signIn = (headers: Record<string, string> = {}) =>
+			auth.handler(
+				new Request('http://localhost:3000/api/auth/sign-in/email', {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						origin: 'http://localhost:3000',
+						...headers
+					},
+					body: JSON.stringify({ email: body.email, password: body.password })
+				})
+			);
+
+		// The right password is a 404 too, and no session comes out of it.
+		const res = await signIn();
+		expect(res.status).toBe(404);
+		expect(res.headers.getSetCookie()).toEqual([]);
+		// The router refuses it before anything else, so even a form-style post cannot reach it.
+		expect((await signIn({ 'content-type': 'application/x-www-form-urlencoded' })).status).toBe(
+			404
+		);
+		expect(
+			(
+				await auth.handler(
+					new Request('http://localhost:3000/api/auth/sign-in/email', { method: 'GET' })
+				)
+			).status
+		).toBe(404);
+
+		// The server-side call the form action makes is not an HTTP path, so it is not switched off.
+		const { headers, response } = await auth.api.signInEmail({
+			body: { email: body.email, password: body.password },
+			returnHeaders: true
+		});
+		expect(response.user.email).toBe(body.email);
+		expect(headers.getSetCookie()[0]).toMatch(/^better-auth\.session_token=/);
+	});
+
 	it('still refuses a cross-origin POST when the environment looks like a test', async () => {
 		// Better Auth 1.7.7 turns its origin and CSRF checks off when NODE_ENV is "test" or TEST is set,
 		// production included, unless the config says otherwise. This run has NODE_ENV=test as well.
@@ -229,12 +269,14 @@ describe('createAuth', () => {
 					headers: { cookie: 'better-auth.session_token=x', origin }
 				})
 			);
-		const signIn = (headers: Record<string, string>) =>
+		// Sign-up still takes a form post without a cookie, so it carries the cookie-less checks. This
+		// setup admits everyone, so a 403 here is the origin check and not a closed sign-up.
+		const signUp = (headers: Record<string, string>) =>
 			auth.handler(
-				new Request('http://localhost:3000/api/auth/sign-in/email', {
+				new Request('http://localhost:3000/api/auth/sign-up/email', {
 					method: 'POST',
 					headers: { 'content-type': 'application/json', ...headers },
-					body: JSON.stringify({ email: body.email, password: body.password })
+					body: JSON.stringify(body)
 				})
 			);
 
@@ -242,9 +284,10 @@ describe('createAuth', () => {
 		expect((await signOut('http://localhost:3000')).status).not.toBe(403);
 		// No cookie: the cross-site navigation check and a foreign Origin are refused too.
 		expect(
-			(await signIn({ 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' })).status
+			(await signUp({ 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' })).status
 		).toBe(403);
-		expect((await signIn({ origin: 'https://evil.example' })).status).toBe(403);
+		expect((await signUp({ origin: 'https://evil.example' })).status).toBe(403);
+		expect((await signUp({ origin: 'http://localhost:3000' })).status).toBe(200);
 	});
 
 	it('refuses the BETTER_AUTH_SECRET that .env.example ships, whatever its wording', async () => {

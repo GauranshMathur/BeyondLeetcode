@@ -62,6 +62,20 @@ test('a fresh Instance shows Setup everywhere; Multi-user needs the admin form, 
 	await expect(page).toHaveURL('/');
 	await page.reload();
 	await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(E2E_ADMIN.name);
+
+	// Sign out from the nav: back to Sign in, and the Map is out of reach until signing in again.
+	await page
+		.getByRole('navigation', { name: 'Primary' })
+		.getByRole('button', { name: 'Sign out' })
+		.click();
+	await expect(page).toHaveURL('/signin');
+	await page.goto('/');
+	await expect(page).toHaveURL('/signin?next=%2F');
+	await page.getByLabel('Email').fill(E2E_ADMIN.email);
+	await page.getByLabel('Password').fill(E2E_ADMIN.password);
+	await page.getByRole('button', { name: 'Sign in →' }).click();
+	await expect(page).toHaveURL('/');
+	await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(E2E_ADMIN.name);
 });
 
 test('once set up, a visitor without the admin session is sent to Sign in, test cookie or not', async ({
@@ -80,26 +94,28 @@ test('once set up, a visitor without the admin session is sent to Sign in, test 
 	await context.close();
 });
 
-test('Better Auth answers over HTTP on this server: the right password signs in, a wrong one does not, and nothing can be framed', async ({
+test('Better Auth answers over HTTP on this server, but not to a password sign-in, and nothing can be framed', async ({
 	request
 }) => {
 	const headers = { origin: 'http://localhost:4174' };
-	const signIn = (password: string) =>
-		request.post('/api/auth/sign-in/email', {
-			headers,
-			data: { email: E2E_ADMIN.email, password }
-		});
 
-	const wrong = await signIn('not the password at all');
-	expect(wrong.status()).toBe(401);
+	// Signing in with a password is the Sign in form's alone (it carries the per-Account limits).
+	const signIn = await request.post('/api/auth/sign-in/email', {
+		headers,
+		data: { email: E2E_ADMIN.email, password: E2E_ADMIN.password }
+	});
+	expect(signIn.status()).toBe(404);
+	expect(signIn.headers()['set-cookie']).toBeUndefined();
 
-	const right = await signIn(E2E_ADMIN.password);
-	expect(right.status()).toBe(200);
-	expect(right.headers()['set-cookie']).toContain('better-auth.session_token=');
-	expect(right.headers()['x-frame-options']).toBe('DENY');
-	expect(right.headers()['content-security-policy']).toBe("frame-ancestors 'none'");
+	// The rest of its API is served, and every answer refuses framing. No session, so no one is signed in.
+	const session = await request.get('/api/auth/get-session', { headers });
+	expect(session.status()).toBe(200);
+	expect(await session.json()).toBeNull();
+	expect(session.headers()['x-frame-options']).toBe('DENY');
+	expect(session.headers()['content-security-policy']).toBe("frame-ancestors 'none'");
 
-	// That session is the admin: the Map answers for it.
+	// And without a session the Map answers with a redirect to Sign in, never a page.
 	const map = await request.get('/', { maxRedirects: 0 });
-	expect(map.status()).toBe(200);
+	expect(map.status()).toBe(303);
+	expect(map.headers().location).toBe('/signin?next=%2F');
 });

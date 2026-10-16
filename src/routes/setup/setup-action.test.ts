@@ -45,7 +45,10 @@ const setupWith = (
 const choose = (
 	mode: string,
 	chooseLocal: () => Promise<void>,
-	multiUser: MultiUserChoice = { kind: 'later' }
+	multiUser: MultiUserChoice = {
+		kind: 'needs-env',
+		message: 'Add BETTER_AUTH_SECRET to your .env.'
+	}
 ) => run(actions.mode, { mode }, { instance: { chooseLocal }, setup: setupWith(multiUser) });
 
 describe('step 1: choose a mode', () => {
@@ -71,18 +74,6 @@ describe('step 1: choose a mode', () => {
 		await expect(
 			choose('local', async () => Promise.reject(new Error('disk full')))
 		).rejects.toThrow('disk full');
-	});
-
-	it('Multi-user is refused while it is a later release: nothing is set up', async () => {
-		const chooseLocal = vi.fn(async () => {});
-
-		const result = await choose('multi', chooseLocal, { kind: 'later' });
-
-		expect(result).toMatchObject({
-			status: 400,
-			data: { message: 'Multi-user arrives in the next update.' }
-		});
-		expect(chooseLocal).not.toHaveBeenCalled();
 	});
 
 	it('Multi-user without its secret or origin says what to add to .env', async () => {
@@ -196,18 +187,23 @@ describe('step 2: create the admin', () => {
 		}
 	);
 
-	it('refuses where Multi-user is not open, without calling createFirstAdmin', async () => {
+	it('refuses where Multi-user is not open, saying what to add to .env, without calling createFirstAdmin', async () => {
 		const createFirstAdmin = vi.fn();
+		const message = 'Add BETTER_AUTH_SECRET to your .env.';
 
 		const result = await run(actions.admin, admin, {
-			setup: setupWith({ kind: 'later' }, createFirstAdmin)
+			setup: setupWith({ kind: 'needs-env', message }, createFirstAdmin)
 		});
 
-		expect(result).toMatchObject({
-			status: 400,
-			data: { message: 'Multi-user arrives in the next update.' }
-		});
+		expect(result).toMatchObject({ status: 400, data: { message } });
 		expect(createFirstAdmin).not.toHaveBeenCalled();
+	});
+
+	it('needs no test switch to offer Multi-user: choosing it goes on to the admin form wherever it is open', async () => {
+		// The Setup port says open or not; nothing in the action looks at an environment switch.
+		const result = await choose('multi', vi.fn(), { kind: 'open' });
+
+		expect(result).toMatchObject({ step: 'admin' });
 	});
 
 	it.each([
@@ -305,7 +301,7 @@ describe('step 2: create the admin', () => {
 
 describe('load', () => {
 	it('hands the page the Multi-user choice', () => {
-		const multiUser: MultiUserChoice = { kind: 'later' };
+		const multiUser: MultiUserChoice = { kind: 'open' };
 
 		expect(load({ locals: { setup: setupWith(multiUser) } } as never)).toEqual({ multiUser });
 	});
