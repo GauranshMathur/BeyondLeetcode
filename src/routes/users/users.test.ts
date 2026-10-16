@@ -1,16 +1,18 @@
 import type { RequestEvent, ResolveOptions } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
 import type { App } from '$lib/server/app';
+import type { Db } from '$lib/server/db';
 import { createHandle } from '$lib/server/handle';
 import { createAuth } from '$lib/server/identity/auth';
 import { createLocalIdentity } from '$lib/server/identity/index';
 import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
 import { createRegistration } from '$lib/server/identity/registration';
 import { createFirstAdmin } from '$lib/server/identity/setup';
-import { createInstance, type Instance } from '$lib/server/instance';
+import { createInstance, type Instance, RegistrationNotAvailableError } from '$lib/server/instance';
 import { createFileTestDb } from '$lib/server/test-db';
 import { load as layoutLoad } from '../+layout.server';
-import { load } from './+page.server';
+import { load as signupLoad } from '../signup/+page.server';
+import { actions, load } from './+page.server';
 
 // The Users page, through the real hook and the real Better Auth: who is let in, and what they see.
 
@@ -83,6 +85,38 @@ async function visit(
 	const response = await handle({ event, resolve });
 	return { response, resolve, setHeaders, locals: event.locals };
 }
+
+/** Posts the Registration form through the real hook; the page's action runs where SvelteKit would run it. */
+async function submit(
+	handle: ReturnType<typeof createHandle>,
+	cookie: string,
+	fields: Record<string, string>,
+	routeId = '/users'
+) {
+	const resolve = vi.fn(async (event: RequestEvent, _opts?: ResolveOptions) => {
+		const result = await actions.registration(event as never);
+		return Response.json(result ?? null, { status: result?.status ?? 200 });
+	});
+	const event = {
+		url: new URL('/users?/registration', 'http://localhost'),
+		route: { id: routeId },
+		request: new Request('http://localhost/users?/registration', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/x-www-form-urlencoded',
+				...(cookie ? { cookie } : {})
+			},
+			body: new URLSearchParams(fields)
+		}),
+		cookies: { get: () => undefined, set: vi.fn() },
+		locals: {}
+	} as unknown as RequestEvent;
+	const response = await handle({ event, resolve });
+	return { response, resolve };
+}
+
+const storedRegistration = async (db: Db) =>
+	(await db.instance.findUniqueOrThrow({ where: { id: 'instance' } })).registrationMode;
 
 describe('the Users page in Multi-user Mode', () => {
 	it('shows the admin every Account, and is never cached', async () => {
@@ -216,5 +250,220 @@ describe('the nav', () => {
 	it('does not offer it before anyone is resolved', () => {
 		expect(layout(null)).toMatchObject({ showUsers: false });
 		expect(layout('multi')).toMatchObject({ showUsers: false });
+	});
+});
+
+describe('the Registration switch', () => {
+	it('shows the admin the Registration Mode the Instance holds', async () => {
+		const { handle, admin, instance } = await setup();
+
+		const invite = await (await visit(handle, '/users', admin)).response.json();
+		await instance.setRegistrationMode('open');
+		const open = await (await visit(handle, '/users', admin)).response.json();
+
+		expect(invite.registration).toBe('invite');
+		expect(open.registration).toBe('open');
+	});
+
+	it('opens sign-up on the next request and closes it again on the one after, with no restart', async () => {
+		const { handle, admin, auth, instance, db } = await setup();
+		const signUp = (email: string) =>
+			auth.api.signUpEmail({ body: { name: 'Newcomer', email, password } });
+		const signupPage = () => signupLoad({ locals: { instance } } as never);
+		// A new Instance starts invite-only: the page is closed and the hook refuses an Account.
+		expect(await signupPage()).toEqual({ open: false });
+		await expect(signUp('first@example.com')).rejects.toMatchObject({ statusCode: 403 });
+
+		const toOpen = await submit(handle, admin, { registration: 'open' });
+
+		expect(toOpen.response.status).toBe(200);
+		expect(await storedRegistration(db)).toBe('open');
+		expect(await signupPage()).toEqual({ open: true });
+		await expect(signUp('second@example.com')).resolves.toBeDefined();
+
+		const toInvite = await submit(handle, admin, { registration: 'invite' });
+
+		expect(toInvite.response.status).toBe(200);
+		expect(await storedRegistration(db)).toBe('invite');
+		expect(await signupPage()).toEqual({ open: false });
+		await expect(signUp('third@example.com')).rejects.toMatchObject({ statusCode: 403 });
+		expect(await db.user.findUnique({ where: { email: 'third@example.com' } })).toBeNull();
+		expect(await db.user.findUnique({ where: { email: 'second@example.com' } })).not.toBeNull();
+	});
+
+	it('refuses a learner with 403 before the action runs, and changes nothing', async () => {
+		const { handle, learner, instance, db } = await setup();
+		const lin = await learner('Lin Learner', 'lin@example.com');
+
+		const { response, resolve } = await submit(handle, lin, { registration: 'open' });
+
+		expect(response.status).toBe(403);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(instance.registrationMode()).toBe('invite');
+		expect(await storedRegistration(db)).toBe('invite');
+	});
+
+	it('refuses a user whose stored role merely contains admin with 403', async () => {
+		const { handle, learner, instance, db } = await setup();
+		const sam = await learner('Sam Sneaky', 'sam@example.com');
+		await db.user.update({ where: { email: 'sam@example.com' }, data: { role: 'admin,learner' } });
+
+		const { response, resolve } = await submit(handle, sam, { registration: 'open' });
+
+		expect(response.status).toBe(403);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(instance.registrationMode()).toBe('invite');
+		expect(await storedRegistration(db)).toBe('invite');
+	});
+
+	it('sends a signed-out visitor to Sign in and changes nothing', async () => {
+		const { handle, instance, db } = await setup();
+
+		const { response, resolve } = await submit(handle, '', { registration: 'open' });
+
+		expect(response.status).toBe(303);
+		expect(response.headers.get('location')).toMatch(/^\/signin\?next=/);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(instance.registrationMode()).toBe('invite');
+		expect(await storedRegistration(db)).toBe('invite');
+	});
+
+	it('treats an admin whose session was ended as signed out', async () => {
+		const { handle, admin, instance, db } = await setup();
+		await db.session.deleteMany();
+
+		const { response, resolve } = await submit(handle, admin, { registration: 'open' });
+
+		expect(response.status).toBe(303);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(instance.registrationMode()).toBe('invite');
+	});
+
+	it.each([
+		['something else', { registration: 'everyone' }],
+		['the page label instead of the value', { registration: 'Open' }],
+		['nothing', {}],
+		['an empty value', { registration: '' }]
+	])('refuses %s with 400 and changes nothing', async (_, fields) => {
+		const { handle, admin, instance, db } = await setup();
+
+		const { response } = await submit(handle, admin, fields);
+
+		expect(response.status).toBe(400);
+		expect(instance.registrationMode()).toBe('invite');
+		expect(await storedRegistration(db)).toBe('invite');
+	});
+
+	it('answers a failed write with a fixed message and leaves the mode as it was', async () => {
+		const { handle, admin, instance, db } = await setup();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.spyOn(instance, 'setRegistrationMode').mockRejectedValueOnce(
+			new Error('SQLITE_FULL: /var/lib/beyondleetcode/app.db')
+		);
+
+		const { response } = await submit(handle, admin, { registration: 'open' });
+
+		expect(response.status).toBe(500);
+		const body = JSON.stringify(await response.json());
+		expect(body).toContain('could not be changed');
+		expect(body).not.toMatch(/SQLITE|beyondleetcode\/app\.db/);
+		expect(instance.registrationMode()).toBe('invite');
+		expect(await storedRegistration(db)).toBe('invite');
+		// The log names the kind of failure, never the message with its paths.
+		expect(JSON.stringify(logged.mock.calls)).not.toContain('/var/lib');
+	});
+
+	it('does not exist in Local Mode: 404 for the Local Learner, who is an admin there, and nothing changes', async () => {
+		const db = await createFileTestDb();
+		const instance = await createInstance(db);
+		await instance.chooseLocal();
+		const identity = await createLocalIdentity(db);
+		await identity.ensureLocalLearner();
+		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
+		const handle = createHandle({
+			instance,
+			identity,
+			core,
+			multiUser: null,
+			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']
+		});
+
+		const { response, resolve } = await submit(handle, '', { registration: 'open' });
+
+		expect(response.status).toBe(404);
+		expect(resolve).not.toHaveBeenCalled();
+		expect(instance.registrationMode()).toBe('invite');
+		expect(await storedRegistration(db)).toBe('invite');
+	});
+});
+
+describe('the Registration action, if the hook ever let a request through', () => {
+	const admin = { learnerId: 'l', displayName: 'N', role: 'admin' as const };
+	const learner = { ...admin, role: 'learner' as const };
+	const request = (formData = vi.fn(async () => new URLSearchParams({ registration: 'open' }))) =>
+		({ formData }) as unknown as Request;
+	const instance = () => ({ setRegistrationMode: vi.fn(async () => {}) });
+	const call = (locals: Record<string, unknown>, req: Request) =>
+		actions.registration({ locals, request: req } as never);
+
+	it('is 403 for a learner, before it reads the form or touches the Instance', async () => {
+		const i = instance();
+		const formData = vi.fn();
+
+		await expect(
+			call({ auth: {}, identity: learner, instance: i }, request(formData as never))
+		).rejects.toMatchObject({ status: 403 });
+
+		expect(formData).not.toHaveBeenCalled();
+		expect(i.setRegistrationMode).not.toHaveBeenCalled();
+	});
+
+	it('is 403 for nobody', async () => {
+		const i = instance();
+
+		await expect(call({ auth: {}, instance: i }, request())).rejects.toMatchObject({ status: 403 });
+
+		expect(i.setRegistrationMode).not.toHaveBeenCalled();
+	});
+
+	it('is 403 for any role that is not admin exactly', async () => {
+		const i = instance();
+		const odd = { ...admin, role: 'admin,learner' as never };
+
+		await expect(call({ auth: {}, identity: odd, instance: i }, request())).rejects.toMatchObject({
+			status: 403
+		});
+
+		expect(i.setRegistrationMode).not.toHaveBeenCalled();
+	});
+
+	it('is 404 without Better Auth, as in Local Mode where the Local Learner is an admin', async () => {
+		const i = instance();
+
+		await expect(call({ identity: admin, instance: i }, request())).rejects.toMatchObject({
+			status: 404
+		});
+
+		expect(i.setRegistrationMode).not.toHaveBeenCalled();
+	});
+
+	it('is 404 when the Instance says it has no Registration Mode to switch', async () => {
+		const i = {
+			setRegistrationMode: vi.fn(async () => {
+				throw new RegistrationNotAvailableError();
+			})
+		};
+
+		await expect(call({ auth: {}, identity: admin, instance: i }, request())).rejects.toMatchObject(
+			{ status: 404 }
+		);
+	});
+
+	it('hands the Instance only the value from the form', async () => {
+		const i = instance();
+
+		await call({ auth: {}, identity: admin, instance: i }, request());
+
+		expect(i.setRegistrationMode).toHaveBeenCalledExactlyOnceWith('open');
 	});
 });

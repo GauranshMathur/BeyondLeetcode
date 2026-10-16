@@ -8,6 +8,15 @@ export interface Instance {
 	/** The stored mode, or null when the Instance is not set up yet. */
 	mode(): InstanceMode | null;
 	registrationMode(): RegistrationMode;
+	/**
+	 * Switches the Registration Mode of a Multi-user Instance. The database is written first and memory
+	 * changes only once the write has succeeded, so a failure never leaves memory Open over an Invite-only
+	 * database. If a switch fails after all (a driver can fail after it commits), memory is set to what the
+	 * database holds, or to invite-only when that cannot be read, and the error is still thrown. Takes effect
+	 * on the next sign-up, with no restart. Throws `InvalidRegistrationModeError` for anything but 'open' or
+	 * 'invite', and `RegistrationNotAvailableError` in Local mode or before Setup.
+	 */
+	setRegistrationMode(next: RegistrationMode): Promise<void>;
 	/** Sets the Instance up as Local. Throws if it is already set up; never overwrites. */
 	chooseLocal(): Promise<void>;
 	/**
@@ -24,6 +33,24 @@ export class InstanceAlreadySetUpError extends Error {
 	}
 }
 
+export class InvalidRegistrationModeError extends Error {
+	constructor() {
+		super("The Registration Mode is 'open' or 'invite'.");
+		this.name = 'InvalidRegistrationModeError';
+	}
+}
+
+export class RegistrationNotAvailableError extends Error {
+	constructor() {
+		super('Only a Multi-user Instance has a Registration Mode to switch.');
+		this.name = 'RegistrationNotAvailableError';
+	}
+}
+
+/** Whether a value read from outside (a form, a row) is one of the two Registration Modes. */
+export const isRegistrationMode = (value: unknown): value is RegistrationMode =>
+	value === 'open' || value === 'invite';
+
 const isUniqueViolation = (error: unknown) =>
 	error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 
@@ -31,7 +58,26 @@ const isUniqueViolation = (error: unknown) =>
 export async function createInstance(db: Db): Promise<Instance> {
 	const row = await db.instance.findUnique({ where: { id: 'instance' } });
 	let mode = (row?.mode as InstanceMode | undefined) ?? null;
-	const registration = (row?.registrationMode as RegistrationMode | undefined) ?? 'invite';
+	// A stored value that is neither mode (a hand edit, a bad migration) reads as invite-only: unknown is closed.
+	let registration: RegistrationMode = isRegistrationMode(row?.registrationMode)
+		? row.registrationMode
+		: 'invite';
+	/** Registration switches run one at a time, so the last one to start is the last to write and the one memory keeps. */
+	let switching: Promise<unknown> = Promise.resolve();
+
+	/**
+	 * What the database holds, for after a switch that failed: the caller cannot tell whether the write
+	 * landed (a driver can fail after it commits), so memory follows the row, not the old value. When the
+	 * row cannot be read either, or holds something that is not a mode, invite-only: never fail open.
+	 */
+	const storedRegistration = async (): Promise<RegistrationMode> => {
+		try {
+			const stored = await db.instance.findUnique({ where: { id: 'instance' } });
+			return isRegistrationMode(stored?.registrationMode) ? stored.registrationMode : 'invite';
+		} catch {
+			return 'invite';
+		}
+	};
 
 	/** A refused claim means another writer got there first: adopt the stored mode instead of a stale cache. */
 	const refuse = async (): Promise<never> => {
@@ -43,6 +89,32 @@ export async function createInstance(db: Db): Promise<Instance> {
 	return {
 		mode: () => mode,
 		registrationMode: () => registration,
+		setRegistrationMode(next) {
+			// Before the queue: a refused value must not wait behind, or be hidden by, another switch.
+			if (!isRegistrationMode(next)) return Promise.reject(new InvalidRegistrationModeError());
+			const run = switching.then(async () => {
+				try {
+					if (mode !== 'multi') throw new RegistrationNotAvailableError();
+					// The row's mode is the claim, as in chooseMulti: nothing is written unless it is still multi.
+					const { count } = await db.instance.updateMany({
+						where: { id: 'instance', mode: 'multi' },
+						data: { registrationMode: next }
+					});
+					if (count !== 1) {
+						const stored = await db.instance.findUnique({ where: { id: 'instance' } });
+						mode = (stored?.mode as InstanceMode | undefined) ?? null;
+						throw new RegistrationNotAvailableError();
+					}
+					registration = next;
+				} catch (error) {
+					// Whatever went wrong, memory ends on what the database holds, and the caller still sees the failure.
+					registration = await storedRegistration();
+					throw error;
+				}
+			});
+			switching = run.catch(() => {});
+			return run;
+		},
 		async chooseLocal() {
 			if (mode !== null) throw new InstanceAlreadySetUpError();
 			try {

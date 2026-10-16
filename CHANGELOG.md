@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.46.0...v0.47.0) (2026-10-16)
+
+
+### Features
+
+* **beyondleetcode:** C34b Users registration toggle ([#184](https://github.com/GauranshMathur/BeyondLeetcode/issues/184)) ([9f3c5ed](https://github.com/GauranshMathur/BeyondLeetcode/commit/9f3c5ed5c172043e9f17d1055c454b93997c01d2))
+
 ## [0.46.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.45.0...v0.46.0) (2026-10-15)
 
 

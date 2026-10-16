@@ -1,6 +1,12 @@
 import { createClient } from '@libsql/client';
 import { expect, it } from 'vitest';
-import { createInstance, InstanceAlreadySetUpError } from './instance.ts';
+import type { Db } from './db.ts';
+import {
+	createInstance,
+	InstanceAlreadySetUpError,
+	InvalidRegistrationModeError,
+	RegistrationNotAvailableError
+} from './instance.ts';
 import { createTestDb } from './test-db.ts';
 
 const migrations = import.meta.glob<string>('/prisma/migrations/*/migration.sql', {
@@ -164,3 +170,311 @@ it.each([
 	expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
 	expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
 });
+
+// setRegistrationMode: the admin's toggle (C34b). The database is written first, memory after.
+
+/** A database whose Instance writes (and, when named, reads) can be held, failed or delayed, to pin the order of the two. */
+function interceptWrites(
+	db: Db,
+	intercept: (args: unknown, write: () => Promise<unknown>) => Promise<unknown>,
+	methods: string[] = ['updateMany']
+): Db {
+	return new Proxy(db, {
+		get(target, prop) {
+			const value = Reflect.get(target, prop);
+			if (prop !== 'instance') return value;
+			return new Proxy(value, {
+				get(delegate, method) {
+					const member = Reflect.get(delegate, method);
+					if (typeof method !== 'string' || !methods.includes(method)) return member;
+					return (args: unknown) => intercept(args, () => member.call(delegate, args));
+				}
+			});
+		}
+	});
+}
+
+const stored = async (db: Db) =>
+	(await db.instance.findUniqueOrThrow({ where: { id: 'instance' } })).registrationMode;
+
+async function multiInstance() {
+	const db = await createTestDb();
+	const instance = await createInstance(db);
+	await instance.chooseMulti();
+	return { db, instance };
+}
+
+it('setRegistrationMode switches a Multi-user Instance both ways, in memory and in the database', async () => {
+	const { db, instance } = await multiInstance();
+
+	await instance.setRegistrationMode('open');
+
+	expect(instance.registrationMode()).toBe('open');
+	expect(await stored(db)).toBe('open');
+	expect((await createInstance(db)).registrationMode()).toBe('open');
+
+	await instance.setRegistrationMode('invite');
+
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await stored(db)).toBe('invite');
+	expect((await createInstance(db)).registrationMode()).toBe('invite');
+});
+
+it('setRegistrationMode keeps the mode it was given when set again', async () => {
+	const { instance } = await multiInstance();
+	await instance.setRegistrationMode('open');
+
+	await instance.setRegistrationMode('open');
+
+	expect(instance.registrationMode()).toBe('open');
+});
+
+it('setRegistrationMode writes the database before it changes memory', async () => {
+	const { db } = await multiInstance();
+	let release: () => void = () => {};
+	const held = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			await held;
+			return write();
+		})
+	);
+
+	const switching = instance.setRegistrationMode('open');
+	await new Promise((resolve) => setTimeout(resolve, 20));
+
+	// The write has not finished: memory and database both still say invite-only.
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await stored(db)).toBe('invite');
+
+	release();
+	await switching;
+
+	expect(instance.registrationMode()).toBe('open');
+	expect(await stored(db)).toBe('open');
+});
+
+it('a failed write leaves memory as it was, so a failure never leaves it Open over an Invite-only database', async () => {
+	const { db } = await multiInstance();
+	const instance = await createInstance(
+		interceptWrites(db, async () => {
+			throw new Error('disk full');
+		})
+	);
+
+	await expect(instance.setRegistrationMode('open')).rejects.toThrow('disk full');
+
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await stored(db)).toBe('invite');
+});
+
+it('a failed write back to Invite-only does not claim it succeeded', async () => {
+	const { db } = await multiInstance();
+	let failing = false;
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			if (failing) throw new Error('disk full');
+			return write();
+		})
+	);
+	await instance.setRegistrationMode('open');
+	failing = true;
+
+	await expect(instance.setRegistrationMode('invite')).rejects.toThrow('disk full');
+
+	// Memory still matches the database (Open); the caller was told the switch did not happen.
+	expect(instance.registrationMode()).toBe('open');
+	expect(await stored(db)).toBe('open');
+});
+
+it.each(['everyone', 'OPEN', 'Invite', '', 'open ', 'invite-only', undefined, null, 1, {}])(
+	'setRegistrationMode refuses %j and changes nothing',
+	async (value) => {
+		const { db, instance } = await multiInstance();
+		await instance.setRegistrationMode('open');
+
+		await expect(instance.setRegistrationMode(value as never)).rejects.toThrow(
+			InvalidRegistrationModeError
+		);
+
+		expect(instance.registrationMode()).toBe('open');
+		expect(await stored(db)).toBe('open');
+	}
+);
+
+it('setRegistrationMode refuses in Local mode and writes nothing', async () => {
+	const db = await createTestDb();
+	const instance = await createInstance(db);
+	await instance.chooseLocal();
+
+	await expect(instance.setRegistrationMode('open')).rejects.toThrow(RegistrationNotAvailableError);
+
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await stored(db)).toBe('invite');
+});
+
+it('setRegistrationMode refuses before the Instance is set up and creates no row', async () => {
+	const db = await createTestDb();
+	const instance = await createInstance(db);
+
+	await expect(instance.setRegistrationMode('open')).rejects.toThrow(RegistrationNotAvailableError);
+
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await db.instance.count()).toBe(0);
+});
+
+it('setRegistrationMode on a module that thinks the Instance is multi, over a database that is not, writes nothing', async () => {
+	const { db, instance } = await multiInstance();
+	// Someone else undid the switch behind this module's back.
+	await db.instance.update({ where: { id: 'instance' }, data: { mode: 'local' } });
+
+	await expect(instance.setRegistrationMode('open')).rejects.toThrow(RegistrationNotAvailableError);
+
+	expect(instance.mode()).toBe('local');
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await stored(db)).toBe('invite');
+});
+
+it('two switches at once end with memory and database agreeing, the later call winning', async () => {
+	const { db } = await multiInstance();
+	// The first write reaches the database but its answer is slow, so the second could overtake it.
+	let first = true;
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			const result = await write();
+			if (first) {
+				first = false;
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			}
+			return result;
+		})
+	);
+
+	await Promise.all([instance.setRegistrationMode('open'), instance.setRegistrationMode('invite')]);
+
+	expect(await stored(db)).toBe('invite');
+	expect(instance.registrationMode()).toBe('invite');
+});
+
+it('a switch that fails does not stop the next one', async () => {
+	const { db } = await multiInstance();
+	let failNext = true;
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			if (failNext) {
+				failNext = false;
+				throw new Error('disk full');
+			}
+			return write();
+		})
+	);
+
+	const results = await Promise.allSettled([
+		instance.setRegistrationMode('open'),
+		instance.setRegistrationMode('open')
+	]);
+
+	expect(results.map((r) => r.status)).toEqual(['rejected', 'fulfilled']);
+	expect(instance.registrationMode()).toBe('open');
+	expect(await stored(db)).toBe('open');
+});
+
+it('a write that commits and then rejects leaves memory on what the database holds, and still rejects', async () => {
+	const { db } = await multiInstance();
+	let faulty = false;
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			const result = await write();
+			// The row is changed, then the driver reports a fault: the caller cannot tell it was written.
+			if (faulty) throw new Error('driver fault after commit');
+			return result;
+		})
+	);
+	await instance.setRegistrationMode('open');
+	faulty = true;
+
+	await expect(instance.setRegistrationMode('invite')).rejects.toThrow('driver fault after commit');
+
+	// Memory follows the database (Invite-only), not the Open it held before: it never fails open.
+	expect(await stored(db)).toBe('invite');
+	expect(instance.registrationMode()).toBe('invite');
+});
+
+it('a write that commits Open and then rejects leaves memory Open, as the database is', async () => {
+	const { db } = await multiInstance();
+	const instance = await createInstance(
+		interceptWrites(db, async (_, write) => {
+			await write();
+			throw new Error('driver fault after commit');
+		})
+	);
+
+	await expect(instance.setRegistrationMode('open')).rejects.toThrow('driver fault after commit');
+
+	expect(await stored(db)).toBe('open');
+	expect(instance.registrationMode()).toBe('open');
+});
+
+it('a failed write whose re-read fails too leaves memory Invite-only, never Open', async () => {
+	const { db } = await multiInstance();
+	let faulty = false;
+	const instance = await createInstance(
+		interceptWrites(
+			db,
+			async (_, write) => {
+				if (faulty) throw new Error('disk gone');
+				return write();
+			},
+			['updateMany', 'findUnique']
+		)
+	);
+	await instance.setRegistrationMode('open');
+	faulty = true;
+
+	await expect(instance.setRegistrationMode('invite')).rejects.toThrow('disk gone');
+
+	// Nothing could be read to say what the database holds (it still says Open here): closed is the safe guess.
+	expect(instance.registrationMode()).toBe('invite');
+	expect(await stored(db)).toBe('open');
+});
+
+it('after a failed switch the next one still works', async () => {
+	const { db } = await multiInstance();
+	let faulty = false;
+	const instance = await createInstance(
+		interceptWrites(
+			db,
+			async (_, write) => {
+				if (faulty) throw new Error('disk gone');
+				return write();
+			},
+			['updateMany', 'findUnique']
+		)
+	);
+	faulty = true;
+	await instance.setRegistrationMode('invite').catch(() => {});
+	faulty = false;
+
+	await instance.setRegistrationMode('open');
+
+	expect(instance.registrationMode()).toBe('open');
+	expect(await stored(db)).toBe('open');
+});
+
+it.each(['everyone', 'OPEN', '', ' open'])(
+	'a stored Registration Mode of %j is read as invite-only at start',
+	async (value) => {
+		const db = await createTestDb();
+		await db.instance.create({ data: { mode: 'multi', registrationMode: value } });
+
+		const instance = await createInstance(db);
+
+		expect(instance.registrationMode()).toBe('invite');
+		// And the unreadable value does not stop an admin from choosing one.
+		await instance.setRegistrationMode('open');
+		expect(instance.registrationMode()).toBe('open');
+		expect(await stored(db)).toBe('open');
+	}
+);

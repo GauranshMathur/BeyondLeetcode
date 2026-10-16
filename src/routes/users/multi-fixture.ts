@@ -12,7 +12,7 @@ import { createAuth } from '../../lib/server/identity/auth.ts';
 const MULTI_PORT = '4174';
 
 /** What the Multi-user server was started with: the Playwright config puts a fresh temp database path in its environment. */
-function serverEnvironment() {
+function serverEnvironment(): ServerTarget {
 	// Linux: `/proc/<pid>/environ` is the environment a process started with. The server is the process
 	// started with PORT=4174 (the shell that runs it has no PORT of its own).
 	for (const pid of readdirSync('/proc').filter((name) => /^\d+$/.test(name))) {
@@ -38,6 +38,9 @@ function serverEnvironment() {
 		`Could not find the Multi-user test server (PORT=${MULTI_PORT}) to open its database. These tests read it from /proc, so they run on Linux only.`
 	);
 }
+
+/** A Multi-user server's database file, signing secret and public origin: what a second Better Auth needs to act on it. */
+export type ServerTarget = { database: string; secret: string; origin: string };
 
 export const LEARNER_PASSWORD = 'correct horse battery staple';
 
@@ -65,8 +68,9 @@ function sessionOf(setCookies: string[]) {
 
 export type Session = ReturnType<typeof sessionOf>;
 
-export async function openMultiUserDatabase() {
-	const { database, secret, origin } = serverEnvironment();
+/** The shared 4174 server's database, or another Multi-user server's when `target` names it. */
+export async function openMultiUserDatabase(target: ServerTarget = serverEnvironment()) {
+	const { database, secret, origin } = target;
 	const db = createDb(database);
 	// Admits every sign-up: this instance is only ever driven from the test process, never over HTTP.
 	const auth = createAuth({ db, origin, secret, admitSignUp: () => ({}) });
