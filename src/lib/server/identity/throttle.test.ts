@@ -117,20 +117,69 @@ describe('throttle', () => {
 		expect(throttle.attempt(from('1.1.1.1')).allowed).toBe(false);
 	});
 
-	it('succeed does not reset the address budget', () => {
+	it('succeed gives back exactly one count to the address, so right passwords never use up its budget', () => {
 		const { throttle } = setup({ addressLimit: 6 });
 		for (let i = 0; i < 5; i++) throttle.attempt(from('1.1.1.1', 'mine'));
 		throttle.succeed(from('1.1.1.1', 'mine'));
+		// 5 counted, one taken back: two more fit under 6, the third does not.
+		expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
 		expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
 		expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(false);
 	});
 
-	it('succeed does not reset the account budget', () => {
+	it('succeed gives back exactly one count to the Account, however many addresses it signs in from', () => {
 		const { throttle } = setup({ accountLimit: 6 });
-		for (let i = 0; i < 5; i++) throttle.attempt(from('1.1.1.1', 'mine'));
+		for (let i = 0; i < 5; i++) throttle.attempt(from(`1.1.1.${i}`, 'mine'));
+		throttle.succeed(from('1.1.1.0', 'mine'));
+		expect(throttle.attempt(from('2.2.2.1', 'mine')).allowed).toBe(true);
+		expect(throttle.attempt(from('2.2.2.2', 'mine')).allowed).toBe(true);
+		expect(throttle.attempt(from('2.2.2.3', 'mine')).allowed).toBe(false);
+	});
+
+	it('a class behind one address can all sign in: a right password is attempt + succeed, net zero', () => {
+		const { throttle } = setup();
+		for (let student = 0; student < 100; student++) {
+			expect(throttle.attempt(from('203.0.113.7', `student-${student}`)).allowed).toBe(true);
+			throttle.succeed(from('203.0.113.7', `student-${student}`));
+		}
+		expect(throttle.attempt(from('203.0.113.7', 'student-0')).allowed).toBe(true);
+	});
+
+	it('the same Account signing in over and over never runs out either', () => {
+		const { throttle } = setup();
+		for (let i = 0; i < 200; i++) {
+			expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
+			throttle.succeed(from('1.1.1.1', 'mine'));
+		}
+	});
+
+	it("a right password never clears or lowers another Account's failures at the same address", () => {
+		const { throttle } = setup({ addressLimit: 8 });
+		// An attacker's guesses at the victim's Account...
+		for (let i = 0; i < 5; i++) throttle.attempt(from('1.1.1.1', 'victim'));
+		// ...then a sign-in with the attacker's own valid Account, many times over.
+		for (let i = 0; i < 20; i++) {
+			const turn = throttle.attempt(from('1.1.1.1', 'attacker'));
+			if (turn.allowed) throttle.succeed(from('1.1.1.1', 'attacker'));
+		}
+		// The victim's pair budget is untouched, and so is the address's count of their failures.
+		expect(throttle.attempt(from('1.1.1.1', 'victim')).allowed).toBe(false);
+		expect(throttle.attempt(from('1.1.1.1', 'other-1')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'other-2')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'other-3')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'other-4')).allowed).toBe(false);
+	});
+
+	it('succeed leaves no empty entry behind, even when its window has ended', () => {
+		const { throttle, advance } = setup();
+		throttle.attempt(from('1.1.1.1', 'mine'));
 		throttle.succeed(from('1.1.1.1', 'mine'));
-		expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(true);
-		expect(throttle.attempt(from('1.1.1.1', 'mine')).allowed).toBe(false);
+		expect(throttle.size()).toBe(0);
+		throttle.attempt(from('1.1.1.1', 'mine'));
+		advance(10 * MIN);
+		throttle.succeed(from('1.1.1.1', 'mine'));
+		throttle.attempt(from('9.9.9.9', null));
+		expect(throttle.size()).toBe(1);
 	});
 
 	it('succeed with no account does nothing', () => {

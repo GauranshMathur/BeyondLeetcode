@@ -94,6 +94,12 @@ const UNUSED_CORE_PATHS = [
 	'/list-accounts'
 ];
 
+// Password sign-in is not served over HTTP at all. Better Auth's limiter keys on the address alone
+// and only covers requests through `auth.handler`; the Sign in form action (`routes/signin`) calls
+// `auth.api` and carries the per-Account limits (`throttle.ts`), so it is the one way in with a
+// password. Server-side `auth.api.signInEmail` calls are not HTTP paths and are unaffected.
+const HTTP_SIGN_IN_PATHS = ['/sign-in/email'];
+
 const signUpClosed = () => new APIError('FORBIDDEN', { message: 'Sign-up is closed' });
 
 /** Better Auth over our database: email + password and the admin plugin, nothing else. */
@@ -123,9 +129,9 @@ export function createAuth({
 			...(origin ? { useSecureCookies: origin.startsWith('https:') } : {}),
 			// Only the header our own route sets: X-Forwarded-For is client-controlled and never read.
 			// IPv6 clients are grouped by /64 (Better Auth's default, stated here so it cannot change under us).
-			// Not /128: sign-in over HTTP has no per-Account backstop, and whoever holds a /64 controls all
-			// of its addresses, so a finer key would let them rotate addresses and guess without limit. The
-			// cost is that clients in one LAN /64 share a budget, the same trade-off throttle.ts makes.
+			// Not /128: whoever holds a /64 controls all of its addresses, so a finer key would let them
+			// rotate addresses without limit (sign-up and the other endpoints have no per-Account backstop).
+			// The cost is that clients in one LAN /64 share a budget, the same trade-off throttle.ts makes.
 			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER], ipv6Subnet: 64 }
 		},
 		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
@@ -201,7 +207,7 @@ export function createAuth({
 				if (!(await admitSignUp({ email: ctx.body?.email }))) throw signUpClosed();
 			})
 		},
-		disabledPaths: [...UNUSED_ADMIN_PATHS, ...UNUSED_CORE_PATHS],
+		disabledPaths: [...UNUSED_ADMIN_PATHS, ...UNUSED_CORE_PATHS, ...HTTP_SIGN_IN_PATHS],
 		plugins: [admin({ defaultRole: 'learner' }), ...extraPlugins]
 	});
 }

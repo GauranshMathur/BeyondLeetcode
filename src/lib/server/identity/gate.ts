@@ -36,35 +36,50 @@ const isPublic = (routeId: string) =>
 const isMultiOnly = (routeId: string) =>
 	isPublic(routeId) || isUnder(routeId, '/users') || routeId === '/account/password';
 
+/** The form action a POST runs, read the way SvelteKit reads it: the first query key that starts with '/'. */
+const formAction = (search: string): string | null => {
+	for (const key of new URLSearchParams(search).keys()) if (key.startsWith('/')) return key;
+	return null;
+};
+
+/** The two ways to sign out: Better Auth's own endpoint, and the Settings page's `signout` form action. */
+const isSigningOut = ({ routeId, method, pathname, search }: GateInput) =>
+	method === 'POST' &&
+	(pathname === '/api/auth/sign-out' ||
+		(routeId === '/settings' && formAction(search) === '/signout'));
+
 /**
  * Decides what a request may do, first matching rule wins. Pure: the caller skips static assets
  * and SvelteKit internals (`/_app/`, favicon) and acts on the result.
+ *
+ * A path with no route (`routeId` null) is a private page in Multi-user Mode, so the 404 page does
+ * not tell a signed-out visitor which paths exist; in Local Mode it is the 404 page for everyone.
  */
 export function gate(input: GateInput): GateResult {
-	const { mode, who, routeId, method, pathname, search } = input;
+	const { mode, who, routeId, pathname, search } = input;
 
 	if (mode === null) return routeId === '/setup' ? pass : redirect('/setup');
-	if (routeId === null) return pass;
 
 	if (routeId === '/setup') {
 		const converting = mode === 'local' && new URLSearchParams(search).has('convert');
 		return converting ? pass : redirect('/');
 	}
 
-	if (mode === 'local') return isMultiOnly(routeId) ? status(404) : pass;
+	if (mode === 'local') return routeId !== null && isMultiOnly(routeId) ? status(404) : pass;
 
 	if (who === null) {
-		return isPublic(routeId)
+		return routeId !== null && isPublic(routeId)
 			? pass
 			: redirect(`/signin?next=${encodeURIComponent(pathname + search)}`);
 	}
 
 	if (input.mustChangePassword) {
-		const signingOut = method === 'POST' && pathname === '/api/auth/sign-out';
-		if (routeId !== '/account/password' && !signingOut) return redirect('/account/password');
+		if (routeId !== '/account/password' && !isSigningOut(input)) {
+			return redirect('/account/password');
+		}
 	}
 
-	if (isUnder(routeId, '/users') && who.role !== 'admin') return status(403);
+	if (routeId !== null && isUnder(routeId, '/users') && who.role !== 'admin') return status(403);
 
 	return pass;
 }

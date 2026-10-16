@@ -28,7 +28,12 @@ export interface Throttle {
 	 * sign-ins cannot all pass before any is counted. Call before checking the password.
 	 */
 	attempt(input: ThrottleInput): ThrottleCheck;
-	/** Call after a right password; clears the account + address counter only. */
+	/**
+	 * Call after a right password. Clears the Account + address counter, and takes back the one count
+	 * `attempt` added to the address and to the Account, so right passwords never use up either budget
+	 * (a class behind one shared address would otherwise be locked out after 20 sign-ins). Never clears
+	 * the address or Account counters: a valid Account cannot reset what someone's wrong guesses used.
+	 */
 	succeed(input: ThrottleInput): void;
 	size(): number;
 }
@@ -88,6 +93,10 @@ interface Entry {
  * address counter applies. If that lookup ever disagrees with the library, the Account limits are
  * skipped but the address limit still holds.
  *
+ * A right password takes its own attempt back from the address and the Account counters (`succeed`),
+ * so only wrong passwords spend budget. Callers that count successes too (Sign up) never call it.
+ * Residual: a success whose window ended before it finished takes a count from the next window.
+ *
  * The caller must show one message for "wrong password", "no such account" and "too many attempts",
  * or the Account limit tells an attacker whether an email has an Account. The Account limit also lets
  * someone lock a known Account out for a window; that is accepted.
@@ -120,6 +129,14 @@ export const createThrottle = ({
 		// The address has no '|', so the key is unambiguous whatever the id holds.
 		if (accountId !== null) slots.push([pairs, `${where}|${accountId}`], [accounts, accountId]);
 		return slots;
+	};
+
+	/** One count less; an entry left at zero is dropped, as if the attempt had never been made. */
+	const giveBack = ({ entries }: Counter, key: string) => {
+		const entry = entries.get(key);
+		if (!entry) return;
+		if (entry.count <= 1) entries.delete(key);
+		else entry.count -= 1;
 	};
 
 	const sweep = ({ entries }: Counter, at: number) => {
@@ -159,7 +176,10 @@ export const createThrottle = ({
 		},
 		succeed(input) {
 			if (input.accountId === null) return;
-			pairs.entries.delete(`${normaliseAddress(input.address)}|${input.accountId}`);
+			const where = normaliseAddress(input.address);
+			pairs.entries.delete(`${where}|${input.accountId}`);
+			giveBack(addresses, where);
+			giveBack(accounts, input.accountId);
 		},
 		size: () => addresses.entries.size + pairs.entries.size + accounts.entries.size
 	};
