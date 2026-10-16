@@ -1,5 +1,4 @@
 import { test as base, expect, type Page, type PlaywrightWorkerArgs } from '@playwright/test';
-import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
 import {
 	LEARNER_PASSWORD,
 	openMultiUserDatabase,
@@ -10,10 +9,10 @@ import { OWN_SERVER_ADMIN, startMultiUserServer } from './multi-server.ts';
 
 // The Registration section of the Users page (C34b).
 //
-// Files run in parallel on the shared Multi-user server (4174), and signup.multi.e2e.ts expects it to stay
-// invite-only, so this file never switches it. The first describe only reads that server and tries to
-// switch it as people who may not (the refusals change nothing). Everything that really switches the mode
-// runs on a Multi-user server of its own (multi-server.ts): one running server from start to finish.
+// Every test here runs on a Multi-user server of its own (multi-server.ts): same build, fresh database,
+// one running server from start to finish. Not on the shared one (4174): files run in parallel there,
+// signup.multi.e2e.ts expects it to stay invite-only, and a second file writing to its SQLite database at
+// the same time as users.multi.e2e.ts made that file's setup time out in CI.
 
 const INVITE_ONLY = 'Invite only: a new account needs an invite link from you.';
 const OPEN = 'Open: anyone who can reach this instance can create an account.';
@@ -63,32 +62,34 @@ async function signupFor(playwright: PlaywrightWorkerArgs['playwright'], baseURL
 const LIN = { name: 'Lin Registration', email: 'lin.registration@example.com' };
 const SAM = { name: 'Sam Registration', email: 'sam.registration@example.com' };
 
-test.describe('on the shared server, which stays invite-only', () => {
+test.describe('on a Multi-user server of its own', () => {
+	test.describe.configure({ mode: 'serial' });
+
 	let fixture: Awaited<ReturnType<typeof openMultiUserDatabase>>;
 	let admin: Session;
 	let lin: Session;
 	let sam: Session;
 
-	test.beforeAll(async () => {
-		fixture = await openMultiUserDatabase();
+	const storedMode = async () =>
+		(await fixture.db.instance.findUniqueOrThrow({ where: { id: 'instance' } })).registrationMode;
+
+	test.beforeAll(async ({ own }) => {
+		fixture = await openMultiUserDatabase(own);
 		await fixture.ensureLearner(LIN);
 		await fixture.ensureLearner(SAM);
 		// Sam's stored role only contains admin: the plugin would call that an admin, the app does not.
 		await fixture.db.user.update({ where: { email: SAM.email }, data: { role: 'admin,learner' } });
-		admin = await fixture.signIn(E2E_ADMIN.email, E2E_ADMIN.password);
+		admin = await fixture.signIn(OWN_SERVER_ADMIN.email, OWN_SERVER_ADMIN.password);
 		lin = await fixture.signIn(LIN.email, LEARNER_PASSWORD);
 		sam = await fixture.signIn(SAM.email, LEARNER_PASSWORD);
 	});
 
-	test.afterAll(async () => {
-		await fixture.close();
-	});
-
 	test('the admin sees who can create an account, above the list of users, and a new instance is invite-only', async ({
-		context,
-		page
+		browser,
+		own
 	}) => {
-		await context.addCookies(admin.cookies);
+		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
+		const page = await context.newPage();
 		await page.goto('/users');
 
 		const headings = page.getByRole('heading', { level: 2 });
@@ -99,60 +100,36 @@ test.describe('on the shared server, which stays invite-only', () => {
 		await expect(page.getByText(INVITE_ONLY)).toBeVisible();
 		await expect(page.getByText(OPEN)).toHaveCount(0);
 		await expect(headings.nth(1)).toHaveText('All users');
+		await context.close();
 	});
 
-	test('a learner cannot switch it, and sign-up stays closed', async ({ playwright }) => {
-		const origin = 'http://localhost:4174';
-		const learner = await playwright.request.newContext({
-			baseURL: origin,
-			storageState: lin
-		});
-		const signedOut = await playwright.request.newContext({ baseURL: origin });
+	test('a learner, a user whose stored role merely contains admin and a visitor who is signed out cannot switch it', async ({
+		playwright,
+		own
+	}) => {
+		const post = async (storageState?: Session) => {
+			const request = await playwright.request.newContext({ baseURL: own.url, storageState });
+			try {
+				return await request.post('/users?/registration', {
+					headers: { origin: own.url, accept: 'text/html' },
+					form: { registration: 'open' },
+					maxRedirects: 0
+				});
+			} finally {
+				await request.dispose();
+			}
+		};
 
-		const response = await learner.post('/users?/registration', {
-			headers: { origin, accept: 'text/html' },
-			form: { registration: 'open' }
-		});
-		const anonymous = await signedOut.post('/users?/registration', {
-			headers: { origin, accept: 'text/html' },
-			form: { registration: 'open' },
-			maxRedirects: 0
-		});
+		const learner = await post(lin);
+		const sneaky = await post(sam);
+		const anonymous = await post();
 
-		expect(response.status()).toBe(403);
+		expect(learner.status()).toBe(403);
+		expect(sneaky.status()).toBe(403);
 		expect(anonymous.status()).toBe(303);
 		expect(anonymous.headers().location).toMatch(/^\/signin\?next=/);
-		expect(await signupFor(playwright, origin)).toBe('closed');
-		await learner.dispose();
-		await signedOut.dispose();
-	});
-
-	test('a user whose stored role merely contains admin cannot switch it either', async ({
-		playwright
-	}) => {
-		const origin = 'http://localhost:4174';
-		const user = await playwright.request.newContext({ baseURL: origin, storageState: sam });
-
-		const response = await user.post('/users?/registration', {
-			headers: { origin, accept: 'text/html' },
-			form: { registration: 'open' }
-		});
-
-		expect(response.status()).toBe(403);
-		expect(await signupFor(playwright, origin)).toBe('closed');
-		await user.dispose();
-	});
-});
-
-test.describe('on a server of its own', () => {
-	test.describe.configure({ mode: 'serial' });
-
-	let fixture: Awaited<ReturnType<typeof openMultiUserDatabase>>;
-	let admin: Session;
-
-	test.beforeAll(async ({ own }) => {
-		fixture = await openMultiUserDatabase(own);
-		admin = await fixture.signIn(OWN_SERVER_ADMIN.email, OWN_SERVER_ADMIN.password);
+		expect(await storedMode()).toBe('invite');
+		expect(await signupFor(playwright, own.url)).toBe('closed');
 	});
 
 	test.afterAll(async () => {
@@ -226,6 +203,7 @@ test.describe('on a server of its own', () => {
 		});
 
 		expect(response.status()).toBe(403);
+		expect(await storedMode()).toBe('invite');
 		expect(await signupFor(playwright, own.url)).toBe('closed');
 		await request.dispose();
 	});
