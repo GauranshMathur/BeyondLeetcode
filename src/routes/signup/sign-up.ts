@@ -1,13 +1,19 @@
 import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { z } from 'zod';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '$lib/server/identity/auth';
+import {
+	isNameTooLong,
+	MAX_NAME_LENGTH,
+	MAX_PASSWORD_LENGTH,
+	MIN_PASSWORD_LENGTH
+} from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import type { Throttle } from '$lib/server/identity/throttle';
 
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
 const MESSAGES = {
 	name: 'Enter a name.',
+	nameLong: `Use at most ${MAX_NAME_LENGTH} characters.`,
 	email: 'Enter an email address like name@example.com.',
 	passwordShort: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
 	passwordLong: `Use at most ${MAX_PASSWORD_LENGTH} characters.`,
@@ -45,6 +51,10 @@ function known(error: unknown): { status: 400 | 403; field?: Field; message: str
 		case 'USER_ALREADY_EXISTS':
 		case 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL':
 			return { status: 400, field: 'email', message: MESSAGES.emailUnavailable };
+		case 'NAME_REQUIRED':
+			return { status: 400, field: 'name', message: MESSAGES.name };
+		case 'NAME_TOO_LONG':
+			return { status: 400, field: 'name', message: MESSAGES.nameLong };
 		case 'INVALID_EMAIL':
 			return { status: 400, field: 'email', message: MESSAGES.email };
 		case 'PASSWORD_TOO_SHORT':
@@ -111,6 +121,7 @@ export function createSignUp(throttle: Throttle) {
 			const email = typed.email.trim();
 			const password = text(data, 'password');
 			if (name === '') return refused(400, typed, MESSAGES.name, 'name');
+			if (isNameTooLong(name)) return refused(400, typed, MESSAGES.nameLong, 'name');
 			if (!z.email().safeParse(email).success) return refused(400, typed, MESSAGES.email, 'email');
 			if (password.length < MIN_PASSWORD_LENGTH) {
 				return refused(400, typed, MESSAGES.passwordShort, 'password');

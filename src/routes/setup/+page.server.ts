@@ -1,5 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { isAPIError } from 'better-auth/api';
 import type { MultiUserChoice } from '$lib/server/app';
+import { isNameTooLong, MAX_NAME_LENGTH } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
 import { InstanceAlreadySetUpError } from '$lib/server/instance';
@@ -19,6 +21,7 @@ const FIELD_MESSAGES = {
 	email: 'Enter a valid email address.',
 	password: 'Use 12 to 128 characters.'
 } as const;
+const NAME_TOO_LONG = `Use at most ${MAX_NAME_LENGTH} characters.`;
 const ALREADY_SET_UP = 'This instance has already been set up.';
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
@@ -72,10 +75,21 @@ export const actions: Actions = {
 		if (locals.instance.mode() !== null) {
 			return fail(409, adminStep(typed, { message: ALREADY_SET_UP }));
 		}
+		// Before the Instance is claimed, so a name over the cap leaves nothing to undo. Better Auth's hook
+		// refuses it too (`NAME_TOO_LONG`), which is what the catch below maps if one ever gets this far.
+		if (isNameTooLong(input.name)) {
+			return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));
+		}
 		let headers: Headers;
 		try {
 			({ headers } = await locals.setup.createFirstAdmin(input));
 		} catch (error) {
+			if (isAPIError(error) && error.body?.code === 'NAME_TOO_LONG') {
+				return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));
+			}
+			if (isAPIError(error) && error.body?.code === 'NAME_REQUIRED') {
+				return fail(400, adminStep(typed, { field: 'name', message: FIELD_MESSAGES.name }));
+			}
 			if (error instanceof InvalidFirstAdminError) {
 				return fail(
 					400,
