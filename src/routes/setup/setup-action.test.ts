@@ -276,6 +276,63 @@ describe('step 2: create the admin', () => {
 		});
 	});
 
+	describe('control and bidi characters in the name', () => {
+		const MESSAGE = "This name contains a character that can't be used.";
+		const open = (createFirstAdmin = vi.fn(async () => ({ headers: new Headers() }))) => ({
+			createFirstAdmin,
+			locals: { setup: setupWith({ kind: 'open' }, createFirstAdmin) }
+		});
+
+		it.each([0x001f, 0x007f, 0x009f, 0x202a, 0x202e, 0x2066, 0x2069])(
+			'refuses U+%s on its field before calling createFirstAdmin, keeping what was typed',
+			async (cp) => {
+				const { createFirstAdmin, locals } = open();
+				const name = `Ada${String.fromCodePoint(cp)}Lovelace`;
+
+				const result = await run(actions.admin, { ...admin, name }, locals);
+
+				expect(result).toMatchObject({
+					status: 400,
+					data: { step: 'admin', field: 'name', message: MESSAGE, name, email: admin.email }
+				});
+				expect(JSON.stringify(result)).not.toContain(admin.password);
+				expect(createFirstAdmin).not.toHaveBeenCalled();
+			}
+		);
+
+		it.each([
+			['a tab inside', 'Ada\tLovelace', false],
+			['a newline inside', 'Ada\nLovelace', false],
+			['a newline around it, trimmed', '  Ada\n', true],
+			['U+0020', 'Ada Lovelace', true],
+			['U+00A0', 'Ada\u00a0Lovelace', true],
+			['U+202F', 'Ada\u202fLovelace', true],
+			['U+206A', 'Ada\u206aLovelace', true],
+			['U+2065', 'Ada\u2065Lovelace', true],
+			['a ZWJ emoji sequence', '\u{1F469}\u200D\u{1F4BB}', true],
+			['U+200B', 'Ada\u200bLovelace', true],
+			['U+2060', 'Ada\u2060Lovelace', true]
+		])('%s: accepted=%s', async (_label, name, accepted) => {
+			const { createFirstAdmin, locals } = open();
+
+			await run(actions.admin, { ...admin, name }, locals);
+
+			expect(createFirstAdmin).toHaveBeenCalledTimes(accepted ? 1 : 0);
+		});
+
+		it('maps Better Auth\u2019s own refusal, should one get through, to the same field error', async () => {
+			const refusal = new APIError('BAD_REQUEST', {
+				message: MESSAGE,
+				code: 'NAME_INVALID_CHARACTERS'
+			});
+			const { locals } = open(vi.fn(async () => Promise.reject(refusal)));
+
+			const result = await run(actions.admin, admin, locals);
+
+			expect(result).toMatchObject({ status: 400, data: { field: 'name', message: MESSAGE } });
+		});
+	});
+
 	it('refuses where Multi-user is not open, saying what to add to .env, without calling createFirstAdmin', async () => {
 		const createFirstAdmin = vi.fn();
 		const message = 'Add BETTER_AUTH_SECRET to your .env.';
