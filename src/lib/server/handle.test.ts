@@ -4,6 +4,7 @@ import type { App } from './app.ts';
 import { createHandle } from './handle.ts';
 import { createAuth } from './identity/auth.ts';
 import { createLocalIdentity } from './identity/index.ts';
+import { createInvites } from './identity/invites.ts';
 import { createMultiUserIdentity } from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
 import { createFirstAdmin } from './identity/setup.ts';
@@ -192,7 +193,11 @@ describe('Multi-user Mode', () => {
 			.join('; ');
 		const identity = await createLocalIdentity(db, options);
 		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-		const multiUser = { auth, identity: createMultiUserIdentity(auth) };
+		const multiUser = {
+			auth,
+			identity: createMultiUserIdentity(auth),
+			invites: createInvites({ db, origin: 'http://localhost:3000' })
+		};
 		const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
 		return {
 			db,
@@ -203,6 +208,18 @@ describe('Multi-user Mode', () => {
 				request(path, routeId, 'GET', new Headers(cookieHeader ? { cookie: cookieHeader } : {}))
 		};
 	}
+
+	it('puts the Invites on locals in Multi-user Mode, and never in Local Mode', async () => {
+		const { handle, asking } = await multiSetup();
+		const { event, locals, resolve } = asking('/', '/');
+		await handle({ event, resolve });
+		expect(locals.invites).toBeDefined();
+
+		const local = await setup({ local: true });
+		const asked = request('/', '/');
+		await local.handle({ event: asked.event, resolve: asked.resolve });
+		expect(asked.locals.invites).toBeUndefined();
+	});
 
 	it('resolves the session cookie to its Account and binds the Learning core to its Learner', async () => {
 		const { handle, asking } = await multiSetup();

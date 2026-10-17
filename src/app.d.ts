@@ -1,6 +1,7 @@
 import type { Setup } from '$lib/server/app';
 import type { Identity } from '$lib/server/identity';
 import type { Auth } from '$lib/server/identity/auth';
+import type { Invites } from '$lib/server/identity/invites';
 import type { Instance } from '$lib/server/instance';
 import type { Learner } from '$lib/server/learning/core';
 
@@ -19,6 +20,8 @@ declare global {
 			setup: Setup;
 			/** Better Auth; set only in Multi-user Mode, where the auth route mounts its handler. */
 			auth?: Auth;
+			/** Invite links; set exactly when `auth` is (Multi-user Mode), so Local Mode never has them. */
+			invites?: Invites;
 			/** Who this request is, from Identity. Unset only on /setup before the Instance is set up. */
 			identity: Identity;
 			/** The Learning core acting for this request's Learner. Unset exactly when `identity` is. */

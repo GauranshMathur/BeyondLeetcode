@@ -105,6 +105,7 @@ model User {
   mustChangePassword Boolean   @default(false)
   sessions           Session[]
   accounts           Account[]
+  invites            Invite[]
 }
 
 model Session {
@@ -150,4 +151,17 @@ model Verification {
   updatedAt  DateTime @default(now()) @updatedAt
 
   @@index([identifier])
+}
+
+/// An invite link for one new account. Only the SHA-256 of the token is stored; the link is shown once.
+model Invite {
+  id              String    @id
+  tokenHash       String    @unique
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdByUserId String
+  createdBy       User      @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([createdByUserId])
 }

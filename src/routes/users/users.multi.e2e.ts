@@ -130,3 +130,30 @@ test('a visitor who is signed out is sent to Sign in, not shown the page', async
 	await expect(page).toHaveURL(/\/signin\?next=%2Fusers$/);
 	await expect(page.getByRole('table')).toHaveCount(0);
 });
+
+test.describe('without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('a plain form post creates an Invite, shows the link once and is never cached', async ({
+		context,
+		page
+	}) => {
+		await context.addCookies(admin.cookies);
+		await page.goto('/users');
+		const posted = page.waitForResponse(
+			(r) => r.request().method() === 'POST' && r.url().includes('/users?/invite')
+		);
+
+		await page.getByRole('button', { name: 'Invite a user' }).click();
+
+		// SvelteKit ran the action and then the load in one request: the answer is the page, not a 500.
+		const response = await posted;
+		expect(response.status()).toBe(200);
+		expect(response.headers()['cache-control']).toBe('no-store');
+		await expect(page.getByLabel('Invite link')).toHaveValue(/\/invite\/[\w-]{43}$/);
+
+		// Clean up, so a later file sees no stray pending Invite.
+		await page.getByRole('button', { name: 'Cancel invite' }).first().click();
+		await expect(page.getByLabel('Invite link')).toHaveCount(0);
+	});
+});

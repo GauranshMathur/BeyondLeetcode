@@ -4,6 +4,7 @@ import type { App } from '$lib/server/app';
 import { createHandle } from '$lib/server/handle';
 import { createAuth } from '$lib/server/identity/auth';
 import { createLocalIdentity } from '$lib/server/identity/index';
+import { createInvites } from '$lib/server/identity/invites';
 import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
 import { createRegistration } from '$lib/server/identity/registration';
 import { createInstance } from '$lib/server/instance';
@@ -31,7 +32,11 @@ async function app(mode: 'local' | 'multi' | null) {
 			secret: 'test-secret-test-secret-test-secret-0123',
 			admitSignUp: createRegistration({ instance })
 		});
-		multiUser = { auth, identity: createMultiUserIdentity(auth) };
+		multiUser = {
+			auth,
+			identity: createMultiUserIdentity(auth),
+			invites: createInvites({ db, origin: 'http://localhost:3000' })
+		};
 	}
 	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 	const setup = { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup'];

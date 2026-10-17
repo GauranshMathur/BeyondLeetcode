@@ -2,6 +2,7 @@ import { type Catalogue, loadCatalogue } from './content/catalogue.ts';
 import { createDb, type Db } from './db.ts';
 import { type Auth, createAuth, isPlaceholderSecret, MIN_SECRET_LENGTH } from './identity/auth.ts';
 import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
+import { createInvites, type Invites } from './identity/invites.ts';
 import { createMultiUserIdentity } from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
 import {
@@ -41,7 +42,7 @@ export interface App {
 	/** The Instance's mode, read by the hook on every request. One per server: it caches the mode. */
 	instance: Instance;
 	/** Better Auth and the Multi-user adapter; null when the secret or the origin is not set. */
-	multiUser: { auth: Auth; identity: IdentityResolver } | null;
+	multiUser: { auth: Auth; identity: IdentityResolver; invites: Invites } | null;
 	setup: Setup;
 }
 
@@ -79,7 +80,7 @@ export async function createApp(env: {
 	const db = createDb(env.DATABASE_URL);
 	const instance = await createInstance(db);
 	const auth = buildAuth(env, db, instance);
-	const multiUser = auth.kind === 'built' ? chooseMultiUser(auth.auth) : null;
+	const multiUser = auth.kind === 'built' ? chooseMultiUser(auth, db) : null;
 	if (instance.mode() === 'multi') {
 		// The test cookie is read only by the Local adapter, which a multi-user Instance never consults;
 		// refuse the combination anyway. The browser tests' Multi-user server boots empty and becomes multi.
@@ -146,7 +147,9 @@ function refuseAuthEnvOverrides(): void {
 	}
 }
 
-type BuiltAuth = { kind: 'built'; auth: Auth } | { kind: 'missing'; message: string };
+type BuiltAuth =
+	| { kind: 'built'; auth: Auth; origin: string }
+	| { kind: 'missing'; message: string };
 
 /**
  * Better Auth, when the secret is set and long enough and ORIGIN is a real http(s) URL. Never with an
@@ -190,6 +193,7 @@ function buildAuth(
 	}
 	return {
 		kind: 'built',
+		origin,
 		auth: createAuth({ db, origin, secret, admitSignUp: createRegistration({ instance }) })
 	};
 }
@@ -203,7 +207,12 @@ function originOf(value: string | undefined): string | null {
 	}
 }
 
-const chooseMultiUser = (auth: Auth) => ({ auth, identity: createMultiUserIdentity(auth) });
+const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>, db: Db) => ({
+	auth: built.auth,
+	identity: createMultiUserIdentity(built.auth),
+	// Invite links name the same ORIGIN the cookies and the origin check use.
+	invites: createInvites({ db, origin: built.origin })
+});
 
 /** Multi-user is open to every Instance that has what Better Auth needs; otherwise Setup says what to add. */
 function choice(auth: BuiltAuth): MultiUserChoice {
