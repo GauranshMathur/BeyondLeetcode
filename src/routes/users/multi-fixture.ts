@@ -1,5 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { createDb } from '../../lib/server/db.ts';
+import { PrismaLibSql } from '@prisma/adapter-libsql';
+import { PrismaClient } from '../../../prisma/generated/client';
+import type { Db } from '../../lib/server/db.ts';
 import { createAuth } from '../../lib/server/identity/auth.ts';
 
 // Test-only, and it adds no production code path. Browser tests of the Multi-user server (4174) that need
@@ -42,6 +44,51 @@ function serverEnvironment(): ServerTarget {
 /** A Multi-user server's database file, signing secret and public origin: what a second Better Auth needs to act on it. */
 export type ServerTarget = { database: string; secret: string; origin: string };
 
+/**
+ * Why the fixture opens its own client instead of `createDb`: libSQL's busy timeout defaults to 0, so a write
+ * that meets another process's write lock fails at once with SQLITE_BUSY, which Prisma reports as P1008
+ * ("Operation has timed out"). Four workers write to the one shared file (and the server writes to it too),
+ * so this happened now and then. The client here waits up to BUSY_TIMEOUT_MS for a lock. That alone is not
+ * enough: Prisma's libSQL adapter opens transactions as deferred (read first, then write), and SQLite refuses
+ * a read-to-write upgrade at once, whatever the timeout, when another connection already holds the write
+ * lock. Only running the whole transaction again helps, which is `retryWhenBusy` below. The app's own client
+ * is not touched (production code is out of this card).
+ */
+const BUSY_TIMEOUT_MS = 10_000;
+
+/** Prisma's "Operation has timed out" (SQLITE_BUSY), the only error the retry below absorbs. */
+function isBusy(error: unknown): boolean {
+	let current: unknown = error;
+	for (let depth = 0; current && depth < 5; depth++) {
+		const { code, cause } = current as { code?: unknown; cause?: unknown };
+		if (code === 'P1008') return true;
+		current = cause;
+	}
+	return false;
+}
+
+/**
+ * Runs `operation` again (at most `attempts` times in all) when the database was busy during it, and only
+ * then; any other error is thrown at once. Better Auth catches a failed insert and throws its own "Failed to
+ * create user", so the busy error is not on what comes out. `busyCount` says whether one happened inside.
+ */
+export async function retryWhenBusy<T>(
+	busyCount: () => number,
+	operation: () => Promise<T>,
+	attempts = 4
+): Promise<T> {
+	for (let attempt = 1; ; attempt++) {
+		const before = busyCount();
+		try {
+			return await operation();
+		} catch (error) {
+			const busy = isBusy(error) || busyCount() > before;
+			if (attempt >= attempts || !busy) throw error;
+			await new Promise((resolve) => setTimeout(resolve, 100 * attempt + Math.random() * 100));
+		}
+	}
+}
+
 export const LEARNER_PASSWORD = 'correct horse battery staple';
 
 /** The `Set-Cookie` lines of a sign-in as Playwright `storageState`: this browser context is that user. */
@@ -71,24 +118,40 @@ export type Session = ReturnType<typeof sessionOf>;
 /** The shared 4174 server's database, or another Multi-user server's when `target` names it. */
 export async function openMultiUserDatabase(target: ServerTarget = serverEnvironment()) {
 	const { database, secret, origin } = target;
-	const db = createDb(database);
+	let busyHits = 0;
+	const db = new PrismaClient({
+		adapter: new PrismaLibSql({ url: database, timeout: BUSY_TIMEOUT_MS })
+	}).$extends({
+		query: {
+			async $allOperations({ args, query }) {
+				try {
+					return await query(args);
+				} catch (error) {
+					if (isBusy(error)) busyHits++;
+					throw error;
+				}
+			}
+		}
+	});
+	const busyCount = () => busyHits;
 	// Admits every sign-up: this instance is only ever driven from the test process, never over HTTP.
-	const auth = createAuth({ db, origin, secret, admitSignUp: () => ({}) });
+	const auth = createAuth({ db: db as unknown as Db, origin, secret, admitSignUp: () => ({}) });
 
 	return {
 		db,
 		/** A new Account (a learner), or the one with this email from an earlier run of the same test. */
 		async ensureLearner({ name, email }: { name: string; email: string }) {
-			if (!(await db.user.findUnique({ where: { email } }))) {
-				await auth.api.signUpEmail({ body: { name, email, password: LEARNER_PASSWORD } });
-			}
+			await retryWhenBusy(busyCount, async () => {
+				if (!(await db.user.findUnique({ where: { email } }))) {
+					await auth.api.signUpEmail({ body: { name, email, password: LEARNER_PASSWORD } });
+				}
+			});
 		},
 		/** A fresh session for an Account, as the cookie a browser would hold after signing in. */
 		async signIn(email: string, password: string): Promise<Session> {
-			const { headers } = await auth.api.signInEmail({
-				body: { email, password },
-				returnHeaders: true
-			});
+			const { headers } = await retryWhenBusy(busyCount, () =>
+				auth.api.signInEmail({ body: { email, password }, returnHeaders: true })
+			);
 			return sessionOf(headers.getSetCookie());
 		},
 		close: () => db.$disconnect()
