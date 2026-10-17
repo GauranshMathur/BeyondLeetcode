@@ -16,8 +16,6 @@ const explanation = {
 	open: 'Open: anyone who can reach this instance can create an account.'
 };
 
-// A refused or failed switch changed nothing: the select goes back to what the Instance holds, so it
-// never shows a mode that is not in force.
 // "Done" hides the link; it cannot be shown again, so it stays hidden until the next Invite is made.
 let dismissed = $state(false);
 let copied = $state(false);
@@ -43,6 +41,8 @@ const makeInvite: SubmitFunction = () => {
 	};
 };
 
+// A refused or failed switch changed nothing: the select goes back to what the Instance holds, so it
+// never shows a mode that is not in force.
 const switchRegistration: SubmitFunction = ({ formElement }) => {
 	return async ({ result, update }) => {
 		await update({ reset: false });
