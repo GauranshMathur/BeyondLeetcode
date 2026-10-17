@@ -6,6 +6,7 @@ import {
 	type Admission,
 	CLIENT_IP_HEADER,
 	createAuth,
+	hasForbiddenNameCharacter,
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
@@ -534,6 +535,159 @@ describe('the name cap', () => {
 		await expect(
 			createFirstAdmin({ instance, auth, db }, { ...body, name: 'x'.repeat(101) })
 		).rejects.toMatchObject({ body: { code: 'NAME_TOO_LONG' } });
+
+		expect(instance.mode()).toBeNull();
+		expect(await db.user.count()).toBe(0);
+		expect(await db.learner.count()).toBe(0);
+	});
+});
+
+describe('control and bidi characters in a name', () => {
+	const MESSAGE = "This name contains a character that can't be used.";
+	let caller = 0;
+	const signUp = (payload: Record<string, unknown>) => {
+		caller += 1;
+		return new Request('http://localhost:3000/api/auth/sign-up/email', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				origin: 'http://localhost:3000',
+				[CLIENT_IP_HEADER]: `10.${100 + (caller >> 8)}.${caller & 255}.1`
+			},
+			body: JSON.stringify(payload)
+		});
+	};
+	const at = (cp: number) => `Ada${String.fromCodePoint(cp)}Lovelace`;
+
+	it.each([
+		[0x0000, true],
+		[0x001f, true],
+		[0x0020, false],
+		[0x007e, false],
+		[0x007f, true],
+		[0x009f, true],
+		[0x00a0, false],
+		[0x2029, false],
+		[0x202a, true],
+		[0x202e, true],
+		[0x202f, false],
+		[0x2065, false],
+		[0x2066, true],
+		[0x2069, true],
+		[0x206a, false],
+		// Allowed by decision: ZWJ for emoji sequences, and the zero-width space and word joiner.
+		[0x200b, false],
+		[0x200d, false],
+		[0x2060, false]
+	])('U+%s refused=%s', (cp, refused) => {
+		expect(hasForbiddenNameCharacter(at(cp))).toBe(refused);
+	});
+
+	it('refuses a tab or newline inside the name but not around it (trimmed away)', () => {
+		expect(hasForbiddenNameCharacter('Ada\tLovelace')).toBe(true);
+		expect(hasForbiddenNameCharacter('Ada\nLovelace')).toBe(true);
+		expect(hasForbiddenNameCharacter('  Ada Lovelace\n')).toBe(false);
+	});
+
+	it('allows an emoji ZWJ sequence', () => {
+		expect(hasForbiddenNameCharacter('\u{1F469}\u200D\u{1F4BB} Ada')).toBe(false);
+	});
+
+	it.each([[0x001f], [0x007f], [0x009f], [0x202a], [0x202e], [0x2066], [0x2069]])(
+		'refuses U+%s over HTTP with a fixed error, storing nothing',
+		async (cp) => {
+			const { auth, db } = await setup();
+
+			const res = await auth.handler(signUp({ ...body, name: at(cp) }));
+
+			expect(res.status).toBe(400);
+			const json = await res.json();
+			expect(json).toMatchObject({ code: 'NAME_INVALID_CHARACTERS', message: MESSAGE });
+			expect(JSON.stringify(json)).not.toContain('Ada');
+			expect(await db.user.count()).toBe(0);
+			expect(await db.account.count()).toBe(0);
+			expect(await db.session.count()).toBe(0);
+			expect(await db.learner.count()).toBe(0);
+		}
+	);
+
+	it('refuses the server-side call too, storing nothing', async () => {
+		const { auth, db } = await setup();
+
+		await expect(
+			auth.api.signUpEmail({ body: { ...body, name: at(0x202e) } })
+		).rejects.toMatchObject({
+			statusCode: 400,
+			body: { code: 'NAME_INVALID_CHARACTERS' }
+		});
+		expect(await db.user.count()).toBe(0);
+	});
+
+	it('checks the name as it would be stored: a control character around it is trimmed, not refused', async () => {
+		const { auth, db } = await setup();
+
+		const res = await auth.handler(signUp({ ...body, name: '\n Ada \t' }));
+
+		expect(res.status).toBe(200);
+		expect((await db.user.findFirstOrThrow()).name).toBe('Ada');
+	});
+
+	it.each([
+		['a ZWJ sequence', '\u{1F469}\u200D\u{1F4BB}'],
+		['a zero-width space', 'Ada\u200BLovelace'],
+		['a word joiner', 'Ada\u2060Lovelace']
+	])('accepts %s over HTTP and stores it', async (_label, name) => {
+		const { auth, db } = await setup();
+
+		const res = await auth.handler(signUp({ ...body, name }));
+
+		expect(res.status).toBe(200);
+		expect((await db.user.findFirstOrThrow()).name).toBe(name);
+	});
+
+	it('answers the same for an email that has an Account and one that has not: no probe', async () => {
+		const { auth, db } = await setup();
+		await auth.api.signUpEmail({ body });
+		const before = await db.user.count();
+		const bad = (email: string) => auth.handler(signUp({ ...body, email, name: at(0x202e) }));
+
+		const known = await bad(body.email);
+		const unknown = await bad('nobody@example.com');
+
+		expect(known.status).toBe(400);
+		expect(unknown.status).toBe(400);
+		expect(await known.json()).toEqual(await unknown.json());
+		expect(await db.user.count()).toBe(before);
+	});
+
+	it('still answers a closed sign-up with 403 first, whatever the name', async () => {
+		const { auth, db } = await setup(() => null);
+
+		expect((await auth.handler(signUp({ ...body, name: at(0x202e) }))).status).toBe(403);
+		expect(await db.user.count()).toBe(0);
+	});
+
+	it('answers a too-long name before the characters', async () => {
+		const { auth } = await setup();
+
+		const long = await auth.handler(signUp({ ...body, name: `${'x'.repeat(101)}\u202e` }));
+
+		expect(await long.json()).toMatchObject({ code: 'NAME_TOO_LONG' });
+	});
+
+	it('refuses the first admin and leaves the Instance not set up', async () => {
+		const db = await createFileTestDb();
+		const instance = await createInstance(db);
+		const auth = createAuth({
+			db,
+			origin: 'http://localhost:3000',
+			secret,
+			admitSignUp: createRegistration({ instance })
+		});
+
+		await expect(
+			createFirstAdmin({ instance, auth, db }, { ...body, name: at(0x202e) })
+		).rejects.toMatchObject({ body: { code: 'NAME_INVALID_CHARACTERS' } });
 
 		expect(instance.mode()).toBeNull();
 		expect(await db.user.count()).toBe(0);

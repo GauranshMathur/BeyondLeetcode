@@ -2,6 +2,7 @@ import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { z } from 'zod';
 import {
+	hasForbiddenNameCharacter,
 	isNameTooLong,
 	MAX_NAME_LENGTH,
 	MAX_PASSWORD_LENGTH,
@@ -14,6 +15,7 @@ import type { Throttle } from '$lib/server/identity/throttle';
 const MESSAGES = {
 	name: 'Enter a name.',
 	nameLong: `Use at most ${MAX_NAME_LENGTH} characters.`,
+	nameCharacters: "This name contains a character that can't be used.",
 	email: 'Enter an email address like name@example.com.',
 	passwordShort: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
 	passwordLong: `Use at most ${MAX_PASSWORD_LENGTH} characters.`,
@@ -55,6 +57,8 @@ function known(error: unknown): { status: 400 | 403; field?: Field; message: str
 			return { status: 400, field: 'name', message: MESSAGES.name };
 		case 'NAME_TOO_LONG':
 			return { status: 400, field: 'name', message: MESSAGES.nameLong };
+		case 'NAME_INVALID_CHARACTERS':
+			return { status: 400, field: 'name', message: MESSAGES.nameCharacters };
 		case 'INVALID_EMAIL':
 			return { status: 400, field: 'email', message: MESSAGES.email };
 		case 'PASSWORD_TOO_SHORT':
@@ -122,6 +126,9 @@ export function createSignUp(throttle: Throttle) {
 			const password = text(data, 'password');
 			if (name === '') return refused(400, typed, MESSAGES.name, 'name');
 			if (isNameTooLong(name)) return refused(400, typed, MESSAGES.nameLong, 'name');
+			if (hasForbiddenNameCharacter(name)) {
+				return refused(400, typed, MESSAGES.nameCharacters, 'name');
+			}
 			if (!z.email().safeParse(email).success) return refused(400, typed, MESSAGES.email, 'email');
 			if (password.length < MIN_PASSWORD_LENGTH) {
 				return refused(400, typed, MESSAGES.passwordShort, 'password');
