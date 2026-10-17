@@ -32,6 +32,11 @@ const multi = [
 	'export BETTER_AUTH_SECRET=e2e-only-secret-e2e-only-secret-e2e-only-0123',
 	...common,
 	'bunx prisma migrate deploy',
+	// Test-only: write-ahead logging, so a reader never blocks a writer. The Multi-user files share this one
+	// file between the server and four test processes; the app's own client waits for no lock (busy timeout 0)
+	// and opens deferred transactions, which in the default journal fail at once when anyone else is writing.
+	// The mode is stored in the file, so the server finds it on.
+	`bun -e 'new (require("bun:sqlite").Database)(process.env.DATABASE_URL.slice(5)).exec("PRAGMA journal_mode=WAL")'`,
 	'PORT=4174 bun ./build/index.js'
 ].join(' && ');
 
