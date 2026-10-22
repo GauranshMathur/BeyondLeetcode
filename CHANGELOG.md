@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.49.0...v0.50.0) (2026-10-22)
+
+
+### Features
+
+* **beyondleetcode:** C33d refuse control and bidi characters in names ([#190](https://github.com/GauranshMathur/BeyondLeetcode/issues/190)) ([5db366d](https://github.com/GauranshMathur/BeyondLeetcode/commit/5db366d4580bc9e69c0ac6249629024b99dcb437))
+
 ## [0.49.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.48.0...v0.49.0) (2026-10-16)
 
 
