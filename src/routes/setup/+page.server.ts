@@ -1,7 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import type { MultiUserChoice } from '$lib/server/app';
-import { isNameTooLong, MAX_NAME_LENGTH } from '$lib/server/identity/auth';
+import {
+	hasForbiddenNameCharacter,
+	isNameTooLong,
+	MAX_NAME_LENGTH
+} from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
 import { InstanceAlreadySetUpError } from '$lib/server/instance';
@@ -22,6 +26,7 @@ const FIELD_MESSAGES = {
 	password: 'Use 12 to 128 characters.'
 } as const;
 const NAME_TOO_LONG = `Use at most ${MAX_NAME_LENGTH} characters.`;
+const NAME_CHARACTERS = "This name contains a character that can't be used.";
 const ALREADY_SET_UP = 'This instance has already been set up.';
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
@@ -80,12 +85,18 @@ export const actions: Actions = {
 		if (isNameTooLong(input.name)) {
 			return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));
 		}
+		if (hasForbiddenNameCharacter(input.name)) {
+			return fail(400, adminStep(typed, { field: 'name', message: NAME_CHARACTERS }));
+		}
 		let headers: Headers;
 		try {
 			({ headers } = await locals.setup.createFirstAdmin(input));
 		} catch (error) {
 			if (isAPIError(error) && error.body?.code === 'NAME_TOO_LONG') {
 				return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));
+			}
+			if (isAPIError(error) && error.body?.code === 'NAME_INVALID_CHARACTERS') {
+				return fail(400, adminStep(typed, { field: 'name', message: NAME_CHARACTERS }));
 			}
 			if (isAPIError(error) && error.body?.code === 'NAME_REQUIRED') {
 				return fail(400, adminStep(typed, { field: 'name', message: FIELD_MESSAGES.name }));

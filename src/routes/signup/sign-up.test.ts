@@ -282,6 +282,73 @@ describe('what is wrong with the form', () => {
 		});
 	});
 
+	describe('control and bidi characters in the name', () => {
+		const MESSAGE = "This name contains a character that can't be used.";
+
+		it.each([0x001f, 0x007f, 0x009f, 0x202a, 0x202e, 0x2066, 0x2069])(
+			'refuses U+%s on its field before calling Better Auth, keeping what was typed',
+			async (cp) => {
+				const { post, signUpEmail } = harness();
+				const name = `Ada${String.fromCodePoint(cp)}Lovelace`;
+
+				const result = await post({ ...ada, name });
+
+				expect(result).toMatchObject({
+					status: 400,
+					data: { field: 'name', message: MESSAGE, name, email: ada.email }
+				});
+				expect(JSON.stringify(result)).not.toContain(ada.password);
+				expect(signUpEmail).not.toHaveBeenCalled();
+			}
+		);
+
+		it.each([
+			['a tab inside', 'Ada\tLovelace', false],
+			['a newline inside', 'Ada\nLovelace', false],
+			['a newline around it, trimmed', '  Ada\n', true],
+			['U+0020', 'Ada Lovelace', true],
+			['U+00A0', 'Ada\u00a0Lovelace', true],
+			['U+202F', 'Ada\u202fLovelace', true],
+			['U+206A', 'Ada\u206aLovelace', true],
+			['U+2065', 'Ada\u2065Lovelace', true],
+			['a ZWJ emoji sequence', '\u{1F469}\u200D\u{1F4BB}', true],
+			['U+200B', 'Ada\u200bLovelace', true],
+			['U+2060', 'Ada\u2060Lovelace', true]
+		])('%s: accepted=%s', async (_label, name, accepted) => {
+			const { post, signUpEmail } = harness();
+
+			await post({ ...ada, name });
+
+			expect(signUpEmail).toHaveBeenCalledTimes(accepted ? 1 : 0);
+		});
+
+		it('answers a long name before the characters', async () => {
+			expect(await harness().post({ ...ada, name: `${'x'.repeat(101)}\u202e` })).toMatchObject({
+				data: { message: 'Use at most 100 characters.' }
+			});
+		});
+
+		it('maps Better Auth\u2019s own refusal to the same field error', async () => {
+			const raced = harness({
+				auth: {
+					api: {
+						signUpEmail: async () => {
+							throw new APIError('BAD_REQUEST', {
+								message: MESSAGE,
+								code: 'NAME_INVALID_CHARACTERS'
+							});
+						}
+					}
+				}
+			});
+
+			expect(await raced.post(ada)).toMatchObject({
+				status: 400,
+				data: { field: 'name', message: MESSAGE }
+			});
+		});
+	});
+
 	it('accepts a password of exactly 12 and exactly 128 characters', async () => {
 		for (const password of ['x'.repeat(12), 'x'.repeat(128)]) {
 			const { post, signUpEmail } = harness();
