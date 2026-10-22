@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.50.0...v0.51.0) (2026-10-22)
+
+
+### Features
+
+* **beyondleetcode:** C35a Users: create an Invite link ([#191](https://github.com/GauranshMathur/BeyondLeetcode/issues/191)) ([7f4c210](https://github.com/GauranshMathur/BeyondLeetcode/commit/7f4c2104a1559ced288a539c5778ea6298b619e0))
+
 ## [0.50.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.49.0...v0.50.0) (2026-10-22)
 
 
