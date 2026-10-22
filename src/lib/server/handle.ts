@@ -86,6 +86,11 @@ export function createHandle(
 		// answers (the page, a data request, an action result, an error). Set here, once, because a
 		// route that sets it in both its action and its load makes SvelteKit throw on a no-JS form post.
 		if (event.route.id === '/users') response.headers.set('Cache-Control', 'no-store');
+		// The Accept invite URL holds the token: never cached, and never sent on as a Referer. Same reason to set it here.
+		if (event.route.id === '/invite/[token]') {
+			response.headers.set('Cache-Control', 'no-store');
+			response.headers.set('Referrer-Policy', 'no-referrer');
+		}
 		return finish(response);
 	};
 }

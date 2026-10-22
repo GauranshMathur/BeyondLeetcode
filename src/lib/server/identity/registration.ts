@@ -1,6 +1,6 @@
 import type { Instance } from '../instance.ts';
-import type { Invites } from './invites.ts';
 import type { AdmitSignUp } from './auth.ts';
+import type { Invites } from './invites.ts';
 import { FIRST_ADMIN_LEARNER_ID, isFirstAdmin } from './setup.ts';
 
 /**

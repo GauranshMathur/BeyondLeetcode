@@ -147,7 +147,13 @@ describe('an Invite', () => {
 		const db = await createFileTestDb();
 		await db.learner.create({ data: { id: 'local' } });
 		await db.user.create({
-			data: { id: 'u-admin', name: 'Ada', email: 'admin@example.com', role: 'admin', learnerId: 'local' }
+			data: {
+				id: 'u-admin',
+				name: 'Ada',
+				email: 'admin@example.com',
+				role: 'admin',
+				learnerId: 'local'
+			}
 		});
 		const invites = createInvites({ db, origin });
 		const instance = fakeInstance('multi', registration);

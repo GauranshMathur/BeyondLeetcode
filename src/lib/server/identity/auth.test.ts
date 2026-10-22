@@ -6,8 +6,8 @@ import {
 	type Admission,
 	CLIENT_IP_HEADER,
 	createAuth,
-	INVITE_COOKIE,
 	hasForbiddenNameCharacter,
+	INVITE_COOKIE,
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
@@ -706,7 +706,13 @@ describe('accepting an Invite', () => {
 		const db = await createFileTestDb();
 		await db.learner.create({ data: { id: 'local' } });
 		await db.user.create({
-			data: { id: 'u-admin', name: 'Ada', email: 'admin@example.com', role: 'admin', learnerId: 'local' }
+			data: {
+				id: 'u-admin',
+				name: 'Ada',
+				email: 'admin@example.com',
+				role: 'admin',
+				learnerId: 'local'
+			}
 		});
 		const invites = createInvites({ db, origin });
 		const instance = {
@@ -721,7 +727,10 @@ describe('accepting an Invite', () => {
 			admitSignUp: createRegistration({ instance, invites, now }),
 			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at)
 		});
-		const post = (token: string | null, payload: object = { ...body, email: `n${caller}@example.com` }) =>
+		const post = (
+			token: string | null,
+			payload: object = { ...body, email: `n${caller}@example.com` }
+		) =>
 			auth.handler(
 				new Request(`${origin}/api/auth/sign-up/email`, {
 					method: 'POST',
