@@ -16,7 +16,7 @@ const describedBy = (field: 'name' | 'email' | 'password') =>
 
 <svelte:head>
 	<title>Accept invite · BeyondLeetcode</title>
-	<meta name="referrer" content="no-referrer" />
+	<meta name="referrer" content="same-origin" />
 	<meta name="robots" content="noindex" />
 </svelte:head>
 

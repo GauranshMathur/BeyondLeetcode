@@ -91,7 +91,7 @@ function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
 
 /**
  * The Accept invite page. The token is in the URL path, so nothing here logs the path or the token, and
- * `handle.ts` answers this route with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`
+ * `handle.ts` answers this route with `Referrer-Policy: same-origin` and `Cache-Control: no-store`
  * (once, there: a route that sets a header in both its load and its action makes SvelteKit throw on a
  * form post without JavaScript).
  *
