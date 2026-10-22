@@ -148,3 +148,41 @@ describe('lookup', () => {
 		expect(await invites.lookup(made.token, now)).toBeNull();
 	});
 });
+
+describe('claim', () => {
+	it('marks the Invite used and answers true exactly once', async () => {
+		const { db, invites } = await setup();
+		const made = await invites.create({ who: admin, now });
+
+		expect(await invites.claim(made.token, now)).toBe(true);
+		expect((await db.invite.findUniqueOrThrow({ where: { id: made.id } })).usedAt).toEqual(now);
+		expect(await invites.claim(made.token, now)).toBe(false);
+		expect(await invites.lookup(made.token, now)).toBeNull();
+	});
+
+	it('lets only one of several concurrent claims win', async () => {
+		const { invites } = await setup();
+		const made = await invites.create({ who: admin, now });
+
+		const results = await Promise.all(
+			Array.from({ length: 5 }, () => invites.claim(made.token, now))
+		);
+
+		expect(results.filter(Boolean)).toHaveLength(1);
+	});
+
+	it('refuses an expired, cancelled, unknown or malformed token and changes nothing', async () => {
+		const { db, invites } = await setup();
+		const expired = await invites.create({ who: admin, now });
+		const cancelled = await invites.create({ who: admin, now });
+		await invites.cancel({ who: admin, id: cancelled.id });
+
+		const atExpiry = new Date(now.getTime() + INVITE_LIFETIME_MS);
+		expect(await invites.claim(expired.token, atExpiry)).toBe(false);
+		expect(await invites.claim(cancelled.token, now)).toBe(false);
+		expect(await invites.claim('A'.repeat(43), now)).toBe(false);
+		expect(await invites.claim(hashToken(expired.token), now)).toBe(false);
+		expect(await invites.claim('', now)).toBe(false);
+		expect((await db.invite.findUniqueOrThrow({ where: { id: expired.id } })).usedAt).toBeNull();
+	});
+});

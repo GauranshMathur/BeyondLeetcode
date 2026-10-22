@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
+import { INVITE_COOKIE } from './identity/auth.ts';
 
 it('fails at start with a clear message when CONTENT_DIR is missing', async () => {
 	await expect(createApp({ DATABASE_URL: 'file:x.db' })).rejects.toThrow(/CONTENT_DIR is not set/);
@@ -115,6 +116,39 @@ describe('Multi-user', () => {
 		const made = await app.multiUser?.invites.create({ who: who as never, now: new Date() });
 		expect(made?.link).toBe(`http://localhost:4174/invite/${made?.token}`);
 		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
+	}, 30_000);
+
+	it('lets an Invite create exactly one learner Account through the wired auth, and refuses a second use', async () => {
+		const { url, db } = await migratedDatabase();
+		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+		const { headers } = await app.setup.createFirstAdmin(admin);
+		const cookie = headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+		const who = await app.multiUser?.identity.resolve({
+			cookies: { get: () => undefined },
+			request: { headers: new Headers({ cookie }) }
+		});
+		const made = await app.multiUser?.invites.create({ who: who as never, now: new Date() });
+		const signUp = async (email: string) => {
+			try {
+				await app.multiUser?.auth.api.signUpEmail({
+					body: { name: 'Lin', email, password: 'a long enough secret' },
+					headers: new Headers({ cookie: `${INVITE_COOKIE}=${made?.token}` })
+				});
+				return 200;
+			} catch (error) {
+				return (error as { statusCode?: number }).statusCode;
+			}
+		};
+
+		expect(await signUp('lin@example.com')).toBe(200);
+		expect(await signUp('lin2@example.com')).toBe(403);
+
+		const learners = await db.user.findMany({ where: { role: 'learner' } });
+		expect(learners).toHaveLength(1);
+		expect(await app.multiUser?.invites.lookup(made?.token ?? '', new Date())).toBeNull();
 	}, 30_000);
 
 	it('says what to add to .env on a server without the test switch and without a secret', async () => {

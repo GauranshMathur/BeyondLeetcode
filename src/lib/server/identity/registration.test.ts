@@ -1,7 +1,8 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
 import { type Admission, CLIENT_IP_HEADER, createAuth } from './auth.ts';
+import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
 
@@ -136,4 +137,65 @@ it('admits createFirstAdmin onto the Local Learner as admin even when invite-onl
 	expect(answers).toEqual(answers.map(() => ({ learnerId: 'local', role: 'admin' })));
 	expect(real.registrationMode()).toBe('invite');
 	expect(await gate(attempt)).toBeNull();
+});
+
+describe('an Invite', () => {
+	const admin = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
+	const now = new Date('2026-10-20T12:00:00.000Z');
+
+	async function withInvite(registration: Registration = 'invite') {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.user.create({
+			data: { id: 'u-admin', name: 'Ada', email: 'admin@example.com', role: 'admin', learnerId: 'local' }
+		});
+		const invites = createInvites({ db, origin });
+		const instance = fakeInstance('multi', registration);
+		const gate = createRegistration({ instance, invites, now: () => now });
+		const made = await invites.create({ who: admin, now });
+		return { db, invites, instance, gate, made };
+	}
+
+	it('admits a valid token as a new learner when invite-only, without spending it', async () => {
+		const { gate, made, db } = await withInvite();
+
+		expect(await gate({ email: undefined, inviteToken: made.token })).toEqual({
+			inviteToken: made.token
+		});
+		expect(await gate({ email: undefined, inviteToken: made.token })).toEqual({
+			inviteToken: made.token
+		});
+		expect((await db.invite.findUniqueOrThrow({ where: { id: made.id } })).usedAt).toBeNull();
+	});
+
+	it('refuses no token, an unknown token, a used one and an expired one', async () => {
+		const { gate, made, invites, instance } = await withInvite();
+		expect(await gate({ email: undefined })).toBeNull();
+		expect(await gate({ email: undefined, inviteToken: 'A'.repeat(43) })).toBeNull();
+
+		const late = createRegistration({
+			instance,
+			invites,
+			now: () => new Date(now.getTime() + INVITE_LIFETIME_MS)
+		});
+		expect(await late({ email: undefined, inviteToken: made.token })).toBeNull();
+
+		await invites.claim(made.token, now);
+		expect(await gate({ email: undefined, inviteToken: made.token })).toBeNull();
+	});
+
+	it('is not honoured in Local Mode, before Setup or without the Invites module', async () => {
+		const { invites, made } = await withInvite();
+		for (const mode of ['local', null] as const) {
+			const gate = createRegistration({ instance: fakeInstance(mode, 'invite'), invites });
+			expect(await gate({ email: undefined, inviteToken: made.token })).toBeNull();
+		}
+		const bare = createRegistration({ instance: fakeInstance('multi', 'invite') });
+		expect(await bare({ email: undefined, inviteToken: made.token })).toBeNull();
+	});
+
+	it('is ignored when registration is open', async () => {
+		const { gate, made } = await withInvite('open');
+		expect(await gate({ email: undefined, inviteToken: made.token })).toEqual({});
+	});
 });

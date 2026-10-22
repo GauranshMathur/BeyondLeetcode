@@ -10,6 +10,8 @@ import type { Db } from '../db.ts';
 export interface Admission {
 	learnerId?: string;
 	role?: 'admin' | 'learner';
+	/** Set when an Invite is what admitted the sign-up: the `after` hook spends it, or deletes the Account. */
+	inviteToken?: string;
 }
 
 /**
@@ -21,6 +23,8 @@ export interface Admission {
  */
 export type AdmitSignUp = (attempt: {
 	email: string | undefined;
+	/** The token in the invite cookie of the request, if any (see `INVITE_COOKIE`); unchecked. */
+	inviteToken?: string;
 }) => Admission | null | Promise<Admission | null>;
 
 /**
@@ -28,6 +32,25 @@ export type AdmitSignUp = (attempt: {
  * the address SvelteKit resolved, so a client cannot choose its own bucket (see `handleAuthRequest`).
  */
 export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
+
+/**
+ * The cookie the Accept invite page sets (httpOnly, SameSite=Lax) and the registration gate reads: the
+ * invite token. A named constant so the page and the hooks cannot drift.
+ */
+export const INVITE_COOKIE = 'beyondleetcode_invite';
+
+/** The invite token in a request's `Cookie` header, or undefined. */
+export function inviteTokenFrom(headers: Headers | undefined | null): string | undefined {
+	const cookie = headers?.get('cookie');
+	if (!cookie) return undefined;
+	for (const part of cookie.split(';')) {
+		const at = part.indexOf('=');
+		if (at !== -1 && part.slice(0, at).trim() === INVITE_COOKIE) {
+			return part.slice(at + 1).trim() || undefined;
+		}
+	}
+	return undefined;
+}
 
 export const MIN_SECRET_LENGTH = 32;
 
@@ -82,6 +105,11 @@ export type CreateAuthOptions = {
 	secret: string;
 	/** Who may sign up. Consulted on every new Account; the default is nobody. */
 	admitSignUp?: AdmitSignUp;
+	/**
+	 * Spends the Invite a sign-up was admitted on (`Invites.claim`); true only when this call spent it.
+	 * Without it an invite admission cannot be completed, so the Account is removed again.
+	 */
+	claimInvite?: (token: string, now: Date) => Promise<boolean>;
 	/** Plugins the caller owns, e.g. SvelteKit's cookie plugin (keeps `$app/*` out of this file). */
 	extraPlugins?: BetterAuthPlugin[];
 };
@@ -158,6 +186,7 @@ export function createAuth({
 	origin,
 	secret,
 	admitSignUp = () => null,
+	claimInvite = async () => false,
 	extraPlugins = []
 }: CreateAuthOptions) {
 	if (secret.length < MIN_SECRET_LENGTH) {
@@ -216,7 +245,12 @@ export function createAuth({
 				create: {
 					// The one choke point for every Account creation; the rules live in registration.ts.
 					before: async (user, ctx) => {
-						const admission = ctx && (await admitSignUp({ email: user.email }));
+						const admission =
+							ctx &&
+							(await admitSignUp({
+								email: user.email,
+								inviteToken: inviteTokenFrom(ctx.headers ?? ctx.request?.headers)
+							}));
 						if (!admission) throw signUpClosed();
 						// After the admission, so a closed sign-up answers the same whatever the name; before the
 						// Learner below, so a refused name leaves nothing behind. Whatever path made the Account
@@ -246,7 +280,23 @@ export function createAuth({
 							}
 						};
 					},
-					after: async (user) => {
+					after: async (user, ctx) => {
+						// An Account admitted on an Invite spends it here, once, atomically. The gate ran twice
+						// before this and only checked, so two sign-ups on one token can both be here: the claim
+						// is one conditional update, and the one that changes no row removes its own Account
+						// (before the Learner below, so nothing else is left) and is refused.
+						const inviteToken = inviteTokenFrom(ctx?.headers ?? ctx?.request?.headers);
+						if (inviteToken) {
+							const admission = await admitSignUp({ email: user.email, inviteToken });
+							// No admission now means the Invite was spent, expired or cancelled since the gate said yes.
+							const claimed = admission?.inviteToken
+								? await claimInvite(admission.inviteToken, new Date())
+								: admission !== null;
+							if (!claimed) {
+								await db.user.deleteMany({ where: { id: user.id } });
+								throw signUpClosed();
+							}
+						}
 						const { learnerId } = user as { learnerId?: string | null };
 						if (!learnerId) return;
 						await db.learner.upsert({
@@ -265,7 +315,14 @@ export function createAuth({
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
 				if (ctx.path !== '/sign-up/email') return;
-				if (!(await admitSignUp({ email: ctx.body?.email }))) throw signUpClosed();
+				if (
+					!(await admitSignUp({
+						email: ctx.body?.email,
+						inviteToken: inviteTokenFrom(ctx.headers)
+					}))
+				) {
+					throw signUpClosed();
+				}
 				const name = ctx.body?.name;
 				const refusal = typeof name === 'string' ? nameRefusal(name) : null;
 				if (refusal) throw refusal;

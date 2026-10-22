@@ -6,12 +6,14 @@ import {
 	type Admission,
 	CLIENT_IP_HEADER,
 	createAuth,
+	INVITE_COOKIE,
 	hasForbiddenNameCharacter,
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
 	MIN_PASSWORD_LENGTH
 } from './auth.ts';
+import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
 
@@ -692,5 +694,127 @@ describe('control and bidi characters in a name', () => {
 		expect(instance.mode()).toBeNull();
 		expect(await db.user.count()).toBe(0);
 		expect(await db.learner.count()).toBe(0);
+	});
+});
+
+describe('accepting an Invite', () => {
+	const origin = 'http://localhost:3000';
+	const adminWho = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
+	let caller = 0;
+
+	async function invited(options: { claim?: 'real' | 'lose'; now?: () => Date } = {}) {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.user.create({
+			data: { id: 'u-admin', name: 'Ada', email: 'admin@example.com', role: 'admin', learnerId: 'local' }
+		});
+		const invites = createInvites({ db, origin });
+		const instance = {
+			mode: () => 'multi' as const,
+			registrationMode: () => 'invite' as 'invite' | 'open'
+		};
+		const now = options.now ?? (() => new Date());
+		const auth = createAuth({
+			db,
+			origin,
+			secret,
+			admitSignUp: createRegistration({ instance, invites, now }),
+			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at)
+		});
+		const post = (token: string | null, payload: object = { ...body, email: `n${caller}@example.com` }) =>
+			auth.handler(
+				new Request(`${origin}/api/auth/sign-up/email`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						origin,
+						[CLIENT_IP_HEADER]: `10.2.${caller >> 8}.${caller++ & 255}`,
+						...(token ? { cookie: `${INVITE_COOKIE}=${token}` } : {})
+					},
+					body: JSON.stringify(payload)
+				})
+			);
+		const made = () => invites.create({ who: adminWho, now: new Date() });
+		return { db, invites, instance, post, made };
+	}
+
+	it('creates exactly one learner Account, and a second use is refused', async () => {
+		const { db, post, made } = await invited();
+		const { token, id } = await made();
+
+		const first = await post(token);
+		const second = await post(token);
+
+		expect(first.status).toBe(200);
+		expect(second.status).toBe(403);
+		const users = await db.user.findMany({ where: { id: { not: 'u-admin' } } });
+		expect(users).toHaveLength(1);
+		expect(users[0].role).toBe('learner');
+		expect(users[0].learnerId).not.toBe('local');
+		expect(await db.learner.count()).toBe(2);
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+	});
+
+	it('refuses no cookie, an unknown token, an expired link and a cancelled one', async () => {
+		const later = new Date(Date.now() + INVITE_LIFETIME_MS + 1000);
+		const { db, post, made, invites } = await invited({ now: () => later });
+		const expired = await made();
+		const fresh = await invited();
+		const cancelled = await fresh.made();
+		await fresh.invites.cancel({ who: adminWho, id: cancelled.id });
+
+		expect((await post(null)).status).toBe(403);
+		expect((await post('A'.repeat(43))).status).toBe(403);
+		expect((await post(expired.token)).status).toBe(403);
+		expect((await fresh.post(cancelled.token)).status).toBe(403);
+		expect(await db.user.count()).toBe(1);
+		expect(await fresh.db.user.count()).toBe(1);
+		expect(invites).toBeDefined();
+	});
+
+	it('lets one of two sign-ups racing on one token win', async () => {
+		const { db, post, made } = await invited();
+		const { token } = await made();
+
+		const answers = await Promise.all([post(token), post(token), post(token)]);
+
+		expect(answers.filter((r) => r.status === 200)).toHaveLength(1);
+		expect(await db.user.count()).toBe(2);
+		expect(await db.learner.count()).toBe(2);
+		expect(await db.account.count()).toBe(1);
+	});
+
+	it('removes the Account and leaves no Learner when the claim is lost after the gate said yes', async () => {
+		const { db, post, made } = await invited({ claim: 'lose' });
+		const { token } = await made();
+
+		const res = await post(token);
+
+		expect(res.status).toBe(403);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.learner.count()).toBe(1);
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+	});
+
+	it('does not spend the Invite when the name is refused, so the invitee can try again', async () => {
+		const { db, post, made } = await invited();
+		const { token, id } = await made();
+
+		const bad = await post(token, { ...body, name: 'x'.repeat(101) });
+		expect(bad.status).toBe(400);
+		expect((await bad.json()).code).toBe('NAME_TOO_LONG');
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
+
+		expect((await post(token)).status).toBe(200);
+	});
+
+	it('does not spend the Invite when registration is open', async () => {
+		const { db, post, made, instance } = await invited();
+		const { token, id } = await made();
+		instance.registrationMode = () => 'open';
+
+		expect((await post(token)).status).toBe(200);
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
 	});
 });
