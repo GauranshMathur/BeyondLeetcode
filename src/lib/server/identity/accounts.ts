@@ -116,9 +116,10 @@ function oneTimePassword(): string {
  * it is stored only as a hash and must not be logged or kept.
  *
  * The plugin's own set-user-password does none of the product steps, so all three run here, through
- * `auth.api` (server-side, no HTTP), password first (it carries the plugin's admin check), then the
- * flag, then the sessions last, so one opened in between is ended too. A failure part-way throws and
- * no password is returned: the admin tries again, and a retry redoes every step.
+ * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions, which are revoked
+ * whatever the password step did. So once the password has changed no earlier session survives, and
+ * no outcome leaves a session alive with the flag unset. A failure part-way throws and no password
+ * is returned: the admin tries again, and a retry redoes every step.
  *
  * Identity's role is the check that counts, as in `listAccounts`, and it is made before anything is read.
  */
@@ -138,10 +139,19 @@ export async function resetPassword(
 
 	const password = oneTimePassword();
 	try {
-		// First, because it is the plugin's own admin check: a session that ended a moment ago changes nothing.
-		await auth.api.setUserPassword({ headers, body: { userId, newPassword: password } });
+		// The plugin's admin check is the password step's, which now comes after the flag. Ask for the
+		// session first, so a session that ended a moment ago changes nothing at all.
+		if (!(await auth.api.getSession({ headers }))) throw new NotAdminError();
+		// Before the password, so the password never changes while the flag is unset.
 		await internalAdapter.updateUser(userId, { mustChangePassword: true });
-		await auth.api.revokeUserSessions({ headers, body: { userId } });
+		try {
+			await auth.api.setUserPassword({ headers, body: { userId, newPassword: password } });
+		} finally {
+			// Attempted whatever the password step did (it may have changed the password and lost its answer):
+			// once the password has changed no earlier session survives, and a session that outlives a failed
+			// revocation carries the flag, so the gate confines it to the password page.
+			await auth.api.revokeUserSessions({ headers, body: { userId } });
+		}
 	} catch (error) {
 		if (error instanceof APIError && (error.statusCode === 401 || error.statusCode === 403)) {
 			throw new NotAdminError();

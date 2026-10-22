@@ -356,12 +356,78 @@ describe('resetPassword', () => {
 		expect(await sessionOf(auth, admin.cookie)).not.toBeNull();
 	});
 
-	it('does not hand out a password when a step fails', async () => {
-		const { auth, admin, linRow, requestOf } = await twoAccounts();
-		vi.spyOn(auth.api, 'revokeUserSessions').mockRejectedValueOnce(new Error('disk'));
+	describe('when a step fails', () => {
+		// The property: once the password has changed, no session from before the reset survives, and no
+		// outcome leaves a session alive with the flag unset. No password is returned from any failure.
+		async function failing(step: 'flag' | 'password' | 'revoke') {
+			const s = await twoAccounts();
+			await signIn(s.auth, 'lin@example.com', password); // a second session
+			const { internalAdapter } = await s.auth.$context;
+			if (step === 'flag')
+				vi.spyOn(internalAdapter, 'updateUser').mockRejectedValueOnce(new Error('disk'));
+			if (step === 'password')
+				vi.spyOn(s.auth.api, 'setUserPassword').mockRejectedValueOnce(new Error('disk'));
+			if (step === 'revoke')
+				vi.spyOn(s.auth.api, 'revokeUserSessions').mockRejectedValueOnce(new Error('disk'));
+			const outcome = await resetPassword(s.auth, {
+				...(await s.requestOf(s.admin.cookie)),
+				userId: s.linRow.id
+			}).then(
+				() => 'returned',
+				(error) => (error as Error).message
+			);
+			const stored = await s.db.user.findUniqueOrThrow({ where: { id: s.linRow.id } });
+			const sessions = await s.db.session.count({ where: { userId: s.linRow.id } });
+			const oldPasswordWorks = await signIn(s.auth, 'lin@example.com', password).then(
+				() => true,
+				() => false
+			);
+			return { outcome, flag: stored.mustChangePassword, sessions, oldPasswordWorks };
+		}
 
-		await expect(
-			resetPassword(auth, { ...(await requestOf(admin.cookie)), userId: linRow.id })
-		).rejects.toThrow('disk');
+		it('flag fails: nothing changed, the old password and sessions are intact, nothing is shown', async () => {
+			expect(await failing('flag')).toEqual({
+				outcome: 'disk',
+				flag: false,
+				sessions: 2, // both untouched
+				oldPasswordWorks: true
+			});
+		});
+
+		it('password fails: sessions are still ended and the flag is set, the old password remains', async () => {
+			expect(await failing('password')).toEqual({
+				outcome: 'disk',
+				flag: true,
+				sessions: 0,
+				oldPasswordWorks: true
+			});
+		});
+
+		it('revoke fails after the password changed: the error is thrown, the flag is set, the old password is dead', async () => {
+			expect(await failing('revoke')).toEqual({
+				outcome: 'disk',
+				flag: true,
+				sessions: 2, // not revoked: the flag confines them to the password page
+				oldPasswordWorks: false
+			});
+		});
+
+		it('revokes the old sessions when the password step fails after changing it', async () => {
+			const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+			const real = auth.api.setUserPassword;
+			vi.spyOn(auth.api, 'setUserPassword').mockImplementationOnce(async (...args) => {
+				await real(...args);
+				throw new Error('lost the answer');
+			});
+
+			await expect(
+				resetPassword(auth, { ...(await requestOf(admin.cookie)), userId: linRow.id })
+			).rejects.toThrow('lost the answer');
+
+			expect(await db.session.count({ where: { userId: linRow.id } })).toBe(0);
+			expect(
+				(await db.user.findUniqueOrThrow({ where: { id: linRow.id } })).mustChangePassword
+			).toBe(true);
+		});
 	});
 });
