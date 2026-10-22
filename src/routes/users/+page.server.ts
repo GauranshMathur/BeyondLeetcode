@@ -8,16 +8,17 @@ import type { Actions, PageServerLoad } from './$types';
  * already sent a signed-out visitor to Sign in, given a learner 403 and hidden the page in Local
  * Mode (404); this load checks again and fails closed, because it is the one that reads the Accounts.
  */
-export const load: PageServerLoad = async ({ locals, request, setHeaders }) => {
-	const { auth, identity } = locals;
+export const load: PageServerLoad = async ({ locals, request }) => {
+	const { auth, identity, invites } = locals;
 	// Better Auth is set only in Multi-user Mode: Local Mode has no Accounts, whatever role it gives the Local Learner.
 	if (!auth) error(404, 'Not found');
 	if (!identity) error(403, 'Forbidden');
 	try {
 		const accounts = await listAccounts(auth, { who: identity, headers: request.headers });
-		// Names and emails of everyone: not for a shared cache, nor for the back button after sign-out.
-		setHeaders({ 'Cache-Control': 'no-store' });
-		return { accounts, registration: locals.instance.registrationMode() };
+		// Set exactly when `auth` is; fail closed anyway. After the Accounts, whose read refuses a learner first.
+		if (!invites) error(404, 'Not found');
+		const pending = await invites.listPending({ who: identity, now: new Date() });
+		return { accounts, pending, registration: locals.instance.registrationMode() };
 	} catch (thrown) {
 		if (thrown instanceof NotAdminError) error(403, 'Forbidden');
 		throw thrown;
@@ -54,5 +55,46 @@ export const actions: Actions = {
 			return fail(500, { message: 'Registration could not be changed. Try again.' });
 		}
 		return { registration: choice };
+	},
+
+	/**
+	 * Makes an Invite and answers with its link: the one response that ever carries the token. It is
+	 * never cached (the hook sets `no-store` on every /users response), never put in a redirect, and not stored (only its hash is). Admin only, checked first.
+	 */
+	invite: async ({ locals }) => {
+		const { identity, invites } = locals;
+		if (identity?.role !== 'admin') error(403, 'Forbidden');
+		if (!invites) error(404, 'Not found');
+		try {
+			const made = await invites.create({ who: identity, now: new Date() });
+			return { invite: { link: made.link, expiresAt: made.expiresAt } };
+		} catch (thrown) {
+			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
+			console.error(
+				'Users: creating an Invite failed:',
+				thrown instanceof Error ? thrown.name : typeof thrown
+			);
+			return fail(500, { message: 'The invite could not be created. Try again.' });
+		}
+	},
+
+	/** Cancels a pending Invite. An unknown, used or already-cancelled one gets the same fixed message. */
+	cancel: async ({ locals, request }) => {
+		const { identity, invites } = locals;
+		if (identity?.role !== 'admin') error(403, 'Forbidden');
+		if (!invites) error(404, 'Not found');
+		const id = (await request.formData()).get('id');
+		try {
+			const cancelled = typeof id === 'string' && (await invites.cancel({ who: identity, id }));
+			if (!cancelled) return fail(404, { message: 'That invite is no longer pending.' });
+		} catch (thrown) {
+			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
+			console.error(
+				'Users: cancelling an Invite failed:',
+				thrown instanceof Error ? thrown.name : typeof thrown
+			);
+			return fail(500, { message: 'The invite could not be cancelled. Try again.' });
+		}
+		return { cancelled: true };
 	}
 };

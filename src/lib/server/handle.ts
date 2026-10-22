@@ -30,6 +30,7 @@ export function createHandle(
 			// Cannot happen at start (createApp refuses it); fail closed rather than serve nobody.
 			if (!app.multiUser) return refuseFraming(refusal(503));
 			event.locals.auth = app.multiUser.auth;
+			event.locals.invites = app.multiUser.invites;
 			who = await app.multiUser.identity.resolve(event);
 		}
 		// An active session was extended: its new cookie goes out with whatever this request answers (a
@@ -78,12 +79,14 @@ export function createHandle(
 		}
 		// No theme cookie means follow the device; a choice goes on <html> in the server render, so no flash.
 		// Read when the page renders, not before: an action that just set the cookie is seen by its own response.
-		return finish(
-			await resolve(event, {
-				transformPageChunk: ({ html }) =>
-					withTheme(html, parseTheme(event.cookies.get(THEME_COOKIE)))
-			})
-		);
+		const response = await resolve(event, {
+			transformPageChunk: ({ html }) => withTheme(html, parseTheme(event.cookies.get(THEME_COOKIE)))
+		});
+		// Users shows everyone's names and emails and the one-time Invite link: never cached, whatever
+		// answers (the page, a data request, an action result, an error). Set here, once, because a
+		// route that sets it in both its action and its load makes SvelteKit throw on a no-JS form post.
+		if (event.route.id === '/users') response.headers.set('Cache-Control', 'no-store');
+		return finish(response);
 	};
 }
 

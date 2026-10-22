@@ -99,7 +99,8 @@ test.describe('on a Multi-user server of its own', () => {
 		await expect(registration(page).getByRole('option')).toHaveText(['Invite only', 'Open']);
 		await expect(page.getByText(INVITE_ONLY)).toBeVisible();
 		await expect(page.getByText(OPEN)).toHaveCount(0);
-		await expect(headings.nth(1)).toHaveText('All users');
+		await expect(headings.nth(1)).toHaveText('Invite a user');
+		await expect(headings.nth(2)).toHaveText('All users');
 		await context.close();
 	});
 
