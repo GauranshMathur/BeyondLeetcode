@@ -490,7 +490,7 @@ describe('the Registration action, if the hook ever let a request through', () =
 async function post(
 	handle: ReturnType<typeof createHandle>,
 	cookie: string,
-	name: 'invite' | 'cancel',
+	name: 'invite' | 'cancel' | 'reset',
 	fields: Record<string, string> = {}
 ) {
 	const setHeaders = vi.fn();
@@ -639,4 +639,127 @@ describe('Invites on the Users page', () => {
 			});
 		}
 	);
+});
+
+describe('Reset password on the Users page', () => {
+	async function withLin() {
+		const s = await setup();
+		const lin = await s.learner('Lin Learner', 'lin@example.com');
+		const row = await s.db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		return { ...s, lin, linId: row.id };
+	}
+
+	it('answers once with a one-time password that signs in; the old password and sessions stop', async () => {
+		const { handle, admin, auth, lin, linId } = await withLin();
+
+		const { response } = await post(handle, admin, 'reset', { id: linId });
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		const fresh = await response.clone().json();
+		expect(fresh.reset).toEqual({ userId: linId, password: expect.any(String) });
+		await expect(
+			auth.api.signInEmail({ body: { email: 'lin@example.com', password } })
+		).rejects.toThrow();
+		const signedIn = await auth.api.signInEmail({
+			body: { email: 'lin@example.com', password: fresh.reset.password }
+		});
+		expect(signedIn.user.email).toBe('lin@example.com');
+		expect(await auth.api.getSession({ headers: new Headers({ cookie: lin }) })).toBeNull();
+	});
+
+	it('flags the user to set a new password', async () => {
+		const { handle, admin, db, linId } = await withLin();
+
+		await post(handle, admin, 'reset', { id: linId });
+
+		const lin = await db.user.findUniqueOrThrow({ where: { id: linId } });
+		expect(lin.mustChangePassword).toBe(true);
+	});
+
+	it('never returns the password from a later load, and never logs it', async () => {
+		const { handle, admin, linId } = await withLin();
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+
+		const { response } = await post(handle, admin, 'reset', { id: linId });
+		const shown = (await response.json()).reset.password as string;
+		const after = JSON.stringify(await (await visit(handle, '/users', admin)).response.json());
+
+		expect(after).not.toContain(shown);
+		for (const spy of spies) expect(JSON.stringify(spy.mock.calls)).not.toContain(shown);
+		vi.restoreAllMocks();
+	});
+
+	it('answers an unknown or missing id with a fixed message and changes nothing', async () => {
+		const { handle, admin, auth } = await withLin();
+
+		for (const fields of [{ id: 'nope' }, {} as Record<string, string>]) {
+			const { response } = await post(handle, admin, 'reset', fields);
+			expect(response.status).toBe(404);
+			expect(JSON.stringify(await response.json())).toContain('no longer exists');
+		}
+		await auth.api.signInEmail({ body: { email: 'lin@example.com', password } });
+	});
+
+	it('refuses the admin resetting themselves, and keeps their session', async () => {
+		const { handle, admin, db, auth } = await withLin();
+		const ada = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+
+		const { response } = await post(handle, admin, 'reset', { id: ada.id });
+
+		expect(response.status).toBe(400);
+		expect(await auth.api.getSession({ headers: new Headers({ cookie: admin }) })).not.toBeNull();
+		await auth.api.signInEmail({ body: { email: 'ada@example.com', password } });
+	});
+
+	it('refuses a learner with 403 before the action runs, and changes nothing', async () => {
+		const { handle, lin, linId, auth } = await withLin();
+		const max = lin;
+
+		const { response, resolve } = await post(handle, max, 'reset', { id: linId });
+
+		expect(response.status).toBe(403);
+		expect(resolve).not.toHaveBeenCalled();
+		await auth.api.signInEmail({ body: { email: 'lin@example.com', password } });
+	});
+
+	it('sends a signed-out request to Sign in', async () => {
+		const { handle, linId } = await withLin();
+
+		const { response, resolve } = await post(handle, '', 'reset', { id: linId });
+
+		expect(response.status).toBe(303);
+		expect(resolve).not.toHaveBeenCalled();
+	});
+
+	it('is 403 for a non-admin and 404 without Better Auth, even past the hook, before the form is read', async () => {
+		const learner = { learnerId: 'l', displayName: 'N', role: 'learner' as const };
+		const admin = { ...learner, role: 'admin' as const };
+		const formData = vi.fn();
+		const event = (locals: Record<string, unknown>) =>
+			({ locals, request: { formData, headers: new Headers() } }) as never;
+		await expect(actions.reset(event({ identity: learner, auth: {} }))).rejects.toMatchObject({
+			status: 403
+		});
+		await expect(actions.reset(event({}))).rejects.toMatchObject({ status: 403 });
+		await expect(actions.reset(event({ identity: admin }))).rejects.toMatchObject({ status: 404 });
+		expect(formData).not.toHaveBeenCalled();
+	});
+
+	it('answers a failed reset with a fixed message and no password', async () => {
+		const { handle, admin, auth, linId } = await withLin();
+		vi.spyOn(auth.api, 'revokeUserSessions').mockRejectedValueOnce(new Error('/secret/path'));
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { response } = await post(handle, admin, 'reset', { id: linId });
+
+		expect(response.status).toBe(500);
+		const text = JSON.stringify(await response.json());
+		expect(text).not.toContain('/secret/path');
+		expect(text).not.toMatch(/[A-Za-z0-9]{20}/);
+		expect(JSON.stringify(quiet.mock.calls)).not.toContain('/secret/path');
+		vi.restoreAllMocks();
+	});
 });

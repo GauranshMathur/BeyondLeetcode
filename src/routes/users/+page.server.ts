@@ -1,5 +1,11 @@
 import { error, fail } from '@sveltejs/kit';
-import { listAccounts, NotAdminError } from '$lib/server/identity/accounts';
+import {
+	listAccounts,
+	NotAdminError,
+	resetPassword,
+	SelfResetError,
+	UnknownAccountError
+} from '$lib/server/identity/accounts';
 import { isRegistrationMode, RegistrationNotAvailableError } from '$lib/server/instance';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -96,5 +102,41 @@ export const actions: Actions = {
 			return fail(500, { message: 'The invite could not be cancelled. Try again.' });
 		}
 		return { cancelled: true };
+	},
+
+	/**
+	 * Resets a user's password to a random one-time password and answers with it: the one response
+	 * that ever carries it (never cached: the hook sets `no-store` on every /users response; never in
+	 * a redirect, a log or a later load; stored only as a hash). It also ends the user's sessions and
+	 * makes them set a new password, all through `auth.api` and not the bare plugin endpoint. Admin
+	 * only, checked first. Resetting your own password is refused: it would end the session that is
+	 * about to show the password.
+	 */
+	reset: async ({ locals, request }) => {
+		const { auth, identity } = locals;
+		if (identity?.role !== 'admin') error(403, 'Forbidden');
+		if (!auth) error(404, 'Not found');
+		const id = (await request.formData()).get('id');
+		try {
+			const { password } = await resetPassword(auth, {
+				who: identity,
+				headers: request.headers,
+				userId: typeof id === 'string' ? id : ''
+			});
+			return { reset: { userId: typeof id === 'string' ? id : '', password } };
+		} catch (thrown) {
+			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
+			if (thrown instanceof UnknownAccountError) {
+				return fail(404, { message: 'That user no longer exists.' });
+			}
+			if (thrown instanceof SelfResetError) {
+				return fail(400, { message: 'You cannot reset your own password here.' });
+			}
+			console.error(
+				'Users: resetting a password failed:',
+				thrown instanceof Error ? thrown.name : typeof thrown
+			);
+			return fail(500, { message: 'The password could not be reset. Try again.' });
+		}
 	}
 };

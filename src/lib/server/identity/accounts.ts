@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { APIError } from 'better-auth/api';
 import type { Auth } from './auth.ts';
 import type { Identity, Role } from './index.ts';
@@ -78,4 +79,74 @@ async function readPage(auth: Auth, headers: Headers, offset: number) {
 		}
 		throw error;
 	}
+}
+
+/** The Account to reset is not there: a stale row, or an id that was never one. */
+export class UnknownAccountError extends Error {
+	constructor() {
+		super('That Account does not exist.');
+		this.name = 'UnknownAccountError';
+	}
+}
+
+/** The admin asked to reset their own password, which would sign them out and lose the one-time password. */
+export class SelfResetError extends Error {
+	constructor() {
+		super('The admin cannot reset their own password here.');
+		this.name = 'SelfResetError';
+	}
+}
+
+/** No look-alikes (0/O, 1/l/I), so a password read out or typed from a message survives. */
+const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+/** 20 characters of 57: about 117 bits, within Better Auth's 12 to 128. */
+const ONE_TIME_PASSWORD_LENGTH = 20;
+
+function oneTimePassword(): string {
+	let out = '';
+	for (let i = 0; i < ONE_TIME_PASSWORD_LENGTH; i++) {
+		out += PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)];
+	}
+	return out;
+}
+
+/**
+ * Gives an Account a random one-time password, ends every session it has and makes it set a new
+ * password before anything else. The password is returned to the caller for the admin to see once;
+ * it is stored only as a hash and must not be logged or kept.
+ *
+ * The plugin's own set-user-password does none of the product steps, so all three run here, through
+ * `auth.api` (server-side, no HTTP), password first (it carries the plugin's admin check), then the
+ * flag, then the sessions last, so one opened in between is ended too. A failure part-way throws and
+ * no password is returned: the admin tries again, and a retry redoes every step.
+ *
+ * Identity's role is the check that counts, as in `listAccounts`, and it is made before anything is read.
+ */
+export async function resetPassword(
+	auth: Auth,
+	{ who, headers, userId }: { who: Identity; headers: Headers; userId: string }
+): Promise<{ password: string }> {
+	if (who.role !== 'admin') throw new NotAdminError();
+	if (typeof userId !== 'string' || userId === '') throw new UnknownAccountError();
+
+	const { internalAdapter } = await auth.$context;
+	const target = await internalAdapter.findUserById(userId);
+	if (!target) throw new UnknownAccountError();
+	if ((target as { learnerId?: string | null }).learnerId === who.learnerId) {
+		throw new SelfResetError();
+	}
+
+	const password = oneTimePassword();
+	try {
+		// First, because it is the plugin's own admin check: a session that ended a moment ago changes nothing.
+		await auth.api.setUserPassword({ headers, body: { userId, newPassword: password } });
+		await internalAdapter.updateUser(userId, { mustChangePassword: true });
+		await auth.api.revokeUserSessions({ headers, body: { userId } });
+	} catch (error) {
+		if (error instanceof APIError && (error.statusCode === 401 || error.statusCode === 403)) {
+			throw new NotAdminError();
+		}
+		throw error;
+	}
+	return { password };
 }
