@@ -59,6 +59,19 @@ export function isNameTooLong(name: string): boolean {
 	return [...trimmed].length > MAX_NAME_LENGTH;
 }
 
+/**
+ * C0 and C1 controls (U+0000-U+001F, U+007F-U+009F) and the bidi controls (U+202A-U+202E, U+2066-U+2069):
+ * they let a name spoof its own display on the Users page and in the nav. Everything else is allowed,
+ * including U+200D (emoji sequences) and the zero-width U+200B and U+2060.
+ */
+// \p{Cc} is exactly U+0000-U+001F and U+007F-U+009F.
+const FORBIDDEN_NAME_CHARACTERS = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
+
+/** Whether a name, as it would be stored (trimmed), holds a control or bidi character. */
+export function hasForbiddenNameCharacter(name: string): boolean {
+	return FORBIDDEN_NAME_CHARACTERS.test(name.trim());
+}
+
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -121,16 +134,22 @@ const signUpClosed = () => new APIError('FORBIDDEN', { message: 'Sign-up is clos
 // Fixed messages and codes: the forms map the code to their own text, and the name is never echoed.
 const nameTooLong = () =>
 	new APIError('BAD_REQUEST', { message: 'The name is too long.', code: 'NAME_TOO_LONG' });
+const nameInvalidCharacters = () =>
+	new APIError('BAD_REQUEST', {
+		message: "This name contains a character that can't be used.",
+		code: 'NAME_INVALID_CHARACTERS'
+	});
 const nameRequired = () =>
 	new APIError('BAD_REQUEST', { message: 'Enter a name.', code: 'NAME_REQUIRED' });
 
 /**
- * The refusal for a name, or null if it is fine: blank once trimmed, or over the cap. Which characters a
- * name may hold is another question (a product rule) and is not asked here.
+ * The refusal for a name, or null if it is fine: blank once trimmed, over the cap, or holding a control or
+ * bidi character. The cap is checked before the characters, so a huge name is never scanned.
  */
 function nameRefusal(name: string): APIError | null {
 	if (name.trim() === '') return nameRequired();
-	return isNameTooLong(name) ? nameTooLong() : null;
+	if (isNameTooLong(name)) return nameTooLong();
+	return hasForbiddenNameCharacter(name) ? nameInvalidCharacters() : null;
 }
 
 /** Better Auth over our database: email + password and the admin plugin, nothing else. */
