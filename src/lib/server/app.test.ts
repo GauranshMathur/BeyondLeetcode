@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
-import { INVITE_COOKIE } from './identity/auth.ts';
+import { enabledProviders, INVITE_COOKIE } from './identity/auth.ts';
 
 it('fails at start with a clear message when CONTENT_DIR is missing', async () => {
 	await expect(createApp({ DATABASE_URL: 'file:x.db' })).rejects.toThrow(/CONTENT_DIR is not set/);
@@ -93,6 +93,51 @@ const bootMulti = (url: string, extra: Record<string, string | undefined> = {}) 
 		ORIGIN: 'http://localhost:4174',
 		...extra
 	});
+
+describe('OAuth providers', () => {
+	const github = { GITHUB_CLIENT_ID: 'gh-id', GITHUB_CLIENT_SECRET: 'gh-secret' };
+	const providersOf = async (extra: Record<string, string | undefined>) => {
+		const { url } = await migratedDatabase();
+		const app = await bootMulti(url, extra);
+		return app.multiUser ? enabledProviders(app.multiUser.auth) : null;
+	};
+	beforeEach(() => {
+		// The process environment is the fallback, so the tests start from a clean one.
+		for (const name of [
+			'GITHUB_CLIENT_ID',
+			'GITHUB_CLIENT_SECRET',
+			'GOOGLE_CLIENT_ID',
+			'GOOGLE_CLIENT_SECRET'
+		]) {
+			vi.stubEnv(name, '');
+		}
+	});
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('adds GitHub only when both of its variables are set', async () => {
+		expect(await providersOf({})).toEqual([]);
+		expect(await providersOf({ GITHUB_CLIENT_ID: 'gh-id' })).toEqual([]);
+		expect(await providersOf({ GITHUB_CLIENT_SECRET: 'gh-secret' })).toEqual([]);
+		expect(await providersOf(github)).toEqual(['github']);
+	}, 60_000);
+
+	it('adds each provider on its own pair', async () => {
+		expect(
+			await providersOf({ ...github, GOOGLE_CLIENT_ID: 'g-id', GOOGLE_CLIENT_SECRET: 'g-secret' })
+		).toEqual(['github', 'google']);
+		expect(
+			await providersOf({ GOOGLE_CLIENT_ID: 'g-id', GOOGLE_CLIENT_SECRET: 'g-secret' })
+		).toEqual(['google']);
+	}, 60_000);
+
+	it('reads the process environment when the caller passes none', async () => {
+		vi.stubEnv('GITHUB_CLIENT_ID', 'gh-id');
+		vi.stubEnv('GITHUB_CLIENT_SECRET', 'gh-secret');
+		expect(await providersOf({})).toEqual(['github']);
+	}, 60_000);
+});
 
 describe('Multi-user', () => {
 	it('can be chosen on a server without the test switch once the secret and origin are set, and signs the admin in', async () => {

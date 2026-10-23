@@ -322,7 +322,7 @@ export function socialProvidersFrom(env: Record<string, string | undefined>): So
 export function enabledProviders(auth: {
 	options: { socialProviders?: object };
 }): SocialProviderId[] {
-	const have = auth.options.socialProviders ?? {};
+	const have = auth.options?.socialProviders ?? {};
 	return SOCIAL_PROVIDER_IDS.filter((id) => id in have);
 }
 

@@ -1191,7 +1191,9 @@ describe('signing in with a provider', () => {
 			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at),
 			socialProviders: options.providers ?? SECRETS
 		});
-		onTestFinished(() => vi.restoreAllMocks());
+		onTestFinished(() => {
+			vi.restoreAllMocks();
+		});
 		const made = () => invites.create({ who: adminWho, now: new Date() });
 
 		/** The whole round trip: the button, the provider's redirect back (with the invite cookie, if any). */

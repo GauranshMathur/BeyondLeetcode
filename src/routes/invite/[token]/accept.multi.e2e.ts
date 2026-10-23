@@ -84,7 +84,7 @@ test('a link creates one learner Account, signed in, and then stops working', as
 	expect(response?.headers()['referrer-policy']).toBe('strict-origin');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('You are invited.');
 	const cookie = (await context.cookies()).find((c) => c.name === 'beyondleetcode_invite');
-	expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/invite' });
+	expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/api/auth' });
 
 	await fillAndSubmit(page, { name: 'Ina Invited', email: 'ina.invited@example.com' });
 
