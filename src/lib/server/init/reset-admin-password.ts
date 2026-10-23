@@ -106,12 +106,18 @@ export async function runResetAdminPassword(
 				'there is no admin Account on this Instance, so nothing was changed.'
 			);
 		}
+		// A Setup that rolled back around the restore can leave the Instance with no stored mode again.
+		const modeLost = (await db.instance.count()) === 0;
 		return {
 			code: EXIT_OK,
 			stdout: `${reset.password}\n`,
 			stderr: `Reset the password of the admin ${reset.email}. The one-time password is on stdout above; it is shown once. Sign in with it and choose a new password. Every earlier session was signed out.\n${
 				restored
 					? 'This Instance had lost its stored mode and is Multi-user again. Restart the web container now (docker compose restart web): the running server still has the old mode in memory.\n'
+					: ''
+			}${
+				modeLost
+					? 'The Instance still has no stored mode, so Setup is open: run this command again to store it, then restart the web container.\n'
 					: ''
 			}`
 		};

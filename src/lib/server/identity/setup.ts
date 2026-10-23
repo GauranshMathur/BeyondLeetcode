@@ -82,7 +82,12 @@ export async function createFirstAdmin(
 ): Promise<{ headers: Headers }> {
 	validate(input);
 	return exclusively(async () => {
+		// Before the claim, so an Instance that has Accounts but no stored mode (the state the reset command
+		// repairs, C54) never gets a mode row that this call would take away again: a reset landing in
+		// between would see the row, skip its restore, and be undone by the rollback below.
+		if ((await db.user.count()) > 0) throw new InstanceAlreadySetUpError();
 		const claim = await claimInstance(instance);
+		// Kept: an Account made between the check above and the claim still undoes the claim.
 		if ((await db.user.count()) > 0) {
 			await rollback(claim, db, false);
 			throw new InstanceAlreadySetUpError();

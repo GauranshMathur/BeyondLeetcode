@@ -124,6 +124,24 @@ describe('reset-admin-password command', () => {
 		expect(result.stderr).toMatch(/restart/i);
 	});
 
+	it('tells the owner to run it again when no mode is stored after the reset', async () => {
+		const { db } = await setup(['admin']);
+		const noRestore = new Proxy(db, {
+			get(target, prop, receiver) {
+				// The restore finds a row to be there (a Setup mid-claim) and does nothing.
+				if (prop === '$executeRaw') return async () => 0;
+				return Reflect.get(target, prop, receiver);
+			}
+		});
+
+		const result = await runResetAdminPassword([], env, () => noRestore);
+
+		expect(result.code).toBe(EXIT_OK);
+		expect(result.stdout.trim()).toMatch(/^[A-Za-z0-9]{20}$/);
+		expect(result.stderr).toMatch(/no stored mode/i);
+		expect(result.stderr).toMatch(/again/i);
+	});
+
 	it('does not ask for a restart when the mode was already stored', async () => {
 		const { db, open } = await setup(['admin']);
 		await (await createInstance(db)).chooseMulti();
