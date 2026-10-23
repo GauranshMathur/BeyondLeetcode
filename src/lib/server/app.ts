@@ -9,7 +9,11 @@ import {
 } from './identity/auth.ts';
 import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
 import { createInvites, type Invites } from './identity/invites.ts';
-import { createMultiUserIdentity, repairLearners } from './identity/multi-user.ts';
+import {
+	createMultiUserIdentity,
+	repairLearners,
+	sweepStaleSessions
+} from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
 import {
 	createFirstAdmin,
@@ -117,6 +121,8 @@ export async function createApp(env: {
 				`Multi-user startup repair: ${created} missing Learner(s) created, ${removed} orphan Learner(s) removed.`
 			);
 		}
+		const swept = await sweepStaleSessions(db);
+		if (swept > 0) console.warn(`Multi-user startup repair: ${swept} unusable session(s) removed.`);
 	}
 	const identity = await createLocalIdentity(db, {
 		testLearnerCookie: env.IDENTITY_TEST_LEARNER === '1'

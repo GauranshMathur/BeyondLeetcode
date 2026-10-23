@@ -119,16 +119,19 @@ model User {
 }
 
 model Session {
-  id             String   @id
-  expiresAt      DateTime
-  token          String   @unique
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  ipAddress      String?
-  userAgent      String?
-  userId         String
-  impersonatedBy String?
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String   @id
+  expiresAt            DateTime
+  token                String   @unique
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  impersonatedBy       String?
+  /// The credential generation (Account.credentialGeneration of the user's password Account, or "" with none) this
+  /// session was created under. A session resolves only while it is still the current one.
+  credentialGeneration String   @default("")
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -145,6 +148,9 @@ model Account {
   refreshTokenExpiresAt DateTime?
   scope                 String?
   password              String?
+  /// Changes in the same write as `password` (a hook of createAuth), so a session can be bound to the password it
+  /// was created under. "" on an Account that has no password.
+  credentialGeneration  String    @default("")
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)

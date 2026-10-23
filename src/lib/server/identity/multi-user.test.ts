@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
 import { createAuth } from './auth.ts';
-import { createMultiUserIdentity, repairLearners } from './multi-user.ts';
+import { createMultiUserIdentity, repairLearners, sweepStaleSessions } from './multi-user.ts';
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
@@ -253,5 +253,46 @@ describe('repairLearners', () => {
 		expect(await repairLearners(db)).toEqual({ created: 0, removed: 1 });
 
 		expect(await db.chapterRead.count()).toBe(0);
+	});
+});
+
+describe('sweepStaleSessions', () => {
+	it("deletes only the sessions whose generation is not their user's current one", async () => {
+		const { db } = await setup();
+		const user = await db.user.findFirstOrThrow();
+		const account = await db.account.findFirstOrThrow({
+			where: { userId: user.id, providerId: 'credential' }
+		});
+		await db.learner.create({ data: { id: 'oz-learner' } });
+		await db.user.create({
+			data: { id: 'oz', name: 'Oz', email: 'oz@example.com', learnerId: 'oz-learner' }
+		});
+		const make = (id: string, userId: string, credentialGeneration: string) =>
+			db.session.create({
+				data: {
+					id,
+					token: `t-${id}`,
+					userId,
+					expiresAt: new Date(Date.now() + 1e9),
+					credentialGeneration
+				}
+			});
+		await make('stale', user.id, 'old');
+		await make('superseded', user.id, 'superseded-before-credential-generation');
+		await make('empty-for-a-password', user.id, '');
+		await make('oauth', 'oz', '');
+		await make('oauth-stale', 'oz', 'x');
+		const live = await db.session.findFirstOrThrow({
+			where: { userId: user.id, id: { notIn: ['stale', 'superseded', 'empty-for-a-password'] } }
+		});
+
+		const removed = await sweepStaleSessions(db);
+
+		expect(removed).toBe(4);
+		expect((await db.session.findMany()).map((r) => r.id).sort()).toEqual(
+			[live.id, 'oauth'].sort()
+		);
+		expect(live.credentialGeneration).toBe(account.credentialGeneration);
+		expect(await sweepStaleSessions(db)).toBe(0);
 	});
 });

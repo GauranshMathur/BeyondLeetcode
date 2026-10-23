@@ -51,3 +51,20 @@ export async function repairLearners(db: Db): Promise<{ created: number; removed
 		  AND NOT EXISTS (SELECT 1 FROM "User" AS "u" WHERE "u"."learnerId" = "Learner"."id")`;
 	return { created, removed };
 }
+
+/**
+ * Deletes the sessions that can never resolve: those whose credential generation is not their user's current
+ * one (a sign-in that lost a race with a password write and could not remove its own row, a session whose
+ * deletion failed, or one the C58 migration marked as superseded). One statement, so nothing lands between the
+ * check and the delete; a user without a password Account has generation "", and so do their sessions, which
+ * are kept. Run at startup of a Multi-user Instance, next to `repairLearners`. Returns the count only.
+ */
+export async function sweepStaleSessions(db: Db): Promise<number> {
+	return db.$executeRaw`
+		DELETE FROM "Session"
+		WHERE "credentialGeneration" <> COALESCE(
+			(SELECT "a"."credentialGeneration" FROM "Account" AS "a"
+			 WHERE "a"."userId" = "Session"."userId" AND "a"."providerId" = 'credential'
+			   AND "a"."accountId" = "Session"."userId"),
+			'')`;
+}
