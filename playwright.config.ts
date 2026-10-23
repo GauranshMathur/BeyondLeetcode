@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test';
 // The content is the catalogue fixture. The Runner is scripted (no Docker): real execution is covered by the
 // Sandbox tests and the image smoke test.
 //   4173: the Local Mode server. Its "setup" project chooses Local through the real screen.
+//   4175: the convert server (see below).
 //   4174: the Multi-user server. Its "setup-multi" project chooses Multi-user and creates the admin through
 //         the real screens. It is built once, by the first server, and starts after it (servers start in order).
 const common = [
@@ -40,10 +41,27 @@ const multi = [
 	'PORT=4174 bun ./build/index.js'
 ].join(' && ');
 
+// 4175: a Local Instance that the convert test turns into a Multi-user one. Its own server and database, because
+// the conversion is one-way and every other Local file shares 4173. Same build as the others (the first server
+// builds it); the test switch is only what the scripted Runner requires.
+const convert = [
+	'export DATABASE_URL="file:$(mktemp -d)/e2e-convert.db"',
+	'export ORIGIN=http://localhost:4175',
+	'export BETTER_AUTH_SECRET=e2e-only-secret-e2e-only-secret-e2e-only-0123',
+	'export CONTENT_DIR=src/lib/server/content/fixture',
+	'export RUNNER_ADAPTER=scripted',
+	// Required by the scripted Runner; the test never sets the cookie, so the Local Learner is the default one.
+	'export IDENTITY_TEST_LEARNER=1',
+	'bunx prisma migrate deploy',
+	`bun -e 'new (require("bun:sqlite").Database)(process.env.DATABASE_URL.slice(5)).exec("PRAGMA journal_mode=WAL")'`,
+	'PORT=4175 bun ./build/index.js'
+].join(' && ');
+
 export default defineConfig({
 	webServer: [
 		{ command: web, port: 4173 },
-		{ command: multi, port: 4174 }
+		{ command: multi, port: 4174 },
+		{ command: convert, port: 4175 }
 	],
 	use: { baseURL: 'http://localhost:4173' },
 	// Each file acts as its own Learner (see IDENTITY_TEST_LEARNER above), so files can run at the same time.
@@ -55,13 +73,18 @@ export default defineConfig({
 		{
 			name: 'e2e',
 			testMatch: '**/*.e2e.{ts,js}',
-			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts'],
+			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts', '**/convert.e2e.ts'],
 			dependencies: ['setup']
 		},
 		{
 			name: 'setup-multi',
 			testMatch: '**/setup.multi.e2e.ts',
 			use: { baseURL: 'http://localhost:4174' }
+		},
+		{
+			name: 'convert',
+			testMatch: '**/convert.e2e.ts',
+			use: { baseURL: 'http://localhost:4175' }
 		},
 		{
 			name: 'e2e-multi',

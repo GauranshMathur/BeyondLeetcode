@@ -59,6 +59,24 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		</form>
 	</section>
 
+	<!-- Local only: a Multi-user Instance is already past this. -->
+	{#if !data.multiUser}
+		<section class="group">
+			<div class="label">
+				<h2>Multi-user</h2>
+				<p>Give this instance accounts.</p>
+			</div>
+			<div class="control">
+				<p class="lead">
+					Your Local progress becomes the first admin's. This cannot be undone. Local has no sign-in, so
+					anyone who can open this instance can do this and become the admin. If you lose the admin's
+					password, run the <code>reset-admin-password</code> command on the server.
+				</p>
+				<a class="button outline" href="/setup?convert">Switch to Multi-user →</a>
+			</div>
+		</section>
+	{/if}
+
 	<section class="group" class:last={!data.multiUser}>
 		<div class="label">
 			<h2>Reset progress</h2>
