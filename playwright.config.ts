@@ -43,13 +43,15 @@ const multi = [
 
 // 4175: a Local Instance that the convert test turns into a Multi-user one. Its own server and database, because
 // the conversion is one-way and every other Local file shares 4173. Same build as the others (the first server
-// builds it); no test switches, since the Local Learner needs no cookie.
+// builds it); the test switch is only what the scripted Runner requires.
 const convert = [
 	'export DATABASE_URL="file:$(mktemp -d)/e2e-convert.db"',
 	'export ORIGIN=http://localhost:4175',
 	'export BETTER_AUTH_SECRET=e2e-only-secret-e2e-only-secret-e2e-only-0123',
 	'export CONTENT_DIR=src/lib/server/content/fixture',
 	'export RUNNER_ADAPTER=scripted',
+	// Required by the scripted Runner; the test never sets the cookie, so the Local Learner is the default one.
+	'export IDENTITY_TEST_LEARNER=1',
 	'bunx prisma migrate deploy',
 	`bun -e 'new (require("bun:sqlite").Database)(process.env.DATABASE_URL.slice(5)).exec("PRAGMA journal_mode=WAL")'`,
 	'PORT=4175 bun ./build/index.js'
