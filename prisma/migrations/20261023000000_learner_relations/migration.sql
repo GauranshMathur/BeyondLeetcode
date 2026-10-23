@@ -1,3 +1,25 @@
+-- The unique index on Account (providerId, accountId) below fails on existing duplicates, and a failed
+-- migration stops the container. Two concurrent admin password resets on the old schema could leave two
+-- credential Accounts of one User, so same-owner duplicates are removed first: the most recently updated
+-- row is kept. Duplicates across different Users are never merged: the migration stops with a fixed
+-- error naming the problem (SQLite reports the CHECK constraint's name), before changing anything.
+CREATE TEMP TABLE "migration_guard" (
+    "n" INTEGER NOT NULL,
+    CONSTRAINT "stopped_the_same_provider_identity_belongs_to_different_users_resolve_by_hand" CHECK ("n" = 0)
+);
+INSERT INTO "migration_guard" ("n")
+    SELECT COUNT(*) FROM (
+        SELECT 1 FROM "Account" GROUP BY "providerId", "accountId" HAVING COUNT(DISTINCT "userId") > 1
+    );
+DROP TABLE "migration_guard";
+DELETE FROM "Account" WHERE EXISTS (
+    SELECT 1 FROM "Account" AS "b"
+    WHERE "b"."providerId" = "Account"."providerId" AND "b"."accountId" = "Account"."accountId"
+      AND "b"."userId" = "Account"."userId"
+      AND ("b"."updatedAt" > "Account"."updatedAt"
+           OR ("b"."updatedAt" = "Account"."updatedAt" AND "b"."id" > "Account"."id"))
+);
+
 -- Progress whose Learner is gone (a write that landed after the Learner was removed, or a removal
 -- that failed part-way) cannot satisfy the new foreign keys, and nobody can reach it: delete it
 -- before the tables are rebuilt. Progress whose Learner exists is copied across untouched.

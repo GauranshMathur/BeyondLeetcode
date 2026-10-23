@@ -47,6 +47,61 @@ it('the learner_relations migration deletes exactly the progress whose Learner i
 		expect((await client.execute(`SELECT 1 FROM "${table}"`)).rows, table).toEqual([]);
 });
 
+const seedUsers = `
+	INSERT INTO "User" ("id","name","email","learnerId") VALUES ('u1','a','a@x','l1'),('u2','b','b@x','l2');
+`;
+const acct = (id: string, user: string, at: string, accountId = 'u1', provider = 'credential') =>
+	`('${id}','${accountId}','${provider}','${user}','${at}','${at}')`;
+const insertAccounts = (...rows: string[]) =>
+	`INSERT INTO "Account" ("id","accountId","providerId","userId","createdAt","updatedAt") VALUES ${rows.join(',')};`;
+
+async function atPreviousMigration() {
+	const client = createClient({ url: ':memory:' });
+	onTestFinished(() => client.close());
+	for (const name of before) await client.executeMultiple(sql(name));
+	await client.executeMultiple(seedUsers);
+	return client;
+}
+
+it('the learner_relations migration keeps the newest of same-owner duplicate Accounts and the unique index then holds', async () => {
+	const client = await atPreviousMigration();
+	await client.executeMultiple(
+		insertAccounts(
+			acct('old', 'u1', '2026-01-01 00:00:00'),
+			acct('new', 'u1', '2026-03-01 00:00:00'),
+			acct('mid', 'u1', '2026-02-01 00:00:00'),
+			acct('other', 'u2', '2026-01-01 00:00:00', 'u2'),
+			acct('gh', 'u1', '2026-01-01 00:00:00', 'u1', 'github')
+		)
+	);
+
+	await client.executeMultiple(sql(MIGRATION));
+
+	const rows = await client.execute('SELECT "id" FROM "Account" ORDER BY "id"');
+	expect(rows.rows.map((r) => r.id)).toEqual(['gh', 'new', 'other']);
+	await expect(
+		client.execute(insertAccounts(acct('dup', 'u1', '2026-04-01 00:00:00')))
+	).rejects.toThrow(/UNIQUE/i);
+});
+
+it('the learner_relations migration stops, changing nothing, when one provider identity belongs to two Users', async () => {
+	const client = await atPreviousMigration();
+	await client.executeMultiple(
+		insertAccounts(
+			acct('a', 'u1', '2026-01-01 00:00:00', 'shared', 'google'),
+			acct('b', 'u2', '2026-01-02 00:00:00', 'shared', 'google'),
+			acct('s1', 'u1', '2026-01-01 00:00:00'),
+			acct('s2', 'u1', '2026-01-02 00:00:00')
+		)
+	);
+
+	await expect(client.executeMultiple(sql(MIGRATION))).rejects.toThrow(
+		/stopped_the_same_provider_identity_belongs_to_different_users/
+	);
+
+	expect((await client.execute('SELECT 1 FROM "Account"')).rows).toHaveLength(4);
+});
+
 it('foreign keys are enforced on the production connection kind (a file database, inside and outside a transaction)', async () => {
 	const db = await createFileTestDb();
 	const write = (tx: Pick<typeof db, 'chapterRead'>) =>
