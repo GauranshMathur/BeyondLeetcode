@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.52.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.51.0...v0.52.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C36a Users: reset a password to a one-time password ([#194](https://github.com/GauranshMathur/BeyondLeetcode/issues/194)) ([b3dbef5](https://github.com/GauranshMathur/BeyondLeetcode/commit/b3dbef5a21673dd7ed44c20971dcd58c667753aa))
+
 ## [0.51.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.50.0...v0.51.0) (2026-10-22)
 
 
