@@ -87,29 +87,41 @@ const redactCore = (text: string) =>
 		);
 
 /**
- * Terminal escape sequences: CSI (`ESC [ ... final`, and the one-byte `U+009B` form), OSC (`ESC ] ... BEL` or
- * `ESC \`), the two-character escapes, and a lone ESC. A caller's own string can hold them anywhere, for
- * example inside a cookie value (`name=ESC[31mTOKEN`) where they would hide the token from a pattern.
+ * Terminal escape sequences. A caller's own string can hold them anywhere, for example inside a cookie value
+ * (`name=ESC[31mTOKEN`) where they would hide the token from a pattern. A complete sequence is CSI (`ESC [`
+ * or the one-byte `U+009B`, digits and `;`-like parameters, a final byte; the rare intermediate bytes are
+ * not accepted, because ` /i` read as intermediate and final would eat the start of an invite path), OSC (`ESC ]` up to BEL or `ESC \`) or a two-character
+ * escape. An introducer that starts none of these (a lone ESC, an OSC with no terminator, a CSI with no final
+ * byte) is not a sequence: it must not swallow the text after it, so it is matched alone and shown as a placeholder.
  */
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
 const CSI8 = String.fromCharCode(0x9b);
 const TERMINAL_ESCAPES = new RegExp(
-	`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)?|(?:${ESC}\\[|${CSI8})[0-?]*[ -/]*[@-~]?|${ESC}[@-Z\\\\-_]?`,
+	[
+		`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`,
+		`(?:${ESC}\\[|${CSI8})[0-?]*[@-~]`,
+		`${ESC}[@-Z\\\\^_]`,
+		`[${ESC}${CSI8}]`
+	].join('|'),
 	'g'
 );
 const HAS_ESCAPE = new RegExp(`[${ESC}${CSI8}]`);
+/** What an introducer that is not part of a complete sequence becomes. */
+const ESCAPE_PLACEHOLDER = '[esc]';
 
 /**
- * Takes the invite token out of any text. Escape sequences typed into the caller's string cannot hide it:
- * the text is also read with them removed, and where that finds a token the removed-and-redacted text is
- * what is printed (a record with a token loses its colours; one without is returned exactly as it came).
+ * Takes the invite token out of any text. Text with a terminal escape in it is printed with the escapes removed
+ * (colours go) and then redacted, always: the removed-escape view is the one that is redacted, so the view that
+ * is checked and the view that is printed cannot disagree about where a token is. An introducer that is not part
+ * of a complete sequence is shown as `[esc]`, never allowed to swallow the text after it.
  */
 export const redactInvite = (text: string): string => {
 	if (!HAS_ESCAPE.test(text)) return redactCore(text);
-	const plain = text.replace(TERMINAL_ESCAPES, '');
-	const redactedPlain = redactCore(plain);
-	return redactedPlain === plain ? redactCore(text) : redactedPlain;
+	const plain = text.replace(TERMINAL_ESCAPES, (sequence) =>
+		sequence.length === 1 ? ESCAPE_PLACEHOLDER : ''
+	);
+	return redactCore(plain);
 };
 
 /** What a console call would print for these arguments (`%s` and friends, Errors with stack and `cause`), redacted. */
@@ -391,7 +403,8 @@ const KNOWN_CODES = new Set<string>([
 	...OAUTH_CODES,
 	...SYSTEM_CODES
 ]);
-const isKnownCode = (value: unknown): value is string =>
+/** Whether a value is one of the codes that may be logged (Better Auth's, ours, the OAuth, system and Prisma ones). */
+export const isKnownCode = (value: unknown): value is string =>
 	typeof value === 'string' && (KNOWN_CODES.has(value) || /^P\d{4}$/.test(value));
 
 /**

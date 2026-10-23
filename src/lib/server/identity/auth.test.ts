@@ -2383,21 +2383,25 @@ describe('redactInvite with terminal escapes', () => {
 		[`/invite/${E}[32m${t}${E}[0m`],
 		[`/invite${E}[0m/${t}`],
 		[`${E}]8;;http://x${E}\\/invite/${t}`],
-		[`${INVITE_COOKIE}=${String.fromCharCode(0x9b)}31m${t}`]
+		[`${INVITE_COOKIE}=${String.fromCharCode(0x9b)}31m${t}`],
+		// An introducer that starts no complete sequence must not swallow the text after it.
+		[`${E}]0;never ended /invite/${t}`],
+		[`${E}]0;never ended ${INVITE_COOKIE}=${t}`],
+		[`${E} /invite/${t}${E}`],
+		[`${INVITE_COOKIE}=${E}[31${t}`],
+		[`lone ${E} then /invite/${t}`],
+		[`${String.fromCharCode(0x9b)} /invite/${t}`]
 	])('takes the token out of %j', (text) => {
 		const out = redactInvite(text);
 		expect(out).not.toContain(t);
 		expect(out).toMatch(/\[redacted\]/);
 	});
 
-	it('returns text without a token exactly as it came, colours and all', () => {
-		for (const text of [
-			`colour ${E}[32mgreen${E}[0m ok`,
-			`${E}]8;;http://x${E}\\link`,
-			`lone ${E} escape`,
-			'plain'
-		]) {
-			expect(redactInvite(text)).toBe(text);
-		}
+	it('prints a record with escapes without them, and shows a lone introducer', () => {
+		expect(redactInvite(`colour ${E}[32mgreen${E}[0m ok`)).toBe('colour green ok');
+		expect(redactInvite(`${E}]8;;http://x${E}\\link`)).toBe('link');
+		expect(redactInvite(`lone ${E} escape`)).toBe('lone [esc] escape');
+		expect(redactInvite(`${E}]0;never ended but visible`)).toBe('[esc]]0;never ended but visible');
+		expect(redactInvite('plain')).toBe('plain');
 	});
 });

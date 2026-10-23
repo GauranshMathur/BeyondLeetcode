@@ -42,13 +42,25 @@ describe('what an unexpected error logs', () => {
 		expect(text).not.toMatch(/failed|inner|fetch|localhost/);
 	});
 
-	it('drops a name or code that is not a short token', () => {
+	it('drops a name or code that is not a short identifier or a known code', () => {
 		const error = Object.assign(new Error('x'), { code: `bad code ${token} ${'x'.repeat(80)}` });
 		error.name = `Custom\nFAKE-LINE ${token}`;
 
-		const text = formatServerError(500, error, event(null));
+		expect(formatServerError(500, error, event(null))).toBe('[500] POST (no route) Error');
+	});
 
-		expect(text).toBe('[500] POST (no route) Error');
+	it('logs neither the name nor the code when they are an invite token', () => {
+		const error = Object.assign(new Error('x'), { code: token });
+		error.name = token;
+
+		const text = formatServerError(500, error, event('/invite/[token]'));
+
+		expect(text).toBe('[500] POST /invite/[token] Error');
+		expect(text).not.toContain(token);
+		// A made-up token-shaped code is not a known one either.
+		expect(
+			formatServerError(500, Object.assign(new Error('x'), { code: 'CALLER_TEXT' }), event(null))
+		).toBe('[500] POST (no route) Error');
 	});
 
 	it('writes one line for an unmatched path, and a thrown non-Error by its type', () => {
@@ -258,17 +270,26 @@ describe('redaction at the console', () => {
 			console.log(E + ']8;;http://x' + E + '\\/invite/' + t);
 			console.log('beyondleetcode_invite=' + String.fromCharCode(0x9b) + '31m' + t);
 			console.log('colour ' + E + '[32mgreen' + E + '[0m ok');
+			// Unterminated or lone introducers must not swallow what follows them.
+			console.log(E + ']0;title never ended /invite/' + t);
+			console.log(E + ']0;title never ended beyondleetcode_invite=' + t);
+			console.log(E + ' /invite/' + t + E);
+			console.log('beyondleetcode_invite=' + E + '[31' + t);
+			console.log('lone ' + E + ' then /invite/' + t);
 			console.log('plain text');
 		`);
 		const text = out.toString('latin1');
 		expect(status, stderr).toBe(0);
 		expect(text).not.toContain(token);
-		// Where no token was, the colours are still there; where one was, the record is plain and redacted.
-		expect(text).toContain(`colour ${ESC}[32mgreen${ESC}[0m ok`);
+		// A record with an escape in it is printed without the escapes, redacted: the view that is checked is the
+		// view that is printed.
+		expect(text).toContain('colour green ok');
+		expect(text).not.toContain(ESC);
 		expect(text).toContain('beyondleetcode_invite=[redacted]');
 		expect(text).toContain('/invite/[redacted]');
 		expect(text).toContain('plain text');
-		expect(text.match(/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(7);
+		expect(text.match(/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(12);
+		expect(text).toContain('[esc]');
 	});
 
 	it('prints no token when console.dir is given a colouring stylize callback, and still prints the value', () => {
