@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.53.0...v0.54.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C42b Packaging: the reset command reopens Setup when there are no Accounts ([#201](https://github.com/GauranshMathur/BeyondLeetcode/issues/201)) ([03b4412](https://github.com/GauranshMathur/BeyondLeetcode/commit/03b4412feb1cf587a7ab9054d3a0f48f25561ec7))
+
 ## [0.53.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.52.0...v0.53.0) (2026-10-23)
 
 
