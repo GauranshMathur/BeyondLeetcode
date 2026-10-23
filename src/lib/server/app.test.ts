@@ -437,3 +437,58 @@ describe('Runner adapter', () => {
 		);
 	});
 });
+
+describe('the startup repair of Accounts and Learners (C57)', () => {
+	/** A Multi-user database with its first admin (Learner 'local'), shut down as if the server stopped. */
+	async function multiDatabase() {
+		const { url, db } = await migratedDatabase();
+		const first = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+		await first.setup.createFirstAdmin(admin);
+		return { url, db };
+	}
+	const drift = async (db: Awaited<ReturnType<typeof migratedDatabase>>['db']) => {
+		await db.user.create({
+			data: { id: 'u2', name: 'Lin', email: 'lin@example.com', learnerId: 'no-row' }
+		});
+		await db.learner.create({ data: { id: 'orphan' } });
+		await db.chapterRead.create({ data: { learnerId: 'orphan', chapterId: 'c' } });
+	};
+	const learnerIds = async (db: Awaited<ReturnType<typeof migratedDatabase>>['db']) =>
+		(await db.learner.findMany({ orderBy: { id: 'asc' } })).map((l) => l.id);
+
+	it('on a restart in Multi-user mode creates the missing Learner, removes the orphan with its progress, and keeps the admin Learner', async () => {
+		const { url, db } = await multiDatabase();
+		await drift(db);
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		onTestFinished(() => warn.mockRestore());
+
+		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+
+		expect(await learnerIds(db)).toEqual(['local', 'no-row']);
+		expect(await db.chapterRead.count()).toBe(0);
+		await app.core.forLearner('no-row').reachChapterEnd('stacks-undo-log'); // now writable
+		const said = warn.mock.calls.flat().join('\n');
+		expect(said).toContain('1 missing Learner(s) created, 1 orphan Learner(s) removed');
+		expect(said).not.toMatch(/no-row|orphan\b(?!\s+Learner)|lin@|u2/);
+	}, 60_000);
+
+	it('does not run in Local mode: the Local Learner stays and so does an unreferenced one', async () => {
+		const { url, db } = await migratedDatabase();
+		const app = await boot(url);
+		await app.instance.chooseLocal();
+		await db.learner.create({ data: { id: 'other' } });
+
+		await boot(url);
+
+		expect(await learnerIds(db)).toEqual(['local', 'other']);
+	}, 60_000);
+
+	it('does not run on an Instance that is not set up', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.learner.create({ data: { id: 'other' } });
+
+		await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+
+		expect(await learnerIds(db)).toEqual(['other']);
+	}, 60_000);
+});
