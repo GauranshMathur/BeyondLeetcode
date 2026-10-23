@@ -116,7 +116,7 @@ function oneTimePassword(): string {
  * it is stored only as a hash and must not be logged or kept.
  *
  * The plugin's own set-user-password does none of the product steps, so all three run here, through
- * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions, which are revoked
+ * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions, which are deleted
  * whatever the password step did. So once the password has changed no earlier session survives, and
  * no outcome leaves a session alive with the flag unset. A failure part-way throws and no password
  * is returned: the admin tries again, and a retry redoes every step.
@@ -140,8 +140,15 @@ export async function resetPassword(
 	const password = oneTimePassword();
 	try {
 		// The plugin's admin check is the password step's, which now comes after the flag. Ask for the
-		// session first, so a session that ended a moment ago changes nothing at all.
-		if (!(await auth.api.getSession({ headers }))) throw new NotAdminError();
+		// session first, so a session that ended a moment ago, or whose user is no longer the admin who
+		// asked (role changed, or a different Account), changes nothing at all.
+		const fresh = await auth.api.getSession({ headers });
+		const freshUser = fresh?.user as
+			| { role?: string | null; learnerId?: string | null }
+			| undefined;
+		if (freshUser?.role !== 'admin' || freshUser.learnerId !== who.learnerId) {
+			throw new NotAdminError();
+		}
 		// Before the password, so the password never changes while the flag is unset.
 		await internalAdapter.updateUser(userId, { mustChangePassword: true });
 		try {
@@ -149,8 +156,10 @@ export async function resetPassword(
 		} finally {
 			// Attempted whatever the password step did (it may have changed the password and lost its answer):
 			// once the password has changed no earlier session survives, and a session that outlives a failed
-			// revocation carries the flag, so the gate confines it to the password page.
-			await auth.api.revokeUserSessions({ headers, body: { userId } });
+			// revocation carries the flag, so the gate confines it to the password page. Through the adapter,
+			// not the plugin: the admin check has passed, and cleanup must not fail because the admin's own
+			// session ended in between. A database failure still throws.
+			await internalAdapter.deleteUserSessions(userId);
 		}
 	} catch (error) {
 		if (error instanceof APIError && (error.statusCode === 401 || error.statusCode === 403)) {

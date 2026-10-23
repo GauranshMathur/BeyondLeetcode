@@ -750,7 +750,9 @@ describe('Reset password on the Users page', () => {
 
 	it('answers a failed reset with a fixed message and no password', async () => {
 		const { handle, admin, auth, linId } = await withLin();
-		vi.spyOn(auth.api, 'revokeUserSessions').mockRejectedValueOnce(new Error('/secret/path'));
+		vi.spyOn((await auth.$context).internalAdapter, 'deleteUserSessions').mockRejectedValueOnce(
+			new Error('/secret/path')
+		);
 		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 		const { response } = await post(handle, admin, 'reset', { id: linId });

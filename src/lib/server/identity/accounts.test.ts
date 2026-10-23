@@ -368,7 +368,7 @@ describe('resetPassword', () => {
 			if (step === 'password')
 				vi.spyOn(s.auth.api, 'setUserPassword').mockRejectedValueOnce(new Error('disk'));
 			if (step === 'revoke')
-				vi.spyOn(s.auth.api, 'revokeUserSessions').mockRejectedValueOnce(new Error('disk'));
+				vi.spyOn(internalAdapter, 'deleteUserSessions').mockRejectedValueOnce(new Error('disk'));
 			const outcome = await resetPassword(s.auth, {
 				...(await s.requestOf(s.admin.cookie)),
 				userId: s.linRow.id
@@ -429,5 +429,52 @@ describe('resetPassword', () => {
 				(await db.user.findUniqueOrThrow({ where: { id: linRow.id } })).mustChangePassword
 			).toBe(true);
 		});
+	});
+
+	it('deletes the old sessions even if the admin session ends after the password changed', async () => {
+		const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+		const real = auth.api.setUserPassword;
+		vi.spyOn(auth.api, 'setUserPassword').mockImplementationOnce(async (...args) => {
+			const answer = await real(...args);
+			await db.session.deleteMany({ where: { userId: { not: linRow.id } } }); // the admin signs out
+			return answer;
+		});
+
+		const { password: fresh } = await resetPassword(auth, {
+			...(await requestOf(admin.cookie)),
+			userId: linRow.id
+		});
+
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(0);
+		expect(await sessionOf(auth, admin.cookie)).toBeNull();
+		await signIn(auth, 'lin@example.com', fresh);
+	});
+
+	it.each([
+		['is no longer an admin', 'learner'],
+		['is a different Account', 'other']
+	])('writes nothing when the fresh session user %s', async (_, change) => {
+		const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+		const request = await requestOf(admin.cookie);
+		if (change === 'learner') {
+			await db.user.update({ where: { email: 'ada@example.com' }, data: { role: 'learner' } });
+		} else {
+			await db.learner.create({ data: { id: 'someone-else' } });
+			await db.user.update({
+				where: { email: 'ada@example.com' },
+				data: { learnerId: 'someone-else' }
+			});
+		}
+		const setUserPassword = vi.spyOn(auth.api, 'setUserPassword');
+
+		await expect(resetPassword(auth, { ...request, userId: linRow.id })).rejects.toBeInstanceOf(
+			NotAdminError
+		);
+
+		expect(setUserPassword).not.toHaveBeenCalled();
+		expect((await db.user.findUniqueOrThrow({ where: { id: linRow.id } })).mustChangePassword).toBe(
+			false
+		);
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(1);
 	});
 });
