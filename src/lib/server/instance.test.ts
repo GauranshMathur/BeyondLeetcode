@@ -1,5 +1,5 @@
 import { createClient } from '@libsql/client';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import type { Db } from './db.ts';
 import {
 	AccountsExistError,
@@ -667,4 +667,19 @@ it('a stale Local cache cannot convert an Instance another process already made 
 	await expect(stale.chooseMulti()).rejects.toThrow(InstanceAlreadySetUpError);
 
 	expect(stale.mode()).toBe('multi');
+});
+
+it('undo logs a fixed line, and still restores this process, when the row was already gone', async () => {
+	const db = await createTestDb();
+	const instance = await createInstance(db);
+	await instance.chooseLocal();
+	const claim = await instance.chooseMulti();
+	await db.instance.deleteMany();
+	const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+	await claim.undo();
+
+	expect(logged).toHaveBeenCalledWith(expect.stringMatching(/could not be undone/));
+	expect(instance.mode()).toBe('local');
+	logged.mockRestore();
 });

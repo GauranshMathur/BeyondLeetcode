@@ -165,14 +165,17 @@ export async function createInstance(db: Db): Promise<Instance> {
 			mode = 'multi';
 			return {
 				async undo() {
-					if (previous === null) {
-						await db.instance.deleteMany({ where: { id: 'instance', mode: 'multi' } });
-					} else {
-						await db.instance.updateMany({
-							where: { id: 'instance', mode: 'multi' },
-							data: { mode: previous }
-						});
-					}
+					const { count } =
+						previous === null
+							? await db.instance.deleteMany({ where: { id: 'instance', mode: 'multi' } })
+							: await db.instance.updateMany({
+									where: { id: 'instance', mode: 'multi' },
+									data: { mode: previous }
+								});
+					// Nothing to undo: the row was changed or removed meanwhile (the reset command's clear, say).
+					// Fixed text only. This process still goes back to what it had before the claim.
+					if (count !== 1)
+						console.error('Instance: the claim could not be undone, the stored mode had changed');
 					mode = previous;
 				}
 			};

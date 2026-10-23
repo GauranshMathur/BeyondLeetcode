@@ -187,6 +187,35 @@ describe('createFirstAdmin', () => {
 		expect(await db.user.count()).toBe(0);
 	});
 
+	it('when the Accounts check after the claim throws, the Instance goes back to local in the database and in memory, and no Account is touched', async () => {
+		const { db, auth, instance } = await setup();
+		await instance.chooseLocal();
+		let calls = 0;
+		const failingSecondCount = new Proxy(db, {
+			get(target, prop) {
+				if (prop !== 'user') return Reflect.get(target, prop);
+				return new Proxy(target.user, {
+					get(user, method) {
+						const member = Reflect.get(user, method);
+						if (method !== 'count') return member;
+						return async (...args: unknown[]) => {
+							if (++calls === 2) throw new Error('disk');
+							return (member as (...a: unknown[]) => Promise<number>).apply(user, args);
+						};
+					}
+				});
+			}
+		}) as typeof db;
+
+		await expect(
+			createFirstAdmin({ instance, auth, db: failingSecondCount }, { ...admin, convert: true })
+		).rejects.toThrow('disk');
+
+		expect(instance.mode()).toBe('local');
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+		expect(await db.user.count()).toBe(0);
+	});
+
 	it('does not convert a multi Instance, or a Local one that has an Account', async () => {
 		const first = await setup();
 		await createFirstAdmin({ instance: first.instance, auth: first.auth, db: first.db }, admin);

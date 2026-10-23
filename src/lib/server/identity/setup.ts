@@ -93,12 +93,14 @@ export async function createFirstAdmin(
 		// between would see the row, skip its restore, and be undone by the rollback below.
 		if ((await db.user.count()) > 0) throw new InstanceAlreadySetUpError();
 		const claim = await claimInstance(instance, input.convert === true);
-		// Kept: an Account made between the check above and the claim still undoes the claim.
-		if ((await db.user.count()) > 0) {
-			await rollback(claim, db, false);
-			throw new InstanceAlreadySetUpError();
-		}
+		// Everything that can fail after the claim is inside the rollback. The Account is removed only if this
+		// attempt's own sign-up started: an Account that appeared meanwhile, or a count that threw, leaves
+		// every Account alone and only puts the Instance back.
+		let signUpStarted = false;
 		try {
+			// Kept: an Account made between the check above and the claim still undoes the claim.
+			if ((await db.user.count()) > 0) throw new InstanceAlreadySetUpError();
+			signUpStarted = true;
 			const { headers } = await runAsFirstAdmin(() =>
 				auth.api.signUpEmail({
 					body: { name: input.name.trim(), email: input.email, password: input.password },
@@ -107,7 +109,7 @@ export async function createFirstAdmin(
 			);
 			return { headers };
 		} catch (error) {
-			await rollback(claim, db, true);
+			await rollback(claim, db, signUpStarted);
 			throw error;
 		}
 	});
