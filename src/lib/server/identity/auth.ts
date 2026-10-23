@@ -1,8 +1,7 @@
 import { randomUUID as createId } from 'node:crypto';
 import { formatWithOptions, inspect } from 'node:util';
-import { BASE_ERROR_CODES } from '@better-auth/core/error';
 import type { BetterAuthPlugin } from 'better-auth';
-import { betterAuth } from 'better-auth';
+import { BASE_ERROR_CODES, betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api';
 import { admin } from 'better-auth/plugins';
