@@ -1615,6 +1615,8 @@ describe('signing in with a provider', () => {
 			);
 			expect(res.status, path).toBe(404);
 		}
+	});
+});
 
 describe('an Account is unique per provider identity', () => {
 	it('refuses a second Account with the same providerId and accountId', async () => {
