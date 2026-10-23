@@ -87,10 +87,7 @@ export function gate(input: GateInput): GateResult {
 	}
 
 	if (input.mustChangePassword) {
-		// The page they are sent to. Until it has a route (routeId null) its exact path counts as arriving,
-		// so the 404 page shows instead of a redirect to itself.
-		const atPasswordPage =
-			routeId === '/account/password' || (routeId === null && pathname === '/account/password');
+		const atPasswordPage = routeId === '/account/password';
 		if (!atPasswordPage && !isSigningOut(input)) return redirect('/account/password');
 	}
 
