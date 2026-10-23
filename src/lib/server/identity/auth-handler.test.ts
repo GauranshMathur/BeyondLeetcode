@@ -11,21 +11,26 @@ async function setup() {
 	return { db, auth: createAuth({ db, origin, secret }) };
 }
 
-// Password sign-in is not served over HTTP (the Sign in form is the one way, see auth.ts), so these tests
-// use change-password: Better Auth gives it the same 3-per-10-seconds rule it gives the sign-in paths,
-// it answers 401 to a visitor without a session, and a 429 is the limiter alone.
+// Password sign-in and change-password are not served over HTTP (the forms are the one way, see auth.ts), so
+// these tests post to /sign-up/email: it stays served, and `createAuth` gives it 20 requests per 10 minutes
+// per address. With no sign-up admitted it answers 403 to everyone, so a 429 is the limiter alone.
+const BUDGET = 20;
 const limited = (headers: Record<string, string> = {}) =>
-	new Request(`${origin}/api/auth/change-password`, {
+	new Request(`${origin}/api/auth/sign-up/email`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json', origin, ...headers },
-		body: JSON.stringify({ currentPassword: 'not the password', newPassword: 'not a new password' })
+		body: JSON.stringify({
+			name: 'Ada',
+			email: 'ada@example.com',
+			password: 'correct horse battery'
+		})
 	});
 
 describe('handleAuthRequest', () => {
 	it('limits attempts per client address, whatever X-Forwarded-For claims', async () => {
 		const { auth } = await setup();
 		const statuses = [];
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < BUDGET + 2; i++) {
 			// A client rotating a forged header must still share one bucket.
 			const res = await handleAuthRequest(
 				auth,
@@ -35,13 +40,13 @@ describe('handleAuthRequest', () => {
 			statuses.push(res.status);
 		}
 
-		expect(statuses.slice(0, 3)).not.toContain(429);
-		expect(statuses.slice(3)).toEqual([429, 429]);
+		expect(statuses.slice(0, BUDGET)).not.toContain(429);
+		expect(statuses.slice(BUDGET)).toEqual([429, 429]);
 	});
 
 	it('gives each client address its own bucket', async () => {
 		const { auth } = await setup();
-		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, limited(), '192.0.2.20');
+		for (let i = 0; i < BUDGET + 1; i++) await handleAuthRequest(auth, limited(), '192.0.2.20');
 
 		const other = await handleAuthRequest(auth, limited(), '192.0.2.21');
 		const same = await handleAuthRequest(auth, limited(), '192.0.2.20');
@@ -52,7 +57,7 @@ describe('handleAuthRequest', () => {
 
 	it('groups IPv6 clients by /64: rotating addresses inside one /64 does not escape the limit', async () => {
 		const { auth } = await setup();
-		for (let i = 1; i <= 4; i++) {
+		for (let i = 1; i <= BUDGET + 1; i++) {
 			await handleAuthRequest(auth, limited(), `fd00:aa:bb:cc::${i}`);
 		}
 
@@ -65,7 +70,8 @@ describe('handleAuthRequest', () => {
 
 	it('treats an IPv4-mapped IPv6 address as its IPv4 client', async () => {
 		const { auth } = await setup();
-		for (let i = 0; i < 4; i++) await handleAuthRequest(auth, limited(), '::ffff:192.0.2.77');
+		for (let i = 0; i < BUDGET + 1; i++)
+			await handleAuthRequest(auth, limited(), '::ffff:192.0.2.77');
 
 		const mapped = await handleAuthRequest(auth, limited(), '192.0.2.77');
 
@@ -74,7 +80,7 @@ describe('handleAuthRequest', () => {
 
 	it('ignores a client-supplied copy of the private address header', async () => {
 		const { auth } = await setup();
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < BUDGET + 1; i++) {
 			// Each attempt claims a fresh address in the header the limiter reads.
 			await handleAuthRequest(
 				auth,

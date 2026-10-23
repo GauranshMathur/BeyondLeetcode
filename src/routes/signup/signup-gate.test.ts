@@ -35,7 +35,8 @@ async function app(mode: 'local' | 'multi' | null) {
 		multiUser = {
 			auth,
 			identity: createMultiUserIdentity(auth),
-			invites: createInvites({ db, origin: 'http://localhost:3000' })
+			invites: createInvites({ db, origin: 'http://localhost:3000' }),
+			deleteLearner: async () => {}
 		};
 	}
 	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];

@@ -60,7 +60,12 @@ async function setup() {
 		instance,
 		identity: await createLocalIdentity(db),
 		core,
-		multiUser: { auth, identity: createMultiUserIdentity(auth), invites },
+		multiUser: {
+			auth,
+			identity: createMultiUserIdentity(auth),
+			invites,
+			deleteLearner: (id: string) => deleteLearner(db, id)
+		},
 		setup: setupPort
 	});
 	return { db, auth, instance, admin, learner, handle, invites };
@@ -777,7 +782,7 @@ describe('Remove on the Users page', () => {
 		const max = await s.learner('Max Learner', 'max@example.com');
 		const row = await s.db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
 		const maxRow = await s.db.user.findUniqueOrThrow({ where: { email: 'max@example.com' } });
-		const wiring = { deleteLearner: (id: string) => deleteLearner(s.db, id) };
+		const wiring = {};
 		return {
 			...s,
 			lin,

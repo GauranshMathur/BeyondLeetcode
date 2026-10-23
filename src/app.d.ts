@@ -22,6 +22,8 @@ declare global {
 			auth?: Auth;
 			/** Invite links; set exactly when `auth` is (Multi-user Mode), so Local Mode never has them. */
 			invites?: Invites;
+			/** Deletes a Learner and all its progress (Users, remove an Account); set exactly when `auth` is. */
+			deleteLearner?: (learnerId: string) => Promise<void>;
 			/** Who this request is, from Identity. Unset only on /setup before the Instance is set up. */
 			identity: Identity;
 			/** The Learning core acting for this request's Learner. Unset exactly when `identity` is. */

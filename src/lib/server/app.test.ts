@@ -118,6 +118,18 @@ describe('Multi-user', () => {
 		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 	}, 30_000);
 
+	it('wires the Learner remover to this database, for removing an Account', async () => {
+		const { url, db } = await migratedDatabase();
+		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+		await db.learner.create({ data: { id: 'gone' } });
+		await db.chapterRead.create({ data: { learnerId: 'gone', chapterId: 'c' } });
+
+		await app.multiUser?.deleteLearner('gone');
+
+		expect(await db.learner.count({ where: { id: 'gone' } })).toBe(0);
+		expect(await db.chapterRead.count({ where: { learnerId: 'gone' } })).toBe(0);
+	}, 30_000);
+
 	it('lets an Invite create exactly one learner Account through the wired auth, and refuses a second use', async () => {
 		const { url, db } = await migratedDatabase();
 		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
