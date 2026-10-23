@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.57.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.56.0...v0.57.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C39 Settings: switch a Local Instance to Multi-user ([#206](https://github.com/GauranshMathur/BeyondLeetcode/issues/206)) ([311f633](https://github.com/GauranshMathur/BeyondLeetcode/commit/311f633f9768351bd8f7913c3e5f75f14042575a))
+
 ## [0.56.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.55.0...v0.56.0) (2026-10-23)
 
 
