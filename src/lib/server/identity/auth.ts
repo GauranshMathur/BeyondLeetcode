@@ -1,5 +1,5 @@
 import { randomUUID as createId } from 'node:crypto';
-import { inspect } from 'node:util';
+import { formatWithOptions, inspect } from 'node:util';
 import type { BetterAuthPlugin } from 'better-auth';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
@@ -53,12 +53,26 @@ export function inviteTokenFrom(headers: Headers | undefined | null): string | u
 	return undefined;
 }
 
-/** `/invite/<token>`: the token is a credential, so no text that reaches a log may hold it. */
-const INVITE_PATH = /\/invite\/[^\s/?#"')\]]+/g;
-// The cookie as it appears in text: `name=value`, with optional spaces round `=` (as `inviteTokenFrom`
-// accepts) and a quoted value. The name must not be the tail of a longer one (`other_<name>=...`).
+/**
+ * `/invite/<token>`: the token is a credential, so no text that reaches a log may hold it. Also a 43-character
+ * base64url run after `/invite/` and spaces, which is how `console.log('/invite/', token)` prints once its
+ * arguments are joined. `/invite/[token]` (a route id) is not a token and is left as it is.
+ */
+const INVITE_PATH = /\/invite\/(?:(?!\[)[^\s/?#"')\]]+|[ \t]+[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-]))/g;
+
+// A cookie name may hold ! # $ % & ' * + - . ^ _ ` | ~ and word characters, so none of them may come right
+// before ours: `other_<name>=` and `a!<name>=` are other cookies.
+const NAME_CHARS = "\\w!#$%&'*+.^`|~-";
+const QUOTE = `\\\\*["']`;
+/**
+ * The cookie as it appears in text, in any of the shapes a log gives it: `name=value`, `name = value`,
+ * `name="value"`, `name='value'`, an escaped JSON quote (`\"name\":\"value\"`), a structured field
+ * (`name: 'value'`, `"name":"value"`) and a quoted value that never closes. Spaces round `=`/`:` are
+ * horizontal only, so a match never crosses into the next line.
+ */
 const INVITE_COOKIE_TEXT = new RegExp(
-	`(?<![\\w.-])${INVITE_COOKIE}\\s*=\\s*(?:"[^"]*"|[^\\s;,"')\\]]+)`,
+	`(?<![${NAME_CHARS}])(?:${QUOTE})?${INVITE_COOKIE}(?:${QUOTE})?[ \\t]*[:=][ \\t]*` +
+		`(?:${QUOTE}[^"'\\n\\\\]*(?:${QUOTE})?|[^\\s;,"')\\]\\\\]+)`,
 	'g'
 );
 export const redactInvite = (text: string) =>
@@ -66,17 +80,71 @@ export const redactInvite = (text: string) =>
 		.replace(INVITE_PATH, '/invite/[redacted]')
 		.replace(INVITE_COOKIE_TEXT, `${INVITE_COOKIE}=[redacted]`);
 
-/**
- * One log argument as redacted text: a string as it is, anything else (an Error with its stack and `cause`
- * chain, an object) as `util.inspect` prints it, which is also what a test must read to see a leak.
- */
-export function redactedArgument(value: unknown): string {
-	if (typeof value === 'string') return redactInvite(value);
+/** What a console call would print for these arguments (`%s` and friends, Errors with stack and `cause`), redacted. */
+export const redactedLine = (args: unknown[]): string => {
 	try {
-		return redactInvite(inspect(value, { depth: null }));
+		return redactInvite(formatWithOptions({ depth: null }, ...args));
 	} catch {
 		return '[unprintable]';
 	}
+};
+
+/** One log argument as redacted text. */
+export const redactedArgument = (value: unknown): string => redactedLine([value]);
+
+const REDACTING = Symbol.for('beyondleetcode.redactingConsole');
+type Wrapped = ((...args: unknown[]) => unknown) & { [REDACTING]?: true };
+
+/**
+ * Redacts at the sink. Every console method that prints is replaced once by one that formats the whole record
+ * first (`util.formatWithOptions`, `depth: null`, so `%s`, Errors with `cause` and objects are text), redacts
+ * that text and hands the original method a single string. Library code that logs on its own is covered
+ * without chasing each logger. Idempotent through a marker on each wrapper, so a second call, a second import
+ * or a hot reload does not wrap twice. Bun's console does not go through `process.stdout.write`, so patching
+ * the stream would do nothing there.
+ *
+ * Not covered, by decision: logging before this runs, direct `process.stdout/stderr.write`, other processes.
+ */
+export function installLogRedaction(target: Console = console): void {
+	const wrap = (method: keyof Console, make: (original: Wrapped) => Wrapped) => {
+		const original = target[method] as Wrapped | undefined;
+		if (typeof original !== 'function' || original[REDACTING]) return;
+		const wrapped = make((...args) => original.apply(target, args));
+		wrapped[REDACTING] = true;
+		(target as unknown as Record<string, unknown>)[method] = wrapped;
+	};
+	// A group label or message with no arguments prints just the method's own effect (a new indent level, a blank line).
+	for (const method of [
+		'error',
+		'warn',
+		'info',
+		'log',
+		'debug',
+		'trace',
+		'dirxml',
+		'group',
+		'groupCollapsed'
+	] as const) {
+		wrap(
+			method,
+			(original) =>
+				(...args) =>
+					args.length === 0 ? original() : original(redactedLine(args))
+		);
+	}
+	wrap(
+		'assert',
+		(original) =>
+			(condition, ...args) =>
+				condition ? original(condition) : original(condition, redactedLine(args))
+	);
+	// Printed through their inspected output: a table or a dir listing is text once it is formatted.
+	wrap(
+		'dir',
+		(original) => (value, options) =>
+			original(redactInvite(inspect(value, { depth: null, ...(options as object) })))
+	);
+	wrap('table', (original) => (data) => original(redactInvite(inspect(data, { depth: null }))));
 }
 
 /**
@@ -85,7 +153,7 @@ export function redactedArgument(value: unknown): string {
  */
 export const redactingLogger = {
 	log(level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: unknown[]) {
-		const line = [redactedArgument(message), ...args.map(redactedArgument)].join(' ');
+		const line = redactedLine([message, ...args]);
 		const write = level === 'debug' ? console.debug : console[level];
 		write(`[Better Auth] ${line}`);
 	}

@@ -1045,24 +1045,42 @@ describe('accepting an Invite', () => {
 
 describe('redactInvite', () => {
 	const t = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
+	const N = INVITE_COOKIE;
 
 	it.each([
 		[`/invite/${t}`, '/invite/[redacted]'],
 		[`GET /invite/${t}?x=1 done`, 'GET /invite/[redacted]?x=1 done'],
-		[`${INVITE_COOKIE}=${t}`, `${INVITE_COOKIE}=[redacted]`],
-		[`a=1; ${INVITE_COOKIE} = ${t}; b=2`, `a=1; ${INVITE_COOKIE}=[redacted]; b=2`],
-		[`${INVITE_COOKIE}="${t}"`, `${INVITE_COOKIE}=[redacted]`],
-		[`${INVITE_COOKIE}=\t${t}`, `${INVITE_COOKIE}=[redacted]`]
+		[`/invite/ ${t}`, '/invite/[redacted]'],
+		[`/invite/ \t${t} after`, '/invite/[redacted] after'],
+		[`${N}=${t}`, `${N}=[redacted]`],
+		[`a=1; ${N} = ${t}; b=2`, `a=1; ${N}=[redacted]; b=2`],
+		[`${N}="${t}"`, `${N}=[redacted]`],
+		[`${N}='${t}'`, `${N}=[redacted]`],
+		[`{\\"${N}\\":\\"${t}\\"}`, `{${N}=[redacted]}`],
+		[`${N}="${t}`, `${N}=[redacted]`],
+		[`${N}='${t} and more`, `${N}=[redacted]`],
+		[`{ ${N}: '${t}' }`, `{ ${N}=[redacted] }`],
+		[`{"${N}":"${t}"}`, `{${N}=[redacted]}`],
+		[`${N}=\t${t}`, `${N}=[redacted]`]
 	])('removes the token from %s', (input, expected) => {
-		expect(redactInvite(input)).toBe(expected);
+		expect(redactInvite(input)).toBe(expected.replace(/\\"/g, '"'));
 		expect(redactInvite(input)).not.toContain(t);
 	});
 
-	it('leaves a cookie that only ends in the name alone', () => {
+	it('never crosses into the next line', () => {
+		expect(redactInvite(`${N}=\nnext ${t.slice(0, 5)}`)).toBe(`${N}=\nnext ${t.slice(0, 5)}`);
+		expect(redactInvite(`${N}="${t}\nsecond line`)).toBe(`${N}=[redacted]\nsecond line`);
+	});
+
+	it('leaves other cookie names and route ids alone', () => {
 		for (const harmless of [
-			`other_${INVITE_COOKIE}=harmless`,
-			`x-${INVITE_COOKIE}=harmless`,
-			`a.${INVITE_COOKIE}=harmless`,
+			`other_${N}=harmless`,
+			`x-${N}=harmless`,
+			`a.${N}=harmless`,
+			`a!${N}=harmless`,
+			`a+${N}=harmless`,
+			`a~${N}=harmless`,
+			'/invite/[token]',
 			'unrelated text'
 		]) {
 			expect(redactInvite(harmless)).toBe(harmless);

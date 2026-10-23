@@ -1,10 +1,12 @@
+import { spawnSync } from 'node:child_process';
 import { inspect } from 'node:util';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
 vi.mock('$lib/server/app', () => ({ createApp: vi.fn() }));
 
-const { formatServerError, handleError, installLogRedaction } = await import('./hooks.server.ts');
+const { formatServerError, handleError } = await import('./hooks.server.ts');
+const { installLogRedaction } = await import('$lib/server/identity/auth');
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -65,7 +67,17 @@ describe('what an unexpected error logs', () => {
 });
 
 describe('redaction at the console', () => {
-	const methods = ['error', 'warn', 'info', 'log'] as const;
+	const printing = [
+		'error',
+		'warn',
+		'info',
+		'log',
+		'debug',
+		'trace',
+		'dirxml',
+		'group',
+		'groupCollapsed'
+	] as const;
 	const cookie = `beyondleetcode_invite=${token}`;
 	const leaky = () => {
 		const cause = new Error(`inner GET /invite/${token}`);
@@ -73,54 +85,100 @@ describe('redaction at the console', () => {
 		error.stack = `Error: outer\n    at x (http://localhost/invite/${token}; ${cookie})`;
 		return error;
 	};
-	const printed = (spy: { mock: { calls: unknown[][] } }) =>
+	const fakeConsole = () => {
+		const target: Record<string, Mock<(...args: unknown[]) => unknown>> = {};
+		for (const m of [...printing, 'assert', 'dir', 'table']) target[m] = vi.fn();
+		return target;
+	};
+	const printed = (spy: Mock<(...args: unknown[]) => unknown>) =>
 		spy.mock.calls
 			.flat()
 			.map((arg) => inspect(arg, { depth: null }))
 			.join('\n');
 
-	const fakeConsole = () =>
-		({
-			error: vi.fn(),
-			warn: vi.fn(),
-			info: vi.fn(),
-			log: vi.fn()
-		}) as unknown as Console & Record<(typeof methods)[number], ReturnType<typeof vi.fn>>;
+	it.each(printing)('console.%s prints no token and one redacted string', (method) => {
+		const target = fakeConsole();
+		const spy = target[method];
+		installLogRedaction(target as unknown as Console);
 
-	it.each(methods)(
-		'console.%s from code that uses none of our loggers prints no token',
-		(method) => {
-			const target = fakeConsole();
-			const spy = target[method];
-			installLogRedaction(target);
+		target[method](leaky());
+		target[method](`plain /invite/${token}`, { url: `/invite/${token}`, cookie }, 42);
+		target[method]('/invite/%s', token);
+		target[method]('/invite/', token);
+		target[method]('route /invite/[token]', 'ok');
 
-			target[method](leaky());
-			target[method](`plain /invite/${token}`, { url: `/invite/${token}`, cookie }, 42);
+		const out = printed(spy);
+		expect(out).not.toContain(token);
+		expect(out).toContain('/invite/[redacted]');
+		expect(out).toContain('beyondleetcode_invite=[redacted]');
+		expect(out).toContain('outer');
+		expect(out).toContain('42');
+		expect(out).toContain('route /invite/[token] ok');
+		for (const call of spy.mock.calls) expect(call).toHaveLength(1);
+	});
 
-			const out = printed(spy);
-			expect(out).not.toContain(token);
-			expect(out).toContain('/invite/[redacted]');
-			expect(out).toContain('beyondleetcode_invite=[redacted]');
-			expect(out).toContain('outer');
-			expect(out).toContain('42');
-		}
-	);
+	it('redacts assert (only when it fails), dir and table', () => {
+		const target = fakeConsole();
+		const spies = { assert: target.assert, dir: target.dir, table: target.table };
+		installLogRedaction(target as unknown as Console);
 
-	it('does not wrap twice', () => {
+		target.assert(true, `/invite/${token}`);
+		target.assert(false, '/invite/', token);
+		target.dir({ url: `/invite/${token}` });
+		target.table([{ cookie }]);
+
+		const out = [spies.assert, spies.dir, spies.table].map(printed).join('\n');
+		expect(out).not.toContain(token);
+		expect(spies.assert.mock.calls[0]).toEqual([true]);
+		expect(spies.assert.mock.calls[1]).toEqual([false, '/invite/[redacted]']);
+		expect(out).toContain('beyondleetcode_invite=[redacted]');
+	});
+
+	it('does not wrap twice, and passes a call with no arguments through', () => {
 		const target = fakeConsole();
 		const spy = target.error;
-		installLogRedaction(target);
+		const group = target.group;
+		installLogRedaction(target as unknown as Console);
 		const once = target.error;
-		installLogRedaction(target);
+		installLogRedaction(target as unknown as Console);
 
 		expect(target.error).toBe(once);
 		target.error('x');
+		target.group();
 		expect(spy).toHaveBeenCalledTimes(1);
+		expect(group).toHaveBeenCalledWith();
 	});
 
-	it('is installed on the real console when the server hooks load', () => {
-		const out = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-		console.error(`boom /invite/${token}`);
-		expect(printed(out)).not.toContain(token);
+	it('is installed on every printing method of the real console when the server hooks load', () => {
+		for (const m of [...printing, 'assert', 'dir', 'table'] as const) {
+			expect(
+				(console[m] as unknown as Record<symbol, unknown>)[
+					Symbol.for('beyondleetcode.redactingConsole')
+				]
+			).toBe(true);
+		}
+	});
+
+	it('writes no token to the bytes of a real Bun process, whichever method logs', () => {
+		const auth = new URL('./lib/server/identity/auth.ts', import.meta.url).pathname;
+		const script = `
+			import { installLogRedaction } from ${JSON.stringify(auth)};
+			installLogRedaction();
+			const t = ${JSON.stringify(token)};
+			const e = new Error('outer beyondleetcode_invite=' + t, { cause: new Error('GET /invite/' + t) });
+			for (const m of ['error','warn','info','log','debug','dirxml']) { console[m](e); console[m]('/invite/%s', t); console[m]('/invite/', t); }
+			console.trace('/invite/' + t);
+			console.group('/invite/', t); console.groupCollapsed('/invite/' + t); console.groupEnd(); console.groupEnd();
+			console.assert(false, '/invite/', t);
+			console.dir({ url: '/invite/' + t });
+			console.table([{ c: 'beyondleetcode_invite=' + t }]);
+		`;
+		const run = spawnSync('bun', ['-e', script], { encoding: 'utf8' });
+		const bytes = `${run.stdout}${run.stderr}`;
+		expect(run.status).toBe(0);
+		expect(bytes).not.toContain(token);
+		expect(bytes).toContain('/invite/[redacted]');
+		expect(bytes).toContain('beyondleetcode_invite=[redacted]');
+		expect(bytes).toContain('outer');
 	});
 });
