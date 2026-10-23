@@ -310,6 +310,7 @@ describe('redaction at the console', () => {
 		expect(lines).toContain('/invite/[redacted] (2): 1');
 		expect(lines).toContain('/invite/[redacted] (2): 2');
 		expect(lines).toContain('plain: 2');
+		expect(lines.filter((l) => /^\/invite\/\[redacted\]/.test(l)).length).toBeGreaterThanOrEqual(4);
 		// Each timer is found by its own label.
 		expect(text).toMatch(/\[[\d.]+m?s\] \/invite\/\[redacted\] first/);
 		expect(text).toMatch(/\[[\d.]+m?s\] \/invite\/\[redacted\] \(2\) second/);
@@ -331,6 +332,8 @@ describe('redaction at the console', () => {
 			console.write(enc('/invite/' + t.slice(0, 10) + 'à' + t.slice(10) + '\n'));
 			console.write(bytes(0xff, 0x20), enc('/invite/' + t.slice(0, 10) + 'à ' + t.slice(10) + '\n'));
 			console.write('MARK', bytes(0xff), 'a', 'b', '\n');
+			console.write(bytes(0x2f, 0x69, 0x6e, 0x76, 0x9b, 0x33, 0x31, 0x6d, 0x69, 0x74, 0x65, 0x2f), enc(t), bytes(0x0a));
+			console.write('\ufeffbom ok\n');
 			const r = console.write(bytes(0x4d, 0x42, 0xff, 0x0a)); console.write('RET', String(r), '\n');
 		`);
 		expect(status, stderr).toBe(0);
@@ -355,5 +358,7 @@ describe('redaction at the console', () => {
 			out.includes(Buffer.concat([Buffer.from('MARK'), Buffer.from([0xff]), Buffer.from('ab\n')]))
 		).toBe(true);
 		expect(text).toContain('RET4');
+		// A one-byte CSI inside the path does not hide the token, and a byte-order mark is kept.
+		expect(out.includes(Buffer.from('\ufeffbom ok\n'))).toBe(true);
 	});
 });

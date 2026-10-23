@@ -250,20 +250,22 @@ const LABELLED = new Set(['count', 'countReset', 'time', 'timeLog', 'timeEnd']);
 
 /**
  * Printable labels for counters and timers. A label is redacted to text, but two labels that differ only in
- * the part that is redacted (two invite paths) must stay two counters. Each original label gets its own
- * printable one: its redacted text, or that text with ` (2)`, ` (3)`... when another original label already
- * printed as it. The same original label always gets the same one, so a timer is found again and a counter
- * counts on. The book is bounded; past it a label is just its redacted text.
+ * the part that is redacted (two invite paths) must stay two counters. Each original label that redaction
+ * changes gets its own printable one: its redacted text, or that text with ` (2)`, ` (3)`... when another
+ * original label already printed as it. The same original label always gets the same one, so a timer is found
+ * again and a counter counts on. A label with nothing to redact is itself and is not kept. The book holds one
+ * entry per distinct label with a token in it, as the console's own counters and timers do, so it is not capped:
+ * a cap would make labels past it share a counter.
  */
-function createLabelBook(limit = 1000) {
+function createLabelBook() {
 	const byOriginal = new Map<string, string>();
 	const taken = new Set<string>();
 	return {
 		safe(original: string): string {
+			const base = redactInvite(original);
+			if (base === original) return original;
 			const known = byOriginal.get(original);
 			if (known !== undefined) return known;
-			const base = redactInvite(original);
-			if (byOriginal.size >= limit) return base;
 			let shown = base;
 			for (let n = 2; taken.has(shown); n++) shown = `${base} (${n})`;
 			byOriginal.set(original, shown);
@@ -273,12 +275,14 @@ function createLabelBook(limit = 1000) {
 	};
 }
 
-/** Byte `b` of a record as a character no pattern treats as a space or a delimiter (U+E000 + b), and back. */
-const SHIELD = 0xe000;
-const shield = (latin1: string) =>
-	latin1.replace(/[\u0080-\u00ff]/g, (c) => String.fromCharCode(SHIELD + c.charCodeAt(0)));
-const unshield = (text: string) =>
-	text.replace(/[\ue080-\ue0ff]/g, (c) => String.fromCharCode(c.charCodeAt(0) - SHIELD));
+/**
+ * In a latin1 record, byte 0xa0 is the one above 0x7f that a pattern's `\s` reads as a space and so would end a
+ * token early. It is swapped for a private-use character that no pattern treats as a space or a delimiter, and
+ * back. The other high bytes (0x9b, the one-byte CSI, among them) are left as they are for the patterns to see.
+ */
+const SHIELDED = String.fromCharCode(0xe0a0);
+const shield = (latin1: string) => latin1.replaceAll(String.fromCharCode(0xa0), SHIELDED);
+const unshield = (text: string) => text.replaceAll(SHIELDED, String.fromCharCode(0xa0));
 
 /**
  * The arguments for Bun's `console.write`: all of them are joined into one record with nothing in between
@@ -294,7 +298,8 @@ function redactedWrite(args: unknown[]): unknown[] {
 	const record = Buffer.concat(parts);
 	let text: string | null = null;
 	try {
-		text = new TextDecoder('utf-8', { fatal: true }).decode(record);
+		// `ignoreBOM`: a byte-order mark is part of what was written, and is kept.
+		text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(record);
 	} catch {
 		text = null;
 	}
