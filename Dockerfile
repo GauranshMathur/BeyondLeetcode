@@ -28,9 +28,9 @@ COPY src/lib/server/runner ./src/lib/server/runner
 # The shared list of Languages (src/lib/languages.ts) is read by the Runner.
 COPY src/lib/languages.ts ./src/lib/languages.ts
 COPY src/lib/server/init ./src/lib/server/init
-# `reset-admin-password` runs from source: it imports db.ts, identity/auth.ts and accounts.ts (their other
+# `reset-admin-password` runs from source: it imports db.ts, instance.ts, identity/auth.ts and accounts.ts (their other
 # imports are types, which Bun drops) and the generated Prisma client, which only the build stage has.
-COPY src/lib/server/db.ts ./src/lib/server/db.ts
+COPY src/lib/server/db.ts src/lib/server/instance.ts ./src/lib/server/
 COPY src/lib/server/identity/auth.ts src/lib/server/identity/accounts.ts ./src/lib/server/identity/
 COPY --from=build /app/prisma/generated ./prisma/generated
 COPY content /app/content
