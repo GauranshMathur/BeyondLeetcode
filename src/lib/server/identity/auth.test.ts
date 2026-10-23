@@ -1149,6 +1149,7 @@ describe('signing in with a provider', () => {
 			if (url === 'https://github.com/login/oauth/access_token') {
 				return Response.json({
 					access_token: 'gh-token',
+					id_token: 'PLAIN-ID-TOKEN',
 					token_type: 'bearer',
 					scope: 'read:user'
 				});
@@ -1196,9 +1197,9 @@ describe('signing in with a provider', () => {
 		const made = () => invites.create({ who: adminWho, now: new Date() });
 
 		/** The whole round trip: the button, the provider's redirect back (with the invite cookie, if any). */
-		async function signIn(inviteToken?: string) {
+		async function signIn(inviteToken?: string, callbackURL = '/', errorCallbackURL = '/signin') {
 			const start = await auth.api.signInSocial({
-				body: { provider: 'github', callbackURL: '/', errorCallbackURL: '/signin' },
+				body: { provider: 'github', callbackURL, errorCallbackURL },
 				returnHeaders: true
 			});
 			const state = new URL(start.response.url as string).searchParams.get('state');
@@ -1534,6 +1535,7 @@ describe('signing in with a provider', () => {
 
 	describe('what the log holds', () => {
 		function spies() {
+			vi.restoreAllMocks();
 			return [
 				vi.spyOn(console, 'error').mockImplementation(() => {}),
 				vi.spyOn(console, 'warn').mockImplementation(() => {}),
@@ -1592,6 +1594,47 @@ describe('signing in with a provider', () => {
 			expect(text).not.toContain('LEAKED-SECRET');
 		});
 
+		it('logs no caller text: a forged Origin, a callbackURL, a short value in ?error=, a made-up code', async () => {
+			const h = await harness({ mode: 'open' });
+			const all = spies();
+			const signUp = (headers: Record<string, string>, ip: string) =>
+				h.auth.handler(
+					new Request(`${origin}/api/auth/sign-up/email`, {
+						method: 'POST',
+						headers: { 'content-type': 'application/json', [CLIENT_IP_HEADER]: ip, ...headers },
+						body: JSON.stringify({
+							...body,
+							callbackURL: 'https://forged-callback-CALLERTEXT.example/x'
+						})
+					})
+				);
+
+			await signUp({ origin: 'https://forged-origin-CALLERTEXT.example' }, '10.9.0.3');
+			await signUp({ origin }, '10.9.0.4');
+			await h.auth.handler(
+				new Request(`${origin}/api/auth/callback/github?error=CALLER_TEXT`, {
+					headers: { [CLIENT_IP_HEADER]: '10.9.0.5' }
+				})
+			);
+			redactingLogger.log('error', 'Failed', { code: 'CALLER_CODE' }, 'CALLER_STRING');
+
+			const written = records(all);
+			expect(written.length).toBeGreaterThan(0);
+			for (const record of written) {
+				expect(record).not.toMatch(/CALLER|forged/i);
+			}
+		});
+
+		it('logs a recognized code, and only the fixed text of a message', () => {
+			const all = spies();
+			redactingLogger.log('error', 'Invalid origin: https://x.example', { code: 'INVALID_ORIGIN' });
+			redactingLogger.log('error', 'See https://x.example/page for more');
+			expect(records(all)).toEqual([
+				'[Better Auth] Invalid origin code=INVALID_ORIGIN',
+				'[Better Auth] [message omitted]'
+			]);
+		});
+
 		it('keeps only a short code from an object, and nothing from a string that is not one', () => {
 			const all = spies();
 			redactingLogger.log(
@@ -1604,6 +1647,95 @@ describe('signing in with a provider', () => {
 			expect(records(all)).toEqual([
 				'[Better Auth] Line break  [text omitted] code=ECONNRESET [object omitted]'
 			]);
+		});
+	});
+
+	it('stores no ID token in the Account row', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		await h.signIn();
+
+		const account = await h.db.account.findFirstOrThrow({ where: { providerId: 'github' } });
+		expect(account.idToken).toBeNull();
+		// A second sign-in updates the Account and still stores none.
+		await h.signIn();
+		expect(
+			(await h.db.account.findFirstOrThrow({ where: { providerId: 'github' } })).idToken
+		).toBeNull();
+	});
+
+	describe('the invite cookie and the callback', () => {
+		const cookieClears = (res: Response) =>
+			res.headers.getSetCookie().find((c) => c.startsWith(`${INVITE_COOKIE}=`)) ?? '';
+
+		it('is kept through the POST-to-GET bounce of a callback, which makes no session', async () => {
+			githubAnswers({});
+			const h = await harness();
+			const { token } = await h.made();
+
+			const res = await h.auth.handler(
+				new Request(`${origin}/api/auth/callback/github`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/x-www-form-urlencoded',
+						origin,
+						cookie: `${INVITE_COOKIE}=${token}`,
+						[CLIENT_IP_HEADER]: '10.8.0.1'
+					},
+					body: new URLSearchParams({ code: 'c', state: 's' })
+				})
+			);
+
+			expect(res.status).toBe(302);
+			expect(new URL(res.headers.get('location') ?? '', origin).pathname).toBe(
+				'/api/auth/callback/github'
+			);
+			expect(cookieClears(res)).toBe('');
+		});
+
+		it('is kept through a refusal', async () => {
+			githubAnswers({ email: 'admin@example.com' });
+			const h = await harness({ mode: 'open' });
+			const { token } = await h.made();
+
+			const res = await h.signIn(token);
+
+			expect(errorOf(res)).toBe('account_not_linked');
+			expect(cookieClears(res)).toBe('');
+		});
+
+		it('is cleared by a success whose destination has an error in its query', async () => {
+			githubAnswers({});
+			const h = await harness();
+			const { token } = await h.made();
+
+			const res = await h.signIn(token, '/?error=anything');
+
+			expect(res.headers.get('location')).toBe('/?error=anything');
+			expect(cookieClears(res)).toMatch(/Max-Age=0/i);
+		});
+	});
+
+	describe('the rewritten refusal', () => {
+		it.each([['/.//evil.example/x'], ['/.//evil.example/x#frag']])(
+			'never lands on another site: error page %j',
+			async (errorPage) => {
+				githubAnswers({ email: 'admin@example.com' });
+				const h = await harness();
+
+				const res = await h.signIn(undefined, '/', errorPage);
+
+				expect(res.headers.get('location')).toBe('/signin?error=SIGN_UP_CLOSED');
+			}
+		);
+
+		it('edits only the query of the page Better Auth was told', async () => {
+			githubAnswers({ email: 'admin@example.com' });
+			const h = await harness();
+
+			const res = await h.signIn(undefined, '/', '/signin?next=%2Ftopics');
+
+			expect(res.headers.get('location')).toBe('/signin?next=%2Ftopics&error=SIGN_UP_CLOSED');
 		});
 	});
 

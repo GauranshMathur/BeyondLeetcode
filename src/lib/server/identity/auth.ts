@@ -1,5 +1,6 @@
 import { randomUUID as createId } from 'node:crypto';
 import { formatWithOptions, inspect } from 'node:util';
+import { BASE_ERROR_CODES } from '@better-auth/core/error';
 import type { BetterAuthPlugin } from 'better-auth';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
@@ -238,28 +239,89 @@ function redactedMember(value: unknown): unknown {
 	return redactedLine([value]);
 }
 
-/** A short token: what a code, an error id or a provider id looks like. Anything else is not logged. */
+/** A short token: what an Error's class name looks like. */
 const SAFE_TOKEN = /^[A-Za-z0-9_.-]{1,64}$/;
 
 /** Line breaks and every other control or bidi character, so one record is one line and nothing can forge another. */
 const LOG_CONTROLS = /[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/gu;
 
+/** The codes of our own refusals. */
+const OUR_CODES = ['SIGN_UP_CLOSED', 'NAME_TOO_LONG', 'NAME_INVALID_CHARACTERS', 'NAME_REQUIRED'];
+
+/** The codes Better Auth's OAuth callback and state handling answer with (`oauth2/errors.mjs`, `state.mjs`, `link-account.mjs`). */
+const OAUTH_CODES = [
+	'no_code',
+	'oauth_provider_not_found',
+	'issuer_missing',
+	'issuer_mismatch',
+	'invalid_code',
+	'nonce_binding_missing',
+	'unable_to_get_user_info',
+	'no_callback_url',
+	'unable_to_link_account',
+	'email_does_not_match',
+	'account_already_linked_to_different_user',
+	'email_not_found',
+	'email_not_verified',
+	'account_not_linked',
+	'signup_disabled',
+	'unable_to_create_user',
+	'unable_to_create_session',
+	'unable_to_update_account',
+	'state_not_found',
+	'state_mismatch',
+	'state_security_mismatch',
+	'state_generation_error',
+	'invalid_callback_request',
+	'internal_server_error'
+];
+
+/** The system and database codes an Error may carry (Node's errno names, Prisma's `P1234`). */
+const SYSTEM_CODES = [
+	'ECONNRESET',
+	'ECONNREFUSED',
+	'ECONNABORTED',
+	'ETIMEDOUT',
+	'ENOTFOUND',
+	'EAI_AGAIN',
+	'EHOSTUNREACH',
+	'EPIPE',
+	'ENOENT',
+	'EACCES'
+];
+
 /**
- * One log argument as something safe to print. Text from outside (a query string, a provider's answer) is
- * never printed: a string is kept only when it is a short token, and an object is reduced to its `code` or
- * `error` field when that is one. An Error is its name and code. Numbers, booleans, null and undefined pass.
+ * The only codes that are ever logged: Better Auth's own error codes (`BASE_ERROR_CODES`), ours, the OAuth
+ * ones, the system ones, and Prisma's. A caller can send any token-shaped text in `?error=`, so a code is
+ * recognized by being in this set, never by its shape.
+ */
+const KNOWN_CODES = new Set<string>([
+	...Object.keys(BASE_ERROR_CODES),
+	...OUR_CODES,
+	...OAUTH_CODES,
+	...SYSTEM_CODES
+]);
+const isKnownCode = (value: unknown): value is string =>
+	typeof value === 'string' && (KNOWN_CODES.has(value) || /^P\d{4}$/.test(value));
+
+/**
+ * One log argument as something safe to print. Text from outside (a query string, a provider's answer, a
+ * request header) is never printed: a string is kept only when it is a recognized code, and an object is
+ * reduced to its `code` or `error` field when that is one. An Error is its class name and recognized code.
+ * Numbers, booleans, null and undefined pass.
  */
 function loggable(arg: unknown): unknown {
 	if (arg === null || arg === undefined) return arg;
 	if (typeof arg === 'number' || typeof arg === 'boolean') return arg;
-	if (typeof arg === 'string') return SAFE_TOKEN.test(arg) ? arg : '[text omitted]';
+	if (typeof arg === 'string') return isKnownCode(arg) ? arg : '[text omitted]';
 	const field = (key: string) => {
 		const value = (arg as Record<string, unknown>)[key];
-		return typeof value === 'string' && SAFE_TOKEN.test(value) ? value : undefined;
+		return isKnownCode(value) ? value : undefined;
 	};
 	if (arg instanceof Error) {
 		const code = field('code');
-		return code ? `${arg.name} ${code}` : arg.name;
+		const name = SAFE_TOKEN.test(arg.name) ? arg.name : 'Error';
+		return code ? `${name} ${code}` : name;
 	}
 	if (typeof arg === 'object') {
 		const code = field('code') ?? field('error');
@@ -269,16 +331,27 @@ function loggable(arg: unknown): unknown {
 }
 
 /**
+ * The fixed part of a Better Auth message. Better Auth builds some messages around what the request sent
+ * (`Invalid origin: <Origin header>`, `Invalid callbackURL: <url>`), always after a `: `, so the message is cut
+ * there; a message that still holds an address is dropped. Control characters become spaces.
+ */
+function fixedText(message: unknown): string {
+	const text = String(message).replace(LOG_CONTROLS, ' ');
+	const fixed = text.split(': ')[0] ?? '';
+	if (fixed.includes('://')) return '[message omitted]';
+	return fixed.slice(0, 200);
+}
+
+/**
  * Better Auth's own logger. Better Auth logs what a visitor or a provider sent (a callback's `error`
- * parameter, a provider's error body, the whole `callbackURL` of a refused request, which can be
- * `/invite/<token>`), so a record is built only from safe parts: the message with every control character
- * turned into a space and cut to 300 characters, and each argument through `loggable` (tokens, a `code`, an
- * Error's name and code; never free text or a response body). The invite path is redacted on top of that.
+ * parameter, a provider's error body, the Origin header, the `callbackURL` of a refused request, which can be
+ * `/invite/<token>`), so a record is built only from safe parts: the fixed text of the message (`fixedText`)
+ * and each argument through `loggable` (recognized codes and an Error's class name; never free text or a
+ * response body). The invite path is redacted on top of that.
  */
 export const redactingLogger = {
 	log(level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: unknown[]) {
-		const head = String(message).replace(LOG_CONTROLS, ' ').slice(0, 300);
-		const line = redactedLine([head, ...args.map(loggable)]);
+		const line = redactedLine([fixedText(message), ...args.map(loggable)]);
 		const write = level === 'debug' ? console.debug : console[level];
 		write(`[Better Auth] ${line.replace(LOG_CONTROLS, ' ')}`);
 	}
@@ -297,6 +370,19 @@ const BETTER_AUTH_DEFAULT_SECRET = 'better-auth-secret-12345678901234567890';
 export function isPlaceholderSecret(secret: string): boolean {
 	const value = secret.trim().toLowerCase();
 	return value === BETTER_AUTH_DEFAULT_SECRET || value.startsWith('change-me');
+}
+
+/**
+ * Whether a redirect target is, or normalizes to, a path starting with `//` or `/\\`, which a browser or a later
+ * step would take for another site. Dot segments are resolved first (`/.//evil.com` is `//evil.com`).
+ */
+function isProtocolRelative(target: string): boolean {
+	if (/^\/[/\\]/.test(target)) return true;
+	try {
+		return /^\/[/\\]/.test(new URL(target, 'http://placeholder.invalid').pathname);
+	} catch {
+		return true;
+	}
 }
 
 /** The longest name an Account may have: 100 characters, counted in Unicode code points on the trimmed name. */
@@ -592,6 +678,12 @@ export function createAuth({
 			}
 		},
 		databaseHooks: {
+			// Provider tokens: `encryptOAuthTokens` covers the access and refresh tokens, not the ID token (Google's), which
+			// the app never reads. It is not stored at all, so no plain ID token sits in the Account row.
+			account: {
+				create: { before: async (account) => ({ data: { ...account, idToken: null } }) },
+				update: { before: async (account) => ({ data: { ...account, idToken: null } }) }
+			},
 			user: {
 				create: {
 					// The one choke point for every Account creation; the rules live in registration.ts.
@@ -680,13 +772,12 @@ export function createAuth({
 				if (!ctx.path.startsWith('/callback/')) return;
 				const returned = ctx.context.returned;
 				if (!isAPIError(returned)) return;
-				const location = new Headers(returned.headers as HeadersInit).get('location');
-				if (!location) return;
-				const target = new URL(location, 'http://placeholder.invalid');
-				const failure = target.searchParams.get('error');
 				const inviteToken = inviteTokenFrom(ctx.headers);
-				if (failure === null) {
-					// A sign-in or sign-up went through: an invite cookie, spent or not, has done its job.
+				// A session was made: an invite cookie, spent or not, has done its job. Judged by the session, not by
+				// the shape of the redirect: the POST-to-GET bounce of a callback and a refusal both leave the cookie
+				// for the request that still needs it, and a success whose destination has an `error` in its query
+				// still clears it.
+				if (ctx.context.newSession) {
 					if (inviteToken) {
 						ctx.setCookie(INVITE_COOKIE, '', {
 							path: INVITE_COOKIE_PATH,
@@ -697,6 +788,17 @@ export function createAuth({
 					}
 					return;
 				}
+				const location = new Headers(returned.headers as HeadersInit).get('location');
+				if (!location) return;
+				// Only the query of the original string is read and edited; nothing is rebuilt from a parsed URL.
+				const cut = location.search(/[?#]/);
+				const base = cut === -1 ? location : location.slice(0, cut);
+				const tail = cut === -1 ? '' : location.slice(cut);
+				const hashAt = tail.indexOf('#');
+				const query = new URLSearchParams(
+					(hashAt === -1 ? tail : tail.slice(0, hashAt)).replace(/^\?/, '')
+				);
+				const failure = query.get('error');
 				// Better Auth looks the provider's email up before the creation hook, so where a sign-up is closed an
 				// existing email would answer "not linked" and a new one "closed": a way to learn which emails have
 				// Accounts. Where the gate would refuse this visitor, both answer the same, as the email form does
@@ -707,12 +809,12 @@ export function createAuth({
 					!(await admitSignUp({ email: undefined, inviteToken }))
 				) {
 					// The same redirect whichever refusal it was, description and all.
-					target.searchParams.set('error', 'SIGN_UP_CLOSED');
-					target.searchParams.delete('error_description');
-					const rewritten = location.startsWith('/')
-						? `${target.pathname}${target.search}${target.hash}`
-						: target.toString();
-					throw ctx.redirect(rewritten);
+					query.set('error', 'SIGN_UP_CLOSED');
+					query.delete('error_description');
+					const rewritten = `${base}?${query}${hashAt === -1 ? '' : tail.slice(hashAt)}`;
+					throw ctx.redirect(
+						isProtocolRelative(rewritten) ? '/signin?error=SIGN_UP_CLOSED' : rewritten
+					);
 				}
 			}),
 			before: createAuthMiddleware(async (ctx) => {
