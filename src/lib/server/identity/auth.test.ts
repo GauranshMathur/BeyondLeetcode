@@ -12,7 +12,8 @@ import {
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
-	MIN_PASSWORD_LENGTH
+	MIN_PASSWORD_LENGTH,
+	redactInvite
 } from './auth.ts';
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
@@ -1039,5 +1040,32 @@ describe('accepting an Invite', () => {
 
 		expect(await db.user.count()).toBe(0);
 		expect(await db.account.count()).toBe(0);
+	});
+});
+
+describe('redactInvite', () => {
+	const t = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
+
+	it.each([
+		[`/invite/${t}`, '/invite/[redacted]'],
+		[`GET /invite/${t}?x=1 done`, 'GET /invite/[redacted]?x=1 done'],
+		[`${INVITE_COOKIE}=${t}`, `${INVITE_COOKIE}=[redacted]`],
+		[`a=1; ${INVITE_COOKIE} = ${t}; b=2`, `a=1; ${INVITE_COOKIE}=[redacted]; b=2`],
+		[`${INVITE_COOKIE}="${t}"`, `${INVITE_COOKIE}=[redacted]`],
+		[`${INVITE_COOKIE}=\t${t}`, `${INVITE_COOKIE}=[redacted]`]
+	])('removes the token from %s', (input, expected) => {
+		expect(redactInvite(input)).toBe(expected);
+		expect(redactInvite(input)).not.toContain(t);
+	});
+
+	it('leaves a cookie that only ends in the name alone', () => {
+		for (const harmless of [
+			`other_${INVITE_COOKIE}=harmless`,
+			`x-${INVITE_COOKIE}=harmless`,
+			`a.${INVITE_COOKIE}=harmless`,
+			'unrelated text'
+		]) {
+			expect(redactInvite(harmless)).toBe(harmless);
+		}
 	});
 });

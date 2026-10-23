@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
 vi.mock('$lib/server/app', () => ({ createApp: vi.fn() }));
 
-const { formatServerError, handleError } = await import('./hooks.server.ts');
+const { formatServerError, handleError, installLogRedaction } = await import('./hooks.server.ts');
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -61,5 +61,66 @@ describe('what an unexpected error logs', () => {
 		expect(logged).toContain('/invite/[redacted]');
 		expect(logged).not.toContain(token);
 		expect(result).toEqual({ message: 'Internal Error' });
+	});
+});
+
+describe('redaction at the console', () => {
+	const methods = ['error', 'warn', 'info', 'log'] as const;
+	const cookie = `beyondleetcode_invite=${token}`;
+	const leaky = () => {
+		const cause = new Error(`inner GET /invite/${token}`);
+		const error = new Error(`outer ${cookie}`, { cause });
+		error.stack = `Error: outer\n    at x (http://localhost/invite/${token}; ${cookie})`;
+		return error;
+	};
+	const printed = (spy: { mock: { calls: unknown[][] } }) =>
+		spy.mock.calls
+			.flat()
+			.map((arg) => inspect(arg, { depth: null }))
+			.join('\n');
+
+	const fakeConsole = () =>
+		({
+			error: vi.fn(),
+			warn: vi.fn(),
+			info: vi.fn(),
+			log: vi.fn()
+		}) as unknown as Console & Record<(typeof methods)[number], ReturnType<typeof vi.fn>>;
+
+	it.each(methods)(
+		'console.%s from code that uses none of our loggers prints no token',
+		(method) => {
+			const target = fakeConsole();
+			const spy = target[method];
+			installLogRedaction(target);
+
+			target[method](leaky());
+			target[method](`plain /invite/${token}`, { url: `/invite/${token}`, cookie }, 42);
+
+			const out = printed(spy);
+			expect(out).not.toContain(token);
+			expect(out).toContain('/invite/[redacted]');
+			expect(out).toContain('beyondleetcode_invite=[redacted]');
+			expect(out).toContain('outer');
+			expect(out).toContain('42');
+		}
+	);
+
+	it('does not wrap twice', () => {
+		const target = fakeConsole();
+		const spy = target.error;
+		installLogRedaction(target);
+		const once = target.error;
+		installLogRedaction(target);
+
+		expect(target.error).toBe(once);
+		target.error('x');
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+
+	it('is installed on the real console when the server hooks load', () => {
+		const out = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+		console.error(`boom /invite/${token}`);
+		expect(printed(out)).not.toContain(token);
 	});
 });

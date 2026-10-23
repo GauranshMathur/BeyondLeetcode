@@ -55,18 +55,25 @@ export function inviteTokenFrom(headers: Headers | undefined | null): string | u
 
 /** `/invite/<token>`: the token is a credential, so no text that reaches a log may hold it. */
 const INVITE_PATH = /\/invite\/[^\s/?#"')\]]+/g;
-const INVITE_COOKIE_TEXT = new RegExp(`${'beyondleetcode_invite'}=[^\\s;,"')\\]]+`, 'g');
+// The cookie as it appears in text: `name=value`, with optional spaces round `=` (as `inviteTokenFrom`
+// accepts) and a quoted value. The name must not be the tail of a longer one (`other_<name>=...`).
+const INVITE_COOKIE_TEXT = new RegExp(
+	`(?<![\\w.-])${INVITE_COOKIE}\\s*=\\s*(?:"[^"]*"|[^\\s;,"')\\]]+)`,
+	'g'
+);
 export const redactInvite = (text: string) =>
 	text
 		.replace(INVITE_PATH, '/invite/[redacted]')
-		.replace(INVITE_COOKIE_TEXT, 'beyondleetcode_invite=[redacted]');
+		.replace(INVITE_COOKIE_TEXT, `${INVITE_COOKIE}=[redacted]`);
 
-/** One log argument as redacted text: an Error as its stack, anything else as its string form. */
-function redactedArgument(value: unknown): string {
-	if (value instanceof Error) return redactInvite(value.stack ?? `${value.name}: ${value.message}`);
+/**
+ * One log argument as redacted text: a string as it is, anything else (an Error with its stack and `cause`
+ * chain, an object) as `util.inspect` prints it, which is also what a test must read to see a leak.
+ */
+export function redactedArgument(value: unknown): string {
 	if (typeof value === 'string') return redactInvite(value);
 	try {
-		return redactInvite(inspect(value, { depth: 3 }));
+		return redactInvite(inspect(value, { depth: null }));
 	} catch {
 		return '[unprintable]';
 	}

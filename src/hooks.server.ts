@@ -2,7 +2,7 @@ import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { createApp } from '$lib/server/app';
 import { createHandle } from '$lib/server/handle';
-import { redactInvite } from '$lib/server/identity/auth';
+import { redactedArgument, redactInvite } from '$lib/server/identity/auth';
 
 let run: Handle;
 
@@ -48,3 +48,24 @@ export const handleError: HandleServerError = ({ error, event, status }) => {
 	console.error(formatServerError(status, error, event));
 	return { message: status === 404 ? 'Not Found' : 'Internal Error' };
 };
+
+const REDACTING = Symbol.for('beyondleetcode.redactingConsole');
+type Wrapped = ((...args: unknown[]) => void) & { [REDACTING]?: true };
+
+/**
+ * Redacts at the sink: `console.error`, `warn`, `info` and `log` print strings with any invite path or invite
+ * cookie text taken out, and Errors and objects as `util.inspect` prints them (message, stack, `cause`) with the
+ * same redaction. Library code that logs on its own (Better Call, Better Auth's adapter) is covered without
+ * chasing each logger. Idempotent: a second call, a second import or a hot reload does not wrap twice.
+ */
+export function installLogRedaction(target: Console = console): void {
+	for (const method of ['error', 'warn', 'info', 'log'] as const) {
+		const original = target[method] as Wrapped;
+		if (original[REDACTING]) continue;
+		const wrapped: Wrapped = (...args) => original.apply(target, args.map(redactedArgument));
+		wrapped[REDACTING] = true;
+		target[method] = wrapped as never;
+	}
+}
+
+installLogRedaction();
