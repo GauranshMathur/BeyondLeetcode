@@ -89,6 +89,69 @@ describe('reset-admin-password command', () => {
 		expect((await createInstance(db)).mode()).toBeNull();
 	});
 
+	it('restores multi when an admin Account exists with no stored mode, then resets as usual and says to restart', async () => {
+		const { auth, db, open } = await setup(['admin']);
+		expect((await createInstance(db)).mode()).toBeNull();
+
+		const result = await runResetAdminPassword([], env, open);
+
+		expect(result.code).toBe(EXIT_OK);
+		expect((await createInstance(db)).mode()).toBe('multi');
+		const printed = result.stdout.trim();
+		expect(printed).toMatch(/^[A-Za-z0-9]{20}$/);
+		expect(result.stderr).toMatch(/restart/i);
+		expect(result.stderr).not.toContain(printed);
+		await auth.api.signInEmail({ body: { email: 'u0@example.com', password: printed } });
+		expect(
+			(await db.user.findUniqueOrThrow({ where: { email: 'u0@example.com' } })).mustChangePassword
+		).toBe(true);
+	});
+
+	it('still asks for the restart when the mode was restored but the reset then failed', async () => {
+		const { db } = await setup(['admin']);
+		const broken = new Proxy(db, {
+			get(target, prop, receiver) {
+				if (prop === 'account') throw new Error('disk full');
+				return Reflect.get(target, prop, receiver);
+			}
+		});
+
+		const result = await runResetAdminPassword([], env, () => broken);
+
+		expect(result.code).toBe(EXIT_FAILED);
+		expect(result.stdout).toBe('');
+		expect((await createInstance(db)).mode()).toBe('multi');
+		expect(result.stderr).toMatch(/restart/i);
+	});
+
+	it('tells the owner to run it again when no mode is stored after the reset', async () => {
+		const { db } = await setup(['admin']);
+		const noRestore = new Proxy(db, {
+			get(target, prop, receiver) {
+				// The restore finds a row to be there (a Setup mid-claim) and does nothing.
+				if (prop === '$executeRaw') return async () => 0;
+				return Reflect.get(target, prop, receiver);
+			}
+		});
+
+		const result = await runResetAdminPassword([], env, () => noRestore);
+
+		expect(result.code).toBe(EXIT_OK);
+		expect(result.stdout.trim()).toMatch(/^[A-Za-z0-9]{20}$/);
+		expect(result.stderr).toMatch(/no stored mode/i);
+		expect(result.stderr).toMatch(/again/i);
+	});
+
+	it('does not ask for a restart when the mode was already stored', async () => {
+		const { db, open } = await setup(['admin']);
+		await (await createInstance(db)).chooseMulti();
+
+		const result = await runResetAdminPassword([], env, open);
+
+		expect(result.code).toBe(EXIT_OK);
+		expect(result.stderr).not.toMatch(/restart/i);
+	});
+
 	it('leaves the mode alone when there are Accounts but no admin', async () => {
 		const { db, open } = await setup([undefined]);
 		await (await createInstance(db)).chooseMulti();

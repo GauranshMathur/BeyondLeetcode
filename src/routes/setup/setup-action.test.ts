@@ -3,7 +3,11 @@ import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MultiUserChoice } from '$lib/server/app';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
-import { createInstance, InstanceAlreadySetUpError } from '$lib/server/instance';
+import {
+	AccountsExistError,
+	createInstance,
+	InstanceAlreadySetUpError
+} from '$lib/server/instance';
 import { createTestDb } from '$lib/server/test-db';
 import { actions, load } from './+page.server';
 
@@ -69,6 +73,35 @@ describe('step 1: choose a mode', () => {
 		const result = await choose('local', () => instance.chooseLocal());
 
 		expect(result).toMatchObject({ status: 303, location: '/' });
+	});
+
+	it('choosing Local once an Account exists is refused with a fixed message, and Setup stays unset', async () => {
+		const db = await createTestDb();
+		await db.user.create({
+			data: {
+				id: 'u1',
+				name: 'A',
+				email: 'a@example.com',
+				emailVerified: false,
+				learnerId: 'local'
+			}
+		});
+		const instance = await createInstance(db);
+
+		const result = await choose('local', () => instance.chooseLocal());
+
+		expect(result).toMatchObject({
+			status: 409,
+			data: { message: 'This instance already has accounts, so it cannot start in Local mode.' }
+		});
+		expect(JSON.stringify(result)).not.toContain('Prisma');
+		expect(instance.mode()).toBeNull();
+		expect(await db.instance.count()).toBe(0);
+	});
+
+	it('the refusal is answered the same whatever the error text says', async () => {
+		const result = await choose('local', async () => Promise.reject(new AccountsExistError()));
+		expect(result).toMatchObject({ status: 409 });
 	});
 
 	it('any other failure is not hidden behind a redirect', async () => {
