@@ -41,7 +41,7 @@ const fail = (code: number, message: string): CommandResult => ({
 
 export async function runResetAdminPassword(
 	args: string[],
-	env: { DATABASE_URL?: string; BETTER_AUTH_SECRET?: string },
+	env: { DATABASE_URL?: string; BETTER_AUTH_SECRET?: string; ORIGIN?: string },
 	open: (url: string) => Db = createDb
 ): Promise<CommandResult> {
 	if (args.length > 0) return fail(EXIT_USAGE, `unexpected argument.\n\n${USAGE}`);
@@ -60,8 +60,10 @@ export async function runResetAdminPassword(
 
 	let auth: ReturnType<typeof createAuth>;
 	try {
-		// ORIGIN is not needed: nothing here makes a cookie or checks a request origin.
-		auth = createAuth({ db: open(env.DATABASE_URL), origin: '', secret });
+		// ORIGIN is optional: nothing here makes a cookie or checks a request origin. It is passed along
+		// only to keep Better Auth from warning that it has no base URL.
+		const origin = /^https?:\/\//.test(env.ORIGIN ?? '') ? (env.ORIGIN as string) : '';
+		auth = createAuth({ db: open(env.DATABASE_URL), origin, secret });
 	} catch {
 		return fail(EXIT_FAILED, 'could not open the database. Nothing was changed.');
 	}
