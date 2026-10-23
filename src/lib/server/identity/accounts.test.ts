@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import { deleteLearner } from '../learning/progress.ts';
 import { createFileTestDb } from '../test-db.ts';
 import {
 	type AccountRow,
 	listAccounts,
 	NotAdminError,
+	removeAccount,
 	resetAdminPassword,
 	resetPassword,
+	SelfRemoveError,
 	SelfResetError,
 	UnknownAccountError
 } from './accounts.ts';
@@ -477,6 +480,314 @@ describe('resetPassword', () => {
 			false
 		);
 		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(1);
+	});
+});
+
+describe('removeAccount', () => {
+	const remover = (db: Awaited<ReturnType<typeof setup>>['db']) => (id: string) =>
+		deleteLearner(db, id);
+	async function threeAccounts() {
+		const s = await setup();
+		const admin = await s.signUp('Ada Admin', 'ada@example.com', 'admin');
+		const lin = await s.signUp('Lin Learner', 'lin@example.com');
+		const max = await s.signUp('Max Learner', 'max@example.com');
+		const linRow = await s.db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		const maxRow = await s.db.user.findUniqueOrThrow({ where: { email: 'max@example.com' } });
+		return { ...s, admin, lin, max, linRow, maxRow };
+	}
+	const signIn = (auth: Auth, email: string, pw: string) =>
+		auth.api.signInEmail({ body: { email, password: pw } });
+	const sessionOf = (auth: Auth, cookie: string) =>
+		auth.api.getSession({ headers: new Headers({ cookie }) });
+
+	/** A row in every progress table for a Learner. */
+	async function progressFor(db: Awaited<ReturnType<typeof setup>>['db'], learnerId: string) {
+		await db.chapterRead.create({ data: { learnerId, chapterId: 'c' } });
+		await db.buildStep.create({
+			data: { learnerId, topicId: 't', language: 'python', problemId: 'p', files: {} }
+		});
+		await db.topicLanguage.create({ data: { learnerId, topicId: 't', language: 'python' } });
+		await db.hintsRevealed.create({ data: { learnerId, problemId: 'p', count: 1 } });
+		await db.submission.create({
+			data: {
+				learnerId,
+				problemId: 'p',
+				topicId: 't',
+				language: 'python',
+				files: {},
+				verdict: 'Accepted'
+			}
+		});
+	}
+	async function rowsOf(db: Awaited<ReturnType<typeof setup>>['db'], learnerId: string) {
+		const where = { learnerId };
+		return [
+			await db.chapterRead.count({ where }),
+			await db.buildStep.count({ where }),
+			await db.topicLanguage.count({ where }),
+			await db.hintsRevealed.count({ where }),
+			await db.submission.count({ where }),
+			await db.learner.count({ where: { id: learnerId } })
+		];
+	}
+
+	it('removes the Account: it cannot sign in, its session is dead, and no row of it is left', async () => {
+		const { auth, db, admin, lin, linRow, requestOf } = await threeAccounts();
+		await signIn(auth, 'lin@example.com', password); // a second session
+
+		await removeAccount(auth, {
+			deleteLearner: remover(db),
+			...(await requestOf(admin.cookie)),
+			userId: linRow.id
+		});
+
+		await expect(signIn(auth, 'lin@example.com', password)).rejects.toBeTruthy();
+		expect(await sessionOf(auth, lin.cookie)).toBeNull();
+		expect(await db.user.count({ where: { id: linRow.id } })).toBe(0);
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(0);
+		expect(await db.account.count({ where: { userId: linRow.id } })).toBe(0);
+		// The admin keeps their session, and the email is free again.
+		expect(await sessionOf(auth, admin.cookie)).not.toBeNull();
+	});
+
+	it('frees the email for a new sign-up', async () => {
+		const { auth, db, admin, linRow, requestOf, signUp } = await threeAccounts();
+		await removeAccount(auth, {
+			deleteLearner: remover(db),
+			...(await requestOf(admin.cookie)),
+			userId: linRow.id
+		});
+
+		await expect(signUp('Lin Again', 'lin@example.com')).resolves.toBeTruthy();
+	});
+
+	it('deletes the Learner and all its progress, and changes no other Learner', async () => {
+		const { auth, db, admin, linRow, maxRow, requestOf } = await threeAccounts();
+		await progressFor(db, linRow.learnerId);
+		await progressFor(db, maxRow.learnerId);
+		expect(await rowsOf(db, linRow.learnerId)).toEqual([1, 1, 1, 1, 1, 1]);
+		const maxBefore = await rowsOf(db, maxRow.learnerId);
+
+		await removeAccount(auth, {
+			deleteLearner: remover(db),
+			...(await requestOf(admin.cookie)),
+			userId: linRow.id
+		});
+
+		expect(await rowsOf(db, linRow.learnerId)).toEqual([0, 0, 0, 0, 0, 0]);
+		expect(await rowsOf(db, maxRow.learnerId)).toEqual(maxBefore);
+		expect(await db.user.count({ where: { id: maxRow.id } })).toBe(1);
+		await signIn(auth, 'max@example.com', password);
+	});
+
+	it('removes an Account whose Learner row is missing, and frees its email', async () => {
+		const { auth, db, admin, linRow, requestOf, signUp } = await threeAccounts();
+		// A sign-up that died between the User insert and the Learner create.
+		await db.learner.delete({ where: { id: linRow.learnerId } });
+
+		await removeAccount(auth, {
+			deleteLearner: remover(db),
+			...(await requestOf(admin.cookie)),
+			userId: linRow.id
+		});
+
+		expect(await db.user.count({ where: { id: linRow.id } })).toBe(0);
+		await expect(signIn(auth, 'lin@example.com', password)).rejects.toBeTruthy();
+		await expect(signUp('Lin Again', 'lin@example.com')).resolves.toBeTruthy();
+	});
+
+	it('refuses a learner before anything is touched', async () => {
+		const { auth, db, lin, max, linRow, maxRow, requestOf } = await threeAccounts();
+		await progressFor(db, maxRow.learnerId);
+		const removeUser = vi.spyOn(auth.api, 'removeUser');
+
+		await expect(
+			removeAccount(auth, {
+				deleteLearner: remover(db),
+				...(await requestOf(lin.cookie)),
+				userId: maxRow.id
+			})
+		).rejects.toBeInstanceOf(NotAdminError);
+
+		expect(removeUser).not.toHaveBeenCalled();
+		expect(await rowsOf(db, maxRow.learnerId)).toEqual([1, 1, 1, 1, 1, 1]);
+		expect(await sessionOf(auth, max.cookie)).not.toBeNull();
+		expect(await db.user.count({ where: { id: linRow.id } })).toBe(1);
+	});
+
+	it('refuses an admin session the plugin no longer knows', async () => {
+		const { auth, db, admin, linRow, requestOf } = await threeAccounts();
+		const request = await requestOf(admin.cookie);
+		await db.session.deleteMany({ where: { userId: { not: linRow.id } } });
+
+		await expect(
+			removeAccount(auth, { deleteLearner: remover(db), ...request, userId: linRow.id })
+		).rejects.toBeInstanceOf(NotAdminError);
+
+		expect(await db.user.count({ where: { id: linRow.id } })).toBe(1);
+		await signIn(auth, 'lin@example.com', password);
+	});
+
+	it('refuses an unknown user id, and an id that is not text', async () => {
+		const { auth, db, admin, requestOf } = await threeAccounts();
+		const request = await requestOf(admin.cookie);
+
+		await expect(
+			removeAccount(auth, { deleteLearner: remover(db), ...request, userId: 'nobody' })
+		).rejects.toBeInstanceOf(UnknownAccountError);
+		await expect(
+			removeAccount(auth, { deleteLearner: remover(db), ...request, userId: '' })
+		).rejects.toBeInstanceOf(UnknownAccountError);
+		await expect(
+			removeAccount(auth, {
+				deleteLearner: remover(db),
+				...request,
+				userId: 7 as unknown as string
+			})
+		).rejects.toBeInstanceOf(UnknownAccountError);
+	});
+
+	it('never removes the asking admin: the Account, its progress and its session stay', async () => {
+		const { auth, db, admin, requestOf } = await threeAccounts();
+		const ada = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+		await progressFor(db, ada.learnerId);
+
+		await expect(
+			removeAccount(auth, {
+				deleteLearner: remover(db),
+				...(await requestOf(admin.cookie)),
+				userId: ada.id
+			})
+		).rejects.toBeInstanceOf(SelfRemoveError);
+
+		expect(await rowsOf(db, ada.learnerId)).toEqual([1, 1, 1, 1, 1, 1]);
+		expect(await sessionOf(auth, admin.cookie)).not.toBeNull();
+		await signIn(auth, 'ada@example.com', password);
+	});
+
+	it.each([
+		['is no longer an admin', 'learner'],
+		['is a different Account', 'other']
+	])('removes nothing when the fresh session user %s', async (_, change) => {
+		const { auth, db, admin, linRow, requestOf } = await threeAccounts();
+		const request = await requestOf(admin.cookie);
+		if (change === 'learner') {
+			await db.user.update({ where: { email: 'ada@example.com' }, data: { role: 'learner' } });
+		} else {
+			await db.learner.create({ data: { id: 'someone-else' } });
+			await db.user.update({
+				where: { email: 'ada@example.com' },
+				data: { learnerId: 'someone-else' }
+			});
+		}
+		const removeUser = vi.spyOn(auth.api, 'removeUser');
+
+		await expect(
+			removeAccount(auth, { deleteLearner: remover(db), ...request, userId: linRow.id })
+		).rejects.toBeInstanceOf(NotAdminError);
+
+		expect(removeUser).not.toHaveBeenCalled();
+		expect(await db.user.count({ where: { id: linRow.id } })).toBe(1);
+	});
+
+	describe('when a step fails', () => {
+		// The order is: the user (the plugin ends its sessions, deletes its credentials, then the user), then
+		// the Learner and its progress. A failure of the first leaves the progress untouched; a failure of the
+		// second leaves no Account and no session. No outcome deletes a Learner's rows and leaves the user.
+		async function failing(step: 'sessions' | 'user' | 'learner') {
+			const s = await threeAccounts();
+			await progressFor(s.db, s.linRow.learnerId);
+			await signIn(s.auth, 'lin@example.com', password); // a second session
+			const { internalAdapter } = await s.auth.$context;
+			if (step === 'sessions')
+				vi.spyOn(internalAdapter, 'deleteUserSessions').mockRejectedValueOnce(new Error('disk'));
+			if (step === 'user')
+				vi.spyOn(internalAdapter, 'deleteUser').mockRejectedValueOnce(new Error('disk'));
+			if (step === 'learner') {
+				await s.db.$executeRawUnsafe(
+					"CREATE TRIGGER no_learner_delete BEFORE DELETE ON Learner BEGIN SELECT RAISE(ABORT, 'disk'); END"
+				);
+			}
+			const outcome = await removeAccount(s.auth, {
+				deleteLearner: remover(s.db),
+				...(await s.requestOf(s.admin.cookie)),
+				userId: s.linRow.id
+			}).then(
+				() => 'returned',
+				(error) => (error as Error).name
+			);
+			return {
+				outcome,
+				user: await s.db.user.count({ where: { id: s.linRow.id } }),
+				sessions: await s.db.session.count({ where: { userId: s.linRow.id } }),
+				progress: await rowsOf(s.db, s.linRow.learnerId),
+				otherProgress: await rowsOf(s.db, s.maxRow.learnerId)
+			};
+		}
+
+		it('ending the sessions fails: nothing changed', async () => {
+			expect(await failing('sessions')).toEqual({
+				outcome: 'Error',
+				user: 1,
+				sessions: 2,
+				progress: [1, 1, 1, 1, 1, 1],
+				otherProgress: [0, 0, 0, 0, 0, 1]
+			});
+		});
+
+		it('removing the user fails: the sessions are gone, the progress is kept, the user can try again', async () => {
+			const result = await failing('user');
+			expect(result).toEqual({
+				outcome: 'Error',
+				user: 1,
+				sessions: 0,
+				progress: [1, 1, 1, 1, 1, 1],
+				otherProgress: [0, 0, 0, 0, 0, 1]
+			});
+		});
+
+		it('deleting the Learner fails: the Account is gone and cannot sign in, and the failure is named', async () => {
+			const result = await failing('learner');
+			expect(result).toEqual({
+				outcome: 'ProgressNotRemovedError',
+				user: 0,
+				sessions: 0,
+				progress: [1, 1, 1, 1, 1, 1], // one transaction: all of it is left, none half-deleted
+				otherProgress: [0, 0, 0, 0, 0, 1]
+			});
+		});
+
+		it('a failed removal can be tried again', async () => {
+			const { auth, db, admin, linRow, requestOf } = await threeAccounts();
+			await progressFor(db, linRow.learnerId);
+			const { internalAdapter } = await auth.$context;
+			vi.spyOn(internalAdapter, 'deleteUser').mockRejectedValueOnce(new Error('disk'));
+			const request = await requestOf(admin.cookie);
+
+			await expect(
+				removeAccount(auth, { deleteLearner: remover(db), ...request, userId: linRow.id })
+			).rejects.toThrow('disk');
+			await removeAccount(auth, { deleteLearner: remover(db), ...request, userId: linRow.id });
+
+			expect(await rowsOf(db, linRow.learnerId)).toEqual([0, 0, 0, 0, 0, 0]);
+			expect(await db.user.count({ where: { id: linRow.id } })).toBe(0);
+		});
+	});
+
+	it('reads, resets and removes through auth.api with every /admin path off over HTTP', async () => {
+		const { auth, db, admin, linRow, requestOf } = await threeAccounts();
+		const request = await requestOf(admin.cookie);
+		for (const path of ['list-users', 'set-user-password', 'revoke-user-sessions', 'remove-user']) {
+			const res = await auth.handler(
+				new Request(`http://localhost:3000/api/auth/admin/${path}`, { method: 'POST' })
+			);
+			expect(res.status, path).toBe(404);
+		}
+
+		expect((await listAccounts(auth, request)).length).toBe(3);
+		await resetPassword(auth, { ...request, userId: linRow.id });
+		await removeAccount(auth, { deleteLearner: remover(db), ...request, userId: linRow.id });
+		expect((await listAccounts(auth, request)).length).toBe(2);
 	});
 });
 

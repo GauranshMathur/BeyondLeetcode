@@ -157,6 +157,8 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 
 	<section class="group">
 		<h2 id="all-users">All users</h2>
+		{#if form && 'removed' in form}<p class="lead" role="status">The account was removed.</p>{/if}
+		{#if form && 'removeMessage' in form}<p class="error" role="alert">{form.removeMessage}</p>{/if}
 		<div class="scroll">
 			<table aria-labelledby="all-users">
 				<thead>
@@ -179,16 +181,27 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 							<td>{account.role}</td>
 							<td><time datetime={account.joined}>{account.joined.slice(0, 10)}</time></td>
 							<td class="actions">
-								<!-- Remove (C37) lands here. F.15 draws no dead buttons, so until it works a row shows none.
-									The admin's own row has no Reset password either (it would end the session that shows the
-									password) and says why it never gets Remove. -->
+								<!-- The admin's own row has neither Reset password (it would end the session that shows the
+									password) nor Remove, and says why. "Remove" is a plain GET that opens the confirm under the
+									row, so it works without JavaScript. -->
 								{#if account.you}
 									<span class="why">you cannot remove yourself</span>
 								{:else}
-									<form method="POST" action="?/reset" use:enhance={resetOne}>
-										<input type="hidden" name="id" value={account.id} />
-										<button type="submit" class="quiet">Reset password</button>
-									</form>
+									<div class="row-actions">
+										<form method="POST" action="?/reset" use:enhance={resetOne}>
+											<input type="hidden" name="id" value={account.id} />
+											<button type="submit" class="quiet">Reset password</button>
+										</form>
+										<form method="GET" action="/users">
+											<button
+												type="submit"
+												name="remove"
+												value={account.id}
+												class="quiet"
+												aria-expanded={data.confirmingRemove === account.id}>Remove</button
+											>
+										</form>
+									</div>
 								{/if}
 							</td>
 						</tr>
@@ -221,6 +234,27 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 										{#if enhanced}
 											<button type="button" class="quiet" onclick={() => (resetDismissed = true)}>Done</button>
 										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
+						{#if data.confirmingRemove === account.id}
+							<tr class="detail-row">
+								<td colspan="5">
+									<div class="confirm" role="group" aria-label="Remove {account.name}">
+										<div class="confirm-text">
+											<span class="ask">Remove {account.name}?</span>
+											<span id="remove-note-{account.id}" class="note">
+												This deletes their account, saved code and Submissions. It cannot be undone.
+											</span>
+										</div>
+										<div class="confirm-actions">
+											<a class="cancel" href="/users">Cancel</a>
+											<form method="POST" action="?/remove" use:enhance>
+												<input type="hidden" name="id" value={account.id} />
+												<button type="submit" class="small" aria-describedby="remove-note-{account.id}">Remove user</button>
+											</form>
+										</div>
 									</div>
 								</td>
 							</tr>
@@ -385,6 +419,70 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		font-size: 15px;
 		font-weight: 500;
 		cursor: pointer;
+	}
+	.row-actions {
+		display: flex;
+		gap: 20px;
+		justify-content: flex-end;
+	}
+	.confirm {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 24px;
+		padding: 16px 24px;
+		border-top: 1px solid var(--ink);
+		border-bottom: 1px solid var(--ink);
+	}
+	.confirm-text {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		text-align: left;
+	}
+	.ask {
+		font-family: var(--font-mono);
+		font-size: 12px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink);
+	}
+	.note {
+		font-size: 16px;
+		line-height: 1.5;
+		color: var(--body);
+	}
+	.confirm-actions {
+		display: flex;
+		gap: 20px;
+		align-items: center;
+		flex-shrink: 0;
+	}
+	.cancel {
+		padding: 12px 0;
+		line-height: 20px;
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 14px;
+		text-decoration: none;
+	}
+	td .small {
+		height: 44px;
+		padding: 0 22px;
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
+		border-radius: 2px;
+		font-family: var(--font-mono);
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+	}
+	@media (max-width: 800px) {
+		.confirm {
+			flex-direction: column;
+			align-items: flex-start;
+		}
 	}
 	.detail-row td {
 		background: var(--field);

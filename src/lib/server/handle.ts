@@ -31,6 +31,7 @@ export function createHandle(
 			if (!app.multiUser) return refuseFraming(refusal(503));
 			event.locals.auth = app.multiUser.auth;
 			event.locals.invites = app.multiUser.invites;
+			event.locals.deleteLearner = app.multiUser.deleteLearner;
 			who = await app.multiUser.identity.resolve(event);
 		}
 		// An active session was extended: its new cookie goes out with whatever this request answers (a

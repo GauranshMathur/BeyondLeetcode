@@ -309,9 +309,16 @@ export type CreateAuthOptions = {
 	extraPlugins?: BetterAuthPlugin[];
 };
 
-// The admin plugin endpoints we use: list users, set user password, revoke user sessions, remove
-// user. Every other one is switched off over HTTP (the server-side `auth.api` still has them).
-const UNUSED_ADMIN_PATHS = [
+// Every admin plugin endpoint is switched off over HTTP, the four we use included (list-users,
+// set-user-password, revoke-user-sessions, remove-user): the Users page reads and acts through
+// `auth.api` (accounts.ts), which is not an HTTP path and keeps working. Left on, each bare endpoint skips
+// what our actions add: remove-user leaves the Learner and all its progress behind, and set-user-password
+// leaves the sessions and the must-change flag alone.
+const ADMIN_PATHS = [
+	'list-users',
+	'set-user-password',
+	'revoke-user-sessions',
+	'remove-user',
 	'set-role',
 	'create-user',
 	'update-user',
@@ -325,9 +332,12 @@ const UNUSED_ADMIN_PATHS = [
 	'has-permission'
 ].map((p) => `/admin/${p}`);
 
-// Core endpoints we do not use: no profile edits, email change, account deletion, password reset
-// by email, verification, social linking or token endpoints.
+// Core endpoints we do not use over HTTP: no profile edits, email change, account deletion, password reset
+// by email, verification, social linking or token endpoints. `/change-password` is one too: Better Auth's
+// limiter alone would guard guesses of the current password there, so the Change password form
+// (`routes/account/password`) is the one way, through `auth.api.changePassword` with the per-Account limits.
 const UNUSED_CORE_PATHS = [
+	'/change-password',
 	'/update-user',
 	'/verify-password',
 	'/update-session',
@@ -541,7 +551,7 @@ export function createAuth({
 				if (refusal) throw refusal;
 			})
 		},
-		disabledPaths: [...UNUSED_ADMIN_PATHS, ...UNUSED_CORE_PATHS, ...HTTP_SIGN_IN_PATHS],
+		disabledPaths: [...ADMIN_PATHS, ...UNUSED_CORE_PATHS, ...HTTP_SIGN_IN_PATHS],
 		plugins: [admin({ defaultRole: 'learner' }), ...extraPlugins]
 	});
 }

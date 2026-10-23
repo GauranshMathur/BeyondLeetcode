@@ -196,7 +196,8 @@ describe('Multi-user Mode', () => {
 		const multiUser = {
 			auth,
 			identity: createMultiUserIdentity(auth),
-			invites: createInvites({ db, origin: 'http://localhost:3000' })
+			invites: createInvites({ db, origin: 'http://localhost:3000' }),
+			deleteLearner: async () => {}
 		};
 		const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
 		return {

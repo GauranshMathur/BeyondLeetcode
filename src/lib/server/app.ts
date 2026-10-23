@@ -12,6 +12,7 @@ import {
 } from './identity/setup.ts';
 import { createInstance, type Instance } from './instance.ts';
 import { createLearningCore, type LearningCore } from './learning/core.ts';
+import { deleteLearner } from './learning/progress.ts';
 import { createHttpRunner } from './runner/http-adapter.ts';
 import type { RunnerPort } from './runner/port.ts';
 import { createCatalogueScriptedRunner } from './runner/scripted-catalogue.ts';
@@ -42,7 +43,13 @@ export interface App {
 	/** The Instance's mode, read by the hook on every request. One per server: it caches the mode. */
 	instance: Instance;
 	/** Better Auth and the Multi-user adapter; null when the secret or the origin is not set. */
-	multiUser: { auth: Auth; identity: IdentityResolver; invites: Invites } | null;
+	multiUser: {
+		auth: Auth;
+		identity: IdentityResolver;
+		invites: Invites;
+		/** `deleteLearner` of the progress module, bound to the database. */
+		deleteLearner: (learnerId: string) => Promise<void>;
+	} | null;
 	setup: Setup;
 }
 
@@ -148,7 +155,12 @@ function refuseAuthEnvOverrides(): void {
 }
 
 type BuiltAuth =
-	| { kind: 'built'; auth: Auth; invites: Invites }
+	| {
+			kind: 'built';
+			auth: Auth;
+			invites: Invites;
+			deleteLearner: (learnerId: string) => Promise<void>;
+	  }
 	| { kind: 'missing'; message: string };
 
 /**
@@ -197,6 +209,7 @@ function buildAuth(
 	return {
 		kind: 'built',
 		invites,
+		deleteLearner: (learnerId) => deleteLearner(db, learnerId),
 		auth: createAuth({
 			db,
 			origin,
@@ -219,7 +232,8 @@ function originOf(value: string | undefined): string | null {
 const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>) => ({
 	auth: built.auth,
 	identity: createMultiUserIdentity(built.auth),
-	invites: built.invites
+	invites: built.invites,
+	deleteLearner: built.deleteLearner
 });
 
 /** Multi-user is open to every Instance that has what Better Auth needs; otherwise Setup says what to add. */

@@ -10,6 +10,7 @@ import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
 import { createRegistration } from '$lib/server/identity/registration';
 import { createFirstAdmin } from '$lib/server/identity/setup';
 import { createInstance, type Instance, RegistrationNotAvailableError } from '$lib/server/instance';
+import { deleteLearner } from '$lib/server/learning/progress';
 import { createFileTestDb } from '$lib/server/test-db';
 import { load as layoutLoad } from '../+layout.server';
 import { load as signupLoad } from '../signup/+page.server';
@@ -59,7 +60,12 @@ async function setup() {
 		instance,
 		identity: await createLocalIdentity(db),
 		core,
-		multiUser: { auth, identity: createMultiUserIdentity(auth), invites },
+		multiUser: {
+			auth,
+			identity: createMultiUserIdentity(auth),
+			invites,
+			deleteLearner: (id: string) => deleteLearner(db, id)
+		},
 		setup: setupPort
 	});
 	return { db, auth, instance, admin, learner, handle, invites };
@@ -490,11 +496,14 @@ describe('the Registration action, if the hook ever let a request through', () =
 async function post(
 	handle: ReturnType<typeof createHandle>,
 	cookie: string,
-	name: 'invite' | 'cancel' | 'reset',
-	fields: Record<string, string> = {}
+	name: 'invite' | 'cancel' | 'reset' | 'remove',
+	fields: Record<string, string> = {},
+	/** What the app wiring adds to `locals` beyond the hook (the Learner remover). */
+	extraLocals: Record<string, unknown> = {}
 ) {
 	const setHeaders = vi.fn();
 	const resolve = vi.fn(async (event: RequestEvent, _opts?: ResolveOptions) => {
+		Object.assign(event.locals, extraLocals);
 		const result = await actions[name]({ ...event, setHeaders } as never);
 		return Response.json(result ?? null, { status: result?.status ?? 200 });
 	});
@@ -763,5 +772,162 @@ describe('Reset password on the Users page', () => {
 		expect(text).not.toMatch(/[A-Za-z0-9]{20}/);
 		expect(JSON.stringify(quiet.mock.calls)).not.toContain('/secret/path');
 		vi.restoreAllMocks();
+	});
+});
+
+describe('Remove on the Users page', () => {
+	async function withLin() {
+		const s = await setup();
+		const lin = await s.learner('Lin Learner', 'lin@example.com');
+		const max = await s.learner('Max Learner', 'max@example.com');
+		const row = await s.db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		const maxRow = await s.db.user.findUniqueOrThrow({ where: { email: 'max@example.com' } });
+		const wiring = {};
+		return {
+			...s,
+			lin,
+			max,
+			linId: row.id,
+			linLearner: row.learnerId,
+			maxLearner: maxRow.learnerId,
+			wiring
+		};
+	}
+	const remove = (s: Awaited<ReturnType<typeof withLin>>, cookie: string, id: string) =>
+		post(s.handle, cookie, 'remove', { id }, s.wiring);
+
+	it('removes the Account and its progress; another Learner keeps theirs; the answer is never cached', async () => {
+		const s = await withLin();
+		for (const learnerId of [s.linLearner, s.maxLearner]) {
+			await s.db.chapterRead.create({ data: { learnerId, chapterId: 'c' } });
+		}
+
+		const { response } = await remove(s, s.admin, s.linId);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		expect(await response.json()).toEqual({ removed: true });
+		await expect(
+			s.auth.api.signInEmail({ body: { email: 'lin@example.com', password } })
+		).rejects.toThrow();
+		expect(await s.auth.api.getSession({ headers: new Headers({ cookie: s.lin }) })).toBeNull();
+		expect(await s.db.chapterRead.count({ where: { learnerId: s.linLearner } })).toBe(0);
+		expect(await s.db.learner.count({ where: { id: s.linLearner } })).toBe(0);
+		expect(await s.db.chapterRead.count({ where: { learnerId: s.maxLearner } })).toBe(1);
+		await s.auth.api.signInEmail({ body: { email: 'max@example.com', password } });
+	});
+
+	it('refuses the admin removing themselves, and keeps everything', async () => {
+		const s = await withLin();
+		const ada = await s.db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+
+		const { response } = await remove(s, s.admin, ada.id);
+
+		expect(response.status).toBe(400);
+		expect((await response.json()).data).toEqual({ removeMessage: 'You cannot remove yourself.' });
+		expect(
+			await s.auth.api.getSession({ headers: new Headers({ cookie: s.admin }) })
+		).not.toBeNull();
+		expect(await s.db.user.count({ where: { id: ada.id } })).toBe(1);
+	});
+
+	it('answers an unknown user with a fixed message', async () => {
+		const s = await withLin();
+
+		const { response } = await remove(s, s.admin, 'nobody');
+
+		expect(response.status).toBe(404);
+		expect((await response.json()).data).toEqual({ removeMessage: 'That user no longer exists.' });
+	});
+
+	it('refuses a learner with 403 before the action runs, and a signed-out request goes to Sign in', async () => {
+		const s = await withLin();
+
+		const learner = await remove(s, s.max, s.linId);
+		const signedOut = await remove(s, '', s.linId);
+
+		expect(learner.response.status).toBe(403);
+		expect(learner.resolve).not.toHaveBeenCalled();
+		expect(signedOut.response.status).toBe(303);
+		expect(signedOut.resolve).not.toHaveBeenCalled();
+		expect(await s.db.user.count({ where: { id: s.linId } })).toBe(1);
+	});
+
+	it('is 403 for a non-admin and 404 without Better Auth or the remover, even past the hook, before the form is read', async () => {
+		const learner = { learnerId: 'l', displayName: 'N', role: 'learner' as const };
+		const admin = { ...learner, role: 'admin' as const };
+		const formData = vi.fn();
+		const event = (locals: Record<string, unknown>) =>
+			({ locals, request: { formData, headers: new Headers() } }) as never;
+		const deleteIt = async () => {};
+		await expect(
+			actions.remove(event({ identity: learner, auth: {}, deleteLearner: deleteIt }))
+		).rejects.toMatchObject({ status: 403 });
+		await expect(actions.remove(event({}))).rejects.toMatchObject({ status: 403 });
+		await expect(
+			actions.remove(event({ identity: admin, deleteLearner: deleteIt }))
+		).rejects.toMatchObject({ status: 404 });
+		await expect(actions.remove(event({ identity: admin, auth: {} }))).rejects.toMatchObject({
+			status: 404
+		});
+		expect(formData).not.toHaveBeenCalled();
+	});
+
+	it('answers a failed removal with a fixed message, and logs only the kind of error', async () => {
+		const s = await withLin();
+		vi.spyOn((await s.auth.$context).internalAdapter, 'deleteUser').mockRejectedValueOnce(
+			new Error('/secret/path')
+		);
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { response } = await remove(s, s.admin, s.linId);
+
+		expect(response.status).toBe(500);
+		expect((await response.json()).data).toEqual({
+			removeMessage: 'The account could not be removed. Try again.'
+		});
+		expect(JSON.stringify(quiet.mock.calls)).not.toContain('/secret/path');
+		expect(await s.db.user.count({ where: { id: s.linId } })).toBe(1);
+		vi.restoreAllMocks();
+	});
+
+	it('says so when the Account is gone but its progress could not be deleted', async () => {
+		const s = await withLin();
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { response } = await post(
+			s.handle,
+			s.admin,
+			'remove',
+			{ id: s.linId },
+			{
+				deleteLearner: async () => {
+					throw new Error('/secret/path');
+				}
+			}
+		);
+
+		expect(response.status).toBe(500);
+		expect(JSON.stringify(await response.json())).toContain('could not be deleted');
+		expect(JSON.stringify(quiet.mock.calls)).not.toContain('/secret/path');
+		expect(JSON.stringify(quiet.mock.calls)).toContain('ProgressNotRemovedError');
+		expect(await s.db.user.count({ where: { id: s.linId } })).toBe(0);
+		vi.restoreAllMocks();
+	});
+
+	it('opens the confirm for another Account only: ?remove=<id> in the load, never your own row or an unknown id', async () => {
+		const s = await withLin();
+		const ada = await s.db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+
+		const open = await visit(s.handle, `/users?remove=${s.linId}`, s.admin);
+		const own = await visit(s.handle, `/users?remove=${ada.id}`, s.admin);
+		const unknown = await visit(s.handle, '/users?remove=nobody', s.admin);
+		const none = await visit(s.handle, '/users', s.admin);
+
+		expect((await open.response.json()).confirmingRemove).toBe(s.linId);
+		expect((await own.response.json()).confirmingRemove).toBeNull();
+		expect((await unknown.response.json()).confirmingRemove).toBeNull();
+		expect((await none.response.json()).confirmingRemove).toBeNull();
+		expect(open.response.headers.get('cache-control')).toBe('no-store');
 	});
 });
