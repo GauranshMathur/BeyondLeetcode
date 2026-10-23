@@ -931,7 +931,7 @@ describe('resetAdminPassword', () => {
 		expect(ada.mustChangePassword).toBe(false);
 	});
 
-	it('when the session deletion fails after the password changed, the old session is flagged and the error is thrown', async () => {
+	it('when the session deletion fails after the password changed, the old session is no longer accepted and the error is thrown', async () => {
 		const { auth, db, admin, resolver } = await withAdmin();
 		const { internalAdapter } = await auth.$context;
 		vi.spyOn(internalAdapter, 'deleteUserSessions').mockRejectedValue(new Error('disk'));
@@ -945,6 +945,7 @@ describe('resetAdminPassword', () => {
 			cookies: { get: () => undefined },
 			request: { headers: new Headers({ cookie: admin.cookie }) }
 		});
-		expect(who?.mustChangePassword).toBe(true);
+		// The row survived the failed deletion, but it began before the password was set (C53): it is over.
+		expect(who).toBeNull();
 	});
 });

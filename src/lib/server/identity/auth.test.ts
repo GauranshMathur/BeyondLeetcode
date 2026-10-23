@@ -3,6 +3,7 @@ import { inspect } from 'node:util';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
+import { resetAdminPassword, resetPassword } from './accounts.ts';
 import {
 	type Admission,
 	CLIENT_IP_HEADER,
@@ -1773,5 +1774,293 @@ describe('an Account is unique per provider identity', () => {
 		// The same accountId under another provider is another identity.
 		await db.account.create({ data: account('a3', 'u2', 'github') });
 		expect(await db.account.count()).toBe(2);
+	});
+});
+
+describe('a password sign-in racing a writer of the password', () => {
+	const origin = 'http://localhost:3000';
+	const oldPassword = 'correct horse battery';
+	const newPassword = 'a brand new passphrase 42';
+	const cookieOf = (headers: Headers) =>
+		headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+
+	async function world() {
+		const db = await createFileTestDb();
+		let admission: Admission = {};
+		const auth = createAuth({ db, origin, secret, admitSignUp: () => admission });
+		const signUp = async (name: string, email: string, role?: 'admin') => {
+			admission = role ? { role } : {};
+			const res = await auth.api.signUpEmail({
+				body: { name, email, password: oldPassword },
+				returnHeaders: true
+			});
+			return { id: res.response.user.id, cookie: cookieOf(res.headers) };
+		};
+		const ada = await signUp('Ada', 'ada@example.com', 'admin');
+		const lin = await signUp('Lin', 'lin@example.com');
+		const { internalAdapter } = await auth.$context;
+		const sessionsOf = (userId: string) => db.session.count({ where: { userId } });
+
+		/** Holds the next session a sign-in is about to create until `release` is called: the password has been checked. */
+		function holdNextSession() {
+			const real = internalAdapter.createSession.bind(internalAdapter);
+			let release: () => void = () => {};
+			let reached: () => void = () => {};
+			const gate = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const reachedGate = new Promise<void>((resolve) => {
+				reached = resolve;
+			});
+			vi.spyOn(internalAdapter, 'createSession').mockImplementationOnce(async (...args) => {
+				reached();
+				await gate;
+				return real(...args);
+			});
+			return { reached: reachedGate, release };
+		}
+		const signIn = (email: string, password = oldPassword) =>
+			auth.api.signInEmail({ body: { email, password } }).then(
+				(r) => ({ ok: true as const, r }),
+				(error: unknown) => ({ ok: false as const, error })
+			);
+		/** The admin asking: what Identity would make of their cookie. */
+		const who = async (cookie: string) => {
+			const { learnerId } = await db.user.findUniqueOrThrow({
+				where: { email: 'ada@example.com' }
+			});
+			return {
+				who: { learnerId, displayName: 'Ada', role: 'admin' as const },
+				headers: new Headers({ cookie })
+			};
+		};
+		onTestFinished(() => {
+			vi.restoreAllMocks();
+		});
+		return { db, auth, ada, lin, internalAdapter, sessionsOf, holdNextSession, signIn, who };
+	}
+
+	/** A refusal like a wrong password: 401, a fixed message, no cookie. */
+	const refused = (outcome: { ok: boolean; error?: unknown }) => {
+		expect(outcome.ok).toBe(false);
+		expect(outcome.error).toMatchObject({
+			statusCode: 401,
+			body: { code: 'INVALID_EMAIL_OR_PASSWORD' }
+		});
+	};
+
+	it("is refused when an admin's reset lands between the check and the session", async () => {
+		const w = await world();
+		const hold = w.holdNextSession();
+		const racing = w.signIn('lin@example.com');
+		await hold.reached;
+
+		await resetPassword(w.auth, { ...(await w.who(w.ada.cookie)), userId: w.lin.id });
+		hold.release();
+
+		refused(await racing);
+		expect(await w.sessionsOf(w.lin.id)).toBe(0);
+	});
+
+	it('is refused when the reset command lands between the check and the session', async () => {
+		const w = await world();
+		const hold = w.holdNextSession();
+		const racing = w.signIn('ada@example.com');
+		await hold.reached;
+
+		await resetAdminPassword(w.auth);
+		hold.release();
+
+		refused(await racing);
+		expect(await w.sessionsOf(w.ada.id)).toBe(0);
+	});
+
+	it("is refused when a password change lands between the check and the session, which keeps only the change's own", async () => {
+		const w = await world();
+		const hold = w.holdNextSession();
+		const racing = w.signIn('lin@example.com');
+		await hold.reached;
+
+		const changed = await w.auth.api.changePassword({
+			headers: new Headers({ cookie: w.lin.cookie }),
+			body: { currentPassword: oldPassword, newPassword, revokeOtherSessions: true }
+		});
+		hold.release();
+
+		refused(await racing);
+		expect(changed.token).toBeTruthy();
+		expect(await w.sessionsOf(w.lin.id)).toBe(1);
+		expect(
+			await w.db.session.count({ where: { userId: w.lin.id, token: changed.token ?? '' } })
+		).toBe(1);
+	});
+
+	it('is refused, and removes its own session, when the writer lands between the check and the insert', async () => {
+		const w = await world();
+		const real = w.db.account.findFirst.bind(w.db.account);
+		let reads = 0;
+		// The reads of a sign-in are: the request hook, the check before the insert, the check after it. The writer
+		// lands right after the second returned.
+		vi.spyOn(w.db.account, 'findFirst').mockImplementation(((args: never) => {
+			reads += 1;
+			const answer = real(args);
+			if (reads !== 2) return answer;
+			return answer.then(async (value) => {
+				await resetPassword(w.auth, { ...(await w.who(w.ada.cookie)), userId: w.lin.id });
+				return value;
+			});
+		}) as never);
+
+		const outcome = await w.signIn('lin@example.com');
+
+		refused(outcome);
+		expect(reads).toBeGreaterThanOrEqual(3);
+		expect(await w.sessionsOf(w.lin.id)).toBe(0);
+	});
+
+	it('fails closed when the hook found no Account that the sign-in then finds (made in between)', async () => {
+		const w = await world();
+		vi.spyOn(w.db.user, 'findUnique').mockResolvedValueOnce(null);
+
+		const outcome = await w.signIn('lin@example.com');
+
+		refused(outcome);
+		expect(await w.sessionsOf(w.lin.id)).toBe(1); // only the sign-up's
+	});
+
+	it('fails closed when the record names another user than the one signed in', async () => {
+		const w = await world();
+		vi.spyOn(w.db.user, 'findUnique').mockResolvedValueOnce({ id: w.ada.id } as never);
+
+		const outcome = await w.signIn('lin@example.com');
+
+		refused(outcome);
+		expect(await w.sessionsOf(w.lin.id)).toBe(1);
+	});
+
+	it('fails closed for a sign-in with no record at all', async () => {
+		const w = await world();
+		// A session created in a sign-in request whose hook never ran: not a path that is exempt.
+		await expect(w.internalAdapter.createSession(w.lin.id)).rejects.toMatchObject({
+			statusCode: 401
+		});
+		expect(await w.sessionsOf(w.lin.id)).toBe(1);
+	});
+
+	it("names its exemptions: sign-up, a provider callback and the change's own session still get sessions", async () => {
+		const w = await world();
+		const signedUp = await w.auth.api.signUpEmail({
+			body: { name: 'New', email: 'new@example.com', password: oldPassword }
+		});
+		expect(signedUp.token).toBeTruthy();
+		const changed = await w.auth.api.changePassword({
+			headers: new Headers({ cookie: w.lin.cookie }),
+			body: { currentPassword: oldPassword, newPassword, revokeOtherSessions: true }
+		});
+		expect(changed.token).toBeTruthy();
+	});
+
+	it.each(['list-sessions', 'revoke-session', 'revoke-sessions', 'revoke-other-sessions'])(
+		'serves %s over HTTP no more, but keeps sign-out',
+		async (path) => {
+			const w = await world();
+			const res = await w.auth.handler(
+				new Request(`${origin}/api/auth/${path}`, {
+					method: path === 'list-sessions' ? 'GET' : 'POST',
+					headers: { cookie: w.lin.cookie, origin, 'content-type': 'application/json' },
+					body: path === 'list-sessions' ? undefined : '{}'
+				})
+			);
+			expect(res.status).toBe(404);
+			const signOut = await w.auth.handler(
+				new Request(`${origin}/api/auth/sign-out`, {
+					method: 'POST',
+					headers: { cookie: w.lin.cookie, origin, 'content-type': 'application/json' },
+					body: '{}'
+				})
+			);
+			expect(signOut.status).not.toBe(404);
+		}
+	);
+
+	it('still signs in with the new password after each writer, and with the old one before', async () => {
+		const w = await world();
+		expect((await w.signIn('lin@example.com')).ok).toBe(true);
+
+		const { password: fresh } = await resetPassword(w.auth, {
+			...(await w.who(w.ada.cookie)),
+			userId: w.lin.id
+		});
+
+		expect((await w.signIn('lin@example.com', fresh)).ok).toBe(true);
+		expect((await w.signIn('lin@example.com')).ok).toBe(false);
+	});
+
+	it('leaves other sign-ins alone: a race on one Account does not touch another', async () => {
+		const w = await world();
+		const hold = w.holdNextSession();
+		const racing = w.signIn('lin@example.com');
+		await hold.reached;
+		await resetAdminPassword(w.auth);
+		hold.release();
+
+		expect((await racing).ok).toBe(true);
+		expect(await w.sessionsOf(w.lin.id)).toBe(2); // the sign-up's and this one
+	});
+
+	it('ends a session that survived a password change whose two deletions both failed', async () => {
+		const w = await world();
+		vi.spyOn(w.internalAdapter, 'deleteUserSessions').mockRejectedValue(new Error('disk'));
+		vi.spyOn(w.internalAdapter, 'deleteSessions').mockRejectedValue(new Error('disk'));
+
+		await expect(
+			w.auth.api.changePassword({
+				headers: new Headers({ cookie: w.lin.cookie }),
+				body: { currentPassword: oldPassword, newPassword, revokeOtherSessions: true }
+			})
+		).rejects.toThrow();
+
+		// The password has changed, the old session row is still there, and it is not accepted.
+		expect(await w.sessionsOf(w.lin.id)).toBe(1);
+		const found = await w.auth.api.getSession({ headers: new Headers({ cookie: w.lin.cookie }) });
+		expect(found).toBeNull();
+		expect(await w.sessionsOf(w.lin.id)).toBe(0);
+		expect((await w.signIn('lin@example.com', newPassword)).ok).toBe(true);
+	});
+
+	it('does not touch a session made after the password was set', async () => {
+		const w = await world();
+		await w.auth.api.changePassword({
+			headers: new Headers({ cookie: w.lin.cookie }),
+			body: { currentPassword: oldPassword, newPassword, revokeOtherSessions: true }
+		});
+		const { response, headers } = await w.auth.api
+			.signInEmail({
+				body: { email: 'lin@example.com', password: newPassword },
+				returnHeaders: true
+			})
+			.then((r) => r);
+
+		const found = await w.auth.api.getSession({
+			headers: new Headers({ cookie: cookieOf(headers) })
+		});
+
+		expect(response.user.email).toBe('lin@example.com');
+		expect(found?.user.email).toBe('lin@example.com');
+	});
+
+	it("checks no password for a session a provider makes: a sign-up and the change's fresh session carry no record", async () => {
+		const w = await world();
+		const created = await w.auth.api.signUpEmail({
+			body: { name: 'New', email: 'new@example.com', password: oldPassword },
+			returnHeaders: true
+		});
+		const found = await w.auth.api.getSession({
+			headers: new Headers({ cookie: cookieOf(created.headers) })
+		});
+		expect(found?.user.email).toBe('new@example.com');
 	});
 });

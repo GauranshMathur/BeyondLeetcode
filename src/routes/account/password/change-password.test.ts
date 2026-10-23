@@ -192,7 +192,7 @@ describe('changing a password', () => {
 		}
 	);
 
-	it('if ending the sessions fails twice: says so plainly, and the earlier sessions do survive', async () => {
+	it('if ending the sessions fails twice: says so plainly, and the earlier sessions are not accepted', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
 		const { action } = createChangePassword(throttleFor());
 		const me = await account(true);
@@ -210,8 +210,9 @@ describe('changing a password', () => {
 		expect(message).toContain('Other sessions may still be signed in');
 		expect(message).not.toContain('signed out of every session');
 		expect(JSON.stringify(result)).not.toContain('secret');
-		// The truth the message tells: the password changed and the earlier sessions are still valid.
-		expect(await sessionOf(other)).not.toBeNull();
+		// The password changed and the earlier session rows survived, but a session that began before the password
+		// was set is not accepted (C53), so the message's "may still be signed in" is the safe side.
+		expect(await sessionOf(other)).toBeNull();
 		spy.mockRestore();
 		log.mockRestore();
 		expect(await signIn(me.email, newPassword)).not.toBeNull();

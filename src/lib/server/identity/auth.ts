@@ -1,4 +1,4 @@
-import { randomUUID as createId } from 'node:crypto';
+import { createHash, randomUUID as createId } from 'node:crypto';
 import { formatWithOptions, inspect } from 'node:util';
 import type { BetterAuthPlugin } from 'better-auth';
 import { BASE_ERROR_CODES, betterAuth } from 'better-auth';
@@ -451,6 +451,15 @@ export function enabledProviders(auth: {
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
+/**
+ * What a password sign-in checked: whose password, and a digest of the stored hash it was checked against.
+ * `null`s are the record of a sign-in for which the hook found no user or no password: nothing was recorded to
+ * check against, and such a sign-in can create no session (see `checkedPasswordStillCurrent`).
+ */
+type CredentialChecked = { userId: string | null; digest: string | null };
+
+const digestOf = (hash: string) => createHash('sha256').update(hash).digest('hex');
+
 export type CreateAuthOptions = {
 	db: Db;
 	/** The public origin, e.g. `https://learn.example.com`; empty when not known. */
@@ -505,6 +514,13 @@ const ADMIN_PATHS = [
 const UNUSED_CORE_PATHS = [
 	'/change-password',
 	'/sign-in/social',
+	// The app ends sessions itself (`auth.api`, server-side); these would run on Better Auth's session middleware, which
+	// does not apply the rule `/get-session` does for a session older than the password. `/sign-out` stays: the gate
+	// lets an Account that must change its password sign out through it.
+	'/list-sessions',
+	'/revoke-session',
+	'/revoke-sessions',
+	'/revoke-other-sessions',
 	'/update-user',
 	'/verify-password',
 	'/update-session',
@@ -531,6 +547,13 @@ const HTTP_SIGN_IN_PATHS = ['/sign-in/email'];
 
 // With a code, so that the provider callback (which turns an APIError that has one into a redirect to the
 // error page with `?error=<code>`) sends the visitor back to Sign in; without one it would answer a bare 403.
+// The refusal of a sign-in whose password changed under it: the same answer as a wrong password.
+const staleCredential = () =>
+	new APIError('UNAUTHORIZED', {
+		message: 'Invalid email or password',
+		code: 'INVALID_EMAIL_OR_PASSWORD'
+	});
+
 const signUpClosed = () =>
 	new APIError('FORBIDDEN', { message: 'Sign-up is closed', code: 'SIGN_UP_CLOSED' });
 
@@ -592,6 +615,53 @@ export function createAuth({
 	if (isPlaceholderSecret(secret)) {
 		throw new Error('createAuth: secret is a placeholder or default value anyone can read');
 	}
+	/** A digest of the Account's stored password hash, or null when it has no password to check. */
+	async function credentialDigest(userId: string): Promise<string | null> {
+		const credential = await db.account.findFirst({
+			where: { userId, providerId: 'credential' },
+			select: { password: true }
+		});
+		return credential?.password ? digestOf(credential.password) : null;
+	}
+
+	/**
+	 * Whether the Account's password was set after this session began. Every writer of a password (the admin's
+	 * reset, the reset command, a change) updates the credential row and then ends the user's sessions; a session
+	 * that outlived the second step (a failed or lost deletion) began before the first and is refused here.
+	 */
+	async function passwordChangedSince(userId: string, since: Date): Promise<boolean> {
+		const credential = await db.account.findFirst({
+			where: { userId, providerId: 'credential' },
+			select: { updatedAt: true }
+		});
+		return credential !== null && credential.updatedAt.getTime() > since.getTime();
+	}
+
+	/**
+	 * Requests whose sessions check no password, by the endpoint path: a sign-up (a new Account with its first
+	 * session), a provider's callback (no password is involved), and the password change's own replacement
+	 * session (made after the change, for the signed-in user). Every other path that creates a session is a
+	 * password sign-in and is held to its record.
+	 */
+	const SESSIONS_WITHOUT_A_PASSWORD_CHECK = ['/sign-up/email', '/callback/:id', '/change-password'];
+
+	/**
+	 * A password sign-in must create its session against the password it checked. The request hook recorded a
+	 * digest of the hash before the check (see `hooks.before`); this compares it with the stored hash now. It
+	 * fails closed: a sign-in with no record, or a record for another user or with nothing in it (the hook
+	 * found no Account, which may have been made since), creates no session. Only the named exemptions skip it.
+	 */
+	async function checkedPasswordStillCurrent(ctx: unknown, userId: string): Promise<boolean> {
+		const endpoint = ctx as
+			| { path?: string; credentialChecked?: CredentialChecked }
+			| null
+			| undefined;
+		if (endpoint?.path && SESSIONS_WITHOUT_A_PASSWORD_CHECK.includes(endpoint.path)) return true;
+		const checked = endpoint?.credentialChecked;
+		if (!checked || checked.userId !== userId || checked.digest === null) return false;
+		return (await credentialDigest(userId)) === checked.digest;
+	}
+
 	return betterAuth({
 		database: prismaAdapter(db, { provider: 'sqlite' }),
 		secret,
@@ -683,6 +753,27 @@ export function createAuth({
 				create: { before: async (account) => ({ data: { ...account, idToken: null } }) },
 				update: { before: async (account) => ({ data: { ...account, idToken: null } }) }
 			},
+			// A password sign-in verifies the password, then creates the session, and the two are not one step. A
+			// writer (an admin's reset, the reset command, a password change) can change the password and end every
+			// session in between, and the session would then outlive the change. The sign-in records the hash it is
+			// about to check; the session is refused before it is written if the stored hash is no longer that one,
+			// and checked again once written, because the writer can also land between the first check and the
+			// insert: a writer changes the password and only then ends the sessions, so a session written after its
+			// deletions reads the new hash here and removes itself, and one written before them is deleted by them.
+			session: {
+				create: {
+					before: async (session, ctx) => {
+						if (!(await checkedPasswordStillCurrent(ctx, session.userId))) throw staleCredential();
+					},
+					after: async (session, ctx) => {
+						if (!session || (await checkedPasswordStillCurrent(ctx, session.userId))) return;
+						// If this delete fails too, the row is unreachable all the same: the error below leaves before the
+						// session cookie is set, so nobody ever holds the token.
+						await db.session.deleteMany({ where: { id: session.id } });
+						throw staleCredential();
+					}
+				}
+			},
 			user: {
 				create: {
 					// The one choke point for every Account creation; the rules live in registration.ts.
@@ -768,6 +859,23 @@ export function createAuth({
 		// would answer 400 for an email with no Account and 422 for one that has. The database hook is the backstop.
 		hooks: {
 			after: createAuthMiddleware(async (ctx) => {
+				if (ctx.path === '/get-session') {
+					// A session that began before the Account's password was last set is over, even if the writer's
+					// deletion of it failed (both of a password change's deletions, say).
+					const found = ctx.context.returned as
+						| { session?: { id: string; userId: string; createdAt: Date | string } }
+						| null
+						| undefined;
+					const session = found && !isAPIError(found) ? found.session : undefined;
+					if (
+						session &&
+						(await passwordChangedSince(session.userId, new Date(session.createdAt)))
+					) {
+						await db.session.deleteMany({ where: { id: session.id } });
+						return ctx.json(null);
+					}
+					return;
+				}
 				if (!ctx.path.startsWith('/callback/')) return;
 				const returned = ctx.context.returned;
 				if (!isAPIError(returned)) return;
@@ -817,6 +925,22 @@ export function createAuth({
 				}
 			}),
 			before: createAuthMiddleware(async (ctx) => {
+				if (ctx.path === '/sign-in/email') {
+					// Before the password is checked: record which password that will be (see `databaseHooks.session`).
+					// Always recorded, with nulls when there is nothing to record: a sign-in that finds an Account later
+					// (made after this read) has no record to match and creates no session.
+					const email = ctx.body?.email;
+					const user =
+						typeof email === 'string'
+							? await db.user.findUnique({
+									where: { email: email.toLowerCase() },
+									select: { id: true }
+								})
+							: null;
+					const digest = user ? await credentialDigest(user.id) : null;
+					const checked: CredentialChecked = { userId: user && digest ? user.id : null, digest };
+					return { context: { credentialChecked: checked } };
+				}
 				if (ctx.path !== '/sign-up/email') return;
 				if (
 					!(await admitSignUp({
