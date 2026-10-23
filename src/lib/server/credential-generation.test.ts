@@ -116,3 +116,41 @@ it('the credential_generation migration leaves an OAuth-only user\'s session wit
 	);
 	expect(row.rows[0]?.g).toBe('');
 });
+
+it("the credential_generation migration reads the adapter's own spelling, an integer epoch time, and an odd second credential row alike", async () => {
+	const client = createClient({ url: ':memory:' });
+	onTestFinished(() => client.close());
+	for (const name of before) await client.executeMultiple(sql(name));
+	const ms = Date.UTC(2026, 9, 10, 12, 0, 0, 500); // 2026-10-10T12:00:00.500Z
+	await client.executeMultiple(`
+		INSERT INTO "Learner" ("id") VALUES ('l1'),('l2'),('l3');
+		INSERT INTO "User" ("id","name","email","learnerId") VALUES ('u1','a','a@x','l1'),('u2','b','b@x','l2'),('u3','c','c@x','l3');
+		INSERT INTO "Account" ("id","accountId","providerId","userId","password","createdAt","updatedAt") VALUES
+			('a1','u1','credential','u1','h1','2026-10-01T00:00:00.000+00:00','2026-10-10T12:00:00.500+00:00'),
+			('a2','u2','credential','u2','h2',1790000000000,${ms}),
+			-- An odd second credential row of u3, newer than the real one: it must not be the one consulted.
+			('a3','u3','credential','u3','h3','2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z'),
+			('a3odd','someone-else','credential','u3','h3b','2026-10-20T00:00:00.000Z','2026-10-20T00:00:00.000Z');
+		INSERT INTO "Session" ("id","expiresAt","token","userId","createdAt","updatedAt") VALUES
+			('plus-refused','2030-01-01','p1','u1','2026-10-10T12:00:00.499+00:00','2026-10-10T12:00:00.499+00:00'),
+			('plus-accepted','2030-01-01','p2','u1','2026-10-10T12:00:00.500+00:00','2026-10-10T12:00:00.500+00:00'),
+			('int-refused','2030-01-01','i1','u2',${ms - 1},${ms - 1}),
+			('int-accepted','2030-01-01','i2','u2',${ms},${ms}),
+			('odd-accepted','2030-01-01','o1','u3','2026-10-05T00:00:00.000Z','2026-10-05T00:00:00.000Z');
+	`);
+
+	await client.executeMultiple(sql(MIGRATION));
+
+	const rows = await client.execute(
+		`SELECT "s"."id" AS id, "s"."credentialGeneration" AS g, "a"."credentialGeneration" AS current
+		 FROM "Session" AS "s" JOIN "Account" AS "a"
+		   ON "a"."userId" = "s"."userId" AND "a"."providerId" = 'credential' AND "a"."accountId" = "s"."userId"`
+	);
+	expect(Object.fromEntries(rows.rows.map((r) => [String(r.id), r.g === r.current]))).toEqual({
+		'plus-refused': false,
+		'plus-accepted': true,
+		'int-refused': false,
+		'int-accepted': true,
+		'odd-accepted': true
+	});
+});

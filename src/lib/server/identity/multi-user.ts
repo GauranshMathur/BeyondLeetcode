@@ -65,6 +65,6 @@ export async function sweepStaleSessions(db: Db): Promise<number> {
 		WHERE "credentialGeneration" <> COALESCE(
 			(SELECT "a"."credentialGeneration" FROM "Account" AS "a"
 			 WHERE "a"."userId" = "Session"."userId" AND "a"."providerId" = 'credential'
-			 ORDER BY "a"."updatedAt" DESC, "a"."id" DESC LIMIT 1),
+			   AND "a"."accountId" = "Session"."userId"),
 			'')`;
 }

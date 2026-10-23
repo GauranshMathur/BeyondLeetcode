@@ -2335,6 +2335,36 @@ describe('a session is bound to its credential generation', () => {
 		expect(await w.resolves(cookie)).toBe(false);
 	});
 
+	it('resolution, the sweep and the migration pick the same password Account, even with an odd second credential row', async () => {
+		const w = await world();
+		const real = await w.db.account.findFirstOrThrow({
+			where: { userId: w.lin.id, providerId: 'credential', accountId: w.lin.id }
+		});
+		// Not a row Better Auth makes (and the unique index allows it): another accountId, a newer update.
+		await w.db.account.create({
+			data: {
+				id: 'odd',
+				accountId: 'someone-else',
+				providerId: 'credential',
+				userId: w.lin.id,
+				password: 'x',
+				credentialGeneration: 'the-odd-generation',
+				updatedAt: new Date(Date.now() + 60_000)
+			}
+		});
+
+		expect(await w.resolves(w.lin.cookie)).toBe(true);
+		const { sweepStaleSessions } = await import('./multi-user.ts');
+		expect(await sweepStaleSessions(w.db)).toBe(0);
+		expect(await w.resolves(w.lin.cookie)).toBe(true);
+		// And a sign-in binds to the real one.
+		await w.auth.api.signInEmail({ body: { email: 'lin@example.com', password: oldPassword } });
+		const rows = await w.db.session.findMany({ where: { userId: w.lin.id } });
+		expect(new Set(rows.map((r) => r.credentialGeneration))).toEqual(
+			new Set([real.credentialGeneration])
+		);
+	});
+
 	it('removing an Account removes its sessions with the column', async () => {
 		const w = await world();
 		await w.db.user.delete({ where: { id: w.lin.id } });

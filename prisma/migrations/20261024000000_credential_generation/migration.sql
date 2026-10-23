@@ -10,11 +10,21 @@ UPDATE "Account" SET "credentialGeneration" = lower(hex(randomblob(16))) WHERE "
 -- session gets its user's current generation, or "" with none.
 UPDATE "Session" SET "credentialGeneration" = COALESCE(
     (SELECT CASE
-        WHEN strftime('%Y-%m-%d %H:%M:%f', "a"."updatedAt") > strftime('%Y-%m-%d %H:%M:%f', "Session"."createdAt")
+        WHEN (CASE typeof("a"."updatedAt")
+                WHEN 'integer' THEN strftime('%Y-%m-%d %H:%M:%f', "a"."updatedAt" / 1000.0, 'unixepoch')
+                WHEN 'real' THEN strftime('%Y-%m-%d %H:%M:%f', "a"."updatedAt" / 1000.0, 'unixepoch')
+                ELSE strftime('%Y-%m-%d %H:%M:%f', "a"."updatedAt")
+              END)
+           > (CASE typeof("Session"."createdAt")
+                WHEN 'integer' THEN strftime('%Y-%m-%d %H:%M:%f', "Session"."createdAt" / 1000.0, 'unixepoch')
+                WHEN 'real' THEN strftime('%Y-%m-%d %H:%M:%f', "Session"."createdAt" / 1000.0, 'unixepoch')
+                ELSE strftime('%Y-%m-%d %H:%M:%f', "Session"."createdAt")
+              END)
         THEN 'superseded-before-credential-generation'
         ELSE "a"."credentialGeneration"
      END
+     -- The password Account by Better Auth's convention: providerId credential, accountId the user's id.
      FROM "Account" AS "a"
      WHERE "a"."userId" = "Session"."userId" AND "a"."providerId" = 'credential'
-     ORDER BY "a"."updatedAt" DESC, "a"."id" DESC LIMIT 1),
+       AND "a"."accountId" = "Session"."userId"),
     '');

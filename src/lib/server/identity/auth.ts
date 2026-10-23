@@ -625,7 +625,9 @@ export function createAuth({
 	/** The generation of the Account's password Account, or null when it has none. */
 	async function passwordGeneration(userId: string): Promise<string | null> {
 		const credential = await db.account.findFirst({
-			where: { userId, providerId: 'credential' },
+			// Better Auth's convention for the password Account (`sign-in.mjs`): the same selection as the migration
+			// and `sweepStaleSessions`.
+			where: { userId, providerId: 'credential', accountId: userId },
 			select: { credentialGeneration: true }
 		});
 		return credential ? credential.credentialGeneration : null;
