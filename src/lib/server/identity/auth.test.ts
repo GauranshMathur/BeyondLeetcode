@@ -1432,6 +1432,24 @@ describe('signing in with a provider', () => {
 		expect(providerName('  Ada  ', 'x', 'y@z')).toBe('Ada');
 	});
 
+	it('logs a failed token exchange or Account creation as the error kind only, never its message', async () => {
+		const h = await harness({ mode: 'open' });
+		githubAnswers({});
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		// The token exchange answers with an error carrying a path and a secret-looking value.
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+			throw Object.assign(new Error('/home/secret/path?code=SECRET-CODE'), { code: 'ECONNRESET' });
+		});
+
+		const res = await h.signIn();
+
+		expect(res.status).toBe(302);
+		expect(everythingLogged([log, warn])).toContain('Error ECONNRESET');
+		expect(everythingLogged([log, warn])).not.toContain('SECRET-CODE');
+		expect(everythingLogged([log, warn])).not.toContain('/home/secret/path');
+	});
+
 	it('keeps the endpoints that would hand provider tokens to the browser off', async () => {
 		const h = await harness();
 		for (const path of ['refresh-token', 'get-access-token', 'account-info', 'list-accounts']) {

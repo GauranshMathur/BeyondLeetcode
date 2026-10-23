@@ -237,11 +237,19 @@ function redactedMember(value: unknown): unknown {
 
 /**
  * Better Auth's own logger, with the invite path taken out of every message and argument: its origin check
- * logs the whole `callbackURL` of a request it refuses, which can be `/invite/<token>`.
+ * logs the whole `callbackURL` of a request it refuses, which can be `/invite/<token>`. An Error argument is
+ * logged as its name and code only.
  */
 export const redactingLogger = {
 	log(level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: unknown[]) {
-		const line = redactedLine([message, ...args]);
+		// An Error is reduced to its name and code: its message, stack and cause can hold query text, file paths and
+		// what a provider answered (the OAuth callback logs the errors of the token exchange and of creating the user).
+		const safe = args.map((arg) => {
+			if (!(arg instanceof Error)) return arg;
+			const code = (arg as { code?: unknown }).code;
+			return typeof code === 'string' ? `${arg.name} ${code}` : arg.name;
+		});
+		const line = redactedLine([message, ...safe]);
 		const write = level === 'debug' ? console.debug : console[level];
 		write(`[Better Auth] ${line}`);
 	}
