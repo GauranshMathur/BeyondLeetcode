@@ -45,6 +45,13 @@ export interface Invites {
 	cancel(input: { who: Identity; id: string }): Promise<boolean>;
 	/** The Invite this token names, or null when it is missing, used, expired or cancelled. */
 	lookup(token: string, now: Date): Promise<{ id: string } | null>;
+	/**
+	 * Uses the Invite this token names, in one conditional update (unused, not expired) that must change
+	 * exactly one row. True means this caller holds the claim; false means refused, and nothing changed:
+	 * a second use, an expiry, a cancel (the row is gone) and a concurrent accept that won all look the same.
+	 * `lookup` is a check, not a claim: only this call makes an Invite spent.
+	 */
+	claim(token: string, now: Date): Promise<boolean>;
 }
 
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -96,6 +103,15 @@ export function createInvites({ db, origin }: { db: Db; origin: string }): Invit
 			requireAdmin(who);
 			const { count } = await db.invite.deleteMany({ where: { id, usedAt: null } });
 			return count > 0;
+		},
+
+		async claim(token, now) {
+			if (!TOKEN_SHAPE.test(token)) return false;
+			const { count } = await db.invite.updateMany({
+				where: { tokenHash: hashToken(token), usedAt: null, expiresAt: { gt: now } },
+				data: { usedAt: now }
+			});
+			return count === 1;
 		},
 
 		async lookup(token, now) {

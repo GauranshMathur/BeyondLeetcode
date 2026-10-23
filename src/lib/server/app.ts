@@ -80,7 +80,7 @@ export async function createApp(env: {
 	const db = createDb(env.DATABASE_URL);
 	const instance = await createInstance(db);
 	const auth = buildAuth(env, db, instance);
-	const multiUser = auth.kind === 'built' ? chooseMultiUser(auth, db) : null;
+	const multiUser = auth.kind === 'built' ? chooseMultiUser(auth) : null;
 	if (instance.mode() === 'multi') {
 		// The test cookie is read only by the Local adapter, which a multi-user Instance never consults;
 		// refuse the combination anyway. The browser tests' Multi-user server boots empty and becomes multi.
@@ -148,7 +148,7 @@ function refuseAuthEnvOverrides(): void {
 }
 
 type BuiltAuth =
-	| { kind: 'built'; auth: Auth; origin: string }
+	| { kind: 'built'; auth: Auth; invites: Invites }
 	| { kind: 'missing'; message: string };
 
 /**
@@ -191,10 +191,19 @@ function buildAuth(
 				'Multi-user needs ORIGIN, the public URL of this Instance (for example https://learn.example.com), in your .env; PROTOCOL_HEADER and HOST_HEADER are not enough. Then restart.'
 		};
 	}
+	// Invite links name the same ORIGIN the cookies and the origin check use. The one Invites module
+	// serves the Users page and, through the gate and the claim, sign-up.
+	const invites = createInvites({ db, origin });
 	return {
 		kind: 'built',
-		origin,
-		auth: createAuth({ db, origin, secret, admitSignUp: createRegistration({ instance }) })
+		invites,
+		auth: createAuth({
+			db,
+			origin,
+			secret,
+			admitSignUp: createRegistration({ instance, invites }),
+			claimInvite: (token, now) => invites.claim(token, now)
+		})
 	};
 }
 
@@ -207,11 +216,10 @@ function originOf(value: string | undefined): string | null {
 	}
 }
 
-const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>, db: Db) => ({
+const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>) => ({
 	auth: built.auth,
 	identity: createMultiUserIdentity(built.auth),
-	// Invite links name the same ORIGIN the cookies and the origin check use.
-	invites: createInvites({ db, origin: built.origin })
+	invites: built.invites
 });
 
 /** Multi-user is open to every Instance that has what Better Auth needs; otherwise Setup says what to add. */

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { inspect } from 'node:util';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
@@ -7,13 +8,23 @@ import {
 	CLIENT_IP_HEADER,
 	createAuth,
 	hasForbiddenNameCharacter,
+	INVITE_COOKIE,
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
-	MIN_PASSWORD_LENGTH
+	MIN_PASSWORD_LENGTH,
+	redactInvite
 } from './auth.ts';
+import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
+
+/** Everything the console got, as text: an Error counts with its message, stack and cause. */
+const everythingLogged = (spies: { mock: { calls: unknown[][] } }[]) =>
+	spies
+		.flatMap((s) => s.mock.calls.flat())
+		.map((arg) => inspect(arg, { depth: null }))
+		.join('\n');
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
@@ -692,5 +703,385 @@ describe('control and bidi characters in a name', () => {
 		expect(instance.mode()).toBeNull();
 		expect(await db.user.count()).toBe(0);
 		expect(await db.learner.count()).toBe(0);
+	});
+});
+
+describe('accepting an Invite', () => {
+	const origin = 'http://localhost:3000';
+	const adminWho = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
+	let caller = 0;
+
+	async function invited(options: { claim?: 'real' | 'lose' | 'throw'; now?: () => Date } = {}) {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.user.create({
+			data: {
+				id: 'u-admin',
+				name: 'Ada',
+				email: 'admin@example.com',
+				role: 'admin',
+				learnerId: 'local'
+			}
+		});
+		const invites = createInvites({ db, origin });
+		const instance = {
+			mode: () => 'multi' as const,
+			registrationMode: () => 'invite' as 'invite' | 'open'
+		};
+		const now = options.now ?? (() => new Date());
+		const auth = createAuth({
+			db,
+			origin,
+			secret,
+			admitSignUp: createRegistration({ instance, invites, now }),
+			claimInvite:
+				options.claim === 'lose'
+					? async () => false
+					: options.claim === 'throw'
+						? async () => {
+								throw new Error('database is locked');
+							}
+						: (t, at) => invites.claim(t, at)
+		});
+		const post = (
+			token: string | null,
+			payload: object = { ...body, email: `n${caller}@example.com` }
+		) =>
+			auth.handler(
+				new Request(`${origin}/api/auth/sign-up/email`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						origin,
+						[CLIENT_IP_HEADER]: `10.2.${caller >> 8}.${caller++ & 255}`,
+						...(token ? { cookie: `${INVITE_COOKIE}=${token}` } : {})
+					},
+					body: JSON.stringify(payload)
+				})
+			);
+		/** Like `post`, for a step made to fail with a non-API error: that error leaves the handler (500 here). */
+		const postSafe = (...args: Parameters<typeof post>) =>
+			post(...args).catch(() => new Response(null, { status: 500 }));
+		const made = () => invites.create({ who: adminWho, now: new Date() });
+		return { db, invites, instance, post, postSafe, made };
+	}
+
+	it('creates exactly one learner Account, and a second use is refused', async () => {
+		const { db, post, made } = await invited();
+		const { token, id } = await made();
+
+		const first = await post(token);
+		const second = await post(token);
+
+		expect(first.status).toBe(200);
+		expect(second.status).toBe(403);
+		const users = await db.user.findMany({ where: { id: { not: 'u-admin' } } });
+		expect(users).toHaveLength(1);
+		expect(users[0].role).toBe('learner');
+		expect(users[0].learnerId).not.toBe('local');
+		expect(await db.learner.count()).toBe(2);
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+	});
+
+	it('refuses no cookie, an unknown token, an expired link and a cancelled one', async () => {
+		const later = new Date(Date.now() + INVITE_LIFETIME_MS + 1000);
+		const { db, post, made, invites } = await invited({ now: () => later });
+		const expired = await made();
+		const fresh = await invited();
+		const cancelled = await fresh.made();
+		await fresh.invites.cancel({ who: adminWho, id: cancelled.id });
+
+		expect((await post(null)).status).toBe(403);
+		expect((await post('A'.repeat(43))).status).toBe(403);
+		expect((await post(expired.token)).status).toBe(403);
+		expect((await fresh.post(cancelled.token)).status).toBe(403);
+		expect(await db.user.count()).toBe(1);
+		expect(await fresh.db.user.count()).toBe(1);
+		expect(invites).toBeDefined();
+	});
+
+	it('lets one of two sign-ups racing on one token win', async () => {
+		const { db, post, made } = await invited();
+		const { token } = await made();
+
+		const answers = await Promise.all([post(token), post(token), post(token)]);
+
+		expect(answers.filter((r) => r.status === 200)).toHaveLength(1);
+		expect(await db.user.count()).toBe(2);
+		expect(await db.learner.count()).toBe(2);
+		expect(await db.account.count()).toBe(1);
+	});
+
+	it('removes the Account and leaves no Learner when the claim is lost after the gate said yes', async () => {
+		const { db, post, made } = await invited({ claim: 'lose' });
+		const { token } = await made();
+
+		const res = await post(token);
+
+		expect(res.status).toBe(403);
+		expect(res.headers.getSetCookie()).toEqual([]);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.learner.count()).toBe(1);
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+	});
+
+	it.each([
+		[
+			'expired',
+			async (h: Awaited<ReturnType<typeof invited>>, id: string) => {
+				await h.db.invite.update({
+					where: { id },
+					data: { expiresAt: new Date(Date.now() - 1000) }
+				});
+			}
+		],
+		[
+			'cancelled',
+			async (h: Awaited<ReturnType<typeof invited>>, id: string) => {
+				await h.invites.cancel({ who: adminWho, id });
+			}
+		]
+	])(
+		'a %s link sets no cookie and writes no User, Account, Session or Learner',
+		async (_name, spoil) => {
+			const h = await invited();
+			const { token, id } = await h.made();
+			await spoil(h, id);
+
+			const res = await h.post(token);
+
+			expect(res.status).toBe(403);
+			expect(res.headers.getSetCookie()).toEqual([]);
+			expect(await h.db.user.count()).toBe(1);
+			expect(await h.db.account.count()).toBe(0);
+			expect(await h.db.session.count()).toBe(0);
+			expect(await h.db.learner.count()).toBe(1);
+		}
+	);
+
+	it.each([
+		['Account', 0],
+		['Session', 1]
+	])(
+		'leaves the Invite spent, no cookie and at most the one Account it paid for when the %s cannot be written',
+		async (table, accounts) => {
+			const { db, postSafe: post, made } = await invited();
+			const { token, id } = await made();
+			await db.$executeRawUnsafe(
+				`CREATE TRIGGER fail_${table} BEFORE INSERT ON "${table}" BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END`
+			);
+			const email = 'half@example.com';
+
+			const res = await post(token, { ...body, email });
+
+			expect(res.status).toBeGreaterThanOrEqual(400);
+			expect(res.headers.getSetCookie()).toEqual([]);
+			expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+			expect(await db.session.count()).toBe(0);
+			// Better Auth does not roll its steps back here: a failed Account leaves a User no one can sign in
+			// as; a failed Session leaves the one Account (the invitee signs in with the password they chose).
+			expect(await db.account.count()).toBe(accounts);
+			// The link is spent, so no second Account can come of it.
+			await db.$executeRawUnsafe(`DROP TRIGGER fail_${table}`);
+			expect((await post(token, { ...body, email: 'second@example.com' })).status).toBe(403);
+			expect(await db.account.count()).toBe(accounts);
+		}
+	);
+
+	it('removing a User removes its Account and Session', async () => {
+		const { db, post, made } = await invited();
+		const { token } = await made();
+		expect((await post(token)).status).toBe(200);
+		expect(await db.account.count()).toBe(1);
+		expect(await db.session.count()).toBe(1);
+
+		await db.user.deleteMany({ where: { email: { not: 'admin@example.com' } } });
+
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+	});
+
+	it("keeps the invite path out of Better Auth's own log", async () => {
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+		const { post, made } = await invited();
+		const { token } = await made();
+
+		const res = await post(token, {
+			...body,
+			email: 'cb@example.com',
+			callbackURL: `https://evil.example/invite/${token}`
+		});
+
+		expect(res.status).toBe(403);
+		const logged = everythingLogged(spies);
+		expect(logged).toContain('Invalid callbackURL');
+		expect(logged).not.toContain(token);
+	});
+
+	it('lets a non-API error out of the handler without printing it, and still answers refusals with their status and code', async () => {
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+		const { db, post, made } = await invited();
+		const { token } = await made();
+		vi.spyOn(db.learner, 'upsert').mockRejectedValue(
+			new Error(`locked: GET /invite/${token} beyondleetcode_invite=${token}`) as never
+		);
+
+		await expect(post(token, { ...body, email: 'boom@example.com' })).rejects.toThrow('locked');
+		expect(everythingLogged(spies)).not.toContain(token);
+		vi.restoreAllMocks();
+
+		// Refusals are still answered, with the status and code they had.
+		const closed = await post(null, { ...body, email: 'closed@example.com' });
+		expect(closed.status).toBe(403);
+		const tooLong = await post((await made()).token, {
+			...body,
+			email: 'long@example.com',
+			name: 'x'.repeat(101)
+		});
+		expect(tooLong.status).toBe(400);
+		expect((await tooLong.json()).code).toBe('NAME_TOO_LONG');
+		const duplicate = await post((await made()).token, { ...body, email: 'admin@example.com' });
+		expect(duplicate.status).toBe(422);
+	});
+
+	it('logs a fixed line, not the error, when removing the Account after a failed Learner fails too', async () => {
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const { db, post, made } = await invited();
+		const { token } = await made();
+		vi.spyOn(db.learner, 'upsert').mockRejectedValue(new Error('locked /invite/secret') as never);
+		vi.spyOn(db.user, 'deleteMany').mockRejectedValue(new Error('locked /invite/secret') as never);
+
+		await post(token).catch(() => {});
+
+		const logged = everythingLogged([spy]);
+		expect(logged).toContain('removing an Account after its Learner failed also failed');
+		expect(logged).not.toContain('/invite/secret');
+	});
+
+	it('does not spend the Invite when the name is refused, so the invitee can try again', async () => {
+		const { db, post, made } = await invited();
+		const { token, id } = await made();
+
+		const bad = await post(token, { ...body, name: 'x'.repeat(101) });
+		expect(bad.status).toBe(400);
+		expect((await bad.json()).code).toBe('NAME_TOO_LONG');
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
+
+		expect((await post(token)).status).toBe(200);
+	});
+
+	it('spends the Invite when registration is open too', async () => {
+		const { db, post, made, instance } = await invited();
+		const { token, id } = await made();
+		instance.registrationMode = () => 'open';
+
+		expect((await post(token)).status).toBe(200);
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+	});
+
+	it('removes the Account and keeps the Invite when the claim throws, and the invitee can retry', async () => {
+		const { db, post, made } = await invited({ claim: 'throw' });
+		const { token, id } = await made();
+
+		const res = await post(token);
+
+		expect(res.status).toBeGreaterThanOrEqual(400);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+		expect(await db.learner.count()).toBe(1);
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
+	});
+
+	it('removes the Account, leaves the Invite spent and sets no cookie when the Learner cannot be made', async () => {
+		const { db, postSafe: post, made } = await invited();
+		const { token, id } = await made();
+		const upsert = db.learner.upsert.bind(db.learner);
+		let calls = 0;
+		vi.spyOn(db.learner, 'upsert').mockImplementation(((args: never) => {
+			if (++calls === 1) throw new Error('database is locked');
+			return upsert(args);
+		}) as never);
+
+		const res = await post(token);
+
+		expect(res.status).toBeGreaterThanOrEqual(400);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+		expect(await db.learner.count()).toBe(1);
+		// Spent before anything was written: the admin reissues.
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+		expect((await post(token)).status).toBe(403);
+	});
+
+	it('removes the Account of any sign-up whose Learner cannot be made, with no Invite involved', async () => {
+		const { auth, db } = await setup(() => ({}));
+		vi.spyOn(db.learner, 'upsert').mockRejectedValue(new Error('database is locked') as never);
+
+		await auth
+			.handler(
+				new Request('http://localhost:3000/api/auth/sign-up/email', {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						origin: 'http://localhost:3000',
+						[CLIENT_IP_HEADER]: '10.9.9.9'
+					},
+					body: JSON.stringify(body)
+				})
+			)
+			.catch(() => {});
+
+		expect(await db.user.count()).toBe(0);
+		expect(await db.account.count()).toBe(0);
+	});
+});
+
+describe('redactInvite', () => {
+	const t = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
+	const N = INVITE_COOKIE;
+
+	it.each([
+		[`/invite/${t}`, '/invite/[redacted]'],
+		[`GET /invite/${t}?x=1 done`, 'GET /invite/[redacted]?x=1 done'],
+		[`/invite/ ${t}`, '/invite/[redacted]'],
+		[`/invite/ \t${t} after`, '/invite/[redacted] after'],
+		[`${N}=${t}`, `${N}=[redacted]`],
+		[`a=1; ${N} = ${t}; b=2`, `a=1; ${N}=[redacted]; b=2`],
+		[`${N}="${t}"`, `${N}="[redacted]"`],
+		[`${N}='${t}'`, `${N}='[redacted]'`],
+		[`{\\"${N}\\":\\"${t}\\"}`, `{${N}=\\"[redacted]\\"}`],
+		[`${N}="${t}`, `${N}="[redacted]`],
+		[`${N}='${t} and more`, `${N}='[redacted]`],
+		[`{ ${N}: '${t}' }`, `{ ${N}='[redacted]' }`],
+		[`{"${N}":"${t}"}`, `{${N}="[redacted]"}`],
+		[`${N}=\t${t}`, `${N}=[redacted]`],
+		[`?a=1&${N}=${t}`, `?a=1&${N}=[redacted]`],
+		[`a|${N}=${t}`, `a|${N}=[redacted]`],
+		[`a$${N}=${t}`, `a$${N}=[redacted]`],
+		[`a%${N}=${t}`, `a%${N}=[redacted]`],
+		[`a#${N}=${t}`, `a#${N}=[redacted]`]
+	])('removes the token from %s', (input, expected) => {
+		expect(redactInvite(input)).toBe(expected);
+		expect(redactInvite(input)).not.toContain(t);
+	});
+
+	it('never crosses into the next line', () => {
+		expect(redactInvite(`${N}=\nnext ${t.slice(0, 5)}`)).toBe(`${N}=\nnext ${t.slice(0, 5)}`);
+		expect(redactInvite(`${N}="${t}\nsecond line`)).toBe(`${N}="[redacted]\nsecond line`);
+	});
+
+	it('over-redacts a longer name that ends in ours, and leaves route ids and other text alone', () => {
+		// Whatever comes before the name is ignored: redacting a harmless cookie is the safe side.
+		expect(redactInvite(`other_${N}=harmless`)).toBe(`other_${N}=[redacted]`);
+		for (const harmless of ['/invite/[token]', 'unrelated text', 'beyond_invite=1']) {
+			expect(redactInvite(harmless)).toBe(harmless);
+		}
 	});
 });

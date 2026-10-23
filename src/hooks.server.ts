@@ -1,7 +1,8 @@
-import type { Handle, ServerInit } from '@sveltejs/kit';
+import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { createApp } from '$lib/server/app';
 import { createHandle } from '$lib/server/handle';
+import { installLogRedaction, redactInvite } from '$lib/server/identity/auth';
 
 let run: Handle;
 
@@ -26,3 +27,26 @@ export const init: ServerInit = async () => {
 
 /** The gate runs first (see createHandle), then Identity and the Learning core act for the request. */
 export const handle: Handle = (input) => run(input);
+
+/**
+ * What an unexpected error prints. SvelteKit's default prints `[status] METHOD pathname` and the stack, and
+ * the pathname of the Accept invite page holds the invite token. This prints the route id (`/invite/[token]`)
+ * for every route instead, and keeps the stack, with any invite path in it redacted.
+ */
+export function formatServerError(
+	status: number,
+	error: unknown,
+	event: { request: { method: string }; route: { id: string | null } }
+): string {
+	const head = `[${status}] ${event.request.method} ${event.route.id ?? '(no route)'}`;
+	if (status === 404) return head;
+	const detail = error instanceof Error ? (error.stack ?? String(error)) : String(error);
+	return `${head}\n${redactInvite(detail)}`;
+}
+
+export const handleError: HandleServerError = ({ error, event, status }) => {
+	console.error(formatServerError(status, error, event));
+	return { message: status === 404 ? 'Not Found' : 'Internal Error' };
+};
+
+installLogRedaction();

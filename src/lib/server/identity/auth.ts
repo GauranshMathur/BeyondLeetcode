@@ -1,4 +1,5 @@
 import { randomUUID as createId } from 'node:crypto';
+import { formatWithOptions, inspect } from 'node:util';
 import type { BetterAuthPlugin } from 'better-auth';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
@@ -10,17 +11,21 @@ import type { Db } from '../db.ts';
 export interface Admission {
 	learnerId?: string;
 	role?: 'admin' | 'learner';
+	/** Set when an Invite is what admitted the sign-up: the `after` hook spends it, or deletes the Account. */
+	inviteToken?: string;
 }
 
 /**
  * The registration gate: `null` refuses the sign-up, otherwise it is admitted as described.
  *
  * It runs twice per sign-up (the request hook, then the database hook), so it must stay free of
- * side effects. Anything consumed on admit, such as an invite, is consumed in a `user.create.after`
- * hook, never here.
+ * side effects. Anything consumed on admit, such as an invite, is consumed in `user.create.before`
+ * (after the admission and the name checks, before anything is written), never here.
  */
 export type AdmitSignUp = (attempt: {
 	email: string | undefined;
+	/** The token in the invite cookie of the request, if any (see `INVITE_COOKIE`); unchecked. */
+	inviteToken?: string;
 }) => Admission | null | Promise<Admission | null>;
 
 /**
@@ -28,6 +33,219 @@ export type AdmitSignUp = (attempt: {
  * the address SvelteKit resolved, so a client cannot choose its own bucket (see `handleAuthRequest`).
  */
 export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
+
+/**
+ * The cookie the Accept invite page sets (httpOnly, SameSite=Lax) and the registration gate reads: the
+ * invite token. A named constant so the page and the hooks cannot drift.
+ */
+export const INVITE_COOKIE = 'beyondleetcode_invite';
+
+/** The invite token in a request's `Cookie` header, or undefined. */
+export function inviteTokenFrom(headers: Headers | undefined | null): string | undefined {
+	const cookie = headers?.get('cookie');
+	if (!cookie) return undefined;
+	for (const part of cookie.split(';')) {
+		const at = part.indexOf('=');
+		if (at !== -1 && part.slice(0, at).trim() === INVITE_COOKIE) {
+			return part.slice(at + 1).trim() || undefined;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * `/invite/<token>`: the token is a credential, so no text that reaches a log may hold it. Also a 43-character
+ * base64url run after `/invite/` and spaces, which is how `console.log('/invite/', token)` prints once its
+ * arguments are joined. `/invite/[token]` (a route id) is not a token and is left as it is.
+ */
+const INVITE_PATH = /\/invite\/(?:(?!\[)[^\s/?#"')\]]+|[ \t]+[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-]))/g;
+
+const QUOTE = `\\\\*["']`;
+/**
+ * The cookie as it appears in text, in any of the shapes a log gives it: `name=value`, `name = value`,
+ * `name="value"`, `name='value'`, an escaped JSON quote (`\"name\":\"value\"`), a structured field
+ * (`name: 'value'`, `"name":"value"`) and a quoted value that never closes. Spaces round `=`/`:` are
+ * horizontal only, so a match never crosses into the next line. Whatever comes before the name does not
+ * matter (`?a=1&name=...`, `a;name=...`), so a longer name that ends in ours is redacted too: over-redacting
+ * a harmless cookie is the safe side.
+ */
+const INVITE_COOKIE_TEXT = new RegExp(
+	`(?:${QUOTE})?${INVITE_COOKIE}(?:${QUOTE})?[ \\t]*[:=][ \\t]*` +
+		`(?:(${QUOTE})[^"'\\n\\\\]*(${QUOTE})?|[^\\s;,"')\\]\\\\]+)`,
+	'g'
+);
+export const redactInvite = (text: string) =>
+	text
+		.replace(INVITE_PATH, '/invite/[redacted]')
+		.replace(
+			INVITE_COOKIE_TEXT,
+			(_match, open?: string, close?: string) =>
+				`${INVITE_COOKIE}=${open ?? ''}[redacted]${close ?? ''}`
+		);
+
+/** What a console call would print for these arguments (`%s` and friends, Errors with stack and `cause`), redacted. */
+export const redactedLine = (args: unknown[]): string => {
+	try {
+		return redactInvite(formatWithOptions({ depth: null, colors: false }, ...args));
+	} catch {
+		return '[unprintable]';
+	}
+};
+
+/** One log argument as redacted text. */
+export const redactedArgument = (value: unknown): string => redactedLine([value]);
+
+const REDACTING = Symbol.for('beyondleetcode.redactingConsole');
+type Wrapped = ((...args: unknown[]) => unknown) & { [REDACTING]?: true };
+
+/**
+ * Redacts at the sink. Every console method that prints is replaced once by one that formats the whole record
+ * first (`util.formatWithOptions`, `depth: null`, so `%s`, Errors with `cause` and objects are text), redacts
+ * that text and hands the original method a single string. Library code that logs on its own is covered
+ * without chasing each logger. Idempotent through a marker on each wrapper, so a second call, a second import
+ * or a hot reload does not wrap twice. Bun's console does not go through `process.stdout.write`, so patching
+ * the stream would do nothing there.
+ *
+ * Not covered, by decision: logging before this runs, direct `process.stdout/stderr.write`, other processes.
+ */
+export function installLogRedaction(target: Console = console): void {
+	const wrap = (method: string, make: (original: Wrapped) => Wrapped) => {
+		const original = (target as unknown as Record<string, unknown>)[method] as Wrapped | undefined;
+		if (typeof original !== 'function' || original[REDACTING]) return;
+		const wrapped = make((...args) => original.apply(target, args));
+		wrapped[REDACTING] = true;
+		(target as unknown as Record<string, unknown>)[method] = wrapped;
+	};
+	// Whole-record formatting for the methods that print a message.
+	const FORMATTED = [
+		'error',
+		'warn',
+		'info',
+		'log',
+		'debug',
+		'trace',
+		'dirxml',
+		'group',
+		'groupCollapsed'
+	];
+	for (const method of FORMATTED) {
+		wrap(
+			method,
+			(original) =>
+				(...args) =>
+					args.length === 0 ? original() : original(redactedLine(args))
+		);
+	}
+	wrap(
+		'assert',
+		(original) =>
+			(condition, ...args) =>
+				condition ? original(condition) : original(condition, redactedLine(args))
+	);
+	// Printed through their inspected output, colours off: an ANSI sequence between a name and its value would hide it.
+	wrap(
+		'dir',
+		(original) => (value, options) =>
+			original(redactInvite(inspect(value, { ...(options as object), depth: null, colors: false })))
+	);
+	wrap(
+		'table',
+		(original) => (data) => original(redactInvite(inspect(data, { depth: null, colors: false })))
+	);
+	// Every other member that takes arguments (count, timeLog, timeEnd, Bun's write, ...) is wrapped by
+	// what it is given, not by name: each argument is redacted and the argument count is kept. The ones that
+	// take a label (time, timeEnd, count, countReset) are included, so a label is the same on both sides and
+	// counters and timers stay correct. Only members with nothing to print are left alone.
+	const LEAVE = new Set(['constructor', 'groupEnd', 'clear', 'context', 'createTask']);
+	const names = new Set<string>();
+	for (let o: object | null = target; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+		for (const name of Object.getOwnPropertyNames(o)) names.add(name);
+	}
+	for (const name of names) {
+		const member = (target as unknown as Record<string, unknown>)[name];
+		if (
+			LEAVE.has(name) ||
+			name.startsWith('_') ||
+			typeof member !== 'function' ||
+			/^[A-Z]/.test(name)
+		)
+			continue;
+		if (name in { dir: 1, table: 1, assert: 1 } || FORMATTED.includes(name)) continue;
+		wrap(name, (original) => (...args) => {
+			if (name === 'write') return original(...redactedWrite(args));
+			const [label, ...rest] = args;
+			if (rest.length === 0) return original(redactedMember(label));
+			if (name === 'timeLog') {
+				// The label and the data are one record (`name=` then the value), but the label is passed on by
+				// itself so the timer is still found by it.
+				const redactedLabel = redactedMember(label);
+				// The data is formatted on its own (its first argument may hold the `%s`), then joined to the label.
+				const whole = redactInvite(
+					`${String(label)} ${formatWithOptions({ depth: null, colors: false }, ...rest)}`
+				);
+				const head = typeof redactedLabel === 'string' ? redactedLabel : String(redactedLabel);
+				const tail = whole.startsWith(head)
+					? whole.slice(head.length).replace(/^ /, '')
+					: redactedLine(rest);
+				return original(redactedLabel, tail);
+			}
+			return original(redactedMember(label), redactedLine(rest));
+		});
+	}
+}
+
+const isBinary = (value: unknown): value is ArrayBuffer | ArrayBufferView =>
+	value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+
+/** Bytes as strict UTF-8 text, or null when they are not valid UTF-8 (those are passed on as they are). */
+const strictText = (value: ArrayBuffer | ArrayBufferView): string | null => {
+	try {
+		return new TextDecoder('utf-8', { fatal: true }).decode(value as ArrayBuffer);
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * The arguments for Bun's `console.write`: text is joined with nothing in between (as `write('a', 'b')` prints
+ * `ab`, no separators, no `%s`), bytes are decoded as UTF-8 first, and the result is redacted. Bytes that are
+ * not valid UTF-8 are passed on unchanged, so what is written and the count returned match native.
+ */
+function redactedWrite(args: unknown[]): unknown[] {
+	const texts = args.map((a) =>
+		isBinary(a) ? strictText(a) : typeof a === 'string' ? a : String(a)
+	);
+	if (texts.every((t) => t !== null)) return [redactInvite(texts.join(''))];
+	return args.map((a, i) => (texts[i] === null ? a : redactInvite(texts[i] as string)));
+}
+
+/** One argument of an unlisted console member: text redacted, bytes decoded then redacted, anything else inspected. */
+function redactedMember(value: unknown): unknown {
+	if (typeof value === 'string') return redactInvite(value);
+	if (isBinary(value))
+		return redactInvite(strictText(value) ?? new TextDecoder().decode(value as ArrayBuffer));
+	if (
+		value === undefined ||
+		value === null ||
+		typeof value === 'number' ||
+		typeof value === 'boolean'
+	) {
+		return value;
+	}
+	return redactedLine([value]);
+}
+
+/**
+ * Better Auth's own logger, with the invite path taken out of every message and argument: its origin check
+ * logs the whole `callbackURL` of a request it refuses, which can be `/invite/<token>`.
+ */
+export const redactingLogger = {
+	log(level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: unknown[]) {
+		const line = redactedLine([message, ...args]);
+		const write = level === 'debug' ? console.debug : console[level];
+		write(`[Better Auth] ${line}`);
+	}
+};
 
 export const MIN_SECRET_LENGTH = 32;
 
@@ -82,6 +300,11 @@ export type CreateAuthOptions = {
 	secret: string;
 	/** Who may sign up. Consulted on every new Account; the default is nobody. */
 	admitSignUp?: AdmitSignUp;
+	/**
+	 * Spends the Invite a sign-up was admitted on (`Invites.claim`); true only when this call spent it.
+	 * Without it an invite admission is refused. Called in `user.create.before`, so before anything is written.
+	 */
+	claimInvite?: (token: string, now: Date) => Promise<boolean>;
 	/** Plugins the caller owns, e.g. SvelteKit's cookie plugin (keeps `$app/*` out of this file). */
 	extraPlugins?: BetterAuthPlugin[];
 };
@@ -158,6 +381,7 @@ export function createAuth({
 	origin,
 	secret,
 	admitSignUp = () => null,
+	claimInvite = async () => false,
 	extraPlugins = []
 }: CreateAuthOptions) {
 	if (secret.length < MIN_SECRET_LENGTH) {
@@ -194,7 +418,15 @@ export function createAuth({
 			// endpoint skips the form, so it gets the same budget as the form.
 			customRules: { '/sign-up/email': { window: 600, max: 20 } }
 		},
+		logger: redactingLogger,
+		// An error that is not an APIError (a database failure) is rethrown to the caller, so SvelteKit's
+		// `handleError` (which redacts the invite path) logs it. Left unset, Better Call prints it itself with
+		// `console.error` (router.mjs:93), request text and all. APIErrors are still turned back into their
+		// 403/422/400 responses by Better Call (router.mjs:84-89).
+		onAPIError: { throw: true },
 		telemetry: { enabled: false },
+		// `autoSignIn` and `requireEmailVerification` must stay unset: the hooks refuse a sign-up with a 403, and
+		// Better Auth turns a 403 into a fake success (its generic duplicate response) when either is set.
 		emailAndPassword: {
 			enabled: true,
 			minPasswordLength: MIN_PASSWORD_LENGTH,
@@ -216,7 +448,12 @@ export function createAuth({
 				create: {
 					// The one choke point for every Account creation; the rules live in registration.ts.
 					before: async (user, ctx) => {
-						const admission = ctx && (await admitSignUp({ email: user.email }));
+						const admission =
+							ctx &&
+							(await admitSignUp({
+								email: user.email,
+								inviteToken: inviteTokenFrom(ctx.headers ?? ctx.request?.headers)
+							}));
 						if (!admission) throw signUpClosed();
 						// After the admission, so a closed sign-up answers the same whatever the name; before the
 						// Learner below, so a refused name leaves nothing behind. Whatever path made the Account
@@ -234,6 +471,16 @@ export function createAuth({
 								create: { id: admission.learnerId }
 							});
 						}
+						// An Invite is spent here, last, before anything is written: Better Auth has already refused a
+						// duplicate email (`sign-up.mjs:192`) and writes the User (:217), the credential Account (:235)
+						// and the Session (:255) only after this hook returns. A lost claim (used, expired, cancelled, a
+						// concurrent sign-up) is one conditional update that changed no row: refused, nothing written.
+						// The gate (here and in the request hook) only checked. A failure after the claim (the insert,
+						// the Account, the Session, the Learner) leaves the Invite spent; the admin reissues it.
+						// (A Session insert failure leaves the invitee's one Account, usable, beside the spent Invite.) A claim that throws is refused the same way and writes nothing.
+						if (admission.inviteToken && !(await claimInvite(admission.inviteToken, new Date()))) {
+							throw signUpClosed();
+						}
 						const learnerId = admission.learnerId ?? createId();
 						return {
 							data: {
@@ -247,13 +494,29 @@ export function createAuth({
 						};
 					},
 					after: async (user) => {
+						// Better Auth 1.7.7 defers this hook while the sign-up transaction is open
+						// (`queueAfterTransactionHook`, transaction.mjs:96), so it runs after the User, the credential
+						// Account and the Session are written and the cookie is set (`sign-up.mjs:144-257`). A throw
+						// here is the Learner not being made: the User is removed (its Account and Session go with it,
+						// `onDelete: Cascade`) and the sign-up refused. A fresh Learner is made only now, so a failed
+						// insert or a refused claim never leaves one behind.
 						const { learnerId } = user as { learnerId?: string | null };
 						if (!learnerId) return;
-						await db.learner.upsert({
-							where: { id: learnerId },
-							update: {},
-							create: { id: learnerId }
-						});
+						try {
+							await db.learner.upsert({
+								where: { id: learnerId },
+								update: {},
+								create: { id: learnerId }
+							});
+						} catch (error) {
+							try {
+								await db.user.deleteMany({ where: { id: user.id } });
+							} catch {
+								// A fixed line: the error text may hold query text and the input.
+								console.error('Sign up: removing an Account after its Learner failed also failed.');
+							}
+							throw error;
+						}
 					}
 				}
 			}
@@ -265,7 +528,14 @@ export function createAuth({
 		hooks: {
 			before: createAuthMiddleware(async (ctx) => {
 				if (ctx.path !== '/sign-up/email') return;
-				if (!(await admitSignUp({ email: ctx.body?.email }))) throw signUpClosed();
+				if (
+					!(await admitSignUp({
+						email: ctx.body?.email,
+						inviteToken: inviteTokenFrom(ctx.headers)
+					}))
+				) {
+					throw signUpClosed();
+				}
 				const name = ctx.body?.name;
 				const refusal = typeof name === 'string' ? nameRefusal(name) : null;
 				if (refusal) throw refusal;
