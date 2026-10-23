@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.61.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.60.0...v0.61.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C38 OAuth providers: GitHub and Google sign-in ([#212](https://github.com/GauranshMathur/BeyondLeetcode/issues/212)) ([90e7a1c](https://github.com/GauranshMathur/BeyondLeetcode/commit/90e7a1c8201f1434405306cf76152d149e98fbc8))
+
 ## [0.60.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.59.0...v0.60.0) (2026-10-23)
 
 
