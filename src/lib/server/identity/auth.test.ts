@@ -2371,3 +2371,33 @@ describe('a session is bound to its credential generation', () => {
 		expect(await w.db.session.count({ where: { userId: w.lin.id } })).toBe(0);
 	});
 });
+
+describe('redactInvite with terminal escapes', () => {
+	const E = String.fromCharCode(27);
+	const t = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
+
+	it.each([
+		[`${INVITE_COOKIE}=${E}[31m${t}${E}[0m`],
+		[`${INVITE_COOKIE}${E}[0m=${t}`],
+		[`${INVITE_COOKIE}=${E}[1m${E}[31m ${t}`],
+		[`/invite/${E}[32m${t}${E}[0m`],
+		[`/invite${E}[0m/${t}`],
+		[`${E}]8;;http://x${E}\\/invite/${t}`],
+		[`${INVITE_COOKIE}=${String.fromCharCode(0x9b)}31m${t}`]
+	])('takes the token out of %j', (text) => {
+		const out = redactInvite(text);
+		expect(out).not.toContain(t);
+		expect(out).toMatch(/\[redacted\]/);
+	});
+
+	it('returns text without a token exactly as it came, colours and all', () => {
+		for (const text of [
+			`colour ${E}[32mgreen${E}[0m ok`,
+			`${E}]8;;http://x${E}\\link`,
+			`lone ${E} escape`,
+			'plain'
+		]) {
+			expect(redactInvite(text)).toBe(text);
+		}
+	});
+});

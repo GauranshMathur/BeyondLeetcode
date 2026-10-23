@@ -77,7 +77,7 @@ const INVITE_COOKIE_TEXT = new RegExp(
 		`(?:(${QUOTE})[^"'\\n\\\\]*(${QUOTE})?|[^\\s;,"')\\]\\\\]+)`,
 	'g'
 );
-export const redactInvite = (text: string) =>
+const redactCore = (text: string) =>
 	text
 		.replace(INVITE_PATH, '/invite/[redacted]')
 		.replace(
@@ -85,6 +85,32 @@ export const redactInvite = (text: string) =>
 			(_match, open?: string, close?: string) =>
 				`${INVITE_COOKIE}=${open ?? ''}[redacted]${close ?? ''}`
 		);
+
+/**
+ * Terminal escape sequences: CSI (`ESC [ ... final`, and the one-byte `U+009B` form), OSC (`ESC ] ... BEL` or
+ * `ESC \`), the two-character escapes, and a lone ESC. A caller's own string can hold them anywhere, for
+ * example inside a cookie value (`name=ESC[31mTOKEN`) where they would hide the token from a pattern.
+ */
+const ESC = String.fromCharCode(0x1b);
+const BEL = String.fromCharCode(0x07);
+const CSI8 = String.fromCharCode(0x9b);
+const TERMINAL_ESCAPES = new RegExp(
+	`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)?|(?:${ESC}\\[|${CSI8})[0-?]*[ -/]*[@-~]?|${ESC}[@-Z\\\\-_]?`,
+	'g'
+);
+const HAS_ESCAPE = new RegExp(`[${ESC}${CSI8}]`);
+
+/**
+ * Takes the invite token out of any text. Escape sequences typed into the caller's string cannot hide it:
+ * the text is also read with them removed, and where that finds a token the removed-and-redacted text is
+ * what is printed (a record with a token loses its colours; one without is returned exactly as it came).
+ */
+export const redactInvite = (text: string): string => {
+	if (!HAS_ESCAPE.test(text)) return redactCore(text);
+	const plain = text.replace(TERMINAL_ESCAPES, '');
+	const redactedPlain = redactCore(plain);
+	return redactedPlain === plain ? redactCore(text) : redactedPlain;
+};
 
 /** What a console call would print for these arguments (`%s` and friends, Errors with stack and `cause`), redacted. */
 export const redactedLine = (args: unknown[]): string => {
@@ -146,11 +172,16 @@ export function installLogRedaction(target: Console = console): void {
 				condition ? original(condition) : original(condition, redactedLine(args))
 	);
 	// Printed through their inspected output, colours off: an ANSI sequence between a name and its value would hide it.
-	wrap(
-		'dir',
-		(original) => (value, options) =>
-			original(redactInvite(inspect(value, { ...(options as object), depth: null, colors: false })))
-	);
+	wrap('dir', (original) => (value, options) => {
+		// `stylize` is an inspect option too (a callback that colours every piece): it, like `colors`, is dropped,
+		// so what is formatted is plain text.
+		const {
+			stylize: _stylize,
+			colors: _colors,
+			...plain
+		} = (options ?? {}) as Record<string, unknown>;
+		return original(redactInvite(inspect(value, { ...plain, depth: null, colors: false })));
+	});
 	wrap(
 		'table',
 		(original) => (data) => original(redactInvite(inspect(data, { depth: null, colors: false })))
@@ -160,6 +191,7 @@ export function installLogRedaction(target: Console = console): void {
 	// take a label (time, timeEnd, count, countReset) are included, so a label is the same on both sides and
 	// counters and timers stay correct. Only members with nothing to print are left alone.
 	const LEAVE = new Set(['constructor', 'groupEnd', 'clear', 'context', 'createTask']);
+	const labels = createLabelBook();
 	const names = new Set<string>();
 	for (let o: object | null = target; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
 		for (const name of Object.getOwnPropertyNames(o)) names.add(name);
@@ -177,11 +209,15 @@ export function installLogRedaction(target: Console = console): void {
 		wrap(name, (original) => (...args) => {
 			if (name === 'write') return original(...redactedWrite(args));
 			const [label, ...rest] = args;
-			if (rest.length === 0) return original(redactedMember(label));
+			// The members that name a counter or a timer get a label of their own per original label: two
+			// labels that differ only in a token are two counters, though both print as the same redacted text.
+			const named = LABELLED.has(name) && typeof label === 'string';
+			const shown = named ? labels.safe(label) : redactedMember(label);
+			if (rest.length === 0) return original(shown);
 			if (name === 'timeLog') {
 				// The label and the data are one record (`name=` then the value), but the label is passed on by
 				// itself so the timer is still found by it.
-				const redactedLabel = redactedMember(label);
+				const redactedLabel = named ? redactedMember(label) : shown;
 				// The data is formatted on its own (its first argument may hold the `%s`), then joined to the label.
 				const whole = redactInvite(
 					`${String(label)} ${formatWithOptions({ depth: null, colors: false }, ...rest)}`
@@ -190,9 +226,9 @@ export function installLogRedaction(target: Console = console): void {
 				const tail = whole.startsWith(head)
 					? whole.slice(head.length).replace(/^ /, '')
 					: redactedLine(rest);
-				return original(redactedLabel, tail);
+				return original(shown, tail);
 			}
-			return original(redactedMember(label), redactedLine(rest));
+			return original(shown, redactedLine(rest));
 		});
 	}
 }
@@ -209,18 +245,68 @@ const strictText = (value: ArrayBuffer | ArrayBufferView): string | null => {
 	}
 };
 
+/** The members that name a counter or a timer by their first argument. */
+const LABELLED = new Set(['count', 'countReset', 'time', 'timeLog', 'timeEnd']);
+
 /**
- * The arguments for Bun's `console.write`: text is joined with nothing in between (as `write('a', 'b')` prints
- * `ab`, no separators, no `%s`), bytes are decoded as UTF-8 first, and the result is redacted. Bytes that are
- * not valid UTF-8 are passed on unchanged, so what is written and the count returned match native.
+ * Printable labels for counters and timers. A label is redacted to text, but two labels that differ only in
+ * the part that is redacted (two invite paths) must stay two counters. Each original label gets its own
+ * printable one: its redacted text, or that text with ` (2)`, ` (3)`... when another original label already
+ * printed as it. The same original label always gets the same one, so a timer is found again and a counter
+ * counts on. The book is bounded; past it a label is just its redacted text.
+ */
+function createLabelBook(limit = 1000) {
+	const byOriginal = new Map<string, string>();
+	const taken = new Set<string>();
+	return {
+		safe(original: string): string {
+			const known = byOriginal.get(original);
+			if (known !== undefined) return known;
+			const base = redactInvite(original);
+			if (byOriginal.size >= limit) return base;
+			let shown = base;
+			for (let n = 2; taken.has(shown); n++) shown = `${base} (${n})`;
+			byOriginal.set(original, shown);
+			taken.add(shown);
+			return shown;
+		}
+	};
+}
+
+/** Byte `b` of a record as a character no pattern treats as a space or a delimiter (U+E000 + b), and back. */
+const SHIELD = 0xe000;
+const shield = (latin1: string) =>
+	latin1.replace(/[\u0080-\u00ff]/g, (c) => String.fromCharCode(SHIELD + c.charCodeAt(0)));
+const unshield = (text: string) =>
+	text.replace(/[\ue080-\ue0ff]/g, (c) => String.fromCharCode(c.charCodeAt(0) - SHIELD));
+
+/**
+ * The arguments for Bun's `console.write`: all of them are joined into one record with nothing in between
+ * (as `write('a', 'b')` prints `ab`, no separators, no `%s`) before anything is redacted, so a token cannot be
+ * split across arguments. When every part is valid UTF-8 the record is text and is redacted as text. When
+ * any part is bytes that are not, the whole record is read as latin1 (every byte one character, so none is
+ * lost), redacted with the bytes above 0x7f shielded from the patterns (a byte such as 0xa0 would read as a
+ * space), and written back as the same bytes: the invalid bytes stay as they were, and ASCII token text goes.
+ * What is written and the count returned stay native.
  */
 function redactedWrite(args: unknown[]): unknown[] {
-	const texts = args.map((a) =>
-		isBinary(a) ? strictText(a) : typeof a === 'string' ? a : String(a)
-	);
-	if (texts.every((t) => t !== null)) return [redactInvite(texts.join(''))];
-	return args.map((a, i) => (texts[i] === null ? a : redactInvite(texts[i] as string)));
+	const parts = args.map((a) => (isBinary(a) ? bytesOf(a) : new TextEncoder().encode(String(a))));
+	const record = Buffer.concat(parts);
+	let text: string | null = null;
+	try {
+		text = new TextDecoder('utf-8', { fatal: true }).decode(record);
+	} catch {
+		text = null;
+	}
+	if (text !== null) return [redactInvite(text)];
+	const redacted = unshield(redactInvite(shield(record.toString('latin1'))));
+	return [new Uint8Array(Buffer.from(redacted, 'latin1'))];
 }
+
+const bytesOf = (value: ArrayBuffer | ArrayBufferView): Uint8Array =>
+	value instanceof ArrayBuffer
+		? new Uint8Array(value)
+		: new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 
 /** One argument of an unlisted console member: text redacted, bytes decoded then redacted, anything else inspected. */
 function redactedMember(value: unknown): unknown {

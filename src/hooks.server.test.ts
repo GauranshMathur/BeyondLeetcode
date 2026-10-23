@@ -19,32 +19,50 @@ const event = (id: string | null) =>
 	}) as never;
 
 describe('what an unexpected error logs', () => {
-	it('names the route, never the pathname, and keeps the stack for diagnostics', () => {
-		const error = new Error('boom');
+	it('names the route, never the pathname, and the error by its name only', () => {
+		const text = formatServerError(500, new TypeError('boom'), event('/invite/[token]'));
 
-		const text = formatServerError(500, error, event('/invite/[token]'));
-
-		expect(text).toContain('[500] POST /invite/[token]');
+		expect(text).toBe('[500] POST /invite/[token] TypeError');
 		expect(text).not.toContain(token);
-		expect(text).toContain(error.stack?.split('\n')[1].trim());
 	});
 
-	it('redacts an invite path that the error or its stack carries', () => {
-		const error = new Error(`failed for /invite/${token}?x=1`);
+	it('adds a code when the error has a short one, and never the message, the stack or a cause', () => {
+		const error = Object.assign(
+			new Error(`failed for /invite/${token}?x=1 beyondleetcode_invite=${token}`),
+			{
+				code: 'ECONNRESET',
+				cause: new Error(`inner ${token}`)
+			}
+		);
 		error.stack = `Error: failed\n    at fetch (http://localhost/invite/${token})`;
 
 		const text = formatServerError(500, error, event('/invite/[token]'));
 
-		expect(text).not.toContain(token);
-		expect(text).toContain('/invite/[redacted]');
+		expect(text).toBe('[500] POST /invite/[token] Error ECONNRESET');
+		expect(text).not.toMatch(/failed|inner|fetch|localhost/);
 	});
 
-	it('writes one line for an unmatched path and handles a thrown non-Error', () => {
+	it('drops a name or code that is not a short token', () => {
+		const error = Object.assign(new Error('x'), { code: `bad code ${token} ${'x'.repeat(80)}` });
+		error.name = `Custom\nFAKE-LINE ${token}`;
+
+		const text = formatServerError(500, error, event(null));
+
+		expect(text).toBe('[500] POST (no route) Error');
+	});
+
+	it('writes one line for an unmatched path, and a thrown non-Error by its type', () => {
 		expect(formatServerError(404, new Error('x'), event(null))).toBe('[404] POST (no route)');
-		expect(formatServerError(500, `/invite/${token}`, event(null))).not.toContain(token);
+		expect(formatServerError(500, `/invite/${token}`, event(null))).toBe(
+			'[500] POST (no route) string'
+		);
+		expect(formatServerError(500, { code: 'EPIPE', message: token }, event(null))).toBe(
+			'[500] POST (no route) object EPIPE'
+		);
+		expect(formatServerError(500, null, event(null))).toBe('[500] POST (no route) object');
 	});
 
-	it('logs no token through the handler, and returns the generic message', () => {
+	it('logs only that through the handler, and returns the generic message', () => {
 		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
 			vi.spyOn(console, m).mockImplementation(() => {})
 		);
@@ -60,8 +78,9 @@ describe('what an unexpected error logs', () => {
 			.flatMap((s) => s.mock.calls.flat())
 			.map((arg) => inspect(arg, { depth: null }))
 			.join('\n');
-		expect(logged).toContain('/invite/[redacted]');
+		expect(logged).toContain('[500] POST /invite/[token] Error');
 		expect(logged).not.toContain(token);
+		expect(logged).not.toMatch(/Failed to parse|at /);
 		expect(result).toEqual({ message: 'Internal Error' });
 	});
 });
@@ -210,5 +229,131 @@ describe('redaction at the console', () => {
 		// timeLog: label and data are one record, and the timer is still found.
 		expect(bytes).toMatch(/\[[\d.]+m?s\] beyondleetcode_invite= \[redacted\]/);
 		expect(bytes).not.toMatch(/No such label|does not exist/i);
+	});
+
+	/** Runs `script` after installing the redaction in a real Bun process; its bytes and exit status. */
+	function inBun(script: string) {
+		const auth = new URL('./lib/server/identity/auth.ts', import.meta.url).pathname;
+		const run = spawnSync('bun', [
+			'-e',
+			`import { installLogRedaction } from ${JSON.stringify(auth)}; installLogRedaction(); const t = ${JSON.stringify(token)}; ${script}`
+		]);
+		return {
+			status: run.status,
+			out: Buffer.concat([run.stdout, run.stderr]),
+			stderr: run.stderr.toString()
+		};
+	}
+	const ESC = String.fromCharCode(27);
+	const colours = new RegExp(`${ESC}\\[[0-9;]*m`, 'g');
+
+	it("prints no token for escape sequences typed into the caller's own string, and leaves other colours alone", () => {
+		const { status, out, stderr } = inBun(String.raw`
+			const E = String.fromCharCode(27);
+			console.log('beyondleetcode_invite=' + E + '[31m' + t + E + '[0m');
+			console.log('beyondleetcode_invite' + E + '[0m=' + t);
+			console.log('beyondleetcode_invite=' + E + '[1m' + E + '[31m' + t);
+			console.log('/invite/' + E + '[32m' + t + E + '[0m');
+			console.log('/invite' + E + '[0m/' + t);
+			console.log(E + ']8;;http://x' + E + '\\/invite/' + t);
+			console.log('beyondleetcode_invite=' + String.fromCharCode(0x9b) + '31m' + t);
+			console.log('colour ' + E + '[32mgreen' + E + '[0m ok');
+			console.log('plain text');
+		`);
+		const text = out.toString('latin1');
+		expect(status, stderr).toBe(0);
+		expect(text).not.toContain(token);
+		// Where no token was, the colours are still there; where one was, the record is plain and redacted.
+		expect(text).toContain(`colour ${ESC}[32mgreen${ESC}[0m ok`);
+		expect(text).toContain('beyondleetcode_invite=[redacted]');
+		expect(text).toContain('/invite/[redacted]');
+		expect(text).toContain('plain text');
+		expect(text.match(/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(7);
+	});
+
+	it('prints no token when console.dir is given a colouring stylize callback, and still prints the value', () => {
+		const { status, out, stderr } = inBun(`
+			const E = String.fromCharCode(27);
+			const stylize = (s) => [...String(s)].map((c) => E + '[31m' + c + E + '[0m').join('');
+			console.dir({ beyondleetcode_invite: t, url: '/invite/' + t, keep: 'visible' }, { stylize, colors: true });
+			console.dir('/invite/' + t, { stylize });
+			console.dir({ plain: 'shown' }, { stylize });
+		`);
+		const text = out.toString('latin1');
+		expect(status, stderr).toBe(0);
+		expect(text).not.toContain(token);
+		expect(text.replace(colours, '')).not.toContain(token.slice(0, 12));
+		expect(text).toContain('visible');
+		expect(text).toContain('shown');
+		expect(text).toContain('[redacted]');
+	});
+
+	it('keeps counters and timers of distinct labels apart while printing only redacted text', () => {
+		const other = 'ZZZZ-other-token-of-forty-three-characters_abc';
+		const { status, out, stderr } = inBun(`
+			const o = ${JSON.stringify(other)};
+			console.count('/invite/' + t); console.count('/invite/' + t); console.count('/invite/' + o);
+			console.countReset('/invite/' + t); console.count('/invite/' + t); console.count('/invite/' + o);
+			console.count('plain'); console.count('plain');
+			console.time('/invite/' + t); console.time('/invite/' + o);
+			console.timeLog('/invite/' + t, 'first'); console.timeLog('/invite/' + o, 'second');
+			console.timeEnd('/invite/' + t); console.timeEnd('/invite/' + o);
+		`);
+		const text = out.toString();
+		expect(status, stderr).toBe(0);
+		expect(text).not.toContain(token);
+		expect(text).not.toContain(other);
+		const lines = text.split('\n');
+		// One counter: 1, 2, reset, 1. The other, apart from it: 1, 2.
+		expect(lines.filter((l) => l === '/invite/[redacted]: 1')).toHaveLength(2);
+		expect(lines).toContain('/invite/[redacted]: 2');
+		expect(lines).toContain('/invite/[redacted] (2): 1');
+		expect(lines).toContain('/invite/[redacted] (2): 2');
+		expect(lines).toContain('plain: 2');
+		// Each timer is found by its own label.
+		expect(text).toMatch(/\[[\d.]+m?s\] \/invite\/\[redacted\] first/);
+		expect(text).toMatch(/\[[\d.]+m?s\] \/invite\/\[redacted\] \(2\) second/);
+		expect(text).toMatch(/\[[\d.]+m?s\] \/invite\/\[redacted\]$/m);
+		expect(text).toMatch(/\[[\d.]+m?s\] \/invite\/\[redacted\] \(2\)$/m);
+		expect(text).not.toMatch(/No such label|does not exist/i);
+	});
+
+	it('redacts a console.write that mixes invalid UTF-8 with token text, keeping the bytes', () => {
+		const { status, out, stderr } = inBun(String.raw`
+			const bytes = (...n) => new Uint8Array(n);
+			const enc = (s) => new TextEncoder().encode(s);
+			// Invalid bytes with the token as text, as bytes, and split across arguments.
+			console.write(bytes(0xff, 0xfe, 0x20), '/invite/' + t, bytes(0x20, 0xa0, 0x0a));
+			console.write(bytes(0xc3, 0x28, 0x20), 'beyondleetcode_invite=', enc(t), bytes(0x0a));
+			console.write(bytes(0xff, 0x20), '/invite/', t.slice(0, 20), t.slice(20), '\n');
+			console.write(bytes(0x80, 0x81, 0x20), enc('/invite/' + t.slice(0, 10)), enc(t.slice(10)), bytes(0x0a));
+			// A multibyte character inside the token must not end it early, in a text-only record or a mixed one.
+			console.write(enc('/invite/' + t.slice(0, 10) + 'à' + t.slice(10) + '\n'));
+			console.write(bytes(0xff, 0x20), enc('/invite/' + t.slice(0, 10) + 'à ' + t.slice(10) + '\n'));
+			console.write('MARK', bytes(0xff), 'a', 'b', '\n');
+			const r = console.write(bytes(0x4d, 0x42, 0xff, 0x0a)); console.write('RET', String(r), '\n');
+		`);
+		expect(status, stderr).toBe(0);
+		const text = out.toString('latin1');
+		expect(text).not.toContain(token);
+		for (const piece of [
+			token.slice(0, 10),
+			token.slice(10),
+			token.slice(0, 20),
+			token.slice(20)
+		]) {
+			expect(text).not.toContain(piece);
+		}
+		expect(text).toContain('/invite/[redacted]');
+		expect(text).toContain('beyondleetcode_invite=[redacted]');
+		// The invalid bytes are still there, byte for byte, and the arguments are joined with nothing in between.
+		expect(out.includes(Buffer.from([0xff, 0xfe, 0x20]))).toBe(true);
+		expect(out.includes(Buffer.from([0xc3, 0x28, 0x20]))).toBe(true);
+		expect(out.includes(Buffer.from([0x80, 0x81, 0x20]))).toBe(true);
+		expect(out.includes(Buffer.from([0x20, 0xa0, 0x0a]))).toBe(true);
+		expect(
+			out.includes(Buffer.concat([Buffer.from('MARK'), Buffer.from([0xff]), Buffer.from('ab\n')]))
+		).toBe(true);
+		expect(text).toContain('RET4');
 	});
 });
