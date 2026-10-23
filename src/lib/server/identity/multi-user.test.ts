@@ -207,9 +207,51 @@ describe('repairLearners', () => {
 		const db = await createFileTestDb();
 		await db.learner.create({ data: { id: 'a' } });
 		await db.user.create({ data: user('u1', 'a') });
+		await db.learner.create({ data: { id: 'b' } });
+		await db.user.create({ data: user('u2', 'b') });
 		await db.user.delete({ where: { id: 'u1' } });
 
 		expect(await repairLearners(db)).toEqual({ created: 0, removed: 1 });
-		expect(await db.learner.count()).toBe(0);
+		expect((await db.learner.findMany()).map((l) => l.id)).toEqual(['b']);
+	});
+
+	it('keeps everything while there is no User at all: a half-finished Setup keeps the Local Learner and its progress', async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.learner.create({ data: { id: 'other' } });
+		await db.chapterRead.create({ data: { learnerId: 'local', chapterId: 'c' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 0 });
+
+		expect(await db.learner.count()).toBe(2);
+		expect(await db.chapterRead.count()).toBe(1);
+	});
+
+	it("keeps the 'local' Learner and its progress even when Users exist and none references it", async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.learner.create({ data: { id: 'a' } });
+		await db.user.create({ data: user('u1', 'a') });
+		await db.chapterRead.create({ data: { learnerId: 'local', chapterId: 'c' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 0 });
+
+		expect((await db.learner.findMany({ orderBy: { id: 'asc' } })).map((l) => l.id)).toEqual([
+			'a',
+			'local'
+		]);
+		expect(await db.chapterRead.count()).toBe(1);
+	});
+
+	it('removes a true orphan (a cuid Learner no User references, with Users present) with its progress', async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'a' } });
+		await db.user.create({ data: user('u1', 'a') });
+		const orphan = await db.learner.create({ data: {} });
+		await db.chapterRead.create({ data: { learnerId: orphan.id, chapterId: 'c' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 1 });
+
+		expect(await db.chapterRead.count()).toBe(0);
 	});
 });
