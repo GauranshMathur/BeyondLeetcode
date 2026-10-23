@@ -1846,7 +1846,10 @@ describe('a password sign-in racing a writer of the password', () => {
 	/** A refusal like a wrong password: 401, a fixed message, no cookie. */
 	const refused = (outcome: { ok: boolean; error?: unknown }) => {
 		expect(outcome.ok).toBe(false);
-		expect(outcome.error).toMatchObject({ statusCode: 401 });
+		expect(outcome.error).toMatchObject({
+			statusCode: 401,
+			body: { code: 'INVALID_EMAIL_OR_PASSWORD' }
+		});
 	};
 
 	it("is refused when an admin's reset lands between the check and the session", async () => {

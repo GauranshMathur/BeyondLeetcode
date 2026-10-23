@@ -536,6 +536,13 @@ const HTTP_SIGN_IN_PATHS = ['/sign-in/email'];
 
 // With a code, so that the provider callback (which turns an APIError that has one into a redirect to the
 // error page with `?error=<code>`) sends the visitor back to Sign in; without one it would answer a bare 403.
+// The refusal of a sign-in whose password changed under it: the same answer as a wrong password.
+const staleCredential = () =>
+	new APIError('UNAUTHORIZED', {
+		message: 'Invalid email or password',
+		code: 'INVALID_EMAIL_OR_PASSWORD'
+	});
+
 const signUpClosed = () =>
 	new APIError('FORBIDDEN', { message: 'Sign-up is closed', code: 'SIGN_UP_CLOSED' });
 
@@ -732,15 +739,15 @@ export function createAuth({
 			// deletions reads the new hash here and removes itself, and one written before them is deleted by them.
 			session: {
 				create: {
-					before: async (session, ctx) =>
-						(await checkedPasswordStillCurrent(ctx, session.userId)) ? undefined : false,
+					before: async (session, ctx) => {
+						if (!(await checkedPasswordStillCurrent(ctx, session.userId))) throw staleCredential();
+					},
 					after: async (session, ctx) => {
 						if (!session || (await checkedPasswordStillCurrent(ctx, session.userId))) return;
+						// If this delete fails too, the row is unreachable all the same: the error below leaves before the
+						// session cookie is set, so nobody ever holds the token.
 						await db.session.deleteMany({ where: { id: session.id } });
-						throw new APIError('UNAUTHORIZED', {
-							message: 'Invalid email or password',
-							code: 'INVALID_EMAIL_OR_PASSWORD'
-						});
+						throw staleCredential();
 					}
 				}
 			},
