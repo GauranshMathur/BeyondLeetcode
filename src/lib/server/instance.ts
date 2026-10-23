@@ -161,3 +161,21 @@ export async function createInstance(db: Db): Promise<Instance> {
 		}
 	};
 }
+
+/**
+ * For the `reset-admin-password` command, in its own process (it never touches a running server's cached
+ * mode, which only a restart refreshes): clears the stored mode of a multi Instance that has no Account at
+ * all, so Setup opens again after a restart. Refuses, returning false and changing nothing, unless the
+ * mode is multi and the User table is empty.
+ *
+ * One DELETE statement holds both conditions: SQLite runs a statement under the database's single write
+ * lock, so a sign-up either commits before it (the table is not empty, nothing is deleted) or after it
+ * (the row is gone). There is no read-then-write gap for an Account to be orphaned in. A sign-up that a
+ * still-running server lets through after the clear is the one case left, which is why the command tells
+ * the owner to restart straight away.
+ */
+export async function clearEmptyMultiInstance(db: Db): Promise<boolean> {
+	const deleted =
+		await db.$executeRaw`DELETE FROM "Instance" WHERE "id" = 'instance' AND "mode" = 'multi' AND NOT EXISTS (SELECT 1 FROM "User")`;
+	return deleted === 1;
+}

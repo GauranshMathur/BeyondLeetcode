@@ -607,4 +607,33 @@ describe('resetAdminPassword', () => {
 
 		expect(flagWhenPasswordChanged).toBe(true);
 	});
+
+	it('writes nothing else when the flag write fails: the password and sessions are untouched', async () => {
+		const { auth, db } = await withAdmin();
+		const { internalAdapter } = await auth.$context;
+		vi.spyOn(internalAdapter, 'updateUser').mockRejectedValue(new Error('disk'));
+
+		await expect(resetAdminPassword(auth)).rejects.toThrow('disk');
+
+		await signIn(auth, 'ada@example.com', password);
+		const ada = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+		expect(ada.mustChangePassword).toBe(false);
+	});
+
+	it('when the session deletion fails after the password changed, the old session is flagged and the error is thrown', async () => {
+		const { auth, db, admin, resolver } = await withAdmin();
+		const { internalAdapter } = await auth.$context;
+		vi.spyOn(internalAdapter, 'deleteUserSessions').mockRejectedValue(new Error('disk'));
+
+		await expect(resetAdminPassword(auth)).rejects.toThrow('disk');
+
+		const ada = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+		expect(ada.mustChangePassword).toBe(true);
+		await expect(signIn(auth, 'ada@example.com', password)).rejects.toThrow();
+		const who = await resolver.resolve({
+			cookies: { get: () => undefined },
+			request: { headers: new Headers({ cookie: admin.cookie }) }
+		});
+		expect(who?.mustChangePassword).toBe(true);
+	});
 });
