@@ -8,7 +8,7 @@ import {
 } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
-import { InstanceAlreadySetUpError } from '$lib/server/instance';
+import { AccountsExistError, InstanceAlreadySetUpError } from '$lib/server/instance';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Why Multi-user cannot be chosen here: what to add to `.env`. (`later` is never produced, see `MultiUserChoice`.) */
@@ -27,6 +27,7 @@ const FIELD_MESSAGES = {
 } as const;
 const NAME_TOO_LONG = `Use at most ${MAX_NAME_LENGTH} characters.`;
 const NAME_CHARACTERS = "This name contains a character that can't be used.";
+const LOCAL_REFUSED = 'This instance already has accounts, so it cannot start in Local mode.';
 const ALREADY_SET_UP = 'This instance has already been set up.';
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
@@ -55,6 +56,7 @@ export const actions: Actions = {
 			await locals.instance.chooseLocal();
 		} catch (error) {
 			// A second choice that lost the race goes to the Map like the first; any other failure is real.
+			if (error instanceof AccountsExistError) return fail(409, { message: LOCAL_REFUSED });
 			if (!isAlreadySetUp(error)) throw error;
 		}
 		redirect(303, '/');

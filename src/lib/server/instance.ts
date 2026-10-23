@@ -33,6 +33,14 @@ export class InstanceAlreadySetUpError extends Error {
 	}
 }
 
+/** Local cannot be chosen: an Account exists, and Local would hand its Learner to whoever opens Setup. */
+export class AccountsExistError extends Error {
+	constructor() {
+		super('This Instance already has Accounts, so it cannot start in Local mode.');
+		this.name = 'AccountsExistError';
+	}
+}
+
 export class InvalidRegistrationModeError extends Error {
 	constructor() {
 		super("The Registration Mode is 'open' or 'invite'.");
@@ -117,12 +125,20 @@ export async function createInstance(db: Db): Promise<Instance> {
 		},
 		async chooseLocal() {
 			if (mode !== null) throw new InstanceAlreadySetUpError();
+			let inserted: number;
 			try {
-				await db.instance.create({ data: { mode: 'local' } });
+				// One statement holds the claim and the Accounts check, so a sign-up cannot land between them.
+				// The fixed id is the claim: an existing row makes the insert fail.
+				inserted =
+					await db.$executeRaw`INSERT INTO "Instance" ("id", "mode") SELECT 'instance', 'local' WHERE NOT EXISTS (SELECT 1 FROM "User")`;
 			} catch (error) {
-				// The fixed id is the claim: a unique violation means someone set it up first.
-				if (isUniqueViolation(error)) return refuse();
+				if (await db.instance.findUnique({ where: { id: 'instance' } })) return refuse();
 				throw error;
+			}
+			if (inserted !== 1) {
+				// Nothing inserted: set up by someone else (the row decides), otherwise an Account exists.
+				if (await db.instance.findUnique({ where: { id: 'instance' } })) return refuse();
+				throw new AccountsExistError();
 			}
 			mode = 'local';
 		},
@@ -180,4 +196,16 @@ export async function clearEmptyMultiInstance(db: Db): Promise<boolean> {
 	const deleted =
 		await db.$executeRaw`DELETE FROM "Instance" WHERE "id" = 'instance' AND "mode" = 'multi' AND NOT EXISTS (SELECT 1 FROM "User")`;
 	return deleted === 1;
+}
+
+/**
+ * For the `reset-admin-password` command: stores mode multi when an Account with role exactly `admin`
+ * exists and no mode is stored, the state a clear that landed between Setup's mode claim and its User
+ * insert leaves behind (C54). One statement holds both conditions, as in `clearEmptyMultiInstance`.
+ * Returns whether it restored; false changes nothing. The running server caches the mode, so it needs a restart.
+ */
+export async function restoreMultiInstance(db: Db): Promise<boolean> {
+	const inserted =
+		await db.$executeRaw`INSERT INTO "Instance" ("id", "mode") SELECT 'instance', 'multi' WHERE NOT EXISTS (SELECT 1 FROM "Instance") AND EXISTS (SELECT 1 FROM "User" WHERE "role" = 'admin')`;
+	return inserted === 1;
 }

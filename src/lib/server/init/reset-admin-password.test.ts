@@ -89,6 +89,34 @@ describe('reset-admin-password command', () => {
 		expect((await createInstance(db)).mode()).toBeNull();
 	});
 
+	it('restores multi when an admin Account exists with no stored mode, then resets as usual and says to restart', async () => {
+		const { auth, db, open } = await setup(['admin']);
+		expect((await createInstance(db)).mode()).toBeNull();
+
+		const result = await runResetAdminPassword([], env, open);
+
+		expect(result.code).toBe(EXIT_OK);
+		expect((await createInstance(db)).mode()).toBe('multi');
+		const printed = result.stdout.trim();
+		expect(printed).toMatch(/^[A-Za-z0-9]{20}$/);
+		expect(result.stderr).toMatch(/restart/i);
+		expect(result.stderr).not.toContain(printed);
+		await auth.api.signInEmail({ body: { email: 'u0@example.com', password: printed } });
+		expect(
+			(await db.user.findUniqueOrThrow({ where: { email: 'u0@example.com' } })).mustChangePassword
+		).toBe(true);
+	});
+
+	it('does not ask for a restart when the mode was already stored', async () => {
+		const { db, open } = await setup(['admin']);
+		await (await createInstance(db)).chooseMulti();
+
+		const result = await runResetAdminPassword([], env, open);
+
+		expect(result.code).toBe(EXIT_OK);
+		expect(result.stderr).not.toMatch(/restart/i);
+	});
+
 	it('leaves the mode alone when there are Accounts but no admin', async () => {
 		const { db, open } = await setup([undefined]);
 		await (await createInstance(db)).chooseMulti();
