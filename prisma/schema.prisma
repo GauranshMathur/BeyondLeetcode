@@ -9,8 +9,13 @@ datasource db {
 
 // A person working through the Topic Map, in either mode (CONTEXT.md).
 model Learner {
-  id        String   @id @default(cuid())
-  createdAt DateTime @default(now())
+  id             String          @id @default(cuid())
+  createdAt      DateTime        @default(now())
+  chapterReads   ChapterRead[]
+  buildSteps     BuildStep[]
+  topicLanguages TopicLanguage[]
+  hintsRevealed  HintsRevealed[]
+  submissions    Submission[]
 }
 
 // A Learner has reached the end of a Chapter (CONTEXT.md: Read). Keyed by the stable content id.
@@ -18,6 +23,7 @@ model ChapterRead {
   learnerId String
   chapterId String
   readAt    DateTime @default(now())
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
 
   @@id([learnerId, chapterId])
 }
@@ -34,6 +40,7 @@ model BuildStep {
   /// Starts at 1; every save must name the revision it was based on.
   revision  Int      @default(1)
   updatedAt DateTime @updatedAt
+  learner   Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
 
   @@id([learnerId, topicId, language, problemId])
 }
@@ -44,6 +51,7 @@ model TopicLanguage {
   learnerId String
   topicId   String
   language  String
+  learner   Learner @relation(fields: [learnerId], references: [id], onDelete: Cascade)
 
   @@id([learnerId, topicId])
 }
@@ -54,6 +62,7 @@ model HintsRevealed {
   learnerId String
   problemId String
   count     Int
+  learner   Learner @relation(fields: [learnerId], references: [id], onDelete: Cascade)
 
   @@id([learnerId, problemId])
 }
@@ -73,6 +82,7 @@ model Submission {
   /// The Problem whose Test failed first; null when Accepted or on a Compile Error.
   failingProblemId String?
   createdAt        DateTime @default(now())
+  learner          Learner  @relation(fields: [learnerId], references: [id], onDelete: Cascade)
 
   @@index([learnerId, createdAt])
 }
@@ -139,6 +149,7 @@ model Account {
   updatedAt             DateTime  @updatedAt
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([providerId, accountId])
   @@index([userId])
 }
 

@@ -56,3 +56,13 @@ it('with the gate on, no cookie or a malformed one is still the Local Learner', 
 		'local'
 	);
 });
+
+it('with the gate on, the cookie Learner gets its row, once, so its progress can be written', async () => {
+	const db = await createTestDb();
+	const identity = await createLocalIdentity(db, { testLearnerCookie: true });
+
+	await identity.resolve(request({ [TEST_LEARNER_COOKIE]: 'topic-e2e' }));
+	await identity.resolve(request({ [TEST_LEARNER_COOKIE]: 'topic-e2e' }));
+
+	expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'topic-e2e' })]);
+});
