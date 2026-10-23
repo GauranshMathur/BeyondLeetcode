@@ -17,7 +17,10 @@ const MESSAGES = {
 	mismatch: 'The two new passwords do not match.',
 	same: 'Choose a password different from your current one.',
 	failed:
-		'Changing your password failed, and it may have changed. You are signed out of every session. Sign in with your new password, or your old one if that fails.'
+		'Changing your password failed, and it may have changed. You are signed out of every session. Sign in with your new password, or your old one if that fails.',
+	// Ending the sessions failed too: say so, or the user would think every other device is signed out.
+	unended:
+		'Changing your password failed, and it may have changed. Other sessions may still be signed in. Sign in with your new password, or your old one if that fails, then change your password again.'
 } as const;
 
 type Field = 'current' | 'new' | 'confirm';
@@ -146,6 +149,7 @@ export function createChangePassword(throttle: Throttle) {
 					await internalAdapter.deleteUserSessions(userId);
 				} catch (cleanup) {
 					logFailure('ending the sessions after a failure failed', cleanup);
+					return refused(500, null, MESSAGES.unended);
 				}
 				return refused(500, null, MESSAGES.failed);
 			}

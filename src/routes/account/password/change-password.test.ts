@@ -192,6 +192,31 @@ describe('changing a password', () => {
 		}
 	);
 
+	it('if ending the sessions fails twice: says so plainly, and the earlier sessions do survive', async () => {
+		const { auth, account, signIn, sessionOf } = await setup();
+		const { action } = createChangePassword(throttleFor());
+		const me = await account(true);
+		const other = (await signIn(me.email, oldPassword)) as string;
+		const context = await auth.$context;
+		const spy = vi
+			.spyOn(context.internalAdapter, 'deleteUserSessions')
+			.mockRejectedValue(new Error('down: /secret/path'));
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { result } = await run(action, event(auth, me.cookie, form(oldPassword, newPassword)).ev);
+
+		expect(result).toMatchObject({ status: 500, data: { field: null } });
+		const message = (result as { data: { message: string } }).data.message;
+		expect(message).toContain('Other sessions may still be signed in');
+		expect(message).not.toContain('signed out of every session');
+		expect(JSON.stringify(result)).not.toContain('secret');
+		// The truth the message tells: the password changed and the earlier sessions are still valid.
+		expect(await sessionOf(other)).not.toBeNull();
+		spy.mockRestore();
+		log.mockRestore();
+		expect(await signIn(me.email, newPassword)).not.toBeNull();
+	});
+
 	it('refuses a wrong current password with a fixed text, changing nothing', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
 		const { action } = createChangePassword(throttleFor());

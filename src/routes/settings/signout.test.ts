@@ -102,6 +102,7 @@ describe('the sign-out action', () => {
 describe('a failed sign-out for an Account that must change its password', () => {
 	it.each([
 		['a session that says so', async () => ({ user: { mustChangePassword: true } })],
+		['no session at all', async () => null],
 		[
 			'a session that cannot be read',
 			async () => {
