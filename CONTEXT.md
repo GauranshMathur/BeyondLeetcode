@@ -114,15 +114,18 @@ A person working through the Topic Map, in either mode.
 _Avoid_: User, student
 
 **Account**:
-A Learner's sign-in identity; exists only in Multi-user Mode.
+A Learner's sign-in identity (email and password, or GitHub or Google); exists only in Multi-user Mode. Each Account has one Learner, which holds its progress.
 _Avoid_: User, profile
 
 **Local Mode**:
-An Instance with exactly one Learner and no sign-in.
+An Instance with exactly one Learner and no sign-in. Switching to Multi-user hands that Learner, with its progress, to the first Admin.
 _Avoid_: Single-user mode, guest, offline
 
 **Multi-user Mode**:
 An Instance with Accounts, each keeping its own progress.
+
+**Instance mode**:
+Whether the Instance is Local or Multi-user. Chosen once at Setup (or by switching a Local Instance), stored in the database and read once per web process, so an Instance runs one web process per data volume.
 
 **Admin**:
 The Account that sets up a Multi-user Instance and manages its Accounts, Invites and Registration Mode.
@@ -131,4 +134,7 @@ The Account that sets up a Multi-user Instance and manages its Accounts, Invites
 Whether anyone may create an Account (Open) or only people with an Invite (Invite-only).
 
 **Invite**:
-A single-use link an Admin sends so one person can create an Account.
+A single-use link an Admin sends so one person can create an Account. It works for 7 days and is shown once.
+
+**One-time password**:
+The temporary password set when an Admin resets an Account (or the operator runs `reset-admin-password`). The Account's owner must replace it at the next sign-in.
