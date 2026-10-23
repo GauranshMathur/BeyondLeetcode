@@ -2371,3 +2371,73 @@ describe('a session is bound to its credential generation', () => {
 		expect(await w.db.session.count({ where: { userId: w.lin.id } })).toBe(0);
 	});
 });
+
+describe('redactInvite with terminal escapes', () => {
+	const E = String.fromCharCode(27);
+	const t = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
+
+	it.each([
+		[`${INVITE_COOKIE}=${E}[31m${t}${E}[0m`],
+		[`${INVITE_COOKIE}${E}[0m=${t}`],
+		[`${INVITE_COOKIE}=${E}[1m${E}[31m ${t}`],
+		[`/invite/${E}[32m${t}${E}[0m`],
+		[`/invite${E}[0m/${t}`],
+		[`${E}]8;;http://x${E}\\/invite/${t}`],
+		[`${INVITE_COOKIE}=${String.fromCharCode(0x9b)}31m${t}`],
+		// An introducer that starts no complete sequence must not swallow the text after it.
+		[`${E}]0;never ended /invite/${t}`],
+		[`${E}]0;never ended ${INVITE_COOKIE}=${t}`],
+		[`${E} /invite/${t}${E}`],
+		[`${INVITE_COOKIE}=${E}[31${t}`],
+		[`lone ${E} then /invite/${t}`],
+		[`${String.fromCharCode(0x9b)} /invite/${t}`]
+	])('takes the token out of %j', (text) => {
+		const out = redactInvite(text);
+		expect(out).not.toContain(t);
+		expect(out).toMatch(/\[redacted\]/);
+	});
+
+	it.each(['7abc', 'abc', '-abc', 'Abc'])(
+		'a placeholder never breaks a match: tokens starting %j after a lone or unterminated introducer',
+		(start) => {
+			const tok = `${start}${t.slice(start.length)}`;
+			for (const text of [
+				`/invite/${E}${tok}`,
+				`${INVITE_COOKIE}=${E}${tok}`,
+				`/invite/${E}]0;${tok}`,
+				`${INVITE_COOKIE}=${E}]0;${tok}`,
+				`/invite/${E}[${tok}`,
+				`${INVITE_COOKIE}=${E}[12${tok}`,
+				`/invite/${E}]0;never ended ${tok}`,
+				`${INVITE_COOKIE}=${E}]0;x;${tok}`,
+				`${E}[ /i${tok}`,
+				`${INVITE_COOKIE}=${E}[ /i${tok}`,
+				`/invite/${E}[ /i${tok}`,
+				`word${E}xyz${tok}`,
+				`prefix ${E} ${tok} suffix`
+			]) {
+				expect(redactInvite(text), text).not.toContain(tok.slice(3));
+			}
+		}
+	);
+
+	it('redacts a bare 43-character run only in a record that held an escape', () => {
+		const bare = `id ${'A'.repeat(43)} ok`;
+		expect(redactInvite(bare)).toBe(bare);
+		expect(redactInvite(`${E} ${bare}`)).not.toContain('A'.repeat(43));
+		expect(redactInvite(`${E} ${'A'.repeat(42)}`)).toContain('A'.repeat(42));
+		expect(redactInvite(`${E} ${'B'.repeat(44)}`)).not.toContain('B'.repeat(44));
+	});
+
+	it('leaves the route id alone', () => {
+		expect(redactInvite('route /invite/[token] here')).toBe('route /invite/[token] here');
+	});
+
+	it('prints a record with escapes without them, and shows a lone introducer', () => {
+		expect(redactInvite(`colour ${E}[32mgreen${E}[0m ok`)).toBe('colour green ok');
+		expect(redactInvite(`${E}]8;;http://x${E}\\link`)).toBe('link');
+		expect(redactInvite(`lone ${E} escape`)).toBe('lone \u241b escape');
+		expect(redactInvite(`${E}]0;never ended but visible`)).toBe('\u241bnever ended but visible');
+		expect(redactInvite('plain')).toBe('plain');
+	});
+});
