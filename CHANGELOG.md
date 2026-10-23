@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.63.0...v0.64.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C58 bind each session to its credential generation ([#221](https://github.com/GauranshMathur/BeyondLeetcode/issues/221)) ([8834845](https://github.com/GauranshMathur/BeyondLeetcode/commit/88348453abf8e8e45e4b2ed1abd4bad332845fba))
+
 ## [0.63.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.62.0...v0.63.0) (2026-10-23)
 
 
