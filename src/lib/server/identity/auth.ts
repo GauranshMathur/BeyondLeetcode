@@ -60,30 +60,33 @@ export function inviteTokenFrom(headers: Headers | undefined | null): string | u
  */
 const INVITE_PATH = /\/invite\/(?:(?!\[)[^\s/?#"')\]]+|[ \t]+[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-]))/g;
 
-// A cookie name may hold ! # $ % & ' * + - . ^ _ ` | ~ and word characters, so none of them may come right
-// before ours: `other_<name>=` and `a!<name>=` are other cookies.
-const NAME_CHARS = "\\w!#$%&'*+.^`|~-";
 const QUOTE = `\\\\*["']`;
 /**
  * The cookie as it appears in text, in any of the shapes a log gives it: `name=value`, `name = value`,
  * `name="value"`, `name='value'`, an escaped JSON quote (`\"name\":\"value\"`), a structured field
  * (`name: 'value'`, `"name":"value"`) and a quoted value that never closes. Spaces round `=`/`:` are
- * horizontal only, so a match never crosses into the next line.
+ * horizontal only, so a match never crosses into the next line. Whatever comes before the name does not
+ * matter (`?a=1&name=...`, `a;name=...`), so a longer name that ends in ours is redacted too: over-redacting
+ * a harmless cookie is the safe side.
  */
 const INVITE_COOKIE_TEXT = new RegExp(
-	`(?<![${NAME_CHARS}])(?:${QUOTE})?${INVITE_COOKIE}(?:${QUOTE})?[ \\t]*[:=][ \\t]*` +
-		`(?:${QUOTE}[^"'\\n\\\\]*(?:${QUOTE})?|[^\\s;,"')\\]\\\\]+)`,
+	`(?:${QUOTE})?${INVITE_COOKIE}(?:${QUOTE})?[ \\t]*[:=][ \\t]*` +
+		`(?:(${QUOTE})[^"'\\n\\\\]*(${QUOTE})?|[^\\s;,"')\\]\\\\]+)`,
 	'g'
 );
 export const redactInvite = (text: string) =>
 	text
 		.replace(INVITE_PATH, '/invite/[redacted]')
-		.replace(INVITE_COOKIE_TEXT, `${INVITE_COOKIE}=[redacted]`);
+		.replace(
+			INVITE_COOKIE_TEXT,
+			(_match, open?: string, close?: string) =>
+				`${INVITE_COOKIE}=${open ?? ''}[redacted]${close ?? ''}`
+		);
 
 /** What a console call would print for these arguments (`%s` and friends, Errors with stack and `cause`), redacted. */
 export const redactedLine = (args: unknown[]): string => {
 	try {
-		return redactInvite(formatWithOptions({ depth: null }, ...args));
+		return redactInvite(formatWithOptions({ depth: null, colors: false }, ...args));
 	} catch {
 		return '[unprintable]';
 	}
@@ -106,15 +109,15 @@ type Wrapped = ((...args: unknown[]) => unknown) & { [REDACTING]?: true };
  * Not covered, by decision: logging before this runs, direct `process.stdout/stderr.write`, other processes.
  */
 export function installLogRedaction(target: Console = console): void {
-	const wrap = (method: keyof Console, make: (original: Wrapped) => Wrapped) => {
-		const original = target[method] as Wrapped | undefined;
+	const wrap = (method: string, make: (original: Wrapped) => Wrapped) => {
+		const original = (target as unknown as Record<string, unknown>)[method] as Wrapped | undefined;
 		if (typeof original !== 'function' || original[REDACTING]) return;
 		const wrapped = make((...args) => original.apply(target, args));
 		wrapped[REDACTING] = true;
 		(target as unknown as Record<string, unknown>)[method] = wrapped;
 	};
-	// A group label or message with no arguments prints just the method's own effect (a new indent level, a blank line).
-	for (const method of [
+	// Whole-record formatting for the methods that print a message.
+	const FORMATTED = [
 		'error',
 		'warn',
 		'info',
@@ -124,7 +127,8 @@ export function installLogRedaction(target: Console = console): void {
 		'dirxml',
 		'group',
 		'groupCollapsed'
-	] as const) {
+	];
+	for (const method of FORMATTED) {
 		wrap(
 			method,
 			(original) =>
@@ -138,13 +142,53 @@ export function installLogRedaction(target: Console = console): void {
 			(condition, ...args) =>
 				condition ? original(condition) : original(condition, redactedLine(args))
 	);
-	// Printed through their inspected output: a table or a dir listing is text once it is formatted.
+	// Printed through their inspected output, colours off: an ANSI sequence between a name and its value would hide it.
 	wrap(
 		'dir',
 		(original) => (value, options) =>
-			original(redactInvite(inspect(value, { depth: null, ...(options as object) })))
+			original(redactInvite(inspect(value, { ...(options as object), depth: null, colors: false })))
 	);
-	wrap('table', (original) => (data) => original(redactInvite(inspect(data, { depth: null }))));
+	wrap(
+		'table',
+		(original) => (data) => original(redactInvite(inspect(data, { depth: null, colors: false })))
+	);
+	// Every other member that takes arguments (count, timeLog, timeEnd, Bun's write, ...) is wrapped by
+	// what it is given, not by name: each argument is redacted and the argument count is kept. The ones that
+	// take a label (time, timeEnd, count, countReset) are included, so a label is the same on both sides and
+	// counters and timers stay correct. Only members with nothing to print are left alone.
+	const LEAVE = new Set(['constructor', 'groupEnd', 'clear', 'context', 'createTask']);
+	const names = new Set<string>();
+	for (let o: object | null = target; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+		for (const name of Object.getOwnPropertyNames(o)) names.add(name);
+	}
+	for (const name of names) {
+		const member = (target as unknown as Record<string, unknown>)[name];
+		if (LEAVE.has(name) || typeof member !== 'function' || /^[A-Z]/.test(name)) continue;
+		if (name in { dir: 1, table: 1, assert: 1 } || FORMATTED.includes(name)) continue;
+		wrap(
+			name,
+			(original) =>
+				(...args) =>
+					original(...args.map(redactedMember))
+		);
+	}
+}
+
+/** One argument of an unlisted console member: text redacted, bytes decoded then redacted, anything else inspected. */
+function redactedMember(value: unknown): unknown {
+	if (typeof value === 'string') return redactInvite(value);
+	if (ArrayBuffer.isView(value)) {
+		return redactInvite(new TextDecoder().decode(value as ArrayBufferView<ArrayBuffer>));
+	}
+	if (
+		value === undefined ||
+		value === null ||
+		typeof value === 'number' ||
+		typeof value === 'boolean'
+	) {
+		return value;
+	}
+	return redactedLine([value]);
 }
 
 /**

@@ -159,7 +159,7 @@ describe('redaction at the console', () => {
 		}
 	});
 
-	it('writes no token to the bytes of a real Bun process, whichever method logs', () => {
+	it('writes no token to the bytes of a real Bun process, whichever member logs', () => {
 		const auth = new URL('./lib/server/identity/auth.ts', import.meta.url).pathname;
 		const script = `
 			import { installLogRedaction } from ${JSON.stringify(auth)};
@@ -171,14 +171,28 @@ describe('redaction at the console', () => {
 			console.group('/invite/', t); console.groupCollapsed('/invite/' + t); console.groupEnd(); console.groupEnd();
 			console.assert(false, '/invite/', t);
 			console.dir({ url: '/invite/' + t });
+			console.dir({ beyondleetcode_invite: t }, { colors: true });
+			console.dir({ a: 1, beyondleetcode_invite: t }, { colors: true, depth: 0 });
 			console.table([{ c: 'beyondleetcode_invite=' + t }]);
+			console.log('?a=1&beyondleetcode_invite=' + t);
+			console.count('/invite/' + t); console.count('/invite/' + t); console.countReset('/invite/' + t);
+			console.count('plain'); console.count('plain');
+			console.time('/invite/' + t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=' + t, { url: '/invite/' + t }); console.timeEnd('/invite/' + t);
+			if (typeof console.write === 'function') {
+				console.write('/invite/' + t + '\\n');
+				console.write(new TextEncoder().encode('beyondleetcode_invite=' + t + '\\n'));
+			}
 		`;
 		const run = spawnSync('bun', ['-e', script], { encoding: 'utf8' });
 		const bytes = `${run.stdout}${run.stderr}`;
 		expect(run.status).toBe(0);
 		expect(bytes).not.toContain(token);
+		expect(bytes).not.toContain('\u001b[32m'.concat(token));
 		expect(bytes).toContain('/invite/[redacted]');
 		expect(bytes).toContain('beyondleetcode_invite=[redacted]');
 		expect(bytes).toContain('outer');
+		// Counters and timers still work: the second count is 2, a timer is found by its label.
+		expect(bytes).toContain('plain: 2');
+		expect(bytes).not.toMatch(/No such label|does not exist/i);
 	});
 });
