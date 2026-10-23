@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
-import { type AccountRow, listAccounts, NotAdminError } from './accounts.ts';
+import {
+	type AccountRow,
+	listAccounts,
+	NotAdminError,
+	resetPassword,
+	SelfResetError,
+	UnknownAccountError
+} from './accounts.ts';
 import { type Admission, type Auth, createAuth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
 
@@ -228,5 +235,246 @@ describe('listAccounts', () => {
 			expect(rows).toHaveLength(1);
 			expect(listUsers).toHaveBeenCalledTimes(2);
 		});
+	});
+});
+
+describe('resetPassword', () => {
+	async function twoAccounts() {
+		const s = await setup();
+		const admin = await s.signUp('Ada Admin', 'ada@example.com', 'admin');
+		const lin = await s.signUp('Lin Learner', 'lin@example.com');
+		const linRow = await s.db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		return { ...s, admin, lin, linRow };
+	}
+	const signIn = (auth: Auth, email: string, pw: string) =>
+		auth.api.signInEmail({ body: { email, password: pw } });
+	const sessionOf = (auth: Auth, cookie: string) =>
+		auth.api.getSession({ headers: new Headers({ cookie }) });
+
+	it('sets a new password that signs in, and the old one stops working', async () => {
+		const { auth, admin, linRow, requestOf } = await twoAccounts();
+
+		const { password: fresh } = await resetPassword(auth, {
+			...(await requestOf(admin.cookie)),
+			userId: linRow.id
+		});
+
+		await expect(signIn(auth, 'lin@example.com', password)).rejects.toThrow();
+		const signedIn = await signIn(auth, 'lin@example.com', fresh);
+		expect(signedIn.user.email).toBe('lin@example.com');
+	});
+
+	it('makes a long random password each time, within the password limits', async () => {
+		const { auth, admin, linRow, requestOf } = await twoAccounts();
+		const request = { ...(await requestOf(admin.cookie)), userId: linRow.id };
+
+		const a = (await resetPassword(auth, request)).password;
+		const b = (await resetPassword(auth, request)).password;
+
+		expect(a).not.toBe(b);
+		for (const p of [a, b]) {
+			expect(p.length).toBeGreaterThanOrEqual(16);
+			expect(p.length).toBeLessThanOrEqual(128);
+			expect(p).toMatch(/^[A-Za-z0-9]+$/);
+		}
+	});
+
+	it('signs the user out everywhere', async () => {
+		const { auth, db, admin, lin, linRow, requestOf } = await twoAccounts();
+		await signIn(auth, 'lin@example.com', password); // a second session, on another device
+		expect(await sessionOf(auth, lin.cookie)).not.toBeNull();
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(2);
+
+		await resetPassword(auth, { ...(await requestOf(admin.cookie)), userId: linRow.id });
+
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(0);
+		expect(await sessionOf(auth, lin.cookie)).toBeNull();
+	});
+
+	it('requires the user to set a new password, and leaves every other Account alone', async () => {
+		const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+
+		await resetPassword(auth, { ...(await requestOf(admin.cookie)), userId: linRow.id });
+
+		const rows = await db.user.findMany({ select: { email: true, mustChangePassword: true } });
+		expect(Object.fromEntries(rows.map((r) => [r.email, r.mustChangePassword]))).toEqual({
+			'ada@example.com': false,
+			'lin@example.com': true
+		});
+		// The admin keeps their session.
+		expect(await sessionOf(auth, admin.cookie)).not.toBeNull();
+	});
+
+	it('refuses a learner before anything is touched', async () => {
+		const { auth, db, lin, linRow, requestOf } = await twoAccounts();
+		const setUserPassword = vi.spyOn(auth.api, 'setUserPassword');
+
+		await expect(
+			resetPassword(auth, { ...(await requestOf(lin.cookie)), userId: linRow.id })
+		).rejects.toBeInstanceOf(NotAdminError);
+
+		expect(setUserPassword).not.toHaveBeenCalled();
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(1);
+		await signIn(auth, 'lin@example.com', password);
+	});
+
+	it('refuses an admin session the plugin no longer knows', async () => {
+		const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+		const request = await requestOf(admin.cookie);
+		await db.session.deleteMany({ where: { userId: { not: linRow.id } } });
+
+		await expect(resetPassword(auth, { ...request, userId: linRow.id })).rejects.toBeInstanceOf(
+			NotAdminError
+		);
+		await signIn(auth, 'lin@example.com', password);
+		expect((await db.user.findUniqueOrThrow({ where: { id: linRow.id } })).mustChangePassword).toBe(
+			false
+		);
+	});
+
+	it('refuses an unknown user id, and an id that is not text', async () => {
+		const { auth, admin, requestOf } = await twoAccounts();
+		const request = await requestOf(admin.cookie);
+
+		await expect(resetPassword(auth, { ...request, userId: 'nobody' })).rejects.toBeInstanceOf(
+			UnknownAccountError
+		);
+		await expect(resetPassword(auth, { ...request, userId: '' })).rejects.toBeInstanceOf(
+			UnknownAccountError
+		);
+	});
+
+	it('refuses to reset the asking admin own password', async () => {
+		const { auth, db, admin, requestOf } = await twoAccounts();
+		const ada = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+
+		await expect(
+			resetPassword(auth, { ...(await requestOf(admin.cookie)), userId: ada.id })
+		).rejects.toBeInstanceOf(SelfResetError);
+
+		await signIn(auth, 'ada@example.com', password);
+		expect(await sessionOf(auth, admin.cookie)).not.toBeNull();
+	});
+
+	describe('when a step fails', () => {
+		// The property: once the password has changed, no session from before the reset survives, and no
+		// outcome leaves a session alive with the flag unset. No password is returned from any failure.
+		async function failing(step: 'flag' | 'password' | 'revoke') {
+			const s = await twoAccounts();
+			await signIn(s.auth, 'lin@example.com', password); // a second session
+			const { internalAdapter } = await s.auth.$context;
+			if (step === 'flag')
+				vi.spyOn(internalAdapter, 'updateUser').mockRejectedValueOnce(new Error('disk'));
+			if (step === 'password')
+				vi.spyOn(s.auth.api, 'setUserPassword').mockRejectedValueOnce(new Error('disk'));
+			if (step === 'revoke')
+				vi.spyOn(internalAdapter, 'deleteUserSessions').mockRejectedValueOnce(new Error('disk'));
+			const outcome = await resetPassword(s.auth, {
+				...(await s.requestOf(s.admin.cookie)),
+				userId: s.linRow.id
+			}).then(
+				() => 'returned',
+				(error) => (error as Error).message
+			);
+			const stored = await s.db.user.findUniqueOrThrow({ where: { id: s.linRow.id } });
+			const sessions = await s.db.session.count({ where: { userId: s.linRow.id } });
+			const oldPasswordWorks = await signIn(s.auth, 'lin@example.com', password).then(
+				() => true,
+				() => false
+			);
+			return { outcome, flag: stored.mustChangePassword, sessions, oldPasswordWorks };
+		}
+
+		it('flag fails: nothing changed, the old password and sessions are intact, nothing is shown', async () => {
+			expect(await failing('flag')).toEqual({
+				outcome: 'disk',
+				flag: false,
+				sessions: 2, // both untouched
+				oldPasswordWorks: true
+			});
+		});
+
+		it('password fails: sessions are still ended and the flag is set, the old password remains', async () => {
+			expect(await failing('password')).toEqual({
+				outcome: 'disk',
+				flag: true,
+				sessions: 0,
+				oldPasswordWorks: true
+			});
+		});
+
+		it('revoke fails after the password changed: the error is thrown, the flag is set, the old password is dead', async () => {
+			expect(await failing('revoke')).toEqual({
+				outcome: 'disk',
+				flag: true,
+				sessions: 2, // not revoked: the flag confines them to the password page
+				oldPasswordWorks: false
+			});
+		});
+
+		it('revokes the old sessions when the password step fails after changing it', async () => {
+			const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+			const real = auth.api.setUserPassword;
+			vi.spyOn(auth.api, 'setUserPassword').mockImplementationOnce(async (...args) => {
+				await real(...args);
+				throw new Error('lost the answer');
+			});
+
+			await expect(
+				resetPassword(auth, { ...(await requestOf(admin.cookie)), userId: linRow.id })
+			).rejects.toThrow('lost the answer');
+
+			expect(await db.session.count({ where: { userId: linRow.id } })).toBe(0);
+			expect(
+				(await db.user.findUniqueOrThrow({ where: { id: linRow.id } })).mustChangePassword
+			).toBe(true);
+		});
+	});
+
+	it('deletes the old sessions even if the admin session ends after the password changed', async () => {
+		const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+		const real = auth.api.setUserPassword;
+		vi.spyOn(auth.api, 'setUserPassword').mockImplementationOnce(async (...args) => {
+			const answer = await real(...args);
+			await db.session.deleteMany({ where: { userId: { not: linRow.id } } }); // the admin signs out
+			return answer;
+		});
+
+		const { password: fresh } = await resetPassword(auth, {
+			...(await requestOf(admin.cookie)),
+			userId: linRow.id
+		});
+
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(0);
+		expect(await sessionOf(auth, admin.cookie)).toBeNull();
+		await signIn(auth, 'lin@example.com', fresh);
+	});
+
+	it.each([
+		['is no longer an admin', 'learner'],
+		['is a different Account', 'other']
+	])('writes nothing when the fresh session user %s', async (_, change) => {
+		const { auth, db, admin, linRow, requestOf } = await twoAccounts();
+		const request = await requestOf(admin.cookie);
+		if (change === 'learner') {
+			await db.user.update({ where: { email: 'ada@example.com' }, data: { role: 'learner' } });
+		} else {
+			await db.learner.create({ data: { id: 'someone-else' } });
+			await db.user.update({
+				where: { email: 'ada@example.com' },
+				data: { learnerId: 'someone-else' }
+			});
+		}
+		const setUserPassword = vi.spyOn(auth.api, 'setUserPassword');
+
+		await expect(resetPassword(auth, { ...request, userId: linRow.id })).rejects.toBeInstanceOf(
+			NotAdminError
+		);
+
+		expect(setUserPassword).not.toHaveBeenCalled();
+		expect((await db.user.findUniqueOrThrow({ where: { id: linRow.id } })).mustChangePassword).toBe(
+			false
+		);
+		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(1);
 	});
 });
