@@ -4,7 +4,9 @@ import type { PageProps } from './$types';
 let { data, form }: PageProps = $props();
 
 const multi = $derived(data.multiUser);
-const onAdmin = $derived(form?.step === 'admin');
+// Converting a Local Instance (from Settings) starts at the admin form: the mode is already Local.
+const converting = $derived(data.converting);
+const onAdmin = $derived(form?.step === 'admin' || converting);
 // Only the admin step names a field; a step-1 refusal has none.
 const fieldError = (field: 'name' | 'email' | 'password') =>
 	form?.step === 'admin' && form.field === field ? form.message : undefined;
@@ -20,9 +22,13 @@ const formError = $derived(
 <main>
 	{#if onAdmin}
 		<section class="intro">
-			<span class="eyebrow">First-run setup · Multi-user</span>
+			<span class="eyebrow">{converting ? 'Switch to Multi-user' : 'First-run setup · Multi-user'}</span>
 			<h1>Create the admin.</h1>
-			<p class="lede">This is the first account on the instance.</p>
+			<p class="lede">
+				{converting
+					? "This is the first account on the instance. Your Local progress becomes the admin's. This cannot be undone."
+					: 'This is the first account on the instance.'}
+			</p>
 		</section>
 
 		<section class="admin">
@@ -30,7 +36,10 @@ const formError = $derived(
 				<h2>Admin account</h2>
 				<p>The admin invites users, resets passwords and sets who can register.</p>
 			</div>
-			<form method="POST" action="?/admin" class="fields">
+			{#if converting && multi.kind !== 'open'}
+				<p class="error" role="alert">{multi.kind === 'needs-env' ? multi.message : 'Multi-user is not available on this server.'}</p>
+			{/if}
+			<form method="POST" action={converting ? '?/admin&convert' : '?/admin'} class="fields">
 				<label class="field">
 					Name
 					<input
@@ -74,7 +83,7 @@ const formError = $derived(
 				{/if}
 				<div class="actions">
 					<button type="submit">Create admin account →</button>
-					<a class="back" href="/setup">Back</a>
+					<a class="back" href={converting ? '/settings' : '/setup'}>Back</a>
 				</div>
 			</form>
 		</section>

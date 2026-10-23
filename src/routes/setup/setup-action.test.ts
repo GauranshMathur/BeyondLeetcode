@@ -27,9 +27,11 @@ async function run(
 	action: (typeof actions)['mode'] | (typeof actions)['admin'],
 	values: Form,
 	locals: Record<string, unknown>,
-	cookies: { set: (...args: unknown[]) => void } = { set: vi.fn() }
+	cookies: { set: (...args: unknown[]) => void } = { set: vi.fn() },
+	search = ''
 ) {
 	const event = {
+		url: new URL(`http://localhost/setup${search}`),
 		request: { formData: async () => formOf(values) },
 		locals: { instance: notSetUp, ...locals },
 		cookies
@@ -201,6 +203,47 @@ describe('step 2: create the admin', () => {
 		expect(JSON.stringify(spies.flatMap((s) => s.mock.calls))).not.toMatch(
 			/SECRETCOOKIE|correct horse/
 		);
+	});
+
+	it('converts a Local Instance only on ?convert, asking createFirstAdmin for the conversion', async () => {
+		const createFirstAdmin = vi.fn(async () => ({ headers: new Headers() }));
+		const locals = {
+			instance: { mode: () => 'local' },
+			setup: setupWith({ kind: 'open' }, createFirstAdmin)
+		};
+
+		const result = await run(actions.admin, admin, locals, { set: vi.fn() }, '?/admin&convert');
+
+		expect(createFirstAdmin).toHaveBeenCalledWith({ ...admin, convert: true });
+		expect(result).toMatchObject({ status: 303, location: '/' });
+	});
+
+	it('never converts a multi Instance, ?convert or not', async () => {
+		const createFirstAdmin = vi.fn();
+		const locals = {
+			instance: { mode: () => 'multi' },
+			setup: setupWith({ kind: 'open' }, createFirstAdmin)
+		};
+
+		const result = await run(actions.admin, admin, locals, { set: vi.fn() }, '?/admin&convert');
+
+		expect(result).toMatchObject({ status: 409 });
+		expect(createFirstAdmin).not.toHaveBeenCalled();
+	});
+
+	it('a conversion the Instance refuses answers with the fixed already-set-up text', async () => {
+		const createFirstAdmin = vi.fn(async () => Promise.reject(new InstanceAlreadySetUpError()));
+		const locals = {
+			instance: { mode: () => 'local' },
+			setup: setupWith({ kind: 'open' }, createFirstAdmin)
+		};
+
+		const result = await run(actions.admin, admin, locals, { set: vi.fn() }, '?/admin&convert');
+
+		expect(result).toMatchObject({
+			status: 409,
+			data: { message: 'This instance has already been set up.' }
+		});
 	});
 
 	it.each(['local', 'multi'] as const)(
@@ -482,6 +525,32 @@ describe('load', () => {
 	it('hands the page the Multi-user choice', () => {
 		const multiUser: MultiUserChoice = { kind: 'open' };
 
-		expect(load({ locals: { setup: setupWith(multiUser) } } as never)).toEqual({ multiUser });
+		const result = load({
+			locals: { instance: notSetUp, setup: setupWith(multiUser) },
+			url: new URL('http://localhost/setup')
+		} as never);
+
+		expect(result).toEqual({ multiUser, converting: false });
+	});
+
+	it('is converting only on a Local Instance with ?convert', () => {
+		const locals = (mode: string | null) => ({
+			instance: { mode: () => mode },
+			setup: setupWith({ kind: 'open' })
+		});
+		const converting = (mode: string | null, search: string) =>
+			(
+				load({
+					locals: locals(mode),
+					url: new URL(`http://localhost/setup${search}`)
+				} as never) as {
+					converting: boolean;
+				}
+			).converting;
+
+		expect(converting('local', '?convert')).toBe(true);
+		expect(converting('local', '')).toBe(false);
+		expect(converting('multi', '?convert')).toBe(false);
+		expect(converting(null, '?convert')).toBe(false);
 	});
 });

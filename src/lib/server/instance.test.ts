@@ -1,5 +1,5 @@
 import { createClient } from '@libsql/client';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import type { Db } from './db.ts';
 import {
 	AccountsExistError,
@@ -615,4 +615,71 @@ it('restoreMultiInstance refuses without an admin (none, a learner, admin,learne
 	await local.instance.create({ data: { mode: 'local' } }).catch(() => {});
 	expect(await restoreMultiInstance(local)).toBe(false);
 	expect((await createInstance(local)).mode()).toBe('local');
+});
+
+// C39: converting Local to multi is one narrow statement.
+
+it('chooseMulti refuses to convert a Local Instance once an Account exists, and the row stays local', async () => {
+	const db = await createTestDb();
+	const instance = await createInstance(db);
+	await instance.chooseLocal();
+	await addUser(db);
+
+	await expect(instance.chooseMulti()).rejects.toThrow(InstanceAlreadySetUpError);
+
+	expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+	expect(instance.mode()).toBe('local');
+});
+
+it('two conversions racing each other: exactly one wins, whichever Instance object they use', async () => {
+	for (const two of [false, true]) {
+		const db = await createTestDb();
+		const a = await createInstance(db);
+		await a.chooseLocal();
+		const b = two ? await createInstance(db) : a;
+
+		const results = await Promise.allSettled([a.chooseMulti(), b.chooseMulti()]);
+
+		expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
+	}
+});
+
+it('a conversion switches this process at once, and its undo puts Local back, never unset', async () => {
+	const db = await createTestDb();
+	const instance = await createInstance(db);
+	await instance.chooseLocal();
+
+	const claim = await instance.chooseMulti();
+	expect(instance.mode()).toBe('multi');
+	await claim.undo();
+
+	expect(instance.mode()).toBe('local');
+	expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+});
+
+it('a stale Local cache cannot convert an Instance another process already made multi, and adopts it', async () => {
+	const db = await createTestDb();
+	const stale = await createInstance(db);
+	await stale.chooseLocal();
+	await db.instance.updateMany({ data: { mode: 'multi' } }); // another process converted
+
+	await expect(stale.chooseMulti()).rejects.toThrow(InstanceAlreadySetUpError);
+
+	expect(stale.mode()).toBe('multi');
+});
+
+it('undo logs a fixed line, and still restores this process, when the row was already gone', async () => {
+	const db = await createTestDb();
+	const instance = await createInstance(db);
+	await instance.chooseLocal();
+	const claim = await instance.chooseMulti();
+	await db.instance.deleteMany();
+	const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+	await claim.undo();
+
+	expect(logged).toHaveBeenCalledWith(expect.stringMatching(/could not be undone/));
+	expect(instance.mode()).toBe('local');
+	logged.mockRestore();
 });
