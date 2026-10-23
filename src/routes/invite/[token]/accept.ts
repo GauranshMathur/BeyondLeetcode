@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
 	hasForbiddenNameCharacter,
 	INVITE_COOKIE,
+	INVITE_COOKIE_PATH,
 	isNameTooLong,
 	MAX_NAME_LENGTH,
 	MAX_PASSWORD_LENGTH,
@@ -42,7 +43,7 @@ const COOKIE_MAX_AGE_SECONDS = 60 * 60;
  * which is how an OAuth sign-up through an Invite proves it. The invite pages themselves no longer receive it
  * (they have the token in their address). No other page the browser requests carries the token.
  */
-const COOKIE_PATH = '/api/auth';
+const COOKIE_PATH = INVITE_COOKIE_PATH;
 
 /** Where earlier versions set it. Cleared wherever the cookie is, so a leftover one cannot linger. */
 const OLD_COOKIE_PATH = '/invite';

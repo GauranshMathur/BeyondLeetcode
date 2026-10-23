@@ -3,7 +3,7 @@ import { formatWithOptions, inspect } from 'node:util';
 import type { BetterAuthPlugin } from 'better-auth';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { APIError, createAuthMiddleware } from 'better-auth/api';
+import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api';
 import { admin } from 'better-auth/plugins';
 import type { Db } from '../db.ts';
 
@@ -39,6 +39,9 @@ export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
  * invite token. A named constant so the page and the hooks cannot drift.
  */
 export const INVITE_COOKIE = 'beyondleetcode_invite';
+
+/** Where the invite cookie is set: the auth endpoints, which include the provider callback (`accept.ts`). */
+export const INVITE_COOKIE_PATH = '/api/auth';
 
 /** The invite token in a request's `Cookie` header, or undefined. */
 export function inviteTokenFrom(headers: Headers | undefined | null): string | undefined {
@@ -235,23 +238,49 @@ function redactedMember(value: unknown): unknown {
 	return redactedLine([value]);
 }
 
+/** A short token: what a code, an error id or a provider id looks like. Anything else is not logged. */
+const SAFE_TOKEN = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/** Line breaks and every other control or bidi character, so one record is one line and nothing can forge another. */
+const LOG_CONTROLS = /[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/gu;
+
 /**
- * Better Auth's own logger, with the invite path taken out of every message and argument: its origin check
- * logs the whole `callbackURL` of a request it refuses, which can be `/invite/<token>`. An Error argument is
- * logged as its name and code only.
+ * One log argument as something safe to print. Text from outside (a query string, a provider's answer) is
+ * never printed: a string is kept only when it is a short token, and an object is reduced to its `code` or
+ * `error` field when that is one. An Error is its name and code. Numbers, booleans, null and undefined pass.
+ */
+function loggable(arg: unknown): unknown {
+	if (arg === null || arg === undefined) return arg;
+	if (typeof arg === 'number' || typeof arg === 'boolean') return arg;
+	if (typeof arg === 'string') return SAFE_TOKEN.test(arg) ? arg : '[text omitted]';
+	const field = (key: string) => {
+		const value = (arg as Record<string, unknown>)[key];
+		return typeof value === 'string' && SAFE_TOKEN.test(value) ? value : undefined;
+	};
+	if (arg instanceof Error) {
+		const code = field('code');
+		return code ? `${arg.name} ${code}` : arg.name;
+	}
+	if (typeof arg === 'object') {
+		const code = field('code') ?? field('error');
+		return code ? `code=${code}` : '[object omitted]';
+	}
+	return '[value omitted]';
+}
+
+/**
+ * Better Auth's own logger. Better Auth logs what a visitor or a provider sent (a callback's `error`
+ * parameter, a provider's error body, the whole `callbackURL` of a refused request, which can be
+ * `/invite/<token>`), so a record is built only from safe parts: the message with every control character
+ * turned into a space and cut to 300 characters, and each argument through `loggable` (tokens, a `code`, an
+ * Error's name and code; never free text or a response body). The invite path is redacted on top of that.
  */
 export const redactingLogger = {
 	log(level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: unknown[]) {
-		// An Error is reduced to its name and code: its message, stack and cause can hold query text, file paths and
-		// what a provider answered (the OAuth callback logs the errors of the token exchange and of creating the user).
-		const safe = args.map((arg) => {
-			if (!(arg instanceof Error)) return arg;
-			const code = (arg as { code?: unknown }).code;
-			return typeof code === 'string' ? `${arg.name} ${code}` : arg.name;
-		});
-		const line = redactedLine([message, ...safe]);
+		const head = String(message).replace(LOG_CONTROLS, ' ').slice(0, 300);
+		const line = redactedLine([head, ...args.map(loggable)]);
 		const write = level === 'debug' ? console.debug : console[level];
-		write(`[Better Auth] ${line}`);
+		write(`[Better Auth] ${line.replace(LOG_CONTROLS, ' ')}`);
 	}
 };
 
@@ -527,7 +556,10 @@ export function createAuth({
 		// and linking is off) are what would write a provider's name through updateUser, past `user.create.before`
 		// and its name rules. They stay off; if one is ever turned on, a `user.update.before` hook must run the
 		// whole `nameRefusal` first (blank, the 100-character cap, control and bidi characters).
-		account: { accountLinking: { enabled: false } },
+		//
+		// Provider tokens are stored encrypted (with the secret), and never handed to a browser: the endpoints that
+		// would (`/get-access-token`, `/refresh-token`, `/account-info`) are off.
+		account: { accountLinking: { enabled: false }, encryptOAuthTokens: true },
 		// Added only when both of a provider's variables were set. Its profile name is mapped to a name the rules
 		// accept (`providerName`); the Account itself is made by `user.create.before` like any other.
 		socialProviders: {
@@ -644,6 +676,45 @@ export function createAuth({
 		// reason: Better Auth looks the email up before the database hook runs, so a name refused only there
 		// would answer 400 for an email with no Account and 422 for one that has. The database hook is the backstop.
 		hooks: {
+			after: createAuthMiddleware(async (ctx) => {
+				if (!ctx.path.startsWith('/callback/')) return;
+				const returned = ctx.context.returned;
+				if (!isAPIError(returned)) return;
+				const location = new Headers(returned.headers as HeadersInit).get('location');
+				if (!location) return;
+				const target = new URL(location, 'http://placeholder.invalid');
+				const failure = target.searchParams.get('error');
+				const inviteToken = inviteTokenFrom(ctx.headers);
+				if (failure === null) {
+					// A sign-in or sign-up went through: an invite cookie, spent or not, has done its job.
+					if (inviteToken) {
+						ctx.setCookie(INVITE_COOKIE, '', {
+							path: INVITE_COOKIE_PATH,
+							maxAge: 0,
+							httpOnly: true,
+							sameSite: 'lax'
+						});
+					}
+					return;
+				}
+				// Better Auth looks the provider's email up before the creation hook, so where a sign-up is closed an
+				// existing email would answer "not linked" and a new one "closed": a way to learn which emails have
+				// Accounts. Where the gate would refuse this visitor, both answer the same, as the email form does
+				// (the gate runs for a new Account too, so it is asked here with no email).
+				if (failure !== 'account_not_linked' && failure !== 'SIGN_UP_CLOSED') return;
+				if (
+					failure === 'SIGN_UP_CLOSED' ||
+					!(await admitSignUp({ email: undefined, inviteToken }))
+				) {
+					// The same redirect whichever refusal it was, description and all.
+					target.searchParams.set('error', 'SIGN_UP_CLOSED');
+					target.searchParams.delete('error_description');
+					const rewritten = location.startsWith('/')
+						? `${target.pathname}${target.search}${target.hash}`
+						: target.toString();
+					throw ctx.redirect(rewritten);
+				}
+			}),
 			before: createAuthMiddleware(async (ctx) => {
 				if (ctx.path !== '/sign-up/email') return;
 				if (

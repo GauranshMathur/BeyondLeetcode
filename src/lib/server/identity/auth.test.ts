@@ -16,6 +16,7 @@ import {
 	MIN_PASSWORD_LENGTH,
 	providerName,
 	redactInvite,
+	redactingLogger,
 	socialProvidersFrom
 } from './auth.ts';
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
@@ -1179,10 +1180,8 @@ describe('signing in with a provider', () => {
 			}
 		});
 		const invites = createInvites({ db, origin });
-		const instance = {
-			mode: () => 'multi' as const,
-			registrationMode: () => options.mode ?? 'invite'
-		};
+		let mode: 'invite' | 'open' = options.mode ?? 'invite';
+		const instance = { mode: () => 'multi' as const, registrationMode: () => mode };
 		const auth = createAuth({
 			db,
 			origin,
@@ -1217,7 +1216,10 @@ describe('signing in with a provider', () => {
 			accounts: await db.account.count(),
 			sessions: await db.session.count()
 		});
-		return { db, auth, invites, signIn, made, written };
+		const setMode = (next: 'invite' | 'open') => {
+			mode = next;
+		};
+		return { db, auth, invites, signIn, made, written, setMode };
 	}
 	const errorOf = (res: Response) =>
 		new URL(res.headers.get('location') ?? '', origin).searchParams.get('error');
@@ -1448,6 +1450,161 @@ describe('signing in with a provider', () => {
 		expect(everythingLogged([log, warn])).toContain('Error ECONNRESET');
 		expect(everythingLogged([log, warn])).not.toContain('SECRET-CODE');
 		expect(everythingLogged([log, warn])).not.toContain('/home/secret/path');
+	});
+
+	describe('what a refused callback reveals', () => {
+		const cases = [
+			['an existing email', 'admin@example.com'],
+			['a new email', 'new@example.com']
+		] as const;
+
+		it.each(cases)('Invite-only with no invite answers the same for %s', async (_name, email) => {
+			githubAnswers({ email });
+			const h = await harness();
+
+			const res = await h.signIn();
+
+			expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+			expect(
+				new URL(res.headers.get('location') ?? '', origin).searchParams.has('error_description')
+			).toBe(false);
+			expect(await h.written()).toEqual(NOTHING);
+		});
+
+		it('Invite-only with an invalid invite answers the same for both too', async () => {
+			for (const email of ['admin@example.com', 'new@example.com']) {
+				githubAnswers({ email });
+				const h = await harness();
+				expect(errorOf(await h.signIn('A'.repeat(43)))).toBe('SIGN_UP_CLOSED');
+			}
+		});
+
+		it.each(cases)('Open mode keeps its answer for %s', async (_name, email) => {
+			githubAnswers({ email });
+			const h = await harness({ mode: 'open' });
+
+			const res = await h.signIn();
+
+			if (email === 'admin@example.com') expect(errorOf(res)).toBe('account_not_linked');
+			else expect(res.headers.get('location')).toBe('/');
+		});
+
+		it('an Account already linked to the provider still signs in once sign-up is closed', async () => {
+			githubAnswers({});
+			const h = await harness({ mode: 'open' });
+			await h.signIn();
+			h.setMode('invite');
+
+			const res = await h.signIn();
+
+			expect(res.headers.get('location')).toBe('/');
+			expect(
+				res.headers.getSetCookie().some((c) => c.startsWith('better-auth.session_token'))
+			).toBe(true);
+		});
+	});
+
+	it('stores the provider tokens encrypted', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		await h.signIn();
+
+		const account = await h.db.account.findFirstOrThrow({ where: { providerId: 'github' } });
+
+		expect(account.accessToken).toBeTruthy();
+		expect(account.accessToken).not.toContain('gh-token');
+	});
+
+	it('clears the invite cookie after a sign-up through an Invite, and not otherwise', async () => {
+		githubAnswers({});
+		const h = await harness();
+		const { token } = await h.made();
+
+		const done = await h.signIn(token);
+		const refused = await h.signIn();
+
+		const cleared =
+			done.headers.getSetCookie().find((c) => c.startsWith(`${INVITE_COOKIE}=`)) ?? '';
+		expect(cleared).toMatch(/Max-Age=0/i);
+		expect(cleared).toMatch(/Path=\/api\/auth/i);
+		expect(refused.headers.getSetCookie().some((c) => c.startsWith(`${INVITE_COOKIE}=`))).toBe(
+			false
+		);
+	});
+
+	describe('what the log holds', () => {
+		function spies() {
+			return [
+				vi.spyOn(console, 'error').mockImplementation(() => {}),
+				vi.spyOn(console, 'warn').mockImplementation(() => {}),
+				vi.spyOn(console, 'log').mockImplementation(() => {}),
+				vi.spyOn(console, 'info').mockImplementation(() => {}),
+				vi.spyOn(console, 'debug').mockImplementation(() => {})
+			];
+		}
+		/** Each console call is one record; the text of every record written. */
+		const records = (all: ReturnType<typeof spies>) =>
+			all.flatMap((spy) => spy.mock.calls.map((call) => call.map(String).join(' ')));
+
+		it('a callback error parameter cannot forge a log line', async () => {
+			const h = await harness({ mode: 'open' });
+			const all = spies();
+
+			await h.auth.handler(
+				new Request(
+					`${origin}/api/auth/callback/github?error=UNTRUSTED%0AFAKE-LOG-LINE%0D%0Aerror%20x`,
+					{ headers: { [CLIENT_IP_HEADER]: '10.9.0.1' } }
+				)
+			);
+			await h.auth.handler(
+				new Request(`${origin}/api/auth/callback/github?code=c&state=bad%0AFAKE-LOG-LINE`, {
+					headers: { [CLIENT_IP_HEADER]: '10.9.0.2' }
+				})
+			);
+
+			const written = records(all);
+			expect(written.length).toBeGreaterThan(0);
+			for (const record of written) {
+				expect(record).not.toMatch(/[\r\n]/);
+				expect(record).not.toContain('FAKE-LOG-LINE');
+				expect(record).not.toContain('UNTRUSTED');
+			}
+		});
+
+		it('a provider error body is never logged', async () => {
+			const h = await harness({ mode: 'open' });
+			vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+				Response.json({
+					error: 'bad_verification_code',
+					error_description: 'PROVIDER-TEXT-SECRET',
+					client_secret: 'LEAKED-SECRET'
+				})
+			);
+			const all = spies();
+
+			const res = await h.signIn();
+
+			expect(errorOf(res)).not.toBeNull();
+			const written = records(all);
+			expect(written.length).toBeGreaterThan(0);
+			const text = written.join('\n');
+			expect(text).not.toContain('PROVIDER-TEXT-SECRET');
+			expect(text).not.toContain('LEAKED-SECRET');
+		});
+
+		it('keeps only a short code from an object, and nothing from a string that is not one', () => {
+			const all = spies();
+			redactingLogger.log(
+				'error',
+				'Line\nbreak‮',
+				'two words',
+				{ code: 'ECONNRESET', body: 'x' },
+				{ message: 'free text' }
+			);
+			expect(records(all)).toEqual([
+				'[Better Auth] Line break  [text omitted] code=ECONNRESET [object omitted]'
+			]);
+		});
 	});
 
 	it('keeps the endpoints that would hand provider tokens to the browser off', async () => {
