@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createAuth } from '../identity/auth.ts';
+import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
 import {
 	EXIT_FAILED,
 	EXIT_NO_ADMIN,
 	EXIT_OK,
 	EXIT_USAGE,
+	parseOrigin,
 	runResetAdminPassword,
 	USAGE
 } from './reset-admin-password.ts';
@@ -74,25 +76,73 @@ describe('reset-admin-password command', () => {
 		expect(result.stderr).toMatch(/no admin Account/i);
 	});
 
+	it('reopens Setup on a multi Instance with no Accounts: clears the mode and tells the owner to restart', async () => {
+		const { db, open } = await setup([]);
+		await (await createInstance(db)).chooseMulti();
+
+		const result = await runResetAdminPassword([], env, open);
+
+		expect(result.code).toBe(EXIT_OK);
+		expect(result.stdout).toBe('');
+		expect(result.stderr).toMatch(/restart/i);
+		expect(result.stderr).toMatch(/Setup/);
+		expect((await createInstance(db)).mode()).toBeNull();
+	});
+
+	it('leaves the mode alone when there are Accounts but no admin', async () => {
+		const { db, open } = await setup([undefined]);
+		await (await createInstance(db)).chooseMulti();
+
+		const result = await runResetAdminPassword([], env, open);
+
+		expect(result.code).toBe(EXIT_NO_ADMIN);
+		expect((await createInstance(db)).mode()).toBe('multi');
+	});
+
+	it('leaves a Local Instance with no Accounts alone and says there is no admin', async () => {
+		const { db, open } = await setup([]);
+		await (await createInstance(db)).chooseLocal();
+
+		const result = await runResetAdminPassword([], env, open);
+
+		expect(result.code).toBe(EXIT_NO_ADMIN);
+		expect((await createInstance(db)).mode()).toBe('local');
+	});
+
+	it('reads ORIGIN as a URL: a bare scheme, a non-http scheme or text is ignored', () => {
+		expect(parseOrigin('https://learn.example.com/')).toBe('https://learn.example.com');
+		expect(parseOrigin('http://localhost:3000')).toBe('http://localhost:3000');
+		for (const bad of [
+			undefined,
+			'',
+			'http://',
+			'https://',
+			'ftp://x.example',
+			'learn.example.com'
+		]) {
+			expect(parseOrigin(bad)).toBe('');
+		}
+	});
+
 	it('fails plainly, without opening the database, when BETTER_AUTH_SECRET is missing or unusable', async () => {
 		for (const bad of [undefined, '', 'short', 'change-me-change-me-change-me-change-me']) {
 			const result = await runResetAdminPassword(
 				[],
 				{ DATABASE_URL: 'file:unused', BETTER_AUTH_SECRET: bad },
 				() => {
-					throw new Error('opened');
+					throw new Error('db-was-opened');
 				}
 			);
 			expect(result.code).toBe(EXIT_USAGE);
 			expect(result.stdout).toBe('');
 			expect(result.stderr).toContain('BETTER_AUTH_SECRET');
-			expect(result.stderr).not.toContain('opened');
+			expect(result.stderr).not.toContain('db-was-opened');
 		}
 	});
 
 	it('fails plainly when DATABASE_URL is missing', async () => {
 		const result = await runResetAdminPassword([], { BETTER_AUTH_SECRET: secret }, () => {
-			throw new Error('opened');
+			throw new Error('db-was-opened');
 		});
 		expect(result.code).toBe(EXIT_USAGE);
 		expect(result.stderr).toContain('DATABASE_URL');
@@ -100,7 +150,7 @@ describe('reset-admin-password command', () => {
 
 	it('refuses arguments and shows the usage', async () => {
 		const result = await runResetAdminPassword(['--force'], env, () => {
-			throw new Error('opened');
+			throw new Error('db-was-opened');
 		});
 		expect(result.code).toBe(EXIT_USAGE);
 		expect(result.stderr).toContain(USAGE);

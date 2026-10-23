@@ -2,6 +2,7 @@ import { createClient } from '@libsql/client';
 import { expect, it } from 'vitest';
 import type { Db } from './db.ts';
 import {
+	clearEmptyMultiInstance,
 	createInstance,
 	InstanceAlreadySetUpError,
 	InvalidRegistrationModeError,
@@ -478,3 +479,62 @@ it.each(['everyone', 'OPEN', '', ' open'])(
 		expect(await stored(db)).toBe('open');
 	}
 );
+
+// clearEmptyMultiInstance: the `reset-admin-password` command's way to reopen Setup (C42b).
+
+const addUser = (db: Db) =>
+	db.user.create({
+		data: { id: 'u1', name: 'A', email: 'a@example.com', emailVerified: false, learnerId: 'l1' }
+	});
+
+it('clearEmptyMultiInstance clears a multi Instance with no Accounts, so the next start is not set up', async () => {
+	const { db } = await multiInstance();
+
+	expect(await clearEmptyMultiInstance(db)).toBe(true);
+
+	expect(await db.instance.count()).toBe(0);
+	expect((await createInstance(db)).mode()).toBeNull();
+});
+
+it('clearEmptyMultiInstance refuses, changing nothing, when any Account exists', async () => {
+	const { db } = await multiInstance();
+	await addUser(db);
+
+	expect(await clearEmptyMultiInstance(db)).toBe(false);
+
+	expect((await createInstance(db)).mode()).toBe('multi');
+});
+
+it('clearEmptyMultiInstance refuses a Local Instance and one that is not set up', async () => {
+	const db = await createTestDb();
+	expect(await clearEmptyMultiInstance(db)).toBe(false);
+	await (await createInstance(db)).chooseLocal();
+
+	expect(await clearEmptyMultiInstance(db)).toBe(false);
+
+	expect((await createInstance(db)).mode()).toBe('local');
+});
+
+it('clearEmptyMultiInstance checks the Accounts and clears in one statement, so a sign-up cannot slip between', async () => {
+	const { db } = await multiInstance();
+	const statements: string[] = [];
+	const spied = new Proxy(db, {
+		get(target, prop) {
+			if (prop === '$executeRaw') {
+				return (strings: TemplateStringsArray) => {
+					statements.push(strings.join('?'));
+					return (target.$executeRaw as (s: TemplateStringsArray) => Promise<number>)(strings);
+				};
+			}
+			if (prop === 'user' || prop === 'instance' || prop === '$transaction') {
+				throw new Error('must not read or write separately');
+			}
+			return Reflect.get(target, prop);
+		}
+	});
+
+	expect(await clearEmptyMultiInstance(spied)).toBe(true);
+
+	expect(statements).toHaveLength(1);
+	expect(statements[0]).toMatch(/DELETE FROM "Instance"[\s\S]*NOT EXISTS[\s\S]*"User"/);
+});
