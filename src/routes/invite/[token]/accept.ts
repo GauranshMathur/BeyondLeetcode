@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
 	hasForbiddenNameCharacter,
 	INVITE_COOKIE,
+	INVITE_COOKIE_PATH,
 	isNameTooLong,
 	MAX_NAME_LENGTH,
 	MAX_PASSWORD_LENGTH,
@@ -36,8 +37,21 @@ type AcceptEvent = Pick<
 /** How long the browser keeps the invite cookie: long enough to fill in the form, then it is gone. */
 const COOKIE_MAX_AGE_SECONDS = 60 * 60;
 
-/** The cookie lives only on the invite pages: nothing else the browser requests carries the token. */
-const COOKIE_PATH = '/invite';
+/**
+ * Where the browser sends the invite cookie: the auth endpoints, because that is where the registration gate
+ * reads it, both for the email form's own call and for a provider's redirect back (`/api/auth/callback/*`),
+ * which is how an OAuth sign-up through an Invite proves it. The invite pages themselves no longer receive it
+ * (they have the token in their address). No other page the browser requests carries the token.
+ */
+const COOKIE_PATH = INVITE_COOKIE_PATH;
+
+/** Where earlier versions set it. Cleared wherever the cookie is, so a leftover one cannot linger. */
+const OLD_COOKIE_PATH = '/invite';
+
+function forget(cookies: Pick<RequestEvent['cookies'], 'delete'>) {
+	cookies.delete(INVITE_COOKIE, { path: COOKIE_PATH });
+	cookies.delete(INVITE_COOKIE, { path: OLD_COOKIE_PATH });
+}
 
 /** What the form page gets back from a refused attempt: always the same keys, never the password. */
 const refused = (
@@ -112,7 +126,7 @@ export function createAccept(throttle: Throttle) {
 			if (locals.identity) redirect(303, '/');
 			const invite = await locals.invites?.lookup(params.token ?? '', new Date());
 			if (!invite) {
-				cookies.delete(INVITE_COOKIE, { path: COOKIE_PATH });
+				forget(cookies);
 				return { valid: false };
 			}
 			cookies.set(INVITE_COOKIE, params.token ?? '', {
@@ -200,7 +214,7 @@ export function createAccept(throttle: Throttle) {
 				return refused(500, typed, MESSAGES.failed);
 			}
 			forwardSetCookies(cookies, headers.getSetCookie());
-			cookies.delete(INVITE_COOKIE, { path: COOKIE_PATH });
+			forget(cookies);
 			redirect(303, '/');
 		}
 	};

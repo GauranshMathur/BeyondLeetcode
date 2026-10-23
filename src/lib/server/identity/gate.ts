@@ -101,5 +101,12 @@ export function safeNext(next: string | null): string {
 	if (next === null || !/^\/(?![/\\])/.test(next)) return '/';
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this rejects
 	if (/[\u0000-\u001f\u007f]/.test(next)) return '/';
+	// Dot segments: `/.//evil.com`, `/./\\evil.com` and `/a/..//evil.com` are each `//evil.com` once a URL parser has
+	// normalized them, which is another site if anything later treats the result as a target.
+	try {
+		if (/^\/[/\\]/.test(new URL(next, 'http://placeholder.invalid').pathname)) return '/';
+	} catch {
+		return '/';
+	}
 	return next;
 }

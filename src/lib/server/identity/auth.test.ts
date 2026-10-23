@@ -7,13 +7,17 @@ import {
 	type Admission,
 	CLIENT_IP_HEADER,
 	createAuth,
+	enabledProviders,
 	hasForbiddenNameCharacter,
 	INVITE_COOKIE,
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
-	redactInvite
+	providerName,
+	redactInvite,
+	redactingLogger,
+	socialProvidersFrom
 } from './auth.ts';
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
@@ -1119,6 +1123,629 @@ describe('redactInvite', () => {
 		expect(redactInvite(`other_${N}=harmless`)).toBe(`other_${N}=[redacted]`);
 		for (const harmless of ['/invite/[token]', 'unrelated text', 'beyond_invite=1']) {
 			expect(redactInvite(harmless)).toBe(harmless);
+		}
+	});
+});
+
+describe('signing in with a provider', () => {
+	const origin = 'http://localhost:3000';
+	const adminWho = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
+	const SECRETS = { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } };
+	let caller = 0;
+
+	type Profile = { id?: number; login?: string; name?: string | null; email?: string };
+
+	/** A GitHub that answers from memory: the token exchange, the profile and the email list. */
+	function githubAnswers(profile: Profile) {
+		const full = {
+			id: 4242,
+			login: 'octo',
+			name: 'Octo Cat',
+			email: 'octo@example.com',
+			...profile
+		};
+		return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+			const url = String(input instanceof Request ? input.url : input);
+			if (url === 'https://github.com/login/oauth/access_token') {
+				return Response.json({
+					access_token: 'gh-token',
+					id_token: 'PLAIN-ID-TOKEN',
+					token_type: 'bearer',
+					scope: 'read:user'
+				});
+			}
+			if (url === 'https://api.github.com/user') return Response.json(full);
+			if (url === 'https://api.github.com/user/emails') {
+				return Response.json([{ email: full.email, primary: true, verified: true }]);
+			}
+			throw new Error('unexpected request');
+		});
+	}
+
+	async function harness(
+		options: {
+			mode?: 'invite' | 'open';
+			claim?: 'real' | 'lose';
+			providers?: Parameters<typeof createAuth>[0]['socialProviders'];
+		} = {}
+	) {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.user.create({
+			data: {
+				id: 'u-admin',
+				name: 'Ada',
+				email: 'admin@example.com',
+				role: 'admin',
+				learnerId: 'local'
+			}
+		});
+		const invites = createInvites({ db, origin });
+		let mode: 'invite' | 'open' = options.mode ?? 'invite';
+		const instance = { mode: () => 'multi' as const, registrationMode: () => mode };
+		const auth = createAuth({
+			db,
+			origin,
+			secret,
+			admitSignUp: createRegistration({ instance, invites }),
+			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at),
+			socialProviders: options.providers ?? SECRETS
+		});
+		onTestFinished(() => {
+			vi.restoreAllMocks();
+		});
+		const made = () => invites.create({ who: adminWho, now: new Date() });
+
+		/** The whole round trip: the button, the provider's redirect back (with the invite cookie, if any). */
+		async function signIn(inviteToken?: string, callbackURL = '/', errorCallbackURL = '/signin') {
+			const start = await auth.api.signInSocial({
+				body: { provider: 'github', callbackURL, errorCallbackURL },
+				returnHeaders: true
+			});
+			const state = new URL(start.response.url as string).searchParams.get('state');
+			const cookies = start.headers.getSetCookie().map((c) => c.split(';')[0]);
+			if (inviteToken) cookies.push(`${INVITE_COOKIE}=${inviteToken}`);
+			return auth.handler(
+				new Request(`${origin}/api/auth/callback/github?code=the-code&state=${state}`, {
+					headers: { cookie: cookies.join('; '), [CLIENT_IP_HEADER]: `10.3.0.${caller++ & 255}` }
+				})
+			);
+		}
+		const written = async () => ({
+			users: await db.user.count({ where: { id: { not: 'u-admin' } } }),
+			learners: await db.learner.count({ where: { id: { not: 'local' } } }),
+			accounts: await db.account.count(),
+			sessions: await db.session.count()
+		});
+		const setMode = (next: 'invite' | 'open') => {
+			mode = next;
+		};
+		return { db, auth, invites, signIn, made, written, setMode };
+	}
+	const errorOf = (res: Response) =>
+		new URL(res.headers.get('location') ?? '', origin).searchParams.get('error');
+	const NOTHING = { users: 0, learners: 0, accounts: 0, sessions: 0 };
+
+	it('offers a provider only when both its variables are set', () => {
+		expect(socialProvidersFrom({})).toEqual({});
+		expect(socialProvidersFrom({ GITHUB_CLIENT_ID: 'a' })).toEqual({});
+		expect(socialProvidersFrom({ GITHUB_CLIENT_SECRET: 'b' })).toEqual({});
+		expect(socialProvidersFrom({ GITHUB_CLIENT_ID: 'a', GITHUB_CLIENT_SECRET: '  ' })).toEqual({});
+		expect(
+			socialProvidersFrom({
+				GITHUB_CLIENT_ID: 'a',
+				GITHUB_CLIENT_SECRET: 'b',
+				GOOGLE_CLIENT_ID: 'c',
+				GOOGLE_CLIENT_SECRET: 'd'
+			})
+		).toEqual({
+			github: { clientId: 'a', clientSecret: 'b' },
+			google: { clientId: 'c', clientSecret: 'd' }
+		});
+	});
+
+	it('has the providers it was given, and none by default', async () => {
+		const db = await createFileTestDb();
+		expect(enabledProviders(createAuth({ db, origin, secret }))).toEqual([]);
+		expect(enabledProviders(createAuth({ db, origin, secret, socialProviders: SECRETS }))).toEqual([
+			'github'
+		]);
+		const both = createAuth({
+			db,
+			origin,
+			secret,
+			socialProviders: { ...SECRETS, google: { clientId: 'g', clientSecret: 's' } }
+		});
+		expect(enabledProviders(both)).toEqual(['github', 'google']);
+	});
+
+	it('refuses a provider that is not configured', async () => {
+		const h = await harness({ providers: {} });
+		await expect(
+			h.auth.api.signInSocial({ body: { provider: 'github', callbackURL: '/' } })
+		).rejects.toBeTruthy();
+	});
+
+	it('serves no sign-in start over HTTP: the Sign in page is the one way', async () => {
+		const h = await harness();
+		const res = await h.auth.handler(
+			new Request(`${origin}/api/auth/sign-in/social`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin },
+				body: JSON.stringify({ provider: 'github', callbackURL: '/' })
+			})
+		);
+		expect(res.status).toBe(404);
+	});
+
+	it('Open mode with no invite: makes a learner Account with a Learner and a session', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+
+		const res = await h.signIn();
+
+		expect(res.status).toBe(302);
+		expect(res.headers.get('location')).toBe('/');
+		const user = await h.db.user.findUniqueOrThrow({ where: { email: 'octo@example.com' } });
+		expect(user).toMatchObject({ name: 'Octo Cat', role: 'learner' });
+		expect(await h.db.learner.count({ where: { id: user.learnerId } })).toBe(1);
+		expect(await h.db.account.count({ where: { userId: user.id, providerId: 'github' } })).toBe(1);
+		const cookie = res.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+		const session = await h.auth.api.getSession({ headers: new Headers({ cookie }) });
+		expect(session?.user.learnerId).toBe(user.learnerId);
+	});
+
+	it('Invite-only with no invite: refused, back to Sign in, nothing written', async () => {
+		githubAnswers({});
+		const h = await harness();
+
+		const res = await h.signIn();
+
+		expect(res.status).toBe(302);
+		expect(new URL(res.headers.get('location') ?? '', origin).pathname).toBe('/signin');
+		expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+		expect(res.headers.getSetCookie().some((c) => c.startsWith('better-auth.session_token'))).toBe(
+			false
+		);
+		expect(await h.written()).toEqual(NOTHING);
+	});
+
+	it('Invite-only with an unknown, spent or cancelled invite: refused, nothing written', async () => {
+		githubAnswers({});
+		const h = await harness();
+		const spent = await h.made();
+		const cancelled = await h.made();
+		await h.invites.cancel({ who: adminWho, id: cancelled.id });
+		await h.db.invite.update({ where: { id: spent.id }, data: { usedAt: new Date() } });
+
+		for (const token of ['A'.repeat(43), spent.token, cancelled.token]) {
+			const res = await h.signIn(token);
+			expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+		}
+		expect(await h.written()).toEqual(NOTHING);
+	});
+
+	it('Invite-only with a valid invite cookie: makes the Account and spends the invite once', async () => {
+		githubAnswers({});
+		const h = await harness();
+		const { token, id } = await h.made();
+
+		const res = await h.signIn(token);
+
+		expect(res.headers.get('location')).toBe('/');
+		expect(await h.db.user.count({ where: { email: 'octo@example.com' } })).toBe(1);
+		expect((await h.db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+		// Another identity cannot use it again.
+		githubAnswers({ id: 7, login: 'other', email: 'other@example.com' });
+		const again = await h.signIn(token);
+		expect(errorOf(again)).toBe('SIGN_UP_CLOSED');
+		expect(await h.db.user.count({ where: { email: 'other@example.com' } })).toBe(0);
+	});
+
+	it('Open mode claims a valid invite cookie too', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		const { token, id } = await h.made();
+
+		await h.signIn(token);
+
+		expect((await h.db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+	});
+
+	it('a lost claim refuses and writes nothing, in either mode', async () => {
+		githubAnswers({});
+		for (const mode of ['invite', 'open'] as const) {
+			const h = await harness({ mode, claim: 'lose' });
+			const { token } = await h.made();
+
+			const res = await h.signIn(token);
+
+			expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+			expect(await h.written()).toEqual(NOTHING);
+		}
+	});
+
+	it('a signed-up identity signs in again without a new Account and keeps its name', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		await h.signIn();
+		await h.db.user.update({ where: { email: 'octo@example.com' }, data: { name: 'Renamed' } });
+		githubAnswers({ name: 'Changed On GitHub' });
+
+		const res = await h.signIn();
+
+		expect(res.headers.get('location')).toBe('/');
+		expect(await h.db.user.count({ where: { id: { not: 'u-admin' } } })).toBe(1);
+		expect(await h.db.account.count()).toBe(1);
+		expect((await h.db.user.findUniqueOrThrow({ where: { email: 'octo@example.com' } })).name).toBe(
+			'Renamed'
+		);
+	});
+
+	it('never links to an existing Account with the same email', async () => {
+		githubAnswers({ email: 'admin@example.com' });
+		const h = await harness({ mode: 'open' });
+
+		const res = await h.signIn();
+
+		expect(new URL(res.headers.get('location') ?? '', origin).pathname).toBe('/signin');
+		expect(new URL(res.headers.get('location') ?? '', origin).searchParams.get('error')).not.toBe(
+			null
+		);
+		expect(await h.db.account.count()).toBe(0);
+		expect(await h.db.session.count()).toBe(0);
+		expect(await h.db.user.count()).toBe(1);
+	});
+
+	describe('the name of an Account made through a provider', () => {
+		async function nameFor(profile: Profile) {
+			githubAnswers(profile);
+			const h = await harness({ mode: 'open' });
+			const res = await h.signIn();
+			expect(res.headers.get('location')).toBe('/');
+			return (await h.db.user.findFirstOrThrow({ where: { id: { not: 'u-admin' } } })).name;
+		}
+
+		it('is cut to 100 characters', async () => {
+			expect([...(await nameFor({ name: 'x'.repeat(300) }))]).toHaveLength(MAX_NAME_LENGTH);
+		});
+
+		it('counts an emoji as one character', async () => {
+			expect([...(await nameFor({ name: '😀'.repeat(150) }))]).toHaveLength(MAX_NAME_LENGTH);
+		});
+
+		it('falls back to the login, then the email before the @, when there is no name', async () => {
+			expect(await nameFor({ name: null, login: 'octo-login' })).toBe('octo-login');
+			expect(await nameFor({ name: '   ', login: '', email: 'pat.q@example.com' })).toBe('pat.q');
+		});
+
+		it('loses control and bidi characters', async () => {
+			const name = await nameFor({ name: 'Ev‮il\u0000 Name' });
+			expect(name).toBe('Evil Name');
+			expect(hasForbiddenNameCharacter(name)).toBe(false);
+		});
+	});
+
+	it('providerName gives nothing only when every source is empty', () => {
+		expect(providerName(undefined, undefined, undefined)).toBe('');
+		expect(providerName(7, null, '@example.com')).toBe('');
+		expect(providerName('  Ada  ', 'x', 'y@z')).toBe('Ada');
+	});
+
+	it('logs a failed token exchange or Account creation as the error kind only, never its message', async () => {
+		const h = await harness({ mode: 'open' });
+		githubAnswers({});
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		// The token exchange answers with an error carrying a path and a secret-looking value.
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+			throw Object.assign(new Error('/home/secret/path?code=SECRET-CODE'), { code: 'ECONNRESET' });
+		});
+
+		const res = await h.signIn();
+
+		expect(res.status).toBe(302);
+		expect(everythingLogged([log, warn])).toContain('Error ECONNRESET');
+		expect(everythingLogged([log, warn])).not.toContain('SECRET-CODE');
+		expect(everythingLogged([log, warn])).not.toContain('/home/secret/path');
+	});
+
+	describe('what a refused callback reveals', () => {
+		const cases = [
+			['an existing email', 'admin@example.com'],
+			['a new email', 'new@example.com']
+		] as const;
+
+		it.each(cases)('Invite-only with no invite answers the same for %s', async (_name, email) => {
+			githubAnswers({ email });
+			const h = await harness();
+
+			const res = await h.signIn();
+
+			expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+			expect(
+				new URL(res.headers.get('location') ?? '', origin).searchParams.has('error_description')
+			).toBe(false);
+			expect(await h.written()).toEqual(NOTHING);
+		});
+
+		it('Invite-only with an invalid invite answers the same for both too', async () => {
+			for (const email of ['admin@example.com', 'new@example.com']) {
+				githubAnswers({ email });
+				const h = await harness();
+				expect(errorOf(await h.signIn('A'.repeat(43)))).toBe('SIGN_UP_CLOSED');
+			}
+		});
+
+		it.each(cases)('Open mode keeps its answer for %s', async (_name, email) => {
+			githubAnswers({ email });
+			const h = await harness({ mode: 'open' });
+
+			const res = await h.signIn();
+
+			if (email === 'admin@example.com') expect(errorOf(res)).toBe('account_not_linked');
+			else expect(res.headers.get('location')).toBe('/');
+		});
+
+		it('an Account already linked to the provider still signs in once sign-up is closed', async () => {
+			githubAnswers({});
+			const h = await harness({ mode: 'open' });
+			await h.signIn();
+			h.setMode('invite');
+
+			const res = await h.signIn();
+
+			expect(res.headers.get('location')).toBe('/');
+			expect(
+				res.headers.getSetCookie().some((c) => c.startsWith('better-auth.session_token'))
+			).toBe(true);
+		});
+	});
+
+	it('stores the provider tokens encrypted', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		await h.signIn();
+
+		const account = await h.db.account.findFirstOrThrow({ where: { providerId: 'github' } });
+
+		expect(account.accessToken).toBeTruthy();
+		expect(account.accessToken).not.toContain('gh-token');
+	});
+
+	it('clears the invite cookie after a sign-up through an Invite, and not otherwise', async () => {
+		githubAnswers({});
+		const h = await harness();
+		const { token } = await h.made();
+
+		const done = await h.signIn(token);
+		const refused = await h.signIn();
+
+		const cleared =
+			done.headers.getSetCookie().find((c) => c.startsWith(`${INVITE_COOKIE}=`)) ?? '';
+		expect(cleared).toMatch(/Max-Age=0/i);
+		expect(cleared).toMatch(/Path=\/api\/auth/i);
+		expect(refused.headers.getSetCookie().some((c) => c.startsWith(`${INVITE_COOKIE}=`))).toBe(
+			false
+		);
+	});
+
+	describe('what the log holds', () => {
+		function spies() {
+			vi.restoreAllMocks();
+			return [
+				vi.spyOn(console, 'error').mockImplementation(() => {}),
+				vi.spyOn(console, 'warn').mockImplementation(() => {}),
+				vi.spyOn(console, 'log').mockImplementation(() => {}),
+				vi.spyOn(console, 'info').mockImplementation(() => {}),
+				vi.spyOn(console, 'debug').mockImplementation(() => {})
+			];
+		}
+		/** Each console call is one record; the text of every record written. */
+		const records = (all: ReturnType<typeof spies>) =>
+			all.flatMap((spy) => spy.mock.calls.map((call) => call.map(String).join(' ')));
+
+		it('a callback error parameter cannot forge a log line', async () => {
+			const h = await harness({ mode: 'open' });
+			const all = spies();
+
+			await h.auth.handler(
+				new Request(
+					`${origin}/api/auth/callback/github?error=UNTRUSTED%0AFAKE-LOG-LINE%0D%0Aerror%20x`,
+					{ headers: { [CLIENT_IP_HEADER]: '10.9.0.1' } }
+				)
+			);
+			await h.auth.handler(
+				new Request(`${origin}/api/auth/callback/github?code=c&state=bad%0AFAKE-LOG-LINE`, {
+					headers: { [CLIENT_IP_HEADER]: '10.9.0.2' }
+				})
+			);
+
+			const written = records(all);
+			expect(written.length).toBeGreaterThan(0);
+			for (const record of written) {
+				expect(record).not.toMatch(/[\r\n]/);
+				expect(record).not.toContain('FAKE-LOG-LINE');
+				expect(record).not.toContain('UNTRUSTED');
+			}
+		});
+
+		it('a provider error body is never logged', async () => {
+			const h = await harness({ mode: 'open' });
+			vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+				Response.json({
+					error: 'bad_verification_code',
+					error_description: 'PROVIDER-TEXT-SECRET',
+					client_secret: 'LEAKED-SECRET'
+				})
+			);
+			const all = spies();
+
+			const res = await h.signIn();
+
+			expect(errorOf(res)).not.toBeNull();
+			const written = records(all);
+			expect(written.length).toBeGreaterThan(0);
+			const text = written.join('\n');
+			expect(text).not.toContain('PROVIDER-TEXT-SECRET');
+			expect(text).not.toContain('LEAKED-SECRET');
+		});
+
+		it('logs no caller text: a forged Origin, a callbackURL, a short value in ?error=, a made-up code', async () => {
+			const h = await harness({ mode: 'open' });
+			const all = spies();
+			const signUp = (headers: Record<string, string>, ip: string) =>
+				h.auth.handler(
+					new Request(`${origin}/api/auth/sign-up/email`, {
+						method: 'POST',
+						headers: { 'content-type': 'application/json', [CLIENT_IP_HEADER]: ip, ...headers },
+						body: JSON.stringify({
+							...body,
+							callbackURL: 'https://forged-callback-CALLERTEXT.example/x'
+						})
+					})
+				);
+
+			await signUp({ origin: 'https://forged-origin-CALLERTEXT.example' }, '10.9.0.3');
+			await signUp({ origin }, '10.9.0.4');
+			await h.auth.handler(
+				new Request(`${origin}/api/auth/callback/github?error=CALLER_TEXT`, {
+					headers: { [CLIENT_IP_HEADER]: '10.9.0.5' }
+				})
+			);
+			redactingLogger.log('error', 'Failed', { code: 'CALLER_CODE' }, 'CALLER_STRING');
+
+			const written = records(all);
+			expect(written.length).toBeGreaterThan(0);
+			for (const record of written) {
+				expect(record).not.toMatch(/CALLER|forged/i);
+			}
+		});
+
+		it('logs a recognized code, and only the fixed text of a message', () => {
+			const all = spies();
+			redactingLogger.log('error', 'Invalid origin: https://x.example', { code: 'INVALID_ORIGIN' });
+			redactingLogger.log('error', 'See https://x.example/page for more');
+			expect(records(all)).toEqual([
+				'[Better Auth] Invalid origin code=INVALID_ORIGIN',
+				'[Better Auth] [message omitted]'
+			]);
+		});
+
+		it('keeps only a short code from an object, and nothing from a string that is not one', () => {
+			const all = spies();
+			redactingLogger.log(
+				'error',
+				'Line\nbreak‮',
+				'two words',
+				{ code: 'ECONNRESET', body: 'x' },
+				{ message: 'free text' }
+			);
+			expect(records(all)).toEqual([
+				'[Better Auth] Line break  [text omitted] code=ECONNRESET [object omitted]'
+			]);
+		});
+	});
+
+	it('stores no ID token in the Account row', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		await h.signIn();
+
+		const account = await h.db.account.findFirstOrThrow({ where: { providerId: 'github' } });
+		expect(account.idToken).toBeNull();
+		// A second sign-in updates the Account and still stores none.
+		await h.signIn();
+		expect(
+			(await h.db.account.findFirstOrThrow({ where: { providerId: 'github' } })).idToken
+		).toBeNull();
+	});
+
+	describe('the invite cookie and the callback', () => {
+		const cookieClears = (res: Response) =>
+			res.headers.getSetCookie().find((c) => c.startsWith(`${INVITE_COOKIE}=`)) ?? '';
+
+		it('is kept through the POST-to-GET bounce of a callback, which makes no session', async () => {
+			githubAnswers({});
+			const h = await harness();
+			const { token } = await h.made();
+
+			const res = await h.auth.handler(
+				new Request(`${origin}/api/auth/callback/github`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/x-www-form-urlencoded',
+						origin,
+						cookie: `${INVITE_COOKIE}=${token}`,
+						[CLIENT_IP_HEADER]: '10.8.0.1'
+					},
+					body: new URLSearchParams({ code: 'c', state: 's' })
+				})
+			);
+
+			expect(res.status).toBe(302);
+			expect(new URL(res.headers.get('location') ?? '', origin).pathname).toBe(
+				'/api/auth/callback/github'
+			);
+			expect(cookieClears(res)).toBe('');
+		});
+
+		it('is kept through a refusal', async () => {
+			githubAnswers({ email: 'admin@example.com' });
+			const h = await harness({ mode: 'open' });
+			const { token } = await h.made();
+
+			const res = await h.signIn(token);
+
+			expect(errorOf(res)).toBe('account_not_linked');
+			expect(cookieClears(res)).toBe('');
+		});
+
+		it('is cleared by a success whose destination has an error in its query', async () => {
+			githubAnswers({});
+			const h = await harness();
+			const { token } = await h.made();
+
+			const res = await h.signIn(token, '/?error=anything');
+
+			expect(res.headers.get('location')).toBe('/?error=anything');
+			expect(cookieClears(res)).toMatch(/Max-Age=0/i);
+		});
+	});
+
+	describe('the rewritten refusal', () => {
+		it.each([['/.//evil.example/x'], ['/.//evil.example/x#frag']])(
+			'never lands on another site: error page %j',
+			async (errorPage) => {
+				githubAnswers({ email: 'admin@example.com' });
+				const h = await harness();
+
+				const res = await h.signIn(undefined, '/', errorPage);
+
+				expect(res.headers.get('location')).toBe('/signin?error=SIGN_UP_CLOSED');
+			}
+		);
+
+		it('edits only the query of the page Better Auth was told', async () => {
+			githubAnswers({ email: 'admin@example.com' });
+			const h = await harness();
+
+			const res = await h.signIn(undefined, '/', '/signin?next=%2Ftopics');
+
+			expect(res.headers.get('location')).toBe('/signin?next=%2Ftopics&error=SIGN_UP_CLOSED');
+		});
+	});
+
+	it('keeps the endpoints that would hand provider tokens to the browser off', async () => {
+		const h = await harness();
+		for (const path of ['refresh-token', 'get-access-token', 'account-info', 'list-accounts']) {
+			const res = await h.auth.handler(
+				new Request(`${origin}/api/auth/${path}`, { method: 'POST' })
+			);
+			expect(res.status, path).toBe(404);
 		}
 	});
 });

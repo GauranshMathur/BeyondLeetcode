@@ -345,7 +345,14 @@ describe('safeNext', () => {
 		['mailto:a@b.c', '/'],
 		['file:///etc/passwd', '/'],
 		['//', '/'],
-		['/?next=//evil.com', '/?next=//evil.com']
+		['/?next=//evil.com', '/?next=//evil.com'],
+		['/.//evil.com', '/'],
+		['/./\\evil.com', '/'],
+		['/a/..//evil.com', '/'],
+		['/a/../\\evil.com', '/'],
+		['/././/evil.com/x?y=1', '/'],
+		['/a/../b', '/a/../b'],
+		['/./ok', '/./ok']
 	];
 
 	it.each(cases)('%j -> %j', (input, expected) => {

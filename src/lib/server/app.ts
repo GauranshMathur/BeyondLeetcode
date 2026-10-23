@@ -1,6 +1,12 @@
 import { type Catalogue, loadCatalogue } from './content/catalogue.ts';
 import { createDb, type Db } from './db.ts';
-import { type Auth, createAuth, isPlaceholderSecret, MIN_SECRET_LENGTH } from './identity/auth.ts';
+import {
+	type Auth,
+	createAuth,
+	isPlaceholderSecret,
+	MIN_SECRET_LENGTH,
+	socialProvidersFrom
+} from './identity/auth.ts';
 import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
 import { createInvites, type Invites } from './identity/invites.ts';
 import { createMultiUserIdentity } from './identity/multi-user.ts';
@@ -69,6 +75,11 @@ export async function createApp(env: {
 	BETTER_AUTH_SECRET?: string;
 	/** The public URL, which SvelteKit also reads; Better Auth needs it for the cookies' Secure flag. */
 	ORIGIN?: string;
+	/** OAuth providers (optional): a provider is offered only when both of its variables are set. */
+	GITHUB_CLIENT_ID?: string;
+	GITHUB_CLIENT_SECRET?: string;
+	GOOGLE_CLIENT_ID?: string;
+	GOOGLE_CLIENT_SECRET?: string;
 }): Promise<App> {
 	if (!env.CONTENT_DIR) {
 		throw new Error('CONTENT_DIR is not set: point it at the content folder (see .env.example).');
@@ -170,7 +181,7 @@ type BuiltAuth =
  * flag and Better Auth's origin check cannot follow.
  */
 function buildAuth(
-	env: { BETTER_AUTH_SECRET?: string; ORIGIN?: string },
+	env: { BETTER_AUTH_SECRET?: string; ORIGIN?: string } & Record<string, string | undefined>,
 	db: Db,
 	instance: Instance
 ): BuiltAuth {
@@ -215,9 +226,29 @@ function buildAuth(
 			origin,
 			secret,
 			admitSignUp: createRegistration({ instance, invites }),
+			socialProviders: socialProvidersFrom(providerEnvironment(env)),
 			claimInvite: (token, now) => invites.claim(token, now)
 		})
 	};
+}
+
+/**
+ * The provider variables: the ones the caller passed, else the process environment (which is where a
+ * container's variables are). A provider with only one of its two is left out (`socialProvidersFrom`).
+ */
+function providerEnvironment(
+	env: Record<string, string | undefined>
+): Record<string, string | undefined> {
+	const out: Record<string, string | undefined> = {};
+	for (const name of [
+		'GITHUB_CLIENT_ID',
+		'GITHUB_CLIENT_SECRET',
+		'GOOGLE_CLIENT_ID',
+		'GOOGLE_CLIENT_SECRET'
+	]) {
+		out[name] = env[name] ?? process.env[name];
+	}
+	return out;
 }
 
 function originOf(value: string | undefined): string | null {

@@ -80,7 +80,7 @@ describe('the page', () => {
 		expect(cookies.set).toHaveBeenCalledWith(
 			INVITE_COOKIE,
 			token,
-			expect.objectContaining({ httpOnly: true, sameSite: 'lax', secure: false, path: '/invite' })
+			expect.objectContaining({ httpOnly: true, sameSite: 'lax', secure: false, path: '/api/auth' })
 		);
 	});
 
@@ -147,6 +147,7 @@ describe('accepting', () => {
 			expect.any(String),
 			expect.objectContaining({ httpOnly: true })
 		);
+		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/api/auth' });
 		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/invite' });
 		expect(await invites.lookup(token, new Date())).toBeNull();
 	});

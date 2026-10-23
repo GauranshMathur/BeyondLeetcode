@@ -6,7 +6,7 @@ import { createAuth } from '$lib/server/identity/auth';
 import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
 import { createThrottle } from '$lib/server/identity/throttle';
 import { createFileTestDb } from '$lib/server/test-db';
-import { createSignIn, landing } from './sign-in';
+import { createSignIn, landing, providerNotice } from './sign-in';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -162,11 +162,11 @@ describe('landing: where a sign-in goes', () => {
 
 describe('the page', () => {
 	it('offers Create an account while the Registration Mode is open', () => {
-		expect(harness({ registration: 'open' }).load()).toEqual({ open: true });
+		expect(harness({ registration: 'open' }).load()).toMatchObject({ open: true });
 	});
 
 	it('offers no sign-up link while the Registration Mode is invite-only', () => {
-		expect(harness({ registration: 'invite' }).load()).toEqual({ open: false });
+		expect(harness({ registration: 'invite' }).load()).toMatchObject({ open: false });
 	});
 
 	it('reads the Registration Mode on every request: closing sign-up takes the link away at once', () => {
@@ -175,11 +175,11 @@ describe('the page', () => {
 		const locals = { instance: { registrationMode: () => mode } };
 		const url = new URL('http://localhost/signin');
 
-		expect(signIn.load({ locals, url } as never)).toEqual({ open: true });
+		expect(signIn.load({ locals, url } as never)).toMatchObject({ open: true });
 		mode = 'invite';
-		expect(signIn.load({ locals, url } as never)).toEqual({ open: false });
+		expect(signIn.load({ locals, url } as never)).toMatchObject({ open: false });
 		mode = 'open';
-		expect(signIn.load({ locals, url } as never)).toEqual({ open: true });
+		expect(signIn.load({ locals, url } as never)).toMatchObject({ open: true });
 	});
 
 	it('sends someone who is already signed in to the page they asked for, or the Map', () => {
@@ -725,5 +725,199 @@ describe('with the real Better Auth', () => {
 
 		expect(result).toMatchObject({ status: 400, data: { message: WRONG, wrong: true } });
 		expect(cookies.size).toBe(0);
+	});
+});
+
+describe('provider buttons', () => {
+	const STATE_COOKIE = 'better-auth.state=abc.def; Max-Age=600; Path=/; HttpOnly; SameSite=Lax';
+	const authorize = 'https://github.com/login/oauth/authorize?client_id=x&state=abc';
+	function withProviders(ids: string[] = ['github'], url = authorize) {
+		const signInSocial = vi.fn(async (_input: unknown) => {
+			const headers = new Headers();
+			headers.append('set-cookie', STATE_COOKIE);
+			return { headers, response: { url, redirect: true } };
+		});
+		const socialProviders = Object.fromEntries(ids.map((id) => [id, {}]));
+		const auth = {
+			options: { socialProviders },
+			api: { signInSocial, signInEmail: vi.fn() },
+			$context: Promise.resolve({ internalAdapter: { findUserByEmail: vi.fn() } })
+		};
+		return { signInSocial, auth, ...harness({ auth }) };
+	}
+
+	it('lists a button per provider the Instance has, and none otherwise', () => {
+		expect((withProviders([]).load() as { providers: unknown[] }).providers).toEqual([]);
+		expect((harness().load() as { providers: unknown[] }).providers).toEqual([]);
+		expect(
+			(withProviders(['github', 'google']).load() as { providers: unknown[] }).providers
+		).toEqual([
+			{ id: 'github', name: 'GitHub' },
+			{ id: 'google', name: 'Google' }
+		]);
+	});
+
+	it('starts the provider with only its id and the redirects the page chooses, and sends the visitor there', async () => {
+		const h = withProviders();
+
+		const result = (await h.post({ provider: 'github' })) as { status: number; location: string };
+
+		expect(result.status).toBe(303);
+		expect(result.location).toBe(authorize);
+		expect(h.signInSocial).toHaveBeenCalledExactlyOnceWith({
+			body: { provider: 'github', callbackURL: '/', errorCallbackURL: '/signin' },
+			returnHeaders: true
+		});
+		expect(h.cookies.set).toHaveBeenCalledWith(
+			'better-auth.state',
+			'abc.def',
+			expect.objectContaining({ path: '/', httpOnly: true })
+		);
+		expect(h.signInEmail).not.toHaveBeenCalled();
+	});
+
+	it('returns to the page the visitor asked for, and never to another site', async () => {
+		const own = withProviders(['github'], authorize);
+		const ownResult = harness({ auth: own.auth, next: '/topics/stacks' });
+		await ownResult.post({ provider: 'github' });
+		expect(own.signInSocial).toHaveBeenLastCalledWith(
+			expect.objectContaining({ body: expect.objectContaining({ callbackURL: '/topics/stacks' }) })
+		);
+
+		const evil = withProviders();
+		const evilResult = harness({ auth: evil.auth, next: '//evil.example' });
+		await evilResult.post({ provider: 'github' });
+		expect(evil.signInSocial).toHaveBeenLastCalledWith(
+			expect.objectContaining({ body: expect.objectContaining({ callbackURL: '/' }) })
+		);
+	});
+
+	it('refuses a provider the Instance does not have, asking Better Auth nothing', async () => {
+		const h = withProviders(['github']);
+
+		const result = (await h.post({ provider: 'google' })) as { status: number; data: unknown };
+
+		expect(result.status).toBe(400);
+		expect(result.data).toMatchObject({ message: 'Signing in failed. Try again.' });
+		expect(h.signInSocial).not.toHaveBeenCalled();
+	});
+
+	it('does not take what the form says about redirects, tokens or sign-up', async () => {
+		const h = withProviders();
+
+		await h.post({
+			provider: 'github',
+			callbackURL: 'https://evil.example',
+			idToken: 'x',
+			requestSignUp: 'true'
+		});
+
+		expect(h.signInSocial).toHaveBeenCalledExactlyOnceWith({
+			body: { provider: 'github', callbackURL: '/', errorCallbackURL: '/signin' },
+			returnHeaders: true
+		});
+	});
+
+	it('is a failure, with a fixed text, when the provider answers with something that is not an https address', async () => {
+		const h = withProviders(['github'], 'javascript:alert(1)');
+
+		const result = (await h.post({ provider: 'github' })) as { status: number };
+
+		expect(result.status).toBe(500);
+		expect(h.cookies.set).not.toHaveBeenCalled();
+	});
+
+	it('hides a failure behind a fixed message and logs only the kind', async () => {
+		const h = withProviders();
+		h.signInSocial.mockRejectedValueOnce(new Error('/secret/path'));
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const result = (await h.post({ provider: 'github' })) as { status: number; data: unknown };
+
+		expect(result.status).toBe(500);
+		expect(JSON.stringify(result.data)).not.toContain('/secret/path');
+		expect(JSON.stringify(log.mock.calls)).not.toContain('/secret/path');
+	});
+
+	it('limits starts per address, apart from the password attempts', async () => {
+		const h = withProviders();
+		let refused = 0;
+		for (let i = 0; i < 40; i++) {
+			const result = (await h.post({ provider: 'github' })) as { status: number };
+			if (result.status === 400) refused++;
+		}
+		expect(refused).toBeGreaterThan(0);
+		expect(h.signInSocial.mock.calls.length).toBeLessThan(40);
+		// Password attempts from the same address are unaffected.
+		expect(h.signInEmail).not.toHaveBeenCalled();
+	});
+
+	it('does nothing for someone who is already signed in', async () => {
+		const h = harness({ auth: withProviders().auth, identity: { learnerId: 'l' } });
+		const result = (await h.post({ provider: 'github' })) as { status: number; location: string };
+		expect(result.status).toBe(303);
+		expect(result.location).toBe('/');
+	});
+});
+
+describe('what the page says about a refused provider sign-in', () => {
+	it('has a fixed text for each kind of refusal and nothing for a plain visit', () => {
+		expect(providerNotice(null)).toBeNull();
+		expect(providerNotice('SIGN_UP_CLOSED')).toMatch(/by invite/);
+		expect(providerNotice('account_not_linked')).toMatch(/already exists/);
+		expect(providerNotice('anything_else')).toBe(
+			'Signing in with that account did not work. Try again.'
+		);
+	});
+
+	it('never shows what the query holds', () => {
+		for (const code of ['<script>alert(1)</script>', 'x'.repeat(5000), 'SIGN_UP_CLOSED<b>']) {
+			expect(providerNotice(code) ?? '').not.toContain(code.slice(0, 20));
+		}
+	});
+
+	it('is in the load, from the error in the address', () => {
+		const h = harness();
+		const url = new URL('http://localhost/signin?error=SIGN_UP_CLOSED&error_description=Evil');
+		const data = h.signIn.load({
+			locals: { instance: { registrationMode: () => 'invite' }, auth: undefined },
+			url
+		} as never) as { notice: string | null };
+		expect(data.notice).toMatch(/by invite/);
+		expect(JSON.stringify(data)).not.toContain('Evil');
+	});
+});
+
+describe('provider buttons with the real Better Auth', () => {
+	it('starts GitHub: the state cookie is set and the visitor goes to GitHub with the callback on this site', async () => {
+		const db = await createFileTestDb();
+		const auth = createAuth({
+			db,
+			origin: 'http://localhost:3000',
+			secret: 'test-secret-test-secret-test-secret-0123',
+			socialProviders: { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } }
+		});
+		const jar = new Map<string, string>();
+		const event = {
+			request: { formData: async () => formOf({ provider: 'github' }) },
+			locals: { instance: { registrationMode: () => 'invite' }, auth },
+			cookies: { set: (name: string, value: string) => void jar.set(name, value) },
+			url: new URL('http://localhost/signin'),
+			getClientAddress: () => '203.0.113.9'
+		};
+
+		const thrown = await createSignIn(createThrottle())
+			.action(event as never)
+			.catch((e: unknown) => e);
+
+		expect(isRedirect(thrown)).toBe(true);
+		const location = new URL((thrown as { location: string }).location);
+		expect(location.origin + location.pathname).toBe('https://github.com/login/oauth/authorize');
+		expect(location.searchParams.get('client_id')).toBe('gh-id');
+		expect(location.searchParams.get('redirect_uri')).toBe(
+			'http://localhost:3000/api/auth/callback/github'
+		);
+		expect(location.searchParams.get('state')).toBeTruthy();
+		expect(jar.size).toBeGreaterThan(0);
 	});
 });

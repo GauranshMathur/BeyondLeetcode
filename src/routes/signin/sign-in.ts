@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
+import { enabledProviders, SOCIAL_PROVIDER_NAMES } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { safeNext } from '$lib/server/identity/gate';
-import type { Throttle, ThrottleInput } from '$lib/server/identity/throttle';
+import { createThrottle, type Throttle, type ThrottleInput } from '$lib/server/identity/throttle';
 
 /**
  * Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form.
@@ -15,6 +16,26 @@ const MESSAGES = {
 	wrong: 'Email or password is wrong.',
 	failed: 'Signing in failed. Try again.'
 } as const;
+
+/**
+ * What the Sign in page says when a provider sends the visitor back with `?error=<code>`. Chosen by the code,
+ * never built from it or from the provider's own description, so nothing the query holds is ever shown.
+ */
+const PROVIDER_NOTICES = {
+	closed:
+		'That sign-in has no account here, and accounts are made by invite. Ask your admin for an invite link.',
+	linked:
+		'An account with that email already exists here. Sign in with your password; it cannot be linked to a provider.',
+	failed: 'Signing in with that account did not work. Try again.'
+} as const;
+
+/** The notice for an `error` code a provider callback sent back, or null when there is none. */
+export function providerNotice(code: string | null): string | null {
+	if (code === null) return null;
+	if (code === 'SIGN_UP_CLOSED') return PROVIDER_NOTICES.closed;
+	if (code === 'account_not_linked') return PROVIDER_NOTICES.linked;
+	return PROVIDER_NOTICES.failed;
+}
 
 type SignInEvent = Pick<
 	RequestEvent,
@@ -93,6 +114,41 @@ const isWrongSignIn = (error: unknown) =>
 	isAPIError(error) && (error.statusCode === 400 || error.statusCode === 401);
 
 /**
+ * Sends the visitor to the provider. Only a provider this Instance has is started, with the one redirect back
+ * (`next`, a path on this site) and Sign in as the error page; nothing else of the request goes on, so a client
+ * cannot choose its own redirect or sign-up flag. Starting writes the flow's state, so it has its own limit.
+ */
+async function startProvider(
+	event: SignInEvent,
+	auth: NonNullable<App.Locals['auth']>,
+	provider: string,
+	next: string,
+	throttle: Throttle
+) {
+	const known = enabledProviders(auth).find((id) => id === provider);
+	if (!known) return refused(400, '', MESSAGES.failed);
+	if (!throttle.attempt({ address: clientAddress(event), accountId: null }).allowed) {
+		return refused(400, '', MESSAGES.failed);
+	}
+	let target: string;
+	let headers: Headers;
+	try {
+		const started = await auth.api.signInSocial({
+			body: { provider: known, callbackURL: next, errorCallbackURL: '/signin' },
+			returnHeaders: true
+		});
+		headers = started.headers;
+		target = started.response.url ?? '';
+	} catch (error) {
+		logFailure('starting a provider sign-in failed', error);
+		return refused(500, '', MESSAGES.failed);
+	}
+	if (!/^https:\/\//.test(target)) return refused(500, '', MESSAGES.failed);
+	forwardSetCookies(event.cookies, headers.getSetCookie());
+	redirect(303, target);
+}
+
+/**
  * The Sign in page: whether it links to Sign up, and the action that signs an Account in.
  *
  * Password sign-in is not served over HTTP (see `disabledPaths` in auth.ts), so this action is the one
@@ -100,13 +156,24 @@ const isWrongSignIn = (error: unknown) =>
  * every attempt against the caller's address and, when the email names an Account, against that Account
  * (`throttle.ts`). Its counters live in memory in this process.
  */
-export function createSignIn(throttle: Throttle) {
+export function createSignIn(throttle: Throttle, startThrottle: Throttle = createThrottle()) {
 	return {
-		/** `open` is whether the Registration Mode lets anyone sign up: only then the page links to Sign up. */
+		/**
+		 * `open` is whether the Registration Mode lets anyone sign up: only then the page links to Sign up.
+		 * `providers` is a button each (none unless both variables of a provider are set), and `notice` the
+		 * fixed text for a provider sign-in that came back refused.
+		 */
 		load({ locals, url }: Pick<RequestEvent, 'locals' | 'url'>) {
 			// Someone who is already signed in goes where they were going.
 			if (locals.identity) redirect(303, landing(url.searchParams.get('next')));
-			return { open: locals.instance.registrationMode() === 'open' };
+			return {
+				open: locals.instance.registrationMode() === 'open',
+				providers: (locals.auth ? enabledProviders(locals.auth) : []).map((id) => ({
+					id,
+					name: SOCIAL_PROVIDER_NAMES[id]
+				})),
+				notice: providerNotice(url.searchParams.get('error'))
+			};
 		},
 
 		async action(event: SignInEvent) {
@@ -120,6 +187,10 @@ export function createSignIn(throttle: Throttle) {
 
 			const { auth } = locals;
 			if (!auth) return refused(503, email, MESSAGES.failed);
+
+			// A provider button posts here too, with its id and no password.
+			const provider = text(data, 'provider');
+			if (provider !== '') return startProvider(event, auth, provider, next, startThrottle);
 
 			// The Account Better Auth would sign in: looked up the way it does (lowercased, not trimmed), so the
 			// Account limits cannot be dodged by how the email is spelled. With none, the email's digest stands

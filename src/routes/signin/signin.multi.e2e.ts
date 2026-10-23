@@ -340,6 +340,34 @@ base.describe('the shared Multi-user server', () => {
 		}
 	);
 
+	base('shows no provider button when no provider is configured', async ({ page }) => {
+		await page.goto('/signin');
+
+		await expect(page.getByRole('button', { name: /^Continue with/ })).toHaveCount(0);
+	});
+
+	base(
+		'tells a visitor sent back by a provider that accounts are by invite, in fixed words',
+		async ({ page }) => {
+			await page.goto(
+				'/signin?error=SIGN_UP_CLOSED&error_description=%3Cscript%3Ewindow.pwned%3D1%3C%2Fscript%3E'
+			);
+
+			await expect(page.getByRole('alert')).toContainText('accounts are made by invite');
+			await expect(page.locator('body')).not.toContainText('pwned');
+			expect(await page.evaluate(() => 'pwned' in window)).toBe(false);
+		}
+	);
+
+	base('does not serve the provider sign-in start over HTTP', async ({ request }) => {
+		const response = await request.post('/api/auth/sign-in/social', {
+			headers: { origin: 'http://localhost:4174' },
+			data: { provider: 'github', callbackURL: '/' }
+		});
+
+		expect(response.status()).toBe(404);
+	});
+
 	base('does not serve password sign-in over HTTP, only through the form', async ({ request }) => {
 		const response = await request.post('/api/auth/sign-in/email', {
 			headers: { origin: 'http://localhost:4174' },

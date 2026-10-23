@@ -48,11 +48,25 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 			</div>
 			{#if failure}
 				<p class="error" role="alert">{failure}</p>
+			{:else if data.notice}
+				<p class="error" role="alert">{data.notice}</p>
 			{/if}
 			<div class="actions">
 				<button type="submit">Sign in →</button>
 				<span class="forgot">Forgot password? Ask your admin.</span>
 			</div>
+			<!-- One button per provider the Instance has (none unless both of its variables are set). They post
+				to this same form with their id and skip the email and password checks. -->
+			{#if data.providers.length > 0}
+				<div class="or" aria-hidden="true"><span class="rule"></span><span>or</span><span class="rule"></span></div>
+				<div class="providers">
+					{#each data.providers as provider (provider.id)}
+						<button type="submit" name="provider" value={provider.id} formnovalidate class="outline">
+							Continue with {provider.name}
+						</button>
+					{/each}
+				</div>
+			{/if}
 		</form>
 		<!-- The link is only there while anyone may sign up; invite-only Instances have no public sign-up. -->
 		{#if data.open}
@@ -188,6 +202,29 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 		background: var(--ink);
 		color: var(--on-ink);
 		border: 0;
+	}
+	.or {
+		display: flex;
+		gap: 16px;
+		align-items: center;
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--muted);
+	}
+	.rule {
+		flex-grow: 1;
+		height: 1px;
+		background: var(--rule);
+	}
+	.providers {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	button.outline {
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
 	}
 	.switch {
 		margin: 0;
