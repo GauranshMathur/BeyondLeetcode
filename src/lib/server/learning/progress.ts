@@ -134,3 +134,15 @@ export async function resetProgress(db: Db, learnerId: string): Promise<void> {
 		for (const clear of Object.values(CLEAR)) await clear(tx, learnerId);
 	});
 }
+
+/**
+ * Removes a Learner for good: everything `resetProgress` clears (the `CLEAR` list) and the Learner row,
+ * in one transaction, so a failure part-way deletes nothing. Harmless for a Learner that has no row, or
+ * none at all. An Account's removal calls it (accounts.ts); it never runs for the Local Learner.
+ */
+export async function deleteLearner(db: Db, learnerId: string): Promise<void> {
+	await db.$transaction(async (tx) => {
+		for (const clear of Object.values(CLEAR)) await clear(tx, learnerId);
+		await tx.learner.deleteMany({ where: { id: learnerId } });
+	});
+}
