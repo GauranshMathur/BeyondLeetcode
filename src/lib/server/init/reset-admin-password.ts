@@ -127,8 +127,9 @@ if (import.meta.main) {
 		if (result.stdout) await write(process.stdout, result.stdout);
 		if (result.stderr) await write(process.stderr, result.stderr);
 	} catch {
-		// The password could not be delivered (a closed pipe): it was changed and is now lost. Say so on
-		// the one stream left, and fail so the owner runs the command again.
+		// The password could not be delivered (a closed pipe): it was changed and is now lost. Nothing is
+		// written, since a message could go to the same broken output; the exit code tells the owner to
+		// run the command again.
 		code = EXIT_FAILED;
 	}
 	process.exit(code);

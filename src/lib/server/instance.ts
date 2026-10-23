@@ -170,9 +170,11 @@ export async function createInstance(db: Db): Promise<Instance> {
  *
  * One DELETE statement holds both conditions: SQLite runs a statement under the database's single write
  * lock, so a sign-up either commits before it (the table is not empty, nothing is deleted) or after it
- * (the row is gone). There is no read-then-write gap for an Account to be orphaned in. A sign-up that a
- * still-running server lets through after the clear is the one case left, which is why the command tells
- * the owner to restart straight away.
+ * (the row is gone). So once a User exists no clear can happen. It does not cover Setup's own two steps:
+ * `createFirstAdmin` claims the mode and then inserts the User, and a clear landing between them leaves an
+ * admin Account on a not-set-up Instance (after a restart Setup's Local choice does not check Accounts, and
+ * Setup cannot make a new admin). Follow-up card C54. A sign-up that a still-running server lets through
+ * after the clear is another case, which is why the command tells the owner to restart straight away.
  */
 export async function clearEmptyMultiInstance(db: Db): Promise<boolean> {
 	const deleted =

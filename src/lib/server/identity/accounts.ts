@@ -116,7 +116,7 @@ function oneTimePassword(): string {
  * it is stored only as a hash and must not be logged or kept.
  *
  * The plugin's own set-user-password does none of the product steps, so all three run here, through
- * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions, which are deleted
+ * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions, which are
  * attempted whatever the password step did. That is not a guarantee: a database failure or a kill after
  * the password changed can leave an old session alive, but it carries the flag, so the gate confines it
  * to the password page, and no outcome leaves one alive with the flag unset. A failure part-way throws and no password
