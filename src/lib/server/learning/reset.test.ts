@@ -24,7 +24,11 @@ async function setup() {
 }
 
 /** Gives a Learner a row in every progress table, through the interface. */
-async function makeProgress(core: Awaited<ReturnType<typeof setup>>['core'], id: string) {
+async function makeProgress(
+	{ core, db }: Pick<Awaited<ReturnType<typeof setup>>, 'core' | 'db'>,
+	id: string
+) {
+	await db.learner.upsert({ where: { id }, update: {}, create: { id } });
 	const learner = core.forLearner(id);
 	await learner.reachChapterEnd('stacks-undo-log');
 	await learner.revealHint('stacks-push');
@@ -36,8 +40,8 @@ async function makeProgress(core: Awaited<ReturnType<typeof setup>>['core'], id:
 describe('learner.resetProgress()', () => {
 	it('deletes the progress of this Learner only, and the Map shows a new Learner', async () => {
 		const { core, db } = await setup();
-		await makeProgress(core, 'a');
-		await makeProgress(core, 'b');
+		await makeProgress({ core, db }, 'a');
+		await makeProgress({ core, db }, 'b');
 		const other = await core.forLearner('b').map();
 		expect((await core.forLearner('a').map()).topics.some((t) => t.coreSolved > 0)).toBe(true);
 
@@ -59,7 +63,7 @@ describe('learner.resetProgress()', () => {
 	it('keeps the Learner row', async () => {
 		const { core, db } = await setup();
 		await db.learner.create({ data: { id: 'a' } });
-		await makeProgress(core, 'a');
+		await makeProgress({ core, db }, 'a');
 
 		await core.forLearner('a').resetProgress();
 
@@ -90,8 +94,8 @@ describe('deleteLearner()', () => {
 		const { core, db } = await setup();
 		await db.learner.create({ data: { id: 'a' } });
 		await db.learner.create({ data: { id: 'b' } });
-		await makeProgress(core, 'a');
-		await makeProgress(core, 'b');
+		await makeProgress({ core, db }, 'a');
+		await makeProgress({ core, db }, 'b');
 		const before = await remaining(db, 'b');
 		const other = await core.forLearner('b').map();
 		const beforeA = await remaining(db, 'a');
@@ -113,18 +117,15 @@ describe('deleteLearner()', () => {
 		expect(await core.forLearner('b').map()).toEqual(other);
 	});
 
-	it('is harmless for a Learner row that is missing, and for one that never existed', async () => {
-		const { core, db } = await setup();
-		await makeProgress(core, 'a'); // progress without a Learner row
-		await expect(deleteLearner(db, 'a')).resolves.toBeUndefined();
+	it('is harmless for a Learner that never had a row', async () => {
+		const { db } = await setup();
 		await expect(deleteLearner(db, 'nobody')).resolves.toBeUndefined();
-		expect((await remaining(db, 'a')).submission).toBe(0);
 	});
 
 	it('is one transaction: a failure part-way deletes nothing', async () => {
 		const { core, db } = await setup();
 		await db.learner.create({ data: { id: 'a' } });
-		await makeProgress(core, 'a');
+		await makeProgress({ core, db }, 'a');
 		const before = await remaining(db, 'a');
 		// Submission is cleared last: everything before it has been deleted inside the transaction when it fails.
 		await db.$executeRawUnsafe(
@@ -139,7 +140,7 @@ describe('deleteLearner()', () => {
 	it('also fails when the Learner row cannot be deleted, and then deletes nothing', async () => {
 		const { core, db } = await setup();
 		await db.learner.create({ data: { id: 'a' } });
-		await makeProgress(core, 'a');
+		await makeProgress({ core, db }, 'a');
 		const before = await remaining(db, 'a');
 		await db.$executeRawUnsafe(
 			"CREATE TRIGGER no_learner_delete BEFORE DELETE ON Learner BEGIN SELECT RAISE(ABORT, 'disk'); END"
@@ -163,5 +164,87 @@ describe('the tables resetProgress clears', () => {
 
 		expect(owned.length).toBeGreaterThan(0);
 		expect([...PROGRESS_TABLES].sort()).toEqual(owned.sort());
+	});
+});
+
+describe('the database ties progress to its Learner', () => {
+	it('deleting the Learner row alone removes every progress table by cascade, and only that Learner', async () => {
+		const { core, db } = await setup();
+		await makeProgress({ core, db }, 'a');
+		await makeProgress({ core, db }, 'b');
+		const countB = async () => [
+			await db.chapterRead.count({ where: { learnerId: 'b' } }),
+			await db.buildStep.count({ where: { learnerId: 'b' } }),
+			await db.topicLanguage.count({ where: { learnerId: 'b' } }),
+			await db.hintsRevealed.count({ where: { learnerId: 'b' } }),
+			await db.submission.count({ where: { learnerId: 'b' } })
+		];
+		const before = await countB();
+		expect(before.every((n) => n > 0)).toBe(true);
+
+		await db.learner.delete({ where: { id: 'a' } });
+
+		for (const table of PROGRESS_TABLES) {
+			const model = db[table as 'submission'] as unknown as {
+				count(a: object): Promise<number>;
+			};
+			expect(await model.count({ where: { learnerId: 'a' } }), table).toBe(0);
+		}
+		expect(await countB()).toEqual(before);
+	});
+
+	it('refuses a Submission for a removed Learner and writes nothing', async () => {
+		const { core, db } = await setup();
+		await makeProgress({ core, db }, 'a');
+		const view = await core.forLearner('a').problem('stacks-push');
+		await db.learner.delete({ where: { id: 'a' } });
+		const submissions = await db.submission.count();
+
+		await expect(core.forLearner('a').submit(view.build, { 'main.ts': 'x' })).rejects.toThrow();
+
+		expect(await db.submission.count()).toBe(submissions);
+		expect(await db.buildStep.count({ where: { learnerId: 'a' } })).toBe(0);
+	});
+
+	it('refuses each progress write for a Learner that has no row', async () => {
+		const { db } = await setup();
+		const learnerId = 'ghost';
+		const writes = [
+			db.chapterRead.create({ data: { learnerId, chapterId: 'c' } }),
+			db.buildStep.create({
+				data: { learnerId, topicId: 't', language: 'python', problemId: 'p', files: {} }
+			}),
+			db.topicLanguage.create({ data: { learnerId, topicId: 't', language: 'python' } }),
+			db.hintsRevealed.create({ data: { learnerId, problemId: 'p', count: 1 } }),
+			db.submission.create({
+				data: {
+					learnerId,
+					problemId: 'p',
+					topicId: 't',
+					language: 'python',
+					files: {},
+					verdict: 'Accepted'
+				}
+			})
+		];
+		for (const w of writes) await expect(w).rejects.toMatchObject({ code: expect.any(String) });
+	});
+
+	it('does not put the saved code in what a refused write throws', async () => {
+		const { db } = await setup();
+		const secret = ['SECRET', 'CODE', String(Date.now())].join('-');
+		const e = await db.submission
+			.create({
+				data: {
+					learnerId: 'ghost',
+					problemId: 'p',
+					topicId: 't',
+					language: 'python',
+					files: { 'main.py': secret },
+					verdict: 'Accepted'
+				}
+			})
+			.catch((err: unknown) => err);
+		expect(String((e as Error).stack) + String((e as Error).message)).not.toContain(secret);
 	});
 });
