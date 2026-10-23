@@ -40,7 +40,14 @@ const adminStep = (
 	problem?: { field?: keyof typeof FIELD_MESSAGES; message: string }
 ) => ({ step: 'admin' as const, ...typed, field: problem?.field, message: problem?.message });
 
-export const load: PageServerLoad = ({ locals }) => ({ multiUser: locals.setup.multiUser });
+/** `?convert` on a Local Instance (the gate lets only that through): the Settings row's way to the admin form. */
+const isConverting = (locals: App.Locals, url: URL) =>
+	locals.instance.mode() === 'local' && url.searchParams.has('convert');
+
+export const load: PageServerLoad = ({ locals, url }) => ({
+	multiUser: locals.setup.multiUser,
+	converting: isConverting(locals, url)
+});
 
 export const actions: Actions = {
 	/** Step 1: choose a mode. Local sets the Instance up; Multi-user goes on to the admin form. */
@@ -63,7 +70,7 @@ export const actions: Actions = {
 	},
 
 	/** Step 2: create the admin, sign them in, and land on the Map. */
-	admin: async ({ request, locals, cookies }) => {
+	admin: async ({ request, locals, cookies, url }) => {
 		const data = await request.formData();
 		const input = {
 			name: text(data, 'name'),
@@ -77,9 +84,12 @@ export const actions: Actions = {
 		if (multiUser.kind !== 'open') {
 			return fail(400, { message: unavailable(multiUser) });
 		}
-		// The gate also lets /setup?convert through on a Local Instance, which anyone can reach: only an
-		// Instance that is not set up may make its first admin here (converting Local has its own card).
-		if (locals.instance.mode() !== null) {
+		// A Local Instance has no sign-in, so anyone who can reach it reaches this action: it converts only when
+		// the request says so (`?convert`, which the gate admits on Local only) and the Instance is Local.
+		// A multi Instance is refused here, and `createFirstAdmin` checks again against the stored mode.
+		const converting = isConverting(locals, url);
+		const mode = locals.instance.mode();
+		if (mode === 'multi' || (mode === 'local' && !converting)) {
 			return fail(409, adminStep(typed, { message: ALREADY_SET_UP }));
 		}
 		// Before the Instance is claimed, so a name over the cap leaves nothing to undo. Better Auth's hook
@@ -92,7 +102,9 @@ export const actions: Actions = {
 		}
 		let headers: Headers;
 		try {
-			({ headers } = await locals.setup.createFirstAdmin(input));
+			({ headers } = await locals.setup.createFirstAdmin(
+				converting ? { ...input, convert: true } : input
+			));
 		} catch (error) {
 			if (isAPIError(error) && error.body?.code === 'NAME_TOO_LONG') {
 				return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));

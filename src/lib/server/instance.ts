@@ -20,8 +20,10 @@ export interface Instance {
 	/** Sets the Instance up as Local. Throws if it is already set up; never overwrites. */
 	chooseLocal(): Promise<void>;
 	/**
-	 * Makes the Instance multi: creates the row when there is none, or converts a Local one. Throws
-	 * if it is already multi. The result's `undo` puts it back as it was, for a setup that fails.
+	 * Makes the Instance multi: creates the row when there is none, or converts a Local one (C39), which
+	 * takes effect in this process at once and only if the stored mode is `local` and no Account exists,
+	 * checked in the one statement that writes it. Throws if it is already multi or the conversion is
+	 * refused. The result's `undo` puts it back as it was (Local stays Local, never unset), for a setup that fails.
 	 */
 	chooseMulti(): Promise<{ undo(): Promise<void> }>;
 }
@@ -153,12 +155,12 @@ export async function createInstance(db: Db): Promise<Instance> {
 					throw error;
 				}
 			} else {
-				// The row's current mode is the claim: only one caller sees it still `local`.
-				const { count } = await db.instance.updateMany({
-					where: { id: 'instance', mode: 'local' },
-					data: { mode: 'multi' }
-				});
-				if (count !== 1) return refuse();
+				// One statement holds the claim (the stored mode is exactly `local`, so only one caller wins) and
+				// the Accounts check (no User exists), so neither a second conversion nor a sign-up can land between
+				// a check and the write. The cache is not consulted: the row decides, and a refusal adopts it.
+				const converted =
+					await db.$executeRaw`UPDATE "Instance" SET "mode" = 'multi' WHERE "id" = 'instance' AND "mode" = 'local' AND NOT EXISTS (SELECT 1 FROM "User")`;
+				if (converted !== 1) return refuse();
 			}
 			mode = 'multi';
 			return {

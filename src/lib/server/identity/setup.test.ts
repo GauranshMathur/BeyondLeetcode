@@ -143,7 +143,7 @@ describe('createFirstAdmin', () => {
 		['one Instance object', false],
 		['a stale one', true]
 	])(
-		'refuses a Local Instance, whatever the caller thinks (%s): converting is another card',
+		'refuses a Local Instance unless the caller asks to convert it, whatever it thinks (%s)',
 		async (_, stale) => {
 			const { db, auth, instance } = await setup();
 			const caller = stale ? await createInstance(db) : instance;
@@ -158,6 +158,111 @@ describe('createFirstAdmin', () => {
 			expect(caller.mode()).toBe('local');
 		}
 	);
+
+	it('converts a Local Instance on request: the admin takes the Local Learner and its read Chapter', async () => {
+		const { db, auth, instance, core } = await setup();
+		await instance.chooseLocal();
+		await db.learner.create({ data: { id: 'local' } }).catch(() => {});
+		await core.forLearner('local').reachChapterEnd('stacks-undo-log');
+
+		const { headers } = await createFirstAdmin({ instance, auth, db }, { ...admin, convert: true });
+
+		expect(instance.mode()).toBe('multi');
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
+		expect(await db.user.findFirstOrThrow()).toMatchObject({ learnerId: 'local', role: 'admin' });
+		expect((await core.forLearner('local').chapter('stacks-undo-log')).read).toBe(true);
+		expect(headers.getSetCookie().length).toBeGreaterThan(0);
+	});
+
+	it('puts a converted Instance back to local, not unset, when sign-up fails', async () => {
+		const { db, auth, instance } = await setup();
+		await instance.chooseLocal();
+
+		await expect(
+			createFirstAdmin({ instance, auth: failingAfterUser(auth), db }, { ...admin, convert: true })
+		).rejects.toThrow('session store down');
+
+		expect(instance.mode()).toBe('local');
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+		expect(await db.user.count()).toBe(0);
+	});
+
+	it('does not convert a multi Instance, or a Local one that has an Account', async () => {
+		const first = await setup();
+		await createFirstAdmin({ instance: first.instance, auth: first.auth, db: first.db }, admin);
+		await expect(
+			createFirstAdmin(
+				{ instance: first.instance, auth: first.auth, db: first.db },
+				{ ...admin, email: 'two@example.com', convert: true }
+			)
+		).rejects.toThrow(InstanceAlreadySetUpError);
+
+		const { db, auth, instance } = await setup();
+		await instance.chooseLocal();
+		await db.user.create({
+			data: { id: 'u1', name: 'A', email: 'a@example.com', emailVerified: false, learnerId: 'x' }
+		});
+		await expect(
+			createFirstAdmin({ instance, auth, db }, { ...admin, convert: true })
+		).rejects.toThrow(InstanceAlreadySetUpError);
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+	});
+
+	it('an Account made between the check and the conversion refuses it, and Local stays local', async () => {
+		const { db, auth, instance } = await setup();
+		await instance.chooseLocal();
+		let reached!: () => void;
+		let release!: () => void;
+		const atCheck = new Promise<void>((resolve) => {
+			reached = resolve;
+		});
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let paused = false;
+		const slowCount = new Proxy(db, {
+			get(target, prop) {
+				if (prop !== 'user') return Reflect.get(target, prop);
+				return new Proxy(target.user, {
+					get(user, method) {
+						const member = Reflect.get(user, method);
+						if (method !== 'count') return member;
+						return async (...args: unknown[]) => {
+							const result = await (member as (...a: unknown[]) => Promise<number>).apply(
+								user,
+								args
+							);
+							if (!paused) {
+								paused = true;
+								reached();
+								await gate;
+							}
+							return result;
+						};
+					}
+				});
+			}
+		}) as typeof db;
+
+		const attempt = createFirstAdmin(
+			{ instance, auth, db: slowCount },
+			{ ...admin, convert: true }
+		);
+		const outcome = attempt.then(
+			() => 'created',
+			(error) => error
+		);
+		await atCheck; // the first check saw no Account; one now appears
+		await db.user.create({
+			data: { id: 'u1', name: 'B', email: 'b@example.com', emailVerified: false, learnerId: 'x' }
+		});
+		release();
+
+		expect(await outcome).toBeInstanceOf(InstanceAlreadySetUpError);
+		expect((await db.instance.findFirstOrThrow()).mode).toBe('local');
+		expect(instance.mode()).toBe('local');
+		expect(await db.user.count()).toBe(1);
+	});
 
 	it('refuses before claiming when an Account exists, so a restore that lands in between is not undone', async () => {
 		const { db, auth, instance } = await setup();
