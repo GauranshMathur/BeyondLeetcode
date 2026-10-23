@@ -179,9 +179,13 @@ describe('createAuth', () => {
 		).resolves.toBeTruthy();
 	});
 
-	it('serves no admin endpoint we do not use over HTTP', async () => {
+	it('serves no admin endpoint over HTTP, the four the Users page uses included', async () => {
 		const { auth } = await setup();
 		for (const path of [
+			'list-users',
+			'set-user-password',
+			'revoke-user-sessions',
+			'remove-user',
 			'set-role',
 			'create-user',
 			'ban-user',
@@ -215,7 +219,8 @@ describe('createAuth', () => {
 			'refresh-token',
 			'get-access-token',
 			'account-info',
-			'list-accounts'
+			'list-accounts',
+			'change-password'
 		]) {
 			const res = await auth.handler(
 				new Request(`http://localhost:3000/api/auth/${path}`, { method: 'POST' })
@@ -224,18 +229,20 @@ describe('createAuth', () => {
 		}
 		for (const [method, path] of [
 			['POST', 'sign-out'],
-			['GET', 'get-session'],
-			['POST', 'change-password']
+			['GET', 'get-session']
 		] as const) {
 			const res = await auth.handler(
 				new Request(`http://localhost:3000/api/auth/${path}`, { method })
 			);
 			expect(res.status, path).not.toBe(404);
 		}
-		const kept = await auth.handler(
-			new Request('http://localhost:3000/api/auth/admin/list-users', { method: 'GET' })
-		);
-		expect(kept.status).not.toBe(404);
+		// GET too: a path is off whatever the method.
+		for (const path of ['admin/list-users', 'admin/remove-user', 'change-password']) {
+			const res = await auth.handler(
+				new Request(`http://localhost:3000/api/auth/${path}`, { method: 'GET' })
+			);
+			expect(res.status, path).toBe(404);
+		}
 	});
 
 	it('serves no password sign-in over HTTP: the Sign in form, with its per-Account limits, is the one way', async () => {

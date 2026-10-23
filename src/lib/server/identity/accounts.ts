@@ -97,6 +97,25 @@ export class SelfResetError extends Error {
 	}
 }
 
+/** The admin asked to remove their own Account, which would end the session that asked. */
+export class SelfRemoveError extends Error {
+	constructor() {
+		super('The admin cannot remove their own Account.');
+		this.name = 'SelfRemoveError';
+	}
+}
+
+/**
+ * The Account is gone (it cannot sign in and has no session) but deleting its Learner and progress failed,
+ * as a whole: the rows are still there, unreachable, and nothing in the product points at them.
+ */
+export class ProgressNotRemovedError extends Error {
+	constructor() {
+		super('The Account was removed but its progress could not be deleted.');
+		this.name = 'ProgressNotRemovedError';
+	}
+}
+
 /** No look-alikes (0/O, 1/l/I), so a password read out or typed from a message survives. */
 const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 /** 20 characters of 57: about 117 bits, within Better Auth's 12 to 128. */
@@ -218,4 +237,74 @@ export async function resetAdminPassword(
 		await internalAdapter.deleteUserSessions(target.id);
 	}
 	return { email: target.email, password };
+}
+
+/**
+ * Removes an Account and everything of its Learner: the user (through `auth.api.removeUser`, which ends
+ * the user's sessions, deletes its credentials and then the user row), and then `deleteLearner` (the
+ * progress module's, handed in), which deletes the progress and the Learner row in one transaction. The bare plugin endpoint would leave the
+ * Learner and all its progress behind, and is off over HTTP.
+ *
+ * Why this order. The user goes first, so a failure never deletes a Learner's rows and leaves the user
+ * who owns them. Whatever fails, nobody is left with a session next to a deleted user: the plugin ends
+ * the sessions before it touches the user, and the user row's delete cascades to any it missed. If the
+ * user step fails the progress is untouched and a retry redoes every step. If the Learner step fails
+ * (`ProgressNotRemovedError`) the Account is already gone and cannot sign in, the progress is whole
+ * (one transaction) but unreachable, and the Learner id is random and never reused; the admin is told.
+ * An Account whose Learner row is missing (a sign-up that died between the user insert and the Learner
+ * create) is removed the same way: deleting rows that are not there is not an error, and the email is free.
+ *
+ * Identity's role is the check that counts, as in `resetPassword`, and it is made before anything is
+ * read. The asking admin is never removed (found by Learner, as for `you` on the Users page).
+ */
+export async function removeAccount(
+	auth: Auth,
+	{
+		deleteLearner,
+		who,
+		headers,
+		userId
+	}: {
+		/** `deleteLearner` of the progress module, bound to the database: the Learner and all its progress. */
+		deleteLearner: (learnerId: string) => Promise<void>;
+		who: Identity;
+		headers: Headers;
+		userId: string;
+	}
+): Promise<void> {
+	if (who.role !== 'admin') throw new NotAdminError();
+	if (typeof userId !== 'string' || userId === '') throw new UnknownAccountError();
+
+	const { internalAdapter } = await auth.$context;
+	const target = await internalAdapter.findUserById(userId);
+	if (!target) throw new UnknownAccountError();
+	const learnerId = (target as { learnerId?: string | null }).learnerId;
+	if (learnerId === who.learnerId) throw new SelfRemoveError();
+
+	try {
+		// The plugin's admin check is the removal's own; ask for the session first so a session that ended a
+		// moment ago, or whose user is no longer the admin who asked, changes nothing at all.
+		const fresh = await auth.api.getSession({ headers });
+		const freshUser = fresh?.user as
+			| { role?: string | null; learnerId?: string | null }
+			| undefined;
+		if (freshUser?.role !== 'admin' || freshUser.learnerId !== who.learnerId) {
+			throw new NotAdminError();
+		}
+		await auth.api.removeUser({ headers, body: { userId } });
+	} catch (error) {
+		if (error instanceof APIError) {
+			if (error.statusCode === 401 || error.statusCode === 403) throw new NotAdminError();
+			// Removed by another request between the look-up and here.
+			if (error.statusCode === 404) throw new UnknownAccountError();
+		}
+		throw error;
+	}
+
+	if (!learnerId) return;
+	try {
+		await deleteLearner(learnerId);
+	} catch {
+		throw new ProgressNotRemovedError();
+	}
 }
