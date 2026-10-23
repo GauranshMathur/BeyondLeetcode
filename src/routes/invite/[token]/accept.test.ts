@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuth, INVITE_COOKIE } from '$lib/server/identity/auth';
@@ -284,7 +285,10 @@ describe('accepting', () => {
 
 		expect(await post(token, lin)).toMatchObject({ status: 500 });
 
-		const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
+		const logged = spies
+			.flatMap((s) => s.mock.calls.flat())
+			.map((arg) => inspect(arg, { depth: null }))
+			.join('\n');
 		expect(logged).not.toContain(token);
 		expect(logged).not.toContain(lin.password);
 	});

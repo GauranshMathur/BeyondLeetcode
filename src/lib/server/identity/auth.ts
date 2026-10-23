@@ -19,8 +19,8 @@ export interface Admission {
  * The registration gate: `null` refuses the sign-up, otherwise it is admitted as described.
  *
  * It runs twice per sign-up (the request hook, then the database hook), so it must stay free of
- * side effects. Anything consumed on admit, such as an invite, is consumed in a `user.create.after`
- * hook, never here.
+ * side effects. Anything consumed on admit, such as an invite, is consumed in `user.create.before`
+ * (after the admission and the name checks, before anything is written), never here.
  */
 export type AdmitSignUp = (attempt: {
 	email: string | undefined;
@@ -55,7 +55,11 @@ export function inviteTokenFrom(headers: Headers | undefined | null): string | u
 
 /** `/invite/<token>`: the token is a credential, so no text that reaches a log may hold it. */
 const INVITE_PATH = /\/invite\/[^\s/?#"')\]]+/g;
-export const redactInvite = (text: string) => text.replace(INVITE_PATH, '/invite/[redacted]');
+const INVITE_COOKIE_TEXT = new RegExp(`${'beyondleetcode_invite'}=[^\\s;,"')\\]]+`, 'g');
+export const redactInvite = (text: string) =>
+	text
+		.replace(INVITE_PATH, '/invite/[redacted]')
+		.replace(INVITE_COOKIE_TEXT, 'beyondleetcode_invite=[redacted]');
 
 /** One log argument as redacted text: an Error as its stack, anything else as its string form. */
 function redactedArgument(value: unknown): string {
@@ -252,6 +256,11 @@ export function createAuth({
 			customRules: { '/sign-up/email': { window: 600, max: 20 } }
 		},
 		logger: redactingLogger,
+		// An error that is not an APIError (a database failure) is rethrown to the caller, so SvelteKit's
+		// `handleError` (which redacts the invite path) logs it. Left unset, Better Call prints it itself with
+		// `console.error` (router.mjs:93), request text and all. APIErrors are still turned back into their
+		// 403/422/400 responses by Better Call (router.mjs:84-89).
+		onAPIError: { throw: true },
 		telemetry: { enabled: false },
 		// `autoSignIn` and `requireEmailVerification` must stay unset: the hooks refuse a sign-up with a 403, and
 		// Better Auth turns a 403 into a fake success (its generic duplicate response) when either is set.
@@ -304,8 +313,8 @@ export function createAuth({
 						// and the Session (:255) only after this hook returns. A lost claim (used, expired, cancelled, a
 						// concurrent sign-up) is one conditional update that changed no row: refused, nothing written.
 						// The gate (here and in the request hook) only checked. A failure after the claim (the insert,
-						// the Account, the Session, the Learner) leaves the Invite spent and no usable Account; the
-						// admin reissues it. A claim that throws is refused the same way and writes nothing.
+						// the Account, the Session, the Learner) leaves the Invite spent; the admin reissues it.
+						// (A Session insert failure leaves the invitee's one Account, usable, beside the spent Invite.) A claim that throws is refused the same way and writes nothing.
 						if (admission.inviteToken && !(await claimInvite(admission.inviteToken, new Date()))) {
 							throw signUpClosed();
 						}

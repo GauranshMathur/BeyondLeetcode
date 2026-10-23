@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
@@ -53,7 +54,12 @@ describe('what an unexpected error logs', () => {
 			message: 'Internal Error'
 		});
 
-		expect(JSON.stringify(spies.flatMap((s) => s.mock.calls))).not.toContain(token);
+		const logged = spies
+			.flatMap((s) => s.mock.calls.flat())
+			.map((arg) => inspect(arg, { depth: null }))
+			.join('\n');
+		expect(logged).toContain('/invite/[redacted]');
+		expect(logged).not.toContain(token);
 		expect(result).toEqual({ message: 'Internal Error' });
 	});
 });

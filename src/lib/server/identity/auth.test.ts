@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { inspect } from 'node:util';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
@@ -16,6 +17,13 @@ import {
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
+
+/** Everything the console got, as text: an Error counts with its message, stack and cause. */
+const everythingLogged = (spies: { mock: { calls: unknown[][] } }[]) =>
+	spies
+		.flatMap((s) => s.mock.calls.flat())
+		.map((arg) => inspect(arg, { depth: null }))
+		.join('\n');
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
@@ -750,8 +758,11 @@ describe('accepting an Invite', () => {
 					body: JSON.stringify(payload)
 				})
 			);
+		/** Like `post`, for a step made to fail with a non-API error: that error leaves the handler (500 here). */
+		const postSafe = (...args: Parameters<typeof post>) =>
+			post(...args).catch(() => new Response(null, { status: 500 }));
 		const made = () => invites.create({ who: adminWho, now: new Date() });
-		return { db, invites, instance, post, made };
+		return { db, invites, instance, post, postSafe, made };
 	}
 
 	it('creates exactly one learner Account, and a second use is refused', async () => {
@@ -854,7 +865,7 @@ describe('accepting an Invite', () => {
 	])(
 		'leaves the Invite spent, no cookie and at most the one Account it paid for when the %s cannot be written',
 		async (table, accounts) => {
-			const { db, post, made } = await invited();
+			const { db, postSafe: post, made } = await invited();
 			const { token, id } = await made();
 			await db.$executeRawUnsafe(
 				`CREATE TRIGGER fail_${table} BEFORE INSERT ON "${table}" BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END`
@@ -904,9 +915,37 @@ describe('accepting an Invite', () => {
 		});
 
 		expect(res.status).toBe(403);
-		const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
+		const logged = everythingLogged(spies);
 		expect(logged).toContain('Invalid callbackURL');
 		expect(logged).not.toContain(token);
+	});
+
+	it('lets a non-API error out of the handler without printing it, and still answers refusals with their status and code', async () => {
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+		const { db, post, made } = await invited();
+		const { token } = await made();
+		vi.spyOn(db.learner, 'upsert').mockRejectedValue(
+			new Error(`locked: GET /invite/${token} beyondleetcode_invite=${token}`) as never
+		);
+
+		await expect(post(token, { ...body, email: 'boom@example.com' })).rejects.toThrow('locked');
+		expect(everythingLogged(spies)).not.toContain(token);
+		vi.restoreAllMocks();
+
+		// Refusals are still answered, with the status and code they had.
+		const closed = await post(null, { ...body, email: 'closed@example.com' });
+		expect(closed.status).toBe(403);
+		const tooLong = await post((await made()).token, {
+			...body,
+			email: 'long@example.com',
+			name: 'x'.repeat(101)
+		});
+		expect(tooLong.status).toBe(400);
+		expect((await tooLong.json()).code).toBe('NAME_TOO_LONG');
+		const duplicate = await post((await made()).token, { ...body, email: 'admin@example.com' });
+		expect(duplicate.status).toBe(422);
 	});
 
 	it('logs a fixed line, not the error, when removing the Account after a failed Learner fails too', async () => {
@@ -916,9 +955,9 @@ describe('accepting an Invite', () => {
 		vi.spyOn(db.learner, 'upsert').mockRejectedValue(new Error('locked /invite/secret') as never);
 		vi.spyOn(db.user, 'deleteMany').mockRejectedValue(new Error('locked /invite/secret') as never);
 
-		await post(token);
+		await post(token).catch(() => {});
 
-		const logged = JSON.stringify(spy.mock.calls);
+		const logged = everythingLogged([spy]);
 		expect(logged).toContain('removing an Account after its Learner failed also failed');
 		expect(logged).not.toContain('/invite/secret');
 	});
@@ -959,7 +998,7 @@ describe('accepting an Invite', () => {
 	});
 
 	it('removes the Account, leaves the Invite spent and sets no cookie when the Learner cannot be made', async () => {
-		const { db, post, made } = await invited();
+		const { db, postSafe: post, made } = await invited();
 		const { token, id } = await made();
 		const upsert = db.learner.upsert.bind(db.learner);
 		let calls = 0;
@@ -984,19 +1023,20 @@ describe('accepting an Invite', () => {
 		const { auth, db } = await setup(() => ({}));
 		vi.spyOn(db.learner, 'upsert').mockRejectedValue(new Error('database is locked') as never);
 
-		const res = await auth.handler(
-			new Request('http://localhost:3000/api/auth/sign-up/email', {
-				method: 'POST',
-				headers: {
-					'content-type': 'application/json',
-					origin: 'http://localhost:3000',
-					[CLIENT_IP_HEADER]: '10.9.9.9'
-				},
-				body: JSON.stringify(body)
-			})
-		);
+		await auth
+			.handler(
+				new Request('http://localhost:3000/api/auth/sign-up/email', {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						origin: 'http://localhost:3000',
+						[CLIENT_IP_HEADER]: '10.9.9.9'
+					},
+					body: JSON.stringify(body)
+				})
+			)
+			.catch(() => {});
 
-		expect(res.status).toBeGreaterThanOrEqual(400);
 		expect(await db.user.count()).toBe(0);
 		expect(await db.account.count()).toBe(0);
 	});

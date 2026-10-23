@@ -10,7 +10,7 @@ import { FIRST_ADMIN_LEARNER_ID, isFirstAdmin } from './setup.ts';
  *     Local Learner, as admin;
  *  2. an invite being accepted, when the Instance is multi-user (open or invite-only): the request carries a token that
  *     names an Invite not used, not expired and not cancelled: a new Learner. This only checks
- *     (`lookup`); the Invite is spent by `createAuth`'s `user.create.after` hook (`claim`);
+ *     (`lookup`); the Invite is spent by `createAuth`'s `user.create.before` hook (`claim`), before anything is written;
  *  3. anyone, when the Instance is multi-user and its Registration Mode is open: a new Learner.
  *
  * Everything else is refused. The Registration Mode is read at each call, never cached here, so a
