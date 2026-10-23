@@ -2287,6 +2287,54 @@ describe('a session is bound to its credential generation', () => {
 		expect(before).toBe(0);
 	});
 
+	it('a session older than updateAge is refreshed on resolution, and still resolves with its generation', async () => {
+		const w = await world();
+		const row = await w.db.session.findFirstOrThrow({ where: { userId: w.lin.id } });
+		// Better Auth refreshes when the session is older than a day: judged from `expiresAt` (7 days from creation).
+		const aged = new Date(Date.now() + 5 * 24 * 3600 * 1000);
+		await w.db.session.update({ where: { id: row.id }, data: { expiresAt: aged } });
+
+		const found = await w.auth.api.getSession({ headers: new Headers({ cookie: w.lin.cookie }) });
+
+		expect(found?.user.email).toBe('lin@example.com');
+		const after = await w.db.session.findUniqueOrThrow({ where: { id: row.id } });
+		expect(after.expiresAt.getTime()).toBeGreaterThan(aged.getTime() + 24 * 3600 * 1000); // the refresh branch ran
+		expect(after.credentialGeneration).toBe(row.credentialGeneration);
+		expect(await w.resolves(w.lin.cookie)).toBe(true);
+	});
+
+	it('an OAuth-only session holds "" and resolves, and stops once a password Account is created for the user', async () => {
+		const w = await world();
+		await w.db.learner.create({ data: { id: 'oz-learner' } });
+		await w.db.user.create({
+			data: { id: 'oz', name: 'Oz', email: 'oz@example.com', learnerId: 'oz-learner' }
+		});
+		await w.db.account.create({
+			data: { id: 'oz-gh', accountId: '99', providerId: 'github', userId: 'oz' }
+		});
+		await w.db.session.create({
+			data: {
+				id: 'oz-s',
+				token: 'oz-token',
+				userId: 'oz',
+				expiresAt: new Date(Date.now() + 1e9),
+				credentialGeneration: ''
+			}
+		});
+		const cookie = cookieForToken('oz-token');
+		expect(await w.resolves(cookie)).toBe(true);
+
+		// A password write: the Account now has a credential, and every earlier session ends.
+		await w.internalAdapter.linkAccount({
+			userId: 'oz',
+			providerId: 'credential',
+			accountId: 'oz',
+			password: 'hash'
+		});
+
+		expect(await w.resolves(cookie)).toBe(false);
+	});
+
 	it('removing an Account removes its sessions with the column', async () => {
 		const w = await world();
 		await w.db.user.delete({ where: { id: w.lin.id } });

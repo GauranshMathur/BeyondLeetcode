@@ -472,6 +472,47 @@ describe('the startup repair of Accounts and Learners (C57)', () => {
 		expect(said).not.toMatch(/no-row|orphan\b(?!\s+Learner)|lin@|u2/);
 	}, 60_000);
 
+	it('on a restart removes a session that can never resolve, and keeps a valid one and an OAuth-only one', async () => {
+		const { url, db } = await multiDatabase();
+		const adminUser = await db.user.findFirstOrThrow();
+		const generation = (
+			await db.account.findFirstOrThrow({
+				where: { userId: adminUser.id, providerId: 'credential' }
+			})
+		).credentialGeneration;
+		await db.learner.create({ data: { id: 'oauth-learner' } });
+		await db.user.create({
+			data: { id: 'oauth', name: 'Oz', email: 'oz@example.com', learnerId: 'oauth-learner' }
+		});
+		const session = (id: string, userId: string, credentialGeneration: string) =>
+			db.session.create({
+				data: {
+					id,
+					token: `t-${id}`,
+					userId,
+					expiresAt: new Date(Date.now() + 1e9),
+					credentialGeneration
+				}
+			});
+		await session('valid', adminUser.id, generation);
+		await session('inert', adminUser.id, 'an-older-generation');
+		await session('oauth-only', 'oauth', '');
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		onTestFinished(() => warn.mockRestore());
+		const before = await db.session.count({ where: { id: 'inert' } });
+
+		await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+
+		expect(before).toBe(1);
+		const left = (await db.session.findMany()).map((r) => r.id);
+		expect(left).toContain('valid');
+		expect(left).toContain('oauth-only');
+		expect(left).not.toContain('inert');
+		const said = warn.mock.calls.flat().join('\n');
+		expect(said).toContain('1 unusable session(s) removed');
+		expect(said).not.toMatch(/t-inert|an-older-generation/);
+	}, 60_000);
+
 	it('does not run in Local mode: the Local Learner stays and so does an unreferenced one', async () => {
 		const { url, db } = await migratedDatabase();
 		const app = await boot(url);
