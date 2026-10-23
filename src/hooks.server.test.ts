@@ -177,10 +177,12 @@ describe('redaction at the console', () => {
 			console.log('?a=1&beyondleetcode_invite=' + t);
 			console.count('/invite/' + t); console.count('/invite/' + t); console.countReset('/invite/' + t);
 			console.count('plain'); console.count('plain');
-			console.time('/invite/' + t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=' + t, { url: '/invite/' + t }); console.timeEnd('/invite/' + t);
+			console.time('/invite/' + t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=' + t, { url: '/invite/' + t }); console.timeLog('/invite/' + t, '/invite/', t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=%s', t); console.timeEnd('/invite/' + t);
 			if (typeof console.write === 'function') {
 				console.write('/invite/' + t + '\\n');
 				console.write(new TextEncoder().encode('beyondleetcode_invite=' + t + '\\n'));
+				console.write('/invite/', t, '\\n');
+				console.write('beyondleetcode_invite=%s', t, '\\n');
 			}
 		`;
 		const run = spawnSync('bun', ['-e', script], { encoding: 'utf8' });

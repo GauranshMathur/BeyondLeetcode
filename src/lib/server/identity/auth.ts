@@ -165,12 +165,15 @@ export function installLogRedaction(target: Console = console): void {
 		const member = (target as unknown as Record<string, unknown>)[name];
 		if (LEAVE.has(name) || typeof member !== 'function' || /^[A-Z]/.test(name)) continue;
 		if (name in { dir: 1, table: 1, assert: 1 } || FORMATTED.includes(name)) continue;
-		wrap(
-			name,
-			(original) =>
-				(...args) =>
-					original(...args.map(redactedMember))
-		);
+		wrap(name, (original) => (...args) => {
+			// Several arguments are one record: format first, then redact (`write('/invite/', t)` is
+			// split text until it is joined). A leading label stays its own argument so timers match.
+			if (name === 'write' && args.length > 1) return original(redactedLine(args));
+			const [label, ...rest] = args;
+			return rest.length === 0
+				? original(redactedMember(label))
+				: original(redactedMember(label), redactedLine(rest));
+		});
 	}
 }
 
