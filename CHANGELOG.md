@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.65.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.64.0...v0.65.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C55 console redaction: contrived shapes, invalid UTF-8 writes, handleError ([#223](https://github.com/GauranshMathur/BeyondLeetcode/issues/223)) ([c6a102c](https://github.com/GauranshMathur/BeyondLeetcode/commit/c6a102cbe5a3109fd5b5137381580f21f96ba69f))
+
 ## [0.64.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.63.0...v0.64.0) (2026-10-23)
 
 
