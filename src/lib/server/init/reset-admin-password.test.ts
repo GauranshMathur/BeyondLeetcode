@@ -107,6 +107,23 @@ describe('reset-admin-password command', () => {
 		).toBe(true);
 	});
 
+	it('still asks for the restart when the mode was restored but the reset then failed', async () => {
+		const { db } = await setup(['admin']);
+		const broken = new Proxy(db, {
+			get(target, prop, receiver) {
+				if (prop === 'account') throw new Error('disk full');
+				return Reflect.get(target, prop, receiver);
+			}
+		});
+
+		const result = await runResetAdminPassword([], env, () => broken);
+
+		expect(result.code).toBe(EXIT_FAILED);
+		expect(result.stdout).toBe('');
+		expect((await createInstance(db)).mode()).toBe('multi');
+		expect(result.stderr).toMatch(/restart/i);
+	});
+
 	it('does not ask for a restart when the mode was already stored', async () => {
 		const { db, open } = await setup(['admin']);
 		await (await createInstance(db)).chooseMulti();

@@ -84,10 +84,11 @@ export async function runResetAdminPassword(
 		return fail(EXIT_FAILED, 'could not open the database. Nothing was changed.');
 	}
 
+	let restored = false;
 	try {
 		// An admin Account with no stored mode (a clear that landed during Setup, C54): store multi again
 		// first, so a failed reset below still leaves the Instance usable. Narrow and atomic, see instance.ts.
-		const restored = await restoreMultiInstance(db);
+		restored = await restoreMultiInstance(db);
 		const reset = await resetAdminPassword(auth);
 		if (!reset) {
 			// No admin. With no Account at all on a multi Instance (a crash between the mode claim and the first
@@ -118,7 +119,11 @@ export async function runResetAdminPassword(
 		// The error is not printed: it could carry a query or a path, and the output may be logged.
 		return fail(
 			EXIT_FAILED,
-			'the reset did not finish and no password was printed. Run the command again.'
+			`the reset did not finish and no password was printed. Run the command again.${
+				restored
+					? ' The Instance did get its Multi-user mode back, so restart the web container too (docker compose restart web).'
+					: ''
+			}`
 		);
 	}
 }
