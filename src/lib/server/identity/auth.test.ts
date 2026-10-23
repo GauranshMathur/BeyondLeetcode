@@ -7,13 +7,16 @@ import {
 	type Admission,
 	CLIENT_IP_HEADER,
 	createAuth,
+	enabledProviders,
 	hasForbiddenNameCharacter,
 	INVITE_COOKIE,
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
-	redactInvite
+	providerName,
+	redactInvite,
+	socialProvidersFrom
 } from './auth.ts';
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
@@ -1119,6 +1122,321 @@ describe('redactInvite', () => {
 		expect(redactInvite(`other_${N}=harmless`)).toBe(`other_${N}=[redacted]`);
 		for (const harmless of ['/invite/[token]', 'unrelated text', 'beyond_invite=1']) {
 			expect(redactInvite(harmless)).toBe(harmless);
+		}
+	});
+});
+
+describe('signing in with a provider', () => {
+	const origin = 'http://localhost:3000';
+	const adminWho = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
+	const SECRETS = { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } };
+	let caller = 0;
+
+	type Profile = { id?: number; login?: string; name?: string | null; email?: string };
+
+	/** A GitHub that answers from memory: the token exchange, the profile and the email list. */
+	function githubAnswers(profile: Profile) {
+		const full = {
+			id: 4242,
+			login: 'octo',
+			name: 'Octo Cat',
+			email: 'octo@example.com',
+			...profile
+		};
+		return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+			const url = String(input instanceof Request ? input.url : input);
+			if (url === 'https://github.com/login/oauth/access_token') {
+				return Response.json({
+					access_token: 'gh-token',
+					token_type: 'bearer',
+					scope: 'read:user'
+				});
+			}
+			if (url === 'https://api.github.com/user') return Response.json(full);
+			if (url === 'https://api.github.com/user/emails') {
+				return Response.json([{ email: full.email, primary: true, verified: true }]);
+			}
+			throw new Error('unexpected request');
+		});
+	}
+
+	async function harness(
+		options: {
+			mode?: 'invite' | 'open';
+			claim?: 'real' | 'lose';
+			providers?: Parameters<typeof createAuth>[0]['socialProviders'];
+		} = {}
+	) {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.user.create({
+			data: {
+				id: 'u-admin',
+				name: 'Ada',
+				email: 'admin@example.com',
+				role: 'admin',
+				learnerId: 'local'
+			}
+		});
+		const invites = createInvites({ db, origin });
+		const instance = {
+			mode: () => 'multi' as const,
+			registrationMode: () => options.mode ?? 'invite'
+		};
+		const auth = createAuth({
+			db,
+			origin,
+			secret,
+			admitSignUp: createRegistration({ instance, invites }),
+			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at),
+			socialProviders: options.providers ?? SECRETS
+		});
+		onTestFinished(() => vi.restoreAllMocks());
+		const made = () => invites.create({ who: adminWho, now: new Date() });
+
+		/** The whole round trip: the button, the provider's redirect back (with the invite cookie, if any). */
+		async function signIn(inviteToken?: string) {
+			const start = await auth.api.signInSocial({
+				body: { provider: 'github', callbackURL: '/', errorCallbackURL: '/signin' },
+				returnHeaders: true
+			});
+			const state = new URL(start.response.url as string).searchParams.get('state');
+			const cookies = start.headers.getSetCookie().map((c) => c.split(';')[0]);
+			if (inviteToken) cookies.push(`${INVITE_COOKIE}=${inviteToken}`);
+			return auth.handler(
+				new Request(`${origin}/api/auth/callback/github?code=the-code&state=${state}`, {
+					headers: { cookie: cookies.join('; '), [CLIENT_IP_HEADER]: `10.3.0.${caller++ & 255}` }
+				})
+			);
+		}
+		const written = async () => ({
+			users: await db.user.count({ where: { id: { not: 'u-admin' } } }),
+			learners: await db.learner.count({ where: { id: { not: 'local' } } }),
+			accounts: await db.account.count(),
+			sessions: await db.session.count()
+		});
+		return { db, auth, invites, signIn, made, written };
+	}
+	const errorOf = (res: Response) =>
+		new URL(res.headers.get('location') ?? '', origin).searchParams.get('error');
+	const NOTHING = { users: 0, learners: 0, accounts: 0, sessions: 0 };
+
+	it('offers a provider only when both its variables are set', () => {
+		expect(socialProvidersFrom({})).toEqual({});
+		expect(socialProvidersFrom({ GITHUB_CLIENT_ID: 'a' })).toEqual({});
+		expect(socialProvidersFrom({ GITHUB_CLIENT_SECRET: 'b' })).toEqual({});
+		expect(socialProvidersFrom({ GITHUB_CLIENT_ID: 'a', GITHUB_CLIENT_SECRET: '  ' })).toEqual({});
+		expect(
+			socialProvidersFrom({
+				GITHUB_CLIENT_ID: 'a',
+				GITHUB_CLIENT_SECRET: 'b',
+				GOOGLE_CLIENT_ID: 'c',
+				GOOGLE_CLIENT_SECRET: 'd'
+			})
+		).toEqual({
+			github: { clientId: 'a', clientSecret: 'b' },
+			google: { clientId: 'c', clientSecret: 'd' }
+		});
+	});
+
+	it('has the providers it was given, and none by default', async () => {
+		const db = await createFileTestDb();
+		expect(enabledProviders(createAuth({ db, origin, secret }))).toEqual([]);
+		expect(enabledProviders(createAuth({ db, origin, secret, socialProviders: SECRETS }))).toEqual([
+			'github'
+		]);
+		const both = createAuth({
+			db,
+			origin,
+			secret,
+			socialProviders: { ...SECRETS, google: { clientId: 'g', clientSecret: 's' } }
+		});
+		expect(enabledProviders(both)).toEqual(['github', 'google']);
+	});
+
+	it('refuses a provider that is not configured', async () => {
+		const h = await harness({ providers: {} });
+		await expect(
+			h.auth.api.signInSocial({ body: { provider: 'github', callbackURL: '/' } })
+		).rejects.toBeTruthy();
+	});
+
+	it('serves no sign-in start over HTTP: the Sign in page is the one way', async () => {
+		const h = await harness();
+		const res = await h.auth.handler(
+			new Request(`${origin}/api/auth/sign-in/social`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin },
+				body: JSON.stringify({ provider: 'github', callbackURL: '/' })
+			})
+		);
+		expect(res.status).toBe(404);
+	});
+
+	it('Open mode with no invite: makes a learner Account with a Learner and a session', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+
+		const res = await h.signIn();
+
+		expect(res.status).toBe(302);
+		expect(res.headers.get('location')).toBe('/');
+		const user = await h.db.user.findUniqueOrThrow({ where: { email: 'octo@example.com' } });
+		expect(user).toMatchObject({ name: 'Octo Cat', role: 'learner' });
+		expect(await h.db.learner.count({ where: { id: user.learnerId } })).toBe(1);
+		expect(await h.db.account.count({ where: { userId: user.id, providerId: 'github' } })).toBe(1);
+		const cookie = res.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+		const session = await h.auth.api.getSession({ headers: new Headers({ cookie }) });
+		expect(session?.user.learnerId).toBe(user.learnerId);
+	});
+
+	it('Invite-only with no invite: refused, back to Sign in, nothing written', async () => {
+		githubAnswers({});
+		const h = await harness();
+
+		const res = await h.signIn();
+
+		expect(res.status).toBe(302);
+		expect(new URL(res.headers.get('location') ?? '', origin).pathname).toBe('/signin');
+		expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+		expect(res.headers.getSetCookie().some((c) => c.startsWith('better-auth.session_token'))).toBe(
+			false
+		);
+		expect(await h.written()).toEqual(NOTHING);
+	});
+
+	it('Invite-only with an unknown, spent or cancelled invite: refused, nothing written', async () => {
+		githubAnswers({});
+		const h = await harness();
+		const spent = await h.made();
+		const cancelled = await h.made();
+		await h.invites.cancel({ who: adminWho, id: cancelled.id });
+		await h.db.invite.update({ where: { id: spent.id }, data: { usedAt: new Date() } });
+
+		for (const token of ['A'.repeat(43), spent.token, cancelled.token]) {
+			const res = await h.signIn(token);
+			expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+		}
+		expect(await h.written()).toEqual(NOTHING);
+	});
+
+	it('Invite-only with a valid invite cookie: makes the Account and spends the invite once', async () => {
+		githubAnswers({});
+		const h = await harness();
+		const { token, id } = await h.made();
+
+		const res = await h.signIn(token);
+
+		expect(res.headers.get('location')).toBe('/');
+		expect(await h.db.user.count({ where: { email: 'octo@example.com' } })).toBe(1);
+		expect((await h.db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+		// Another identity cannot use it again.
+		githubAnswers({ id: 7, login: 'other', email: 'other@example.com' });
+		const again = await h.signIn(token);
+		expect(errorOf(again)).toBe('SIGN_UP_CLOSED');
+		expect(await h.db.user.count({ where: { email: 'other@example.com' } })).toBe(0);
+	});
+
+	it('Open mode claims a valid invite cookie too', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		const { token, id } = await h.made();
+
+		await h.signIn(token);
+
+		expect((await h.db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+	});
+
+	it('a lost claim refuses and writes nothing, in either mode', async () => {
+		githubAnswers({});
+		for (const mode of ['invite', 'open'] as const) {
+			const h = await harness({ mode, claim: 'lose' });
+			const { token } = await h.made();
+
+			const res = await h.signIn(token);
+
+			expect(errorOf(res)).toBe('SIGN_UP_CLOSED');
+			expect(await h.written()).toEqual(NOTHING);
+		}
+	});
+
+	it('a signed-up identity signs in again without a new Account and keeps its name', async () => {
+		githubAnswers({});
+		const h = await harness({ mode: 'open' });
+		await h.signIn();
+		await h.db.user.update({ where: { email: 'octo@example.com' }, data: { name: 'Renamed' } });
+		githubAnswers({ name: 'Changed On GitHub' });
+
+		const res = await h.signIn();
+
+		expect(res.headers.get('location')).toBe('/');
+		expect(await h.db.user.count({ where: { id: { not: 'u-admin' } } })).toBe(1);
+		expect(await h.db.account.count()).toBe(1);
+		expect((await h.db.user.findUniqueOrThrow({ where: { email: 'octo@example.com' } })).name).toBe(
+			'Renamed'
+		);
+	});
+
+	it('never links to an existing Account with the same email', async () => {
+		githubAnswers({ email: 'admin@example.com' });
+		const h = await harness({ mode: 'open' });
+
+		const res = await h.signIn();
+
+		expect(new URL(res.headers.get('location') ?? '', origin).pathname).toBe('/signin');
+		expect(new URL(res.headers.get('location') ?? '', origin).searchParams.get('error')).not.toBe(
+			null
+		);
+		expect(await h.db.account.count()).toBe(0);
+		expect(await h.db.session.count()).toBe(0);
+		expect(await h.db.user.count()).toBe(1);
+	});
+
+	describe('the name of an Account made through a provider', () => {
+		async function nameFor(profile: Profile) {
+			githubAnswers(profile);
+			const h = await harness({ mode: 'open' });
+			const res = await h.signIn();
+			expect(res.headers.get('location')).toBe('/');
+			return (await h.db.user.findFirstOrThrow({ where: { id: { not: 'u-admin' } } })).name;
+		}
+
+		it('is cut to 100 characters', async () => {
+			expect([...(await nameFor({ name: 'x'.repeat(300) }))]).toHaveLength(MAX_NAME_LENGTH);
+		});
+
+		it('counts an emoji as one character', async () => {
+			expect([...(await nameFor({ name: '😀'.repeat(150) }))]).toHaveLength(MAX_NAME_LENGTH);
+		});
+
+		it('falls back to the login, then the email before the @, when there is no name', async () => {
+			expect(await nameFor({ name: null, login: 'octo-login' })).toBe('octo-login');
+			expect(await nameFor({ name: '   ', login: '', email: 'pat.q@example.com' })).toBe('pat.q');
+		});
+
+		it('loses control and bidi characters', async () => {
+			const name = await nameFor({ name: 'Ev‮il\u0000 Name' });
+			expect(name).toBe('Evil Name');
+			expect(hasForbiddenNameCharacter(name)).toBe(false);
+		});
+	});
+
+	it('providerName gives nothing only when every source is empty', () => {
+		expect(providerName(undefined, undefined, undefined)).toBe('');
+		expect(providerName(7, null, '@example.com')).toBe('');
+		expect(providerName('  Ada  ', 'x', 'y@z')).toBe('Ada');
+	});
+
+	it('keeps the endpoints that would hand provider tokens to the browser off', async () => {
+		const h = await harness();
+		for (const path of ['refresh-token', 'get-access-token', 'account-info', 'list-accounts']) {
+			const res = await h.auth.handler(
+				new Request(`${origin}/api/auth/${path}`, { method: 'POST' })
+			);
+			expect(res.status, path).toBe(404);
 		}
 	});
 });

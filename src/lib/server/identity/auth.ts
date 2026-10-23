@@ -290,6 +290,42 @@ export function hasForbiddenNameCharacter(name: string): boolean {
 	return FORBIDDEN_NAME_CHARACTERS.test(name.trim());
 }
 
+/** The OAuth providers this app can offer, by the id Better Auth knows them by. */
+export const SOCIAL_PROVIDER_IDS = ['github', 'google'] as const;
+export type SocialProviderId = (typeof SOCIAL_PROVIDER_IDS)[number];
+export type SocialProviders = Partial<
+	Record<SocialProviderId, { clientId: string; clientSecret: string }>
+>;
+
+/** The display names the Sign in page puts on its buttons. */
+export const SOCIAL_PROVIDER_NAMES: Record<SocialProviderId, string> = {
+	github: 'GitHub',
+	google: 'Google'
+};
+
+/**
+ * The providers an environment enables: a provider is added only when both its variables are set (and not
+ * blank). Half a pair is a provider that cannot work, so it is left out and its button is not shown.
+ */
+export function socialProvidersFrom(env: Record<string, string | undefined>): SocialProviders {
+	const out: SocialProviders = {};
+	for (const id of SOCIAL_PROVIDER_IDS) {
+		const prefix = id.toUpperCase();
+		const clientId = env[`${prefix}_CLIENT_ID`]?.trim();
+		const clientSecret = env[`${prefix}_CLIENT_SECRET`]?.trim();
+		if (clientId && clientSecret) out[id] = { clientId, clientSecret };
+	}
+	return out;
+}
+
+/** The providers a Better Auth instance has, for the Sign in page. */
+export function enabledProviders(auth: {
+	options: { socialProviders?: object };
+}): SocialProviderId[] {
+	const have = auth.options.socialProviders ?? {};
+	return SOCIAL_PROVIDER_IDS.filter((id) => id in have);
+}
+
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
@@ -305,6 +341,11 @@ export type CreateAuthOptions = {
 	 * Without it an invite admission is refused. Called in `user.create.before`, so before anything is written.
 	 */
 	claimInvite?: (token: string, now: Date) => Promise<boolean>;
+	/**
+	 * OAuth providers, each present only when both its client id and secret are set (see `socialProvidersFrom`).
+	 * A sign-up through a provider goes through the same creation hooks as the email form.
+	 */
+	socialProviders?: SocialProviders;
 	/** Plugins the caller owns, e.g. SvelteKit's cookie plugin (keeps `$app/*` out of this file). */
 	extraPlugins?: BetterAuthPlugin[];
 };
@@ -332,12 +373,16 @@ const ADMIN_PATHS = [
 	'has-permission'
 ].map((p) => `/admin/${p}`);
 
+// `/sign-in/social` is off over HTTP too: the Sign in page's provider buttons call `auth.api.signInSocial` with
+// only a provider and fixed redirects, so no client can post its own `callbackURL`, `idToken` or `requestSignUp`.
+// The provider's redirect back, `/callback/:id`, stays served: it is what the browser is sent to.
 // Core endpoints we do not use over HTTP: no profile edits, email change, account deletion, password reset
 // by email, verification, social linking or token endpoints. `/change-password` is one too: Better Auth's
 // limiter alone would guard guesses of the current password there, so the Change password form
 // (`routes/account/password`) is the one way, through `auth.api.changePassword` with the per-Account limits.
 const UNUSED_CORE_PATHS = [
 	'/change-password',
+	'/sign-in/social',
 	'/update-user',
 	'/verify-password',
 	'/update-session',
@@ -362,7 +407,10 @@ const UNUSED_CORE_PATHS = [
 // password. Server-side `auth.api.signInEmail` calls are not HTTP paths and are unaffected.
 const HTTP_SIGN_IN_PATHS = ['/sign-in/email'];
 
-const signUpClosed = () => new APIError('FORBIDDEN', { message: 'Sign-up is closed' });
+// With a code, so that the provider callback (which turns an APIError that has one into a redirect to the
+// error page with `?error=<code>`) sends the visitor back to Sign in; without one it would answer a bare 403.
+const signUpClosed = () =>
+	new APIError('FORBIDDEN', { message: 'Sign-up is closed', code: 'SIGN_UP_CLOSED' });
 
 // Fixed messages and codes: the forms map the code to their own text, and the name is never echoed.
 const nameTooLong = () =>
@@ -385,6 +433,27 @@ function nameRefusal(name: string): APIError | null {
 	return hasForbiddenNameCharacter(name) ? nameInvalidCharacters() : null;
 }
 
+/** Control and bidi characters, globally: what a provider's name loses before the Account is made. */
+const FORBIDDEN_NAME_CHARACTERS_ALL = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/gu;
+
+/** `text` as a name: forbidden characters taken out, trimmed, at most 100 characters (by code point). */
+function cleanName(text: unknown): string {
+	if (typeof text !== 'string') return '';
+	const cleaned = text.replace(FORBIDDEN_NAME_CHARACTERS_ALL, '').trim();
+	return [...cleaned].slice(0, MAX_NAME_LENGTH).join('').trim();
+}
+
+/**
+ * The name an Account made through a provider gets. The provider's name (GitHub falls back to the login),
+ * with control and bidi characters removed and cut to 100 characters; with nothing left, the email's part
+ * before the `@`, cleaned the same way. Always a string, so `user.create.before` never sees a missing name,
+ * and what it sees passes `nameRefusal` unless even the email gives nothing, which it then refuses.
+ */
+export function providerName(name: unknown, login: unknown, email: unknown): string {
+	const local = typeof email === 'string' ? (email.split('@')[0] ?? '') : '';
+	return cleanName(name) || cleanName(login) || cleanName(local);
+}
+
 /** Better Auth over our database: email + password and the admin plugin, nothing else. */
 export function createAuth({
 	db,
@@ -392,6 +461,7 @@ export function createAuth({
 	secret,
 	admitSignUp = () => null,
 	claimInvite = async () => false,
+	socialProviders = {},
 	extraPlugins = []
 }: CreateAuthOptions) {
 	if (secret.length < MIN_SECRET_LENGTH) {
@@ -442,8 +512,36 @@ export function createAuth({
 			minPasswordLength: MIN_PASSWORD_LENGTH,
 			maxPasswordLength: MAX_PASSWORD_LENGTH
 		},
-		// Emails are never verified, so an email must never join two Accounts.
+		// Emails are never verified, so an email must never join two Accounts: a provider sign-in whose email
+		// belongs to an existing Account is refused, never linked.
+		//
+		// `overrideUserInfoOnSignIn` (set off on each provider below) and `updateUserInfoOnLink` (off by default,
+		// and linking is off) are what would write a provider's name through updateUser, past `user.create.before`
+		// and its name rules. They stay off; if one is ever turned on, a `user.update.before` hook must run the
+		// whole `nameRefusal` first (blank, the 100-character cap, control and bidi characters).
 		account: { accountLinking: { enabled: false } },
+		// Added only when both of a provider's variables were set. Its profile name is mapped to a name the rules
+		// accept (`providerName`); the Account itself is made by `user.create.before` like any other.
+		socialProviders: {
+			...(socialProviders.github && {
+				github: {
+					...socialProviders.github,
+					overrideUserInfoOnSignIn: false,
+					mapProfileToUser: (profile) => ({
+						name: providerName(profile.name, profile.login, profile.email)
+					})
+				}
+			}),
+			...(socialProviders.google && {
+				google: {
+					...socialProviders.google,
+					overrideUserInfoOnSignIn: false,
+					mapProfileToUser: (profile) => ({
+						name: providerName(profile.name, profile.given_name, profile.email)
+					})
+				}
+			})
+		},
 		// A removed or reset user must lose access on the next request.
 		session: { cookieCache: { enabled: false } },
 		user: {
@@ -469,7 +567,9 @@ export function createAuth({
 						// Learner below, so a refused name leaves nothing behind. Whatever path made the Account
 						// (the form, POST /sign-up/email, a later one) comes through here. For a sign-up over HTTP
 						// the request hook below has already asked, so this is the backstop.
-						const refusal = nameRefusal(user.name);
+						// A provider can send no name at all (`providerName` maps that away, this is the backstop): a missing
+						// one is "enter a name", not a crash in `trim()`.
+						const refusal = typeof user.name === 'string' ? nameRefusal(user.name) : nameRequired();
 						if (refusal) throw refusal;
 						// A named Learner (the Local one) already exists or is made here and is never removed.
 						// A fresh one is only named here and made in `after`, once the Account row is in, so a
