@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.57.0...v0.58.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C35b Accept invite ([#195](https://github.com/GauranshMathur/BeyondLeetcode/issues/195)) ([4a8bf13](https://github.com/GauranshMathur/BeyondLeetcode/commit/4a8bf13e64d0c819104f1833d04eda27ecaf42fa))
+
 ## [0.57.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.56.0...v0.57.0) (2026-10-23)
 
 
