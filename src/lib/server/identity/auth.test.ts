@@ -1921,6 +1921,71 @@ describe('a password sign-in racing a writer of the password', () => {
 		expect(await w.sessionsOf(w.lin.id)).toBe(0);
 	});
 
+	it('fails closed when the hook found no Account that the sign-in then finds (made in between)', async () => {
+		const w = await world();
+		vi.spyOn(w.db.user, 'findUnique').mockResolvedValueOnce(null);
+
+		const outcome = await w.signIn('lin@example.com');
+
+		refused(outcome);
+		expect(await w.sessionsOf(w.lin.id)).toBe(1); // only the sign-up's
+	});
+
+	it('fails closed when the record names another user than the one signed in', async () => {
+		const w = await world();
+		vi.spyOn(w.db.user, 'findUnique').mockResolvedValueOnce({ id: w.ada.id } as never);
+
+		const outcome = await w.signIn('lin@example.com');
+
+		refused(outcome);
+		expect(await w.sessionsOf(w.lin.id)).toBe(1);
+	});
+
+	it('fails closed for a sign-in with no record at all', async () => {
+		const w = await world();
+		// A session created in a sign-in request whose hook never ran: not a path that is exempt.
+		await expect(w.internalAdapter.createSession(w.lin.id)).rejects.toMatchObject({
+			statusCode: 401
+		});
+		expect(await w.sessionsOf(w.lin.id)).toBe(1);
+	});
+
+	it("names its exemptions: sign-up, a provider callback and the change's own session still get sessions", async () => {
+		const w = await world();
+		const signedUp = await w.auth.api.signUpEmail({
+			body: { name: 'New', email: 'new@example.com', password: oldPassword }
+		});
+		expect(signedUp.token).toBeTruthy();
+		const changed = await w.auth.api.changePassword({
+			headers: new Headers({ cookie: w.lin.cookie }),
+			body: { currentPassword: oldPassword, newPassword, revokeOtherSessions: true }
+		});
+		expect(changed.token).toBeTruthy();
+	});
+
+	it.each(['list-sessions', 'revoke-session', 'revoke-sessions', 'revoke-other-sessions'])(
+		'serves %s over HTTP no more, but keeps sign-out',
+		async (path) => {
+			const w = await world();
+			const res = await w.auth.handler(
+				new Request(`${origin}/api/auth/${path}`, {
+					method: path === 'list-sessions' ? 'GET' : 'POST',
+					headers: { cookie: w.lin.cookie, origin, 'content-type': 'application/json' },
+					body: path === 'list-sessions' ? undefined : '{}'
+				})
+			);
+			expect(res.status).toBe(404);
+			const signOut = await w.auth.handler(
+				new Request(`${origin}/api/auth/sign-out`, {
+					method: 'POST',
+					headers: { cookie: w.lin.cookie, origin, 'content-type': 'application/json' },
+					body: '{}'
+				})
+			);
+			expect(signOut.status).not.toBe(404);
+		}
+	);
+
 	it('still signs in with the new password after each writer, and with the old one before', async () => {
 		const w = await world();
 		expect((await w.signIn('lin@example.com')).ok).toBe(true);

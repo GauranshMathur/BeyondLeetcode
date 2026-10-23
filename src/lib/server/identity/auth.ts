@@ -451,8 +451,12 @@ export function enabledProviders(auth: {
 export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
-/** What a password sign-in checked: whose password, and a digest of the stored hash it was checked against. */
-type CredentialChecked = { userId: string; digest: string };
+/**
+ * What a password sign-in checked: whose password, and a digest of the stored hash it was checked against.
+ * `null`s are the record of a sign-in for which the hook found no user or no password: nothing was recorded to
+ * check against, and such a sign-in can create no session (see `checkedPasswordStillCurrent`).
+ */
+type CredentialChecked = { userId: string | null; digest: string | null };
 
 const digestOf = (hash: string) => createHash('sha256').update(hash).digest('hex');
 
@@ -510,6 +514,13 @@ const ADMIN_PATHS = [
 const UNUSED_CORE_PATHS = [
 	'/change-password',
 	'/sign-in/social',
+	// The app ends sessions itself (`auth.api`, server-side); these would run on Better Auth's session middleware, which
+	// does not apply the rule `/get-session` does for a session older than the password. `/sign-out` stays: the gate
+	// lets an Account that must change its password sign out through it.
+	'/list-sessions',
+	'/revoke-session',
+	'/revoke-sessions',
+	'/revoke-other-sessions',
 	'/update-user',
 	'/verify-password',
 	'/update-session',
@@ -627,15 +638,27 @@ export function createAuth({
 	}
 
 	/**
+	 * Requests whose sessions check no password, by the endpoint path: a sign-up (a new Account with its first
+	 * session), a provider's callback (no password is involved), and the password change's own replacement
+	 * session (made after the change, for the signed-in user). Every other path that creates a session is a
+	 * password sign-in and is held to its record.
+	 */
+	const SESSIONS_WITHOUT_A_PASSWORD_CHECK = ['/sign-up/email', '/callback/:id', '/change-password'];
+
+	/**
 	 * A password sign-in must create its session against the password it checked. The request hook recorded a
-	 * digest of the hash before the check (see `hooks.before`); this compares it with the stored hash now. A
-	 * session made by anything else (sign-up, a provider, the password change's fresh session) records nothing
-	 * and checks nothing here.
+	 * digest of the hash before the check (see `hooks.before`); this compares it with the stored hash now. It
+	 * fails closed: a sign-in with no record, or a record for another user or with nothing in it (the hook
+	 * found no Account, which may have been made since), creates no session. Only the named exemptions skip it.
 	 */
 	async function checkedPasswordStillCurrent(ctx: unknown, userId: string): Promise<boolean> {
-		const checked = (ctx as { credentialChecked?: CredentialChecked } | null | undefined)
-			?.credentialChecked;
-		if (!checked || checked.userId !== userId) return true;
+		const endpoint = ctx as
+			| { path?: string; credentialChecked?: CredentialChecked }
+			| null
+			| undefined;
+		if (endpoint?.path && SESSIONS_WITHOUT_A_PASSWORD_CHECK.includes(endpoint.path)) return true;
+		const checked = endpoint?.credentialChecked;
+		if (!checked || checked.userId !== userId || checked.digest === null) return false;
 		return (await credentialDigest(userId)) === checked.digest;
 	}
 
@@ -904,15 +927,19 @@ export function createAuth({
 			before: createAuthMiddleware(async (ctx) => {
 				if (ctx.path === '/sign-in/email') {
 					// Before the password is checked: record which password that will be (see `databaseHooks.session`).
+					// Always recorded, with nulls when there is nothing to record: a sign-in that finds an Account later
+					// (made after this read) has no record to match and creates no session.
 					const email = ctx.body?.email;
-					if (typeof email !== 'string') return;
-					const user = await db.user.findUnique({
-						where: { email: email.toLowerCase() },
-						select: { id: true }
-					});
+					const user =
+						typeof email === 'string'
+							? await db.user.findUnique({
+									where: { email: email.toLowerCase() },
+									select: { id: true }
+								})
+							: null;
 					const digest = user ? await credentialDigest(user.id) : null;
-					if (!user || !digest) return;
-					return { context: { credentialChecked: { userId: user.id, digest } } };
+					const checked: CredentialChecked = { userId: user && digest ? user.id : null, digest };
+					return { context: { credentialChecked: checked } };
 				}
 				if (ctx.path !== '/sign-up/email') return;
 				if (
