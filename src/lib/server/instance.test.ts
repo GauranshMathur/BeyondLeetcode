@@ -2,11 +2,13 @@ import { createClient } from '@libsql/client';
 import { expect, it } from 'vitest';
 import type { Db } from './db.ts';
 import {
+	AccountsExistError,
 	clearEmptyMultiInstance,
 	createInstance,
 	InstanceAlreadySetUpError,
 	InvalidRegistrationModeError,
-	RegistrationNotAvailableError
+	RegistrationNotAvailableError,
+	restoreMultiInstance
 } from './instance.ts';
 import { createTestDb } from './test-db.ts';
 
@@ -537,4 +539,80 @@ it('clearEmptyMultiInstance checks the Accounts and clears in one statement, so 
 
 	expect(statements).toHaveLength(1);
 	expect(statements[0]).toMatch(/DELETE FROM "Instance"[\s\S]*NOT EXISTS[\s\S]*"User"/);
+});
+
+// C54: Local is refused once any Account exists, and the reset command can restore a lost multi mode.
+
+it('chooseLocal refuses when any Account exists, writes nothing and leaves the mode unset', async () => {
+	const db = await createTestDb();
+	await addUser(db);
+	const instance = await createInstance(db);
+
+	await expect(instance.chooseLocal()).rejects.toBeInstanceOf(AccountsExistError);
+
+	expect(instance.mode()).toBeNull();
+	expect(await db.instance.count()).toBe(0);
+});
+
+it('chooseLocal claims in one statement that holds the Accounts check, so a sign-up cannot slip between', async () => {
+	const db = await createTestDb();
+	const statements: string[] = [];
+	const spied = new Proxy(db, {
+		get(target, prop) {
+			if (prop === '$executeRaw') {
+				return (strings: TemplateStringsArray) => {
+					statements.push(strings.join('?'));
+					return (target.$executeRaw as (s: TemplateStringsArray) => Promise<number>)(strings);
+				};
+			}
+			if (prop === 'user' || prop === '$transaction') throw new Error('must not read separately');
+			return Reflect.get(target, prop);
+		}
+	});
+	const instance = await createInstance(spied);
+
+	await instance.chooseLocal();
+
+	expect(instance.mode()).toBe('local');
+	expect(statements).toHaveLength(1);
+	expect(statements[0]).toMatch(/INSERT INTO "Instance"[\s\S]*NOT EXISTS[\s\S]*"User"/);
+});
+
+const addAdmin = (db: Db, role = 'admin') =>
+	db.user.create({
+		data: {
+			id: 'u1',
+			name: 'A',
+			email: 'a@example.com',
+			emailVerified: false,
+			learnerId: 'l1',
+			role
+		}
+	});
+
+it('restoreMultiInstance stores multi when an admin Account exists and no mode is stored', async () => {
+	const db = await createTestDb();
+	await addAdmin(db);
+
+	expect(await restoreMultiInstance(db)).toBe(true);
+
+	const restarted = await createInstance(db);
+	expect(restarted.mode()).toBe('multi');
+	expect(restarted.registrationMode()).toBe('invite');
+});
+
+it('restoreMultiInstance refuses without an admin (none, a learner, admin,learner) and when a mode is stored', async () => {
+	const none = await createTestDb();
+	expect(await restoreMultiInstance(none)).toBe(false);
+	for (const role of ['learner', 'admin,learner', 'Admin']) {
+		const db = await createTestDb();
+		await addAdmin(db, role);
+		expect(await restoreMultiInstance(db)).toBe(false);
+		expect(await db.instance.count()).toBe(0);
+	}
+	const local = await createTestDb();
+	await addAdmin(local);
+	await local.instance.create({ data: { mode: 'local' } }).catch(() => {});
+	expect(await restoreMultiInstance(local)).toBe(false);
+	expect((await createInstance(local)).mode()).toBe('local');
 });

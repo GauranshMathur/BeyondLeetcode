@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
-import { createInstance, InstanceAlreadySetUpError } from '../instance.ts';
+import { createInstance, InstanceAlreadySetUpError, restoreMultiInstance } from '../instance.ts';
 import { createLearningCore } from '../learning/core.ts';
 import { createFileTestDb } from '../test-db.ts';
 import { type Auth, createAuth } from './auth.ts';
@@ -158,6 +158,62 @@ describe('createFirstAdmin', () => {
 			expect(caller.mode()).toBe('local');
 		}
 	);
+
+	it('refuses before claiming when an Account exists, so a restore that lands in between is not undone', async () => {
+		const { db, auth, instance } = await setup();
+		await db.user.create({
+			data: {
+				id: 'u1',
+				name: 'A',
+				email: 'a@example.com',
+				emailVerified: false,
+				role: 'admin',
+				learnerId: 'local'
+			}
+		});
+		// Pause createFirstAdmin at its first Accounts check; the reset command's restore lands there.
+		let reached!: () => void;
+		let release!: () => void;
+		const atCheck = new Promise<void>((resolve) => {
+			reached = resolve;
+		});
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let paused = false;
+		const slowCount = new Proxy(db, {
+			get(target, prop) {
+				if (prop !== 'user') return Reflect.get(target, prop);
+				return new Proxy(target.user, {
+					get(user, method) {
+						const member = Reflect.get(user, method);
+						if (method !== 'count') return member;
+						return async (...args: unknown[]) => {
+							if (!paused) {
+								paused = true;
+								reached();
+								await gate;
+							}
+							return (member as (...a: unknown[]) => Promise<number>).apply(user, args);
+						};
+					}
+				});
+			}
+		}) as typeof db;
+
+		const attempt = createFirstAdmin({ instance, auth, db: slowCount }, admin);
+		const outcome = attempt.then(
+			() => 'created',
+			(error) => error
+		);
+		await atCheck;
+		expect(await restoreMultiInstance(db)).toBe(true); // no row was claimed, so the restore can land
+		release();
+
+		expect(await outcome).toBeInstanceOf(InstanceAlreadySetUpError);
+		expect((await db.instance.findUniqueOrThrow({ where: { id: 'instance' } })).mode).toBe('multi');
+		expect(await db.user.count()).toBe(1);
+	});
 
 	it('refuses a multi Instance even when it has no Accounts: recovery is not a re-run of Setup', async () => {
 		const { db, auth } = await setup();
