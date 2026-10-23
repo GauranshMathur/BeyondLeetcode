@@ -1,4 +1,5 @@
 import { randomUUID as createId } from 'node:crypto';
+import { inspect } from 'node:util';
 import type { BetterAuthPlugin } from 'better-auth';
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
@@ -52,8 +53,32 @@ export function inviteTokenFrom(headers: Headers | undefined | null): string | u
 	return undefined;
 }
 
-/** The Invite each in-flight Account creation was admitted on, keyed by its request context. */
-const inviteAdmissions = new WeakMap<object, string>();
+/** `/invite/<token>`: the token is a credential, so no text that reaches a log may hold it. */
+const INVITE_PATH = /\/invite\/[^\s/?#"')\]]+/g;
+export const redactInvite = (text: string) => text.replace(INVITE_PATH, '/invite/[redacted]');
+
+/** One log argument as redacted text: an Error as its stack, anything else as its string form. */
+function redactedArgument(value: unknown): string {
+	if (value instanceof Error) return redactInvite(value.stack ?? `${value.name}: ${value.message}`);
+	if (typeof value === 'string') return redactInvite(value);
+	try {
+		return redactInvite(inspect(value, { depth: 3 }));
+	} catch {
+		return '[unprintable]';
+	}
+}
+
+/**
+ * Better Auth's own logger, with the invite path taken out of every message and argument: its origin check
+ * logs the whole `callbackURL` of a request it refuses, which can be `/invite/<token>`.
+ */
+export const redactingLogger = {
+	log(level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: unknown[]) {
+		const line = [redactedArgument(message), ...args.map(redactedArgument)].join(' ');
+		const write = level === 'debug' ? console.debug : console[level];
+		write(`[Better Auth] ${line}`);
+	}
+};
 
 export const MIN_SECRET_LENGTH = 32;
 
@@ -110,7 +135,7 @@ export type CreateAuthOptions = {
 	admitSignUp?: AdmitSignUp;
 	/**
 	 * Spends the Invite a sign-up was admitted on (`Invites.claim`); true only when this call spent it.
-	 * Without it an invite admission cannot be completed, so the Account is removed again.
+	 * Without it an invite admission is refused. Called in `user.create.before`, so before anything is written.
 	 */
 	claimInvite?: (token: string, now: Date) => Promise<boolean>;
 	/** Plugins the caller owns, e.g. SvelteKit's cookie plugin (keeps `$app/*` out of this file). */
@@ -226,6 +251,7 @@ export function createAuth({
 			// endpoint skips the form, so it gets the same budget as the form.
 			customRules: { '/sign-up/email': { window: 600, max: 20 } }
 		},
+		logger: redactingLogger,
 		telemetry: { enabled: false },
 		// `autoSignIn` and `requireEmailVerification` must stay unset: the hooks refuse a sign-up with a 403, and
 		// Better Auth turns a 403 into a fake success (its generic duplicate response) when either is set.
@@ -257,9 +283,6 @@ export function createAuth({
 								inviteToken: inviteTokenFrom(ctx.headers ?? ctx.request?.headers)
 							}));
 						if (!admission) throw signUpClosed();
-						// Remembered for this one creation (same context in `after`), so the claim does not depend on
-						// asking the gate again, which would answer differently once a racing sign-up has won.
-						if (ctx && admission.inviteToken) inviteAdmissions.set(ctx, admission.inviteToken);
 						// After the admission, so a closed sign-up answers the same whatever the name; before the
 						// Learner below, so a refused name leaves nothing behind. Whatever path made the Account
 						// (the form, POST /sign-up/email, a later one) comes through here. For a sign-up over HTTP
@@ -276,6 +299,16 @@ export function createAuth({
 								create: { id: admission.learnerId }
 							});
 						}
+						// An Invite is spent here, last, before anything is written: Better Auth has already refused a
+						// duplicate email (`sign-up.mjs:192`) and writes the User (:217), the credential Account (:235)
+						// and the Session (:255) only after this hook returns. A lost claim (used, expired, cancelled, a
+						// concurrent sign-up) is one conditional update that changed no row: refused, nothing written.
+						// The gate (here and in the request hook) only checked. A failure after the claim (the insert,
+						// the Account, the Session, the Learner) leaves the Invite spent and no usable Account; the
+						// admin reissues it. A claim that throws is refused the same way and writes nothing.
+						if (admission.inviteToken && !(await claimInvite(admission.inviteToken, new Date()))) {
+							throw signUpClosed();
+						}
 						const learnerId = admission.learnerId ?? createId();
 						return {
 							data: {
@@ -288,40 +321,27 @@ export function createAuth({
 							}
 						};
 					},
-					after: async (user, ctx) => {
-						// Better Auth 1.7.7 runs this inside `internalAdapter.createUser`, after the User row is
-						// committed and BEFORE it writes the credential Account (`linkAccount`) and the Session
-						// (`sign-up.mjs`): whatever this throws, neither exists yet. The User does, so every failure
-						// here removes it (and the Learner this hook made) and then rethrows, or a half-made
-						// Account would hold the email and a spent-or-unspent Invite would not match its Accounts.
+					after: async (user) => {
+						// Better Auth 1.7.7 defers this hook while the sign-up transaction is open
+						// (`queueAfterTransactionHook`, transaction.mjs:96), so it runs after the User, the credential
+						// Account and the Session are written and the cookie is set (`sign-up.mjs:144-257`). A throw
+						// here is the Learner not being made: the User is removed (its Account and Session go with it,
+						// `onDelete: Cascade`) and the sign-up refused. A fresh Learner is made only now, so a failed
+						// insert or a refused claim never leaves one behind.
 						const { learnerId } = user as { learnerId?: string | null };
-						let madeLearner = false;
+						if (!learnerId) return;
 						try {
-							if (learnerId) {
-								madeLearner = !(await db.learner.findUnique({
-									where: { id: learnerId },
-									select: { id: true }
-								}));
-								await db.learner.upsert({
-									where: { id: learnerId },
-									update: {},
-									create: { id: learnerId }
-								});
-							}
-							// Last, so nothing can fail after the Invite is spent. The gate only checked it, and
-							// two sign-ups on one token can both be here: the claim is one conditional update, and
-							// the one that changes no row is refused. If the claim itself throws, the Invite may or
-							// may not be spent; the Account is gone either way, and a spent one is reissued by the admin.
-							const token = ctx ? inviteAdmissions.get(ctx) : undefined;
-							if (token && !(await claimInvite(token, new Date()))) throw signUpClosed();
+							await db.learner.upsert({
+								where: { id: learnerId },
+								update: {},
+								create: { id: learnerId }
+							});
 						} catch (error) {
 							try {
 								await db.user.deleteMany({ where: { id: user.id } });
-								if (madeLearner && learnerId)
-									await db.learner.deleteMany({ where: { id: learnerId } });
 							} catch {
-								// The original failure is the one to report; with no Account row written, what is
-								// left cannot sign in.
+								// A fixed line: the error text may hold query text and the input.
+								console.error('Sign up: removing an Account after its Learner failed also failed.');
 							}
 							throw error;
 						}

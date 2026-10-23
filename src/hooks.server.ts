@@ -2,6 +2,7 @@ import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { createApp } from '$lib/server/app';
 import { createHandle } from '$lib/server/handle';
+import { redactInvite } from '$lib/server/identity/auth';
 
 let run: Handle;
 
@@ -26,10 +27,6 @@ export const init: ServerInit = async () => {
 
 /** The gate runs first (see createHandle), then Identity and the Learning core act for the request. */
 export const handle: Handle = (input) => run(input);
-
-/** `/invite/<token>`: the token is a credential, so no text that goes to the logs may hold it. */
-const INVITE_PATH = /\/invite\/[^\s/?#"')\]]+/g;
-const redactInvite = (text: string) => text.replace(INVITE_PATH, '/invite/[redacted]');
 
 /**
  * What an unexpected error prints. SvelteKit's default prints `[status] METHOD pathname` and the stack, and

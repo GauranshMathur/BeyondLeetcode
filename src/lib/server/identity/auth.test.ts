@@ -807,10 +807,120 @@ describe('accepting an Invite', () => {
 		const res = await post(token);
 
 		expect(res.status).toBe(403);
+		expect(res.headers.getSetCookie()).toEqual([]);
 		expect(await db.user.count()).toBe(1);
 		expect(await db.learner.count()).toBe(1);
 		expect(await db.account.count()).toBe(0);
 		expect(await db.session.count()).toBe(0);
+	});
+
+	it.each([
+		[
+			'expired',
+			async (h: Awaited<ReturnType<typeof invited>>, id: string) => {
+				await h.db.invite.update({
+					where: { id },
+					data: { expiresAt: new Date(Date.now() - 1000) }
+				});
+			}
+		],
+		[
+			'cancelled',
+			async (h: Awaited<ReturnType<typeof invited>>, id: string) => {
+				await h.invites.cancel({ who: adminWho, id });
+			}
+		]
+	])(
+		'a %s link sets no cookie and writes no User, Account, Session or Learner',
+		async (_name, spoil) => {
+			const h = await invited();
+			const { token, id } = await h.made();
+			await spoil(h, id);
+
+			const res = await h.post(token);
+
+			expect(res.status).toBe(403);
+			expect(res.headers.getSetCookie()).toEqual([]);
+			expect(await h.db.user.count()).toBe(1);
+			expect(await h.db.account.count()).toBe(0);
+			expect(await h.db.session.count()).toBe(0);
+			expect(await h.db.learner.count()).toBe(1);
+		}
+	);
+
+	it.each([
+		['Account', 0],
+		['Session', 1]
+	])(
+		'leaves the Invite spent, no cookie and at most the one Account it paid for when the %s cannot be written',
+		async (table, accounts) => {
+			const { db, post, made } = await invited();
+			const { token, id } = await made();
+			await db.$executeRawUnsafe(
+				`CREATE TRIGGER fail_${table} BEFORE INSERT ON "${table}" BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END`
+			);
+			const email = 'half@example.com';
+
+			const res = await post(token, { ...body, email });
+
+			expect(res.status).toBeGreaterThanOrEqual(400);
+			expect(res.headers.getSetCookie()).toEqual([]);
+			expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+			expect(await db.session.count()).toBe(0);
+			// Better Auth does not roll its steps back here: a failed Account leaves a User no one can sign in
+			// as; a failed Session leaves the one Account (the invitee signs in with the password they chose).
+			expect(await db.account.count()).toBe(accounts);
+			// The link is spent, so no second Account can come of it.
+			await db.$executeRawUnsafe(`DROP TRIGGER fail_${table}`);
+			expect((await post(token, { ...body, email: 'second@example.com' })).status).toBe(403);
+			expect(await db.account.count()).toBe(accounts);
+		}
+	);
+
+	it('removing a User removes its Account and Session', async () => {
+		const { db, post, made } = await invited();
+		const { token } = await made();
+		expect((await post(token)).status).toBe(200);
+		expect(await db.account.count()).toBe(1);
+		expect(await db.session.count()).toBe(1);
+
+		await db.user.deleteMany({ where: { email: { not: 'admin@example.com' } } });
+
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+	});
+
+	it("keeps the invite path out of Better Auth's own log", async () => {
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+		const { post, made } = await invited();
+		const { token } = await made();
+
+		const res = await post(token, {
+			...body,
+			email: 'cb@example.com',
+			callbackURL: `https://evil.example/invite/${token}`
+		});
+
+		expect(res.status).toBe(403);
+		const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
+		expect(logged).toContain('Invalid callbackURL');
+		expect(logged).not.toContain(token);
+	});
+
+	it('logs a fixed line, not the error, when removing the Account after a failed Learner fails too', async () => {
+		const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const { db, post, made } = await invited();
+		const { token } = await made();
+		vi.spyOn(db.learner, 'upsert').mockRejectedValue(new Error('locked /invite/secret') as never);
+		vi.spyOn(db.user, 'deleteMany').mockRejectedValue(new Error('locked /invite/secret') as never);
+
+		await post(token);
+
+		const logged = JSON.stringify(spy.mock.calls);
+		expect(logged).toContain('removing an Account after its Learner failed also failed');
+		expect(logged).not.toContain('/invite/secret');
 	});
 
 	it('does not spend the Invite when the name is refused, so the invitee can try again', async () => {
@@ -848,7 +958,7 @@ describe('accepting an Invite', () => {
 		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
 	});
 
-	it('removes the Account and the Learner it made, and leaves the Invite unspent, when the Learner cannot be made', async () => {
+	it('removes the Account, leaves the Invite spent and sets no cookie when the Learner cannot be made', async () => {
 		const { db, post, made } = await invited();
 		const { token, id } = await made();
 		const upsert = db.learner.upsert.bind(db.learner);
@@ -865,8 +975,9 @@ describe('accepting an Invite', () => {
 		expect(await db.account.count()).toBe(0);
 		expect(await db.session.count()).toBe(0);
 		expect(await db.learner.count()).toBe(1);
-		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
-		expect((await post(token)).status).toBe(200);
+		// Spent before anything was written: the admin reissues.
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+		expect((await post(token)).status).toBe(403);
 	});
 
 	it('removes the Account of any sign-up whose Learner cannot be made, with no Invite involved', async () => {
