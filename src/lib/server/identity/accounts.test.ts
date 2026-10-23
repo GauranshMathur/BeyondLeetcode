@@ -4,6 +4,7 @@ import {
 	type AccountRow,
 	listAccounts,
 	NotAdminError,
+	resetAdminPassword,
 	resetPassword,
 	SelfResetError,
 	UnknownAccountError
@@ -51,7 +52,7 @@ async function setup() {
 		return { who, headers };
 	}
 
-	return { db, auth, signUp, requestOf };
+	return { db, auth, resolver, signUp, requestOf };
 }
 
 describe('listAccounts', () => {
@@ -476,5 +477,134 @@ describe('resetPassword', () => {
 			false
 		);
 		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(1);
+	});
+});
+
+describe('resetAdminPassword', () => {
+	const signIn = (auth: Auth, email: string, pw: string) =>
+		auth.api.signInEmail({ body: { email, password: pw } });
+
+	async function withAdmin() {
+		const s = await setup();
+		const admin = await s.signUp('Ada Admin', 'ada@example.com', 'admin');
+		const lin = await s.signUp('Lin Learner', 'lin@example.com');
+		return { ...s, admin, lin };
+	}
+
+	it('returns a password that signs the admin in, and the old one stops working', async () => {
+		const { auth } = await withAdmin();
+
+		const result = await resetAdminPassword(auth);
+
+		expect(result?.email).toBe('ada@example.com');
+		await expect(signIn(auth, 'ada@example.com', password)).rejects.toThrow();
+		const signedIn = await signIn(auth, 'ada@example.com', result?.password ?? '');
+		expect(signedIn.user.email).toBe('ada@example.com');
+	});
+
+	it('forces a change, ends every admin session, and leaves other Accounts alone', async () => {
+		const { auth, db, admin, lin, requestOf } = await withAdmin();
+		await signIn(auth, 'ada@example.com', password); // a second session
+		expect(await db.session.count()).toBe(3);
+
+		await resetAdminPassword(auth);
+
+		const rows = await db.user.findMany({ select: { email: true, mustChangePassword: true } });
+		expect(Object.fromEntries(rows.map((r) => [r.email, r.mustChangePassword]))).toEqual({
+			'ada@example.com': true,
+			'lin@example.com': false
+		});
+		await expect(requestOf(admin.cookie)).rejects.toThrow();
+		expect(await db.session.count()).toBe(1);
+		expect((await requestOf(lin.cookie)).who.role).toBe('learner');
+		await signIn(auth, 'lin@example.com', password);
+	});
+
+	it('the new session carries the flag the gate redirects on', async () => {
+		const { auth, resolver } = await withAdmin();
+		const result = await resetAdminPassword(auth);
+		const { headers } = await auth.api.signInEmail({
+			body: { email: 'ada@example.com', password: result?.password ?? '' },
+			returnHeaders: true
+		});
+		const cookie = headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+
+		const who = await resolver.resolve({
+			cookies: { get: () => undefined },
+			request: { headers: new Headers({ cookie }) }
+		});
+
+		expect(who?.mustChangePassword).toBe(true);
+	});
+
+	it('makes a different password each time', async () => {
+		const { auth } = await withAdmin();
+		const a = (await resetAdminPassword(auth))?.password;
+		const b = (await resetAdminPassword(auth))?.password;
+		expect(a).not.toBe(b);
+		expect(a).toMatch(/^[A-Za-z0-9]{20}$/);
+	});
+
+	it('returns null and changes nothing when there is no admin Account', async () => {
+		const { auth, db, signUp } = await setup();
+		await signUp('Lin Learner', 'lin@example.com');
+
+		expect(await resetAdminPassword(auth)).toBeNull();
+
+		await signIn(auth, 'lin@example.com', password);
+		expect(await db.session.count()).toBe(2);
+		expect((await db.user.findMany()).some((u) => u.mustChangePassword)).toBe(false);
+	});
+
+	it('returns null when there are no Accounts at all', async () => {
+		const { auth } = await setup();
+		expect(await resetAdminPassword(auth)).toBeNull();
+	});
+
+	it('does not treat a role that merely contains admin as the admin', async () => {
+		const { auth, db } = await setup();
+		await db.user.create({
+			data: {
+				id: 'u1',
+				name: 'X',
+				email: 'x@example.com',
+				emailVerified: false,
+				role: 'admin,learner',
+				learnerId: 'l1'
+			}
+		});
+		expect(await resetAdminPassword(auth)).toBeNull();
+	});
+
+	it('revokes the sessions even when the password step fails, and returns no password', async () => {
+		const { auth, db } = await withAdmin();
+		const { internalAdapter } = await auth.$context;
+		vi.spyOn(internalAdapter, 'updatePassword').mockRejectedValue(new Error('disk'));
+
+		await expect(resetAdminPassword(auth)).rejects.toThrow('disk');
+
+		const ada = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+		expect(ada.mustChangePassword).toBe(true);
+		expect(await db.session.count({ where: { userId: ada.id } })).toBe(0);
+	});
+
+	it('sets the flag before the password changes', async () => {
+		const { auth, db } = await withAdmin();
+		const { internalAdapter } = await auth.$context;
+		const original = internalAdapter.updatePassword;
+		let flagWhenPasswordChanged: boolean | undefined;
+		vi.spyOn(internalAdapter, 'updatePassword').mockImplementation(async (...args) => {
+			flagWhenPasswordChanged = (
+				await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } })
+			).mustChangePassword;
+			return original(...args);
+		});
+
+		await resetAdminPassword(auth);
+
+		expect(flagWhenPasswordChanged).toBe(true);
 	});
 });
