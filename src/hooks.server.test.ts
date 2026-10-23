@@ -182,6 +182,10 @@ describe('redaction at the console', () => {
 				console.write('/invite/' + t + '\\n');
 				console.write(new TextEncoder().encode('beyondleetcode_invite=' + t + '\\n'));
 				console.write('/invite/', t, '\\n');
+				console.write(new TextEncoder().encode('/invite/' + t + '\\n'));
+				console.write(new TextEncoder().encode('/invite/' + t), '\\n');
+				console.write(new TextEncoder().encode('beyondleetcode_invite=' + t).buffer, 'x\\n');
+				console.write(new TextEncoder().encode('beyondleetcode_invite=' + t).buffer);
 				console.write('beyondleetcode_invite=%s', t, '\\n');
 			}
 		`;

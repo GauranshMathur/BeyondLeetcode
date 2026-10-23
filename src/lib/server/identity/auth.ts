@@ -168,7 +168,7 @@ export function installLogRedaction(target: Console = console): void {
 		wrap(name, (original) => (...args) => {
 			// Several arguments are one record: format first, then redact (`write('/invite/', t)` is
 			// split text until it is joined). A leading label stays its own argument so timers match.
-			if (name === 'write' && args.length > 1) return original(redactedLine(args));
+			if (name === 'write' && args.length > 1) return original(redactedLine(args.map(asText)));
 			const [label, ...rest] = args;
 			return rest.length === 0
 				? original(redactedMember(label))
@@ -177,12 +177,17 @@ export function installLogRedaction(target: Console = console): void {
 	}
 }
 
+const isBinary = (value: unknown): value is ArrayBuffer | ArrayBufferView =>
+	value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+
+/** Bytes as UTF-8 text (an ArrayBuffer or any view of one), anything else as it is. */
+const asText = (value: unknown): unknown =>
+	isBinary(value) ? new TextDecoder().decode(value as ArrayBuffer) : value;
+
 /** One argument of an unlisted console member: text redacted, bytes decoded then redacted, anything else inspected. */
 function redactedMember(value: unknown): unknown {
 	if (typeof value === 'string') return redactInvite(value);
-	if (ArrayBuffer.isView(value)) {
-		return redactInvite(new TextDecoder().decode(value as ArrayBufferView<ArrayBuffer>));
-	}
+	if (isBinary(value)) return redactInvite(asText(value) as string);
 	if (
 		value === undefined ||
 		value === null ||
