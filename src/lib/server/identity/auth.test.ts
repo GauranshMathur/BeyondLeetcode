@@ -2397,11 +2397,43 @@ describe('redactInvite with terminal escapes', () => {
 		expect(out).toMatch(/\[redacted\]/);
 	});
 
+	it.each(['7abc', 'abc', '-abc', 'Abc'])(
+		'a placeholder never breaks a match: tokens starting %j after a lone or unterminated introducer',
+		(start) => {
+			const tok = `${start}${t.slice(start.length)}`;
+			for (const text of [
+				`/invite/${E}${tok}`,
+				`${INVITE_COOKIE}=${E}${tok}`,
+				`/invite/${E}]0;${tok}`,
+				`${INVITE_COOKIE}=${E}]0;${tok}`,
+				`/invite/${E}[${tok}`,
+				`${INVITE_COOKIE}=${E}[12${tok}`,
+				`/invite/${E}]0;never ended ${tok}`,
+				`${INVITE_COOKIE}=${E}]0;x;${tok}`,
+				`${E}[ /i${tok}`,
+				`prefix ${E} ${tok} suffix`
+			]) {
+				expect(redactInvite(text), text).not.toContain(tok.slice(3));
+			}
+		}
+	);
+
+	it('redacts a bare 43-character run only in a record that held an escape', () => {
+		const bare = `id ${'A'.repeat(43)} ok`;
+		expect(redactInvite(bare)).toBe(bare);
+		expect(redactInvite(`${E} ${bare}`)).not.toContain('A'.repeat(43));
+		expect(redactInvite(`${E} ${'A'.repeat(42)} ${'B'.repeat(44)}`)).toContain('A'.repeat(42));
+	});
+
+	it('leaves the route id alone', () => {
+		expect(redactInvite('route /invite/[token] here')).toBe('route /invite/[token] here');
+	});
+
 	it('prints a record with escapes without them, and shows a lone introducer', () => {
 		expect(redactInvite(`colour ${E}[32mgreen${E}[0m ok`)).toBe('colour green ok');
 		expect(redactInvite(`${E}]8;;http://x${E}\\link`)).toBe('link');
-		expect(redactInvite(`lone ${E} escape`)).toBe('lone [esc] escape');
-		expect(redactInvite(`${E}]0;never ended but visible`)).toBe('[esc]]0;never ended but visible');
+		expect(redactInvite(`lone ${E} escape`)).toBe('lone \u241b escape');
+		expect(redactInvite(`${E}]0;never ended but visible`)).toBe('\u241bnever ended but visible');
 		expect(redactInvite('plain')).toBe('plain');
 	});
 });

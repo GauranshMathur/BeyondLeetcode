@@ -97,32 +97,61 @@ const redactCore = (text: string) =>
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);
 const CSI8 = String.fromCharCode(0x9b);
-const TERMINAL_ESCAPES = new RegExp(
-	[
-		`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`,
-		`(?:${ESC}\\[|${CSI8})[0-?]*[@-~]`,
-		`${ESC}[@-Z\\\\^_]`,
-		`[${ESC}${CSI8}]`
-	].join('|'),
-	'g'
-);
+const escapePattern = (csiIntermediates: string) =>
+	new RegExp(
+		[
+			`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`,
+			`(?:${ESC}\\[|${CSI8})[0-?]*${csiIntermediates}[@-~]`,
+			`${ESC}[@-Z\\\\^_]`,
+			`${ESC}\\](?:[0-9]*;)?|${ESC}\\[?|${CSI8}`
+		].join('|'),
+		'g'
+	);
+/** The sequences the placeholder view removes: no CSI intermediate bytes, which would eat the start of ` /invite/`. */
+const TERMINAL_ESCAPES = escapePattern('');
+/** The sequences the deleted view removes: a CSI as a terminal reads it, intermediate bytes included. */
+const TERMINAL_ESCAPES_FULL = escapePattern('[ -/]*');
 const HAS_ESCAPE = new RegExp(`[${ESC}${CSI8}]`);
-/** What an introducer that is not part of a complete sequence becomes. */
-const ESCAPE_PLACEHOLDER = '[esc]';
+/** An introducer that started no complete sequence (ESC, ESC [, ESC ] with its number and `;`, or U+009B), as `TERMINAL_ESCAPES` matched it. */
+const LONE_INTRODUCER = new RegExp(`^(?:${ESC}(?:\\](?:[0-9]*;)?|\\[)?|${CSI8})$`);
+/**
+ * What an introducer that is not part of a complete sequence becomes: U+241B, the visible symbol for ESC. It
+ * is chosen so that it can never end or start a match. It is not `[` (the path pattern skips `/invite/[`, the
+ * route id, so `/invite/[esc]TOKEN` would print the token), not a space and not a delimiter, so it is a
+ * character a token or a cookie value may hold: `/invite/` + it + `TOKEN` is one token to the patterns.
+ */
+const ESCAPE_PLACEHOLDER = String.fromCharCode(0x241b);
 
 /**
  * Takes the invite token out of any text. Text with a terminal escape in it is printed with the escapes removed
  * (colours go) and then redacted, always: the removed-escape view is the one that is redacted, so the view that
  * is checked and the view that is printed cannot disagree about where a token is. An introducer that is not part
- * of a complete sequence is shown as `[esc]`, never allowed to swallow the text after it.
+ * of a complete sequence is shown as a visible placeholder, never allowed to swallow the text after it. In such a
+ * record a bare 43-character base64url run is redacted too, and the placeholder view and the escapes-deleted view
+ * are both redacted, the one that found more being printed.
  */
 export const redactInvite = (text: string): string => {
 	if (!HAS_ESCAPE.test(text)) return redactCore(text);
-	const plain = text.replace(TERMINAL_ESCAPES, (sequence) =>
-		sequence.length === 1 ? ESCAPE_PLACEHOLDER : ''
+	const view = (pattern: RegExp, replacement: (sequence: string) => string) =>
+		redactBareTokens(redactCore(text.replace(pattern, replacement)));
+	// An introducer shown as a placeholder (a character a token may hold, so it cannot stand between a marker and
+	// its value), and the same text with the introducers deleted outright. Whichever found more is printed.
+	const shown = view(TERMINAL_ESCAPES, (sequence) =>
+		LONE_INTRODUCER.test(sequence) ? ESCAPE_PLACEHOLDER : ''
 	);
-	return redactCore(plain);
+	const deleted = view(TERMINAL_ESCAPES_FULL, () => '');
+	return count(deleted) > count(shown) ? deleted : shown;
 };
+
+const count = (text: string) => text.split('[redacted]').length - 1;
+
+/**
+ * In a record that held an escape, every bare run of exactly 43 base64url characters (the shape of an invite
+ * token) is redacted wherever it stands, since an escape or what it drags along (a space, a `;`) can separate a
+ * token from its marker in ways no marker pattern follows. Never applied to escape-free text.
+ */
+const redactBareTokens = (text: string) =>
+	text.replace(/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g, '[redacted]');
 
 /** What a console call would print for these arguments (`%s` and friends, Errors with stack and `cause`), redacted. */
 export const redactedLine = (args: unknown[]): string => {

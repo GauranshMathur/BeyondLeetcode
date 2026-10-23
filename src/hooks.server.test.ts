@@ -276,6 +276,7 @@ describe('redaction at the console', () => {
 			console.log(E + ' /invite/' + t + E);
 			console.log('beyondleetcode_invite=' + E + '[31' + t);
 			console.log('lone ' + E + ' then /invite/' + t);
+			console.log('lone ' + E + ' stays visible');
 			console.log('plain text');
 		`);
 		const text = out.toString('latin1');
@@ -289,7 +290,51 @@ describe('redaction at the console', () => {
 		expect(text).toContain('/invite/[redacted]');
 		expect(text).toContain('plain text');
 		expect(text.match(/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(12);
-		expect(text).toContain('[esc]');
+		expect(out.toString('utf8')).toContain('lone \u241b stays visible');
+	});
+
+	it('prints no token when a lone or unterminated introducer sits right before it, whatever its first character', () => {
+		const tokens = [
+			token,
+			`${'7'.repeat(10)}${token.slice(10)}`,
+			`abc${token.slice(3).toLowerCase()}`,
+			`-${token.slice(1)}`
+		];
+		const { status, out, stderr } = inBun(`
+			const E = String.fromCharCode(27);
+			for (const x of ${JSON.stringify(tokens)}) {
+				console.log('/invite/' + E + x);
+				console.log('beyondleetcode_invite=' + E + x);
+				console.log('/invite/' + E + ']0;' + x);
+				console.log('beyondleetcode_invite=' + E + ']0;' + x);
+				console.log('/invite/' + E + '[' + x);
+				console.log('beyondleetcode_invite=' + E + '[12' + x);
+				console.log('?a=1&beyondleetcode_invite=' + E + x + '&b=2');
+				// Whatever the introducer drags along (a space, a ';', a complete CSI with intermediate bytes) must not
+				// keep a token from being found.
+				console.log('/invite/' + E + ']0;never ended ' + x);
+				console.log('beyondleetcode_invite=' + E + ']0;x;' + x);
+				console.log(E + '[ /i' + x);
+				console.log('/invite/' + E + '[ ' + x + ' tail');
+				console.log('prefix ' + E + ' ' + x + ' suffix');
+			}
+			console.log('route /invite/[token] stays');
+			console.log('/invite/[token]');
+			console.log('id ' + 'A'.repeat(43) + ' ok');
+		`);
+		const text = out.toString('latin1');
+		expect(status, stderr).toBe(0);
+		for (const x of tokens) {
+			expect(text).not.toContain(x);
+			expect(text).not.toContain(x.slice(5));
+		}
+		expect(text.match(/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(36);
+		expect(text.match(/\/invite\/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(12);
+		expect(text.match(/beyondleetcode_invite=\[redacted\]/g)?.length).toBeGreaterThanOrEqual(12);
+		// The route id is not a token and prints as it is; an escape-free 43-character string is not touched.
+		expect(text.split('\n')).toContain(`id ${'A'.repeat(43)} ok`);
+		expect(text).toContain('route /invite/[token] stays');
+		expect(text.split('\n')).toContain('/invite/[token]');
 	});
 
 	it('prints no token when console.dir is given a colouring stylize callback, and still prints the value', () => {
