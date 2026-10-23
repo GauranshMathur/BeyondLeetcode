@@ -177,10 +177,13 @@ describe('redaction at the console', () => {
 			console.log('?a=1&beyondleetcode_invite=' + t);
 			console.count('/invite/' + t); console.count('/invite/' + t); console.countReset('/invite/' + t);
 			console.count('plain'); console.count('plain');
-			console.time('/invite/' + t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=' + t, { url: '/invite/' + t }); console.timeLog('/invite/' + t, '/invite/', t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=%s', t); console.timeEnd('/invite/' + t);
+			console.time('/invite/' + t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=' + t, { url: '/invite/' + t }); console.timeLog('/invite/' + t, '/invite/', t); console.timeLog('/invite/' + t, 'beyondleetcode_invite=%s', t); console.time('beyondleetcode_invite='); console.timeLog('beyondleetcode_invite=', t); console.timeEnd('beyondleetcode_invite=');
+			console.timeEnd('/invite/' + t);
 			if (typeof console.write === 'function') {
 				console.write('/invite/' + t + '\\n');
 				console.write(new TextEncoder().encode('beyondleetcode_invite=' + t + '\\n'));
+				console.write('MARK', 'a', 'b', '\\n'); console.write('MARK', '100%s', 'x', '\\n');
+				const r = console.write(new Uint8Array([0x4d, 0x42, 0xff, 0x0a])); console.write('RET', String(r), '\\n');
 				console.write('/invite/', t, '\\n');
 				console.write(new TextEncoder().encode('/invite/' + t + '\\n'));
 				console.write(new TextEncoder().encode('/invite/' + t), '\\n');
@@ -189,7 +192,7 @@ describe('redaction at the console', () => {
 				console.write('beyondleetcode_invite=%s', t, '\\n');
 			}
 		`;
-		const run = spawnSync('bun', ['-e', script], { encoding: 'utf8' });
+		const run = spawnSync('bun', ['-e', script]);
 		const bytes = `${run.stdout}${run.stderr}`;
 		expect(run.status).toBe(0);
 		expect(bytes).not.toContain(token);
@@ -199,6 +202,13 @@ describe('redaction at the console', () => {
 		expect(bytes).toContain('outer');
 		// Counters and timers still work: the second count is 2, a timer is found by its label.
 		expect(bytes).toContain('plain: 2');
+		// write joins with nothing in between and reads no format; invalid UTF-8 comes out as it went in.
+		expect(bytes).toContain('MARKab\n');
+		expect(bytes).toContain('MARK100%sx\n');
+		expect(run.stdout.includes(Buffer.from([0x4d, 0x42, 0xff, 0x0a]))).toBe(true);
+		expect(bytes).toContain('RET4\n');
+		// timeLog: label and data are one record, and the timer is still found.
+		expect(bytes).toMatch(/\[[\d.]+m?s\] beyondleetcode_invite= \[redacted\]/);
 		expect(bytes).not.toMatch(/No such label|does not exist/i);
 	});
 });

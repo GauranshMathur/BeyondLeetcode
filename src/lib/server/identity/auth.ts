@@ -163,16 +163,33 @@ export function installLogRedaction(target: Console = console): void {
 	}
 	for (const name of names) {
 		const member = (target as unknown as Record<string, unknown>)[name];
-		if (LEAVE.has(name) || typeof member !== 'function' || /^[A-Z]/.test(name)) continue;
+		if (
+			LEAVE.has(name) ||
+			name.startsWith('_') ||
+			typeof member !== 'function' ||
+			/^[A-Z]/.test(name)
+		)
+			continue;
 		if (name in { dir: 1, table: 1, assert: 1 } || FORMATTED.includes(name)) continue;
 		wrap(name, (original) => (...args) => {
-			// Several arguments are one record: format first, then redact (`write('/invite/', t)` is
-			// split text until it is joined). A leading label stays its own argument so timers match.
-			if (name === 'write' && args.length > 1) return original(redactedLine(args.map(asText)));
+			if (name === 'write') return original(...redactedWrite(args));
 			const [label, ...rest] = args;
-			return rest.length === 0
-				? original(redactedMember(label))
-				: original(redactedMember(label), redactedLine(rest));
+			if (rest.length === 0) return original(redactedMember(label));
+			if (name === 'timeLog') {
+				// The label and the data are one record (`name=` then the value), but the label is passed on by
+				// itself so the timer is still found by it.
+				const redactedLabel = redactedMember(label);
+				// The data is formatted on its own (its first argument may hold the `%s`), then joined to the label.
+				const whole = redactInvite(
+					`${String(label)} ${formatWithOptions({ depth: null, colors: false }, ...rest)}`
+				);
+				const head = typeof redactedLabel === 'string' ? redactedLabel : String(redactedLabel);
+				const tail = whole.startsWith(head)
+					? whole.slice(head.length).replace(/^ /, '')
+					: redactedLine(rest);
+				return original(redactedLabel, tail);
+			}
+			return original(redactedMember(label), redactedLine(rest));
 		});
 	}
 }
@@ -180,14 +197,33 @@ export function installLogRedaction(target: Console = console): void {
 const isBinary = (value: unknown): value is ArrayBuffer | ArrayBufferView =>
 	value instanceof ArrayBuffer || ArrayBuffer.isView(value);
 
-/** Bytes as UTF-8 text (an ArrayBuffer or any view of one), anything else as it is. */
-const asText = (value: unknown): unknown =>
-	isBinary(value) ? new TextDecoder().decode(value as ArrayBuffer) : value;
+/** Bytes as strict UTF-8 text, or null when they are not valid UTF-8 (those are passed on as they are). */
+const strictText = (value: ArrayBuffer | ArrayBufferView): string | null => {
+	try {
+		return new TextDecoder('utf-8', { fatal: true }).decode(value as ArrayBuffer);
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * The arguments for Bun's `console.write`: text is joined with nothing in between (as `write('a', 'b')` prints
+ * `ab`, no separators, no `%s`), bytes are decoded as UTF-8 first, and the result is redacted. Bytes that are
+ * not valid UTF-8 are passed on unchanged, so what is written and the count returned match native.
+ */
+function redactedWrite(args: unknown[]): unknown[] {
+	const texts = args.map((a) =>
+		isBinary(a) ? strictText(a) : typeof a === 'string' ? a : String(a)
+	);
+	if (texts.every((t) => t !== null)) return [redactInvite(texts.join(''))];
+	return args.map((a, i) => (texts[i] === null ? a : redactInvite(texts[i] as string)));
+}
 
 /** One argument of an unlisted console member: text redacted, bytes decoded then redacted, anything else inspected. */
 function redactedMember(value: unknown): unknown {
 	if (typeof value === 'string') return redactInvite(value);
-	if (isBinary(value)) return redactInvite(asText(value) as string);
+	if (isBinary(value))
+		return redactInvite(strictText(value) ?? new TextDecoder().decode(value as ArrayBuffer));
 	if (
 		value === undefined ||
 		value === null ||
