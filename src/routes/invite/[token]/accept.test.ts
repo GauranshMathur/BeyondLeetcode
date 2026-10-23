@@ -288,4 +288,34 @@ describe('accepting', () => {
 		expect(logged).not.toContain(token);
 		expect(logged).not.toContain(lin.password);
 	});
+
+	it('answers a body that is not a form with a fixed 400, not an error', async () => {
+		const { accept, event, create } = await real();
+		const { token } = await create();
+		const broken = {
+			...event(token),
+			request: {
+				formData: async () => {
+					throw new TypeError(`Failed to parse body for /invite/${token}`);
+				}
+			}
+		};
+
+		const result = await accept.action(broken as never);
+
+		expect(result).toMatchObject({
+			status: 400,
+			data: { message: 'The account could not be created. Try again.' }
+		});
+		expect(JSON.stringify(result)).not.toContain(token);
+	});
+
+	it('spends the Invite when registration is open too', async () => {
+		const { post, create, locals, invites } = await real();
+		(locals.instance as { registrationMode: () => string }).registrationMode = () => 'open';
+		const { token } = await create();
+
+		expect(await post(token, lin)).toMatchObject({ status: 303 });
+		expect(await invites.lookup(token, new Date())).toBeNull();
+	});
 });

@@ -8,7 +8,7 @@ import { FIRST_ADMIN_LEARNER_ID, isFirstAdmin } from './setup.ts';
  * Checked in this order:
  *  1. the call `createFirstAdmin` makes, marked by a flag no client request can set: onto the
  *     Local Learner, as admin;
- *  2. an invite being accepted, when the Instance is multi-user: the request carries a token that
+ *  2. an invite being accepted, when the Instance is multi-user (open or invite-only): the request carries a token that
  *     names an Invite not used, not expired and not cancelled: a new Learner. This only checks
  *     (`lookup`); the Invite is spent by `createAuth`'s `user.create.after` hook (`claim`);
  *  3. anyone, when the Instance is multi-user and its Registration Mode is open: a new Learner.
@@ -30,11 +30,10 @@ export function createRegistration({
 	return async ({ inviteToken }) => {
 		if (isFirstAdmin()) return { learnerId: FIRST_ADMIN_LEARNER_ID, role: 'admin' };
 		if (instance.mode() !== 'multi') return null;
-		// An open Instance needs no Invite, and a token on the request is then ignored, never spent.
-		if (instance.registrationMode() === 'open') return {};
+		// A valid Invite is spent whenever it is used, open registration or not; the token is checked first.
 		if (inviteToken && invites && (await invites.lookup(inviteToken, now()))) {
 			return { inviteToken };
 		}
-		return null;
+		return instance.registrationMode() === 'open' ? {} : null;
 	};
 }

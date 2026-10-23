@@ -702,7 +702,7 @@ describe('accepting an Invite', () => {
 	const adminWho = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
 	let caller = 0;
 
-	async function invited(options: { claim?: 'real' | 'lose'; now?: () => Date } = {}) {
+	async function invited(options: { claim?: 'real' | 'lose' | 'throw'; now?: () => Date } = {}) {
 		const db = await createFileTestDb();
 		await db.learner.create({ data: { id: 'local' } });
 		await db.user.create({
@@ -725,7 +725,14 @@ describe('accepting an Invite', () => {
 			origin,
 			secret,
 			admitSignUp: createRegistration({ instance, invites, now }),
-			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at)
+			claimInvite:
+				options.claim === 'lose'
+					? async () => false
+					: options.claim === 'throw'
+						? async () => {
+								throw new Error('database is locked');
+							}
+						: (t, at) => invites.claim(t, at)
 		});
 		const post = (
 			token: string | null,
@@ -818,12 +825,68 @@ describe('accepting an Invite', () => {
 		expect((await post(token)).status).toBe(200);
 	});
 
-	it('does not spend the Invite when registration is open', async () => {
+	it('spends the Invite when registration is open too', async () => {
 		const { db, post, made, instance } = await invited();
 		const { token, id } = await made();
 		instance.registrationMode = () => 'open';
 
 		expect((await post(token)).status).toBe(200);
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).not.toBeNull();
+	});
+
+	it('removes the Account and keeps the Invite when the claim throws, and the invitee can retry', async () => {
+		const { db, post, made } = await invited({ claim: 'throw' });
+		const { token, id } = await made();
+
+		const res = await post(token);
+
+		expect(res.status).toBeGreaterThanOrEqual(400);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+		expect(await db.learner.count()).toBe(1);
 		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
+	});
+
+	it('removes the Account and the Learner it made, and leaves the Invite unspent, when the Learner cannot be made', async () => {
+		const { db, post, made } = await invited();
+		const { token, id } = await made();
+		const upsert = db.learner.upsert.bind(db.learner);
+		let calls = 0;
+		vi.spyOn(db.learner, 'upsert').mockImplementation(((args: never) => {
+			if (++calls === 1) throw new Error('database is locked');
+			return upsert(args);
+		}) as never);
+
+		const res = await post(token);
+
+		expect(res.status).toBeGreaterThanOrEqual(400);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.account.count()).toBe(0);
+		expect(await db.session.count()).toBe(0);
+		expect(await db.learner.count()).toBe(1);
+		expect((await db.invite.findUniqueOrThrow({ where: { id } })).usedAt).toBeNull();
+		expect((await post(token)).status).toBe(200);
+	});
+
+	it('removes the Account of any sign-up whose Learner cannot be made, with no Invite involved', async () => {
+		const { auth, db } = await setup(() => ({}));
+		vi.spyOn(db.learner, 'upsert').mockRejectedValue(new Error('database is locked') as never);
+
+		const res = await auth.handler(
+			new Request('http://localhost:3000/api/auth/sign-up/email', {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					origin: 'http://localhost:3000',
+					[CLIENT_IP_HEADER]: '10.9.9.9'
+				},
+				body: JSON.stringify(body)
+			})
+		);
+
+		expect(res.status).toBeGreaterThanOrEqual(400);
+		expect(await db.user.count()).toBe(0);
+		expect(await db.account.count()).toBe(0);
 	});
 });

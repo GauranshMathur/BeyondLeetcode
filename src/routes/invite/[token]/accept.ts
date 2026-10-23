@@ -91,7 +91,7 @@ function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
 
 /**
  * The Accept invite page. The token is in the URL path, so nothing here logs the path or the token, and
- * `handle.ts` answers this route with `Referrer-Policy: same-origin` and `Cache-Control: no-store`
+ * `handle.ts` answers this route with `Referrer-Policy: strict-origin` and `Cache-Control: no-store`
  * (once, there: a route that sets a header in both its load and its action makes SvelteKit throw on a
  * form post without JavaScript).
  *
@@ -132,7 +132,13 @@ export function createAccept(throttle: Throttle) {
 			// Before anything else, so a flood of attempts of any kind is counted and none is free.
 			const turn = throttle.attempt({ address: clientAddress(event), accountId: null });
 
-			const data = await request.formData();
+			let data: FormData;
+			try {
+				data = await request.formData();
+			} catch {
+				// A body that is not a form: a fixed answer, and nothing of the request is logged.
+				return refused(400, { name: '', email: '' }, MESSAGES.failed);
+			}
 			// What was typed comes back, except the password.
 			const typed = { name: text(data, 'name'), email: text(data, 'email') };
 			if (!turn.allowed) {

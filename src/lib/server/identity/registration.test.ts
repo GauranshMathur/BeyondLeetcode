@@ -200,8 +200,12 @@ describe('an Invite', () => {
 		expect(await bare({ email: undefined, inviteToken: made.token })).toBeNull();
 	});
 
-	it('is ignored when registration is open', async () => {
+	it('is admitted, and so spent, when registration is open too', async () => {
 		const { gate, made } = await withInvite('open');
-		expect(await gate({ email: undefined, inviteToken: made.token })).toEqual({});
+		expect(await gate({ email: undefined, inviteToken: made.token })).toEqual({
+			inviteToken: made.token
+		});
+		// A spent or unknown token falls back to what open registration allows.
+		expect(await gate({ email: undefined, inviteToken: 'A'.repeat(43) })).toEqual({});
 	});
 });

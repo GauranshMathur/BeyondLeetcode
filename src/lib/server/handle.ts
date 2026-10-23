@@ -86,10 +86,10 @@ export function createHandle(
 		// answers (the page, a data request, an action result, an error). Set here, once, because a
 		// route that sets it in both its action and its load makes SvelteKit throw on a no-JS form post.
 		if (event.route.id === '/users') response.headers.set('Cache-Control', 'no-store');
-		// The Accept invite URL holds the token: never cached, and never sent on as a Referer to another site. same-origin, not no-referrer: a browser sends `Origin: null` on a form post under no-referrer, and SvelteKit refuses that as cross-site. Same reason to set it here.
+		// The Accept invite URL holds the token: never cached, and its path is never sent as a Referer (the page's own CSS and JS requests included). strict-origin, not no-referrer: a browser sends `Origin: null` on a form post under no-referrer, and SvelteKit refuses that as cross-site; strict-origin keeps the Origin and never sends the path. Same reason to set it here.
 		if (event.route.id === '/invite/[token]') {
 			response.headers.set('Cache-Control', 'no-store');
-			response.headers.set('Referrer-Policy', 'same-origin');
+			response.headers.set('Referrer-Policy', 'strict-origin');
 		}
 		return finish(response);
 	};

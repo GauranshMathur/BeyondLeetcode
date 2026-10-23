@@ -81,7 +81,7 @@ test('a link creates one learner Account, signed in, and then stops working', as
 	const response = await page.goto(invite.path);
 	// The URL holds the token: never cached, never sent on as a Referer.
 	expect(response?.headers()['cache-control']).toBe('no-store');
-	expect(response?.headers()['referrer-policy']).toBe('same-origin');
+	expect(response?.headers()['referrer-policy']).toBe('strict-origin');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('You are invited.');
 	const cookie = (await context.cookies()).find((c) => c.name === 'beyondleetcode_invite');
 	expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/invite' });
@@ -184,6 +184,24 @@ test('a refused name keeps the form and the link, and the next try works', async
 	await context.close();
 });
 
+test('a malformed form body gets a fixed 400, not a 500', async ({ browser, own, playwright }) => {
+	const invite = await newInvite(browser, own.url);
+	const visitor = await playwright.request.newContext({ baseURL: own.url });
+
+	const response = await visitor.post(`${invite.path}`, {
+		headers: {
+			origin: own.url,
+			accept: 'text/html',
+			'content-type': 'multipart/form-data; boundary=x'
+		},
+		data: 'not a multipart body'
+	});
+
+	expect(response.status()).toBe(400);
+	expect(await response.text()).not.toContain(invite.token);
+	await visitor.dispose();
+});
+
 test.describe('without JavaScript', () => {
 	test.use({ javaScriptEnabled: false });
 
@@ -208,7 +226,7 @@ test.describe('without JavaScript', () => {
 		const refused = await refusedPost;
 		expect(refused.status()).toBe(400);
 		expect(refused.headers()['cache-control']).toBe('no-store');
-		expect(refused.headers()['referrer-policy']).toBe('same-origin');
+		expect(refused.headers()['referrer-policy']).toBe('strict-origin');
 		await expect(page.getByText('Use at least 12 characters.')).toBeVisible();
 
 		const acceptedPost = page.waitForResponse(
