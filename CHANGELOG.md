@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.60.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.59.0...v0.60.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C56 Progress: the database refuses and removes a removed Learner's progress ([#213](https://github.com/GauranshMathur/BeyondLeetcode/issues/213)) ([adf43ad](https://github.com/GauranshMathur/BeyondLeetcode/commit/adf43adcaccf11038371089ccbd3c040317ae9cc))
+
 ## [0.59.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.58.0...v0.59.0) (2026-10-23)
 
 
