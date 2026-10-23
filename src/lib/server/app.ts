@@ -9,7 +9,7 @@ import {
 } from './identity/auth.ts';
 import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
 import { createInvites, type Invites } from './identity/invites.ts';
-import { createMultiUserIdentity } from './identity/multi-user.ts';
+import { createMultiUserIdentity, repairLearners } from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
 import {
 	createFirstAdmin,
@@ -109,6 +109,13 @@ export async function createApp(env: {
 		}
 		if (auth.kind === 'missing') {
 			throw new Error(`This Instance is Multi-user, but ${auth.message}`);
+		}
+		// Before any request: no sign-up or removal is in flight, so the repair cannot race one.
+		const { created, removed } = await repairLearners(db);
+		if (created > 0 || removed > 0) {
+			console.warn(
+				`Multi-user startup repair: ${created} missing Learner(s) created, ${removed} orphan Learner(s) removed.`
+			);
 		}
 	}
 	const identity = await createLocalIdentity(db, {

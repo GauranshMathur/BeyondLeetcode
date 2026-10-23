@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
 import { createAuth } from './auth.ts';
-import { createMultiUserIdentity } from './multi-user.ts';
+import { createMultiUserIdentity, repairLearners } from './multi-user.ts';
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
@@ -160,5 +160,98 @@ describe('createMultiUserIdentity', () => {
 
 			expect(await identity.resolve(asking(cookie))).toBeNull();
 		});
+	});
+});
+
+describe('repairLearners', () => {
+	const user = (id: string, learnerId: string) => ({
+		id,
+		name: id,
+		email: `${id}@example.com`,
+		learnerId
+	});
+
+	it('creates the Learner a User names but lacks, and removes a Learner no User references with its progress', async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'kept' } });
+		await db.user.create({ data: user('u1', 'kept') });
+		await db.user.create({ data: user('u2', 'missing') });
+		await db.learner.create({ data: { id: 'orphan' } });
+		await db.chapterRead.create({ data: { learnerId: 'orphan', chapterId: 'c' } });
+		await db.chapterRead.create({ data: { learnerId: 'kept', chapterId: 'c' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 1, removed: 1 });
+
+		expect((await db.learner.findMany({ orderBy: { id: 'asc' } })).map((l) => l.id)).toEqual([
+			'kept',
+			'missing'
+		]);
+		expect(await db.chapterRead.findMany()).toEqual([
+			expect.objectContaining({ learnerId: 'kept' })
+		]);
+		// The repaired Learner can now hold progress.
+		await db.chapterRead.create({ data: { learnerId: 'missing', chapterId: 'c' } });
+	});
+
+	it('changes nothing when Accounts and Learners already match, and a second run changes nothing', async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'a' } });
+		await db.user.create({ data: user('u1', 'a') });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 0 });
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 0 });
+		expect(await db.learner.count()).toBe(1);
+	});
+
+	it('never recreates a Learner for a removed User: only Users that exist name one', async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'a' } });
+		await db.user.create({ data: user('u1', 'a') });
+		await db.learner.create({ data: { id: 'b' } });
+		await db.user.create({ data: user('u2', 'b') });
+		await db.user.delete({ where: { id: 'u1' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 1 });
+		expect((await db.learner.findMany()).map((l) => l.id)).toEqual(['b']);
+	});
+
+	it('keeps everything while there is no User at all: a half-finished Setup keeps the Local Learner and its progress', async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.learner.create({ data: { id: 'other' } });
+		await db.chapterRead.create({ data: { learnerId: 'local', chapterId: 'c' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 0 });
+
+		expect(await db.learner.count()).toBe(2);
+		expect(await db.chapterRead.count()).toBe(1);
+	});
+
+	it("keeps the 'local' Learner and its progress even when Users exist and none references it", async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'local' } });
+		await db.learner.create({ data: { id: 'a' } });
+		await db.user.create({ data: user('u1', 'a') });
+		await db.chapterRead.create({ data: { learnerId: 'local', chapterId: 'c' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 0 });
+
+		expect((await db.learner.findMany({ orderBy: { id: 'asc' } })).map((l) => l.id)).toEqual([
+			'a',
+			'local'
+		]);
+		expect(await db.chapterRead.count()).toBe(1);
+	});
+
+	it('removes a true orphan (a cuid Learner no User references, with Users present) with its progress', async () => {
+		const db = await createFileTestDb();
+		await db.learner.create({ data: { id: 'a' } });
+		await db.user.create({ data: user('u1', 'a') });
+		const orphan = await db.learner.create({ data: {} });
+		await db.chapterRead.create({ data: { learnerId: orphan.id, chapterId: 'c' } });
+
+		expect(await repairLearners(db)).toEqual({ created: 0, removed: 1 });
+
+		expect(await db.chapterRead.count()).toBe(0);
 	});
 });
