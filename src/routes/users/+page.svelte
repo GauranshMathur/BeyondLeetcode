@@ -33,6 +33,33 @@ async function copyLink() {
 	}
 }
 
+// The one-time password from the last reset, shown in the user's detail row. "Done" hides it; it cannot be
+// shown again, so it stays hidden until the next reset. The page never holds it anywhere but this `form`.
+let resetDismissed = $state(false);
+let passwordCopied = $state(false);
+let passwordField = $state<HTMLInputElement>();
+const reset = $derived(
+	resetDismissed ? undefined : form && 'reset' in form ? form.reset : undefined
+);
+
+async function copyPassword() {
+	if (!reset) return;
+	try {
+		await navigator.clipboard.writeText(reset.password);
+		passwordCopied = true;
+	} catch {
+		passwordField?.select();
+	}
+}
+
+const resetOne: SubmitFunction = () => {
+	resetDismissed = false;
+	passwordCopied = false;
+	return async ({ update }) => {
+		await update({ reset: false });
+	};
+};
+
 const makeInvite: SubmitFunction = () => {
 	dismissed = false;
 	copied = false;
@@ -152,11 +179,52 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 							<td>{account.role}</td>
 							<td><time datetime={account.joined}>{account.joined.slice(0, 10)}</time></td>
 							<td class="actions">
-								<!-- Reset password (C36a) and Remove (C37) land here. F.15 draws no dead buttons, so until
-									they work a row shows none; the admin's own row says why it never gets Remove. -->
-								{#if account.you}<span class="why">you cannot remove yourself</span>{/if}
+								<!-- Remove (C37) lands here. F.15 draws no dead buttons, so until it works a row shows none.
+									The admin's own row has no Reset password either (it would end the session that shows the
+									password) and says why it never gets Remove. -->
+								{#if account.you}
+									<span class="why">you cannot remove yourself</span>
+								{:else}
+									<form method="POST" action="?/reset" use:enhance={resetOne}>
+										<input type="hidden" name="id" value={account.id} />
+										<button type="submit" class="quiet">Reset password</button>
+									</form>
+								{/if}
 							</td>
 						</tr>
+						{#if reset && reset.userId === account.id}
+							<tr class="detail-row">
+								<td colspan="5">
+									<div class="detail" role="status">
+										<span class="eyebrow ink">One-time password for {account.name}</span>
+										<div class="copy">
+											<input
+												bind:this={passwordField}
+												type="text"
+												readonly
+												value={reset.password}
+												aria-label="One-time password"
+												autocomplete="off"
+												spellcheck="false"
+												onfocus={(e) => e.currentTarget.select()}
+											/>
+											{#if enhanced}
+												<button type="button" class="outline" onclick={copyPassword}>
+													{passwordCopied ? 'Copied' : 'Copy password'}
+												</button>
+											{/if}
+										</div>
+										<span class="lead small">
+											Send it to them yourself. It is shown only now. They are signed out everywhere and
+											must set a new password when they sign in.
+										</span>
+										{#if enhanced}
+											<button type="button" class="quiet" onclick={() => (resetDismissed = true)}>Done</button>
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/if}
 					{/each}
 					{#each data.pending as pending (pending.id)}
 						<tr>
@@ -300,6 +368,27 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 	.eyebrow.ink {
 		color: var(--ink);
 		font-size: 12px;
+	}
+	td .detail {
+		text-align: left;
+		padding: 4px 0 8px;
+		border-top: 0;
+	}
+	td .copy button {
+		height: 52px;
+		padding: 0 28px;
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
+		border-radius: 2px;
+		font-family: var(--font-mono);
+		font-size: 15px;
+		font-weight: 500;
+		cursor: pointer;
+	}
+	.detail-row td {
+		background: var(--field);
+		padding-left: 16px;
 	}
 	.copy {
 		display: flex;

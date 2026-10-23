@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { APIError } from 'better-auth/api';
 import type { Auth } from './auth.ts';
 import type { Identity, Role } from './index.ts';
@@ -78,4 +79,93 @@ async function readPage(auth: Auth, headers: Headers, offset: number) {
 		}
 		throw error;
 	}
+}
+
+/** The Account to reset is not there: a stale row, or an id that was never one. */
+export class UnknownAccountError extends Error {
+	constructor() {
+		super('That Account does not exist.');
+		this.name = 'UnknownAccountError';
+	}
+}
+
+/** The admin asked to reset their own password, which would sign them out and lose the one-time password. */
+export class SelfResetError extends Error {
+	constructor() {
+		super('The admin cannot reset their own password here.');
+		this.name = 'SelfResetError';
+	}
+}
+
+/** No look-alikes (0/O, 1/l/I), so a password read out or typed from a message survives. */
+const PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+/** 20 characters of 57: about 117 bits, within Better Auth's 12 to 128. */
+const ONE_TIME_PASSWORD_LENGTH = 20;
+
+function oneTimePassword(): string {
+	let out = '';
+	for (let i = 0; i < ONE_TIME_PASSWORD_LENGTH; i++) {
+		out += PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)];
+	}
+	return out;
+}
+
+/**
+ * Gives an Account a random one-time password, ends every session it has and makes it set a new
+ * password before anything else. The password is returned to the caller for the admin to see once;
+ * it is stored only as a hash and must not be logged or kept.
+ *
+ * The plugin's own set-user-password does none of the product steps, so all three run here, through
+ * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions, which are deleted
+ * whatever the password step did. So once the password has changed no earlier session survives, and
+ * no outcome leaves a session alive with the flag unset. A failure part-way throws and no password
+ * is returned: the admin tries again, and a retry redoes every step.
+ *
+ * Identity's role is the check that counts, as in `listAccounts`, and it is made before anything is read.
+ */
+export async function resetPassword(
+	auth: Auth,
+	{ who, headers, userId }: { who: Identity; headers: Headers; userId: string }
+): Promise<{ password: string }> {
+	if (who.role !== 'admin') throw new NotAdminError();
+	if (typeof userId !== 'string' || userId === '') throw new UnknownAccountError();
+
+	const { internalAdapter } = await auth.$context;
+	const target = await internalAdapter.findUserById(userId);
+	if (!target) throw new UnknownAccountError();
+	if ((target as { learnerId?: string | null }).learnerId === who.learnerId) {
+		throw new SelfResetError();
+	}
+
+	const password = oneTimePassword();
+	try {
+		// The plugin's admin check is the password step's, which now comes after the flag. Ask for the
+		// session first, so a session that ended a moment ago, or whose user is no longer the admin who
+		// asked (role changed, or a different Account), changes nothing at all.
+		const fresh = await auth.api.getSession({ headers });
+		const freshUser = fresh?.user as
+			| { role?: string | null; learnerId?: string | null }
+			| undefined;
+		if (freshUser?.role !== 'admin' || freshUser.learnerId !== who.learnerId) {
+			throw new NotAdminError();
+		}
+		// Before the password, so the password never changes while the flag is unset.
+		await internalAdapter.updateUser(userId, { mustChangePassword: true });
+		try {
+			await auth.api.setUserPassword({ headers, body: { userId, newPassword: password } });
+		} finally {
+			// Attempted whatever the password step did (it may have changed the password and lost its answer):
+			// once the password has changed no earlier session survives, and a session that outlives a failed
+			// revocation carries the flag, so the gate confines it to the password page. Through the adapter,
+			// not the plugin: the admin check has passed, and cleanup must not fail because the admin's own
+			// session ended in between. A database failure still throws.
+			await internalAdapter.deleteUserSessions(userId);
+		}
+	} catch (error) {
+		if (error instanceof APIError && (error.statusCode === 401 || error.statusCode === 403)) {
+			throw new NotAdminError();
+		}
+		throw error;
+	}
+	return { password };
 }

@@ -18,11 +18,16 @@ let admin: Session;
 let lin: Session;
 let sam: Session;
 
+const RESET_ENHANCED = { name: 'Rae Reset', email: 'rae.users@example.com' };
+const RESET_PLAIN = { name: 'Pat Plain', email: 'pat.users@example.com' };
+
 test.beforeAll(async () => {
 	fixture = await openMultiUserDatabase();
 	await fixture.ensureLearner(LIN);
 	await fixture.ensureLearner(SAM);
 	await fixture.ensureLearner(MARKUP);
+	await fixture.ensureLearner(RESET_ENHANCED);
+	await fixture.ensureLearner(RESET_PLAIN);
 	// Sam's stored role only contains admin: the plugin would call that an admin, the app does not.
 	await fixture.db.user.update({ where: { email: SAM.email }, data: { role: 'admin,learner' } });
 	admin = await fixture.signIn(E2E_ADMIN.email, E2E_ADMIN.password);
@@ -70,17 +75,72 @@ test('the admin finds Users in the nav and sees every Account on it', async ({ c
 			await expect(cells.nth(1)).toHaveText(user.email);
 			await expect(cells.nth(2)).toHaveText(user.role === 'admin' ? 'admin' : 'learner');
 			await expect(cells.nth(3)).toHaveText(user.createdAt.toISOString().slice(0, 10));
-			await expect(cells.nth(4)).toHaveText(you ? 'you cannot remove yourself' : '');
+			await expect(cells.nth(4)).toHaveText(you ? 'you cannot remove yourself' : 'Reset password');
 		}
 	}).toPass();
 
-	// The admin and the learners made above are among them; no row has an action yet (reset password and
-	// remove are later cards).
+	// The admin and the learners made above are among them; Remove is a later card, so a row's only
+	// action is Reset password, and the admin's own row has none.
 	await expect(
 		table.getByRole('row', { name: new RegExp(`${E2E_ADMIN.email}.*admin`) })
 	).toBeVisible();
 	await expect(table.getByRole('row', { name: new RegExp(`${LIN.email}.*learner`) })).toBeVisible();
-	await expect(table.getByRole('button')).toHaveCount(0);
+	await expect(
+		table.getByRole('row', { name: new RegExp(E2E_ADMIN.email) }).getByRole('button')
+	).toHaveCount(0);
+	await expect(
+		table.getByRole('row', { name: new RegExp(LIN.email) }).getByRole('button', {
+			name: 'Reset password'
+		})
+	).toBeVisible();
+});
+
+/** What a reset must have done to the Account: the shown password is the only one that works, no session is left. */
+async function expectReset(email: string, shown: string) {
+	expect(shown).toMatch(/^[A-Za-z0-9]{20}$/);
+	await expect(fixture.signIn(email, LEARNER_PASSWORD)).rejects.toThrow();
+	await expect(fixture.signIn(email, shown)).resolves.toBeDefined();
+	const user = await fixture.db.user.findUniqueOrThrow({ where: { email } });
+	expect(user.mustChangePassword).toBe(true);
+}
+
+test('the admin resets a password: the one-time password is shown once with a copy field', async ({
+	context,
+	page
+}) => {
+	const old = await fixture.signIn(RESET_ENHANCED.email, LEARNER_PASSWORD);
+	expect(old.cookies.length).toBeGreaterThan(0);
+	await context.addCookies(admin.cookies);
+	await page.goto('/users');
+	const row = page.getByRole('row', { name: new RegExp(RESET_ENHANCED.email) });
+
+	await row.getByRole('button', { name: 'Reset password' }).click();
+
+	const field = page.getByLabel('One-time password');
+	await expect(field).toBeVisible();
+	await expect(page.getByText(`One-time password for ${RESET_ENHANCED.name}`)).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Copy password' })).toBeVisible();
+	const shown = await field.inputValue();
+	await expectReset(RESET_ENHANCED.email, shown);
+	expect(
+		await fixture.db.session.count({ where: { user: { email: RESET_ENHANCED.email } } })
+	).toBeLessThanOrEqual(1); // only the sign-in the check above made
+
+	// "Done" hides it, and a reload cannot bring it back.
+	await page.getByRole('button', { name: 'Done' }).click();
+	await expect(field).toHaveCount(0);
+	await page.reload();
+	await expect(page.getByLabel('One-time password')).toHaveCount(0);
+	await expect(page.locator('body')).not.toContainText(shown);
+});
+
+test('the admin has no Reset password on their own row', async ({ context, page }) => {
+	await context.addCookies(admin.cookies);
+	await page.goto('/users');
+
+	const own = page.getByRole('row', { name: new RegExp(E2E_ADMIN.email) });
+
+	await expect(own.getByRole('button')).toHaveCount(0);
 });
 
 test('a name with markup in it is shown as text, never run', async ({ context, page }) => {
@@ -155,5 +215,29 @@ test.describe('without JavaScript', () => {
 		// Clean up, so a later file sees no stray pending Invite.
 		await page.getByRole('button', { name: 'Cancel invite' }).first().click();
 		await expect(page.getByLabel('Invite link')).toHaveCount(0);
+	});
+
+	test('a plain form post resets a password, shows it once and is never cached', async ({
+		context,
+		page
+	}) => {
+		await context.addCookies(admin.cookies);
+		await page.goto('/users');
+		const posted = page.waitForResponse(
+			(r) => r.request().method() === 'POST' && r.url().includes('/users?/reset')
+		);
+
+		await page
+			.getByRole('row', { name: new RegExp(RESET_PLAIN.email) })
+			.getByRole('button', { name: 'Reset password' })
+			.click();
+
+		// SvelteKit ran the action and then the load in one request: the answer is the page, not a 500.
+		const response = await posted;
+		expect(response.status()).toBe(200);
+		expect(response.headers()['cache-control']).toBe('no-store');
+		const field = page.getByLabel('One-time password');
+		await expect(field).toHaveJSProperty('readOnly', true);
+		await expectReset(RESET_PLAIN.email, await field.inputValue());
 	});
 });
