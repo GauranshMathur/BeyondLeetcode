@@ -127,8 +127,8 @@ const ESCAPE_PLACEHOLDER = String.fromCharCode(0x241b);
  * (colours go) and then redacted, always: the removed-escape view is the one that is redacted, so the view that
  * is checked and the view that is printed cannot disagree about where a token is. An introducer that is not part
  * of a complete sequence is shown as a visible placeholder, never allowed to swallow the text after it. In such a
- * record a bare 43-character base64url run is redacted too, and the placeholder view and the escapes-deleted view
- * are both redacted, the one that found more being printed.
+ * record a bare run of 43 or more base64url characters is redacted too, and the placeholder view and the
+ * escapes-deleted view are both redacted, the one that leaves the least token-like text being printed.
  */
 export const redactInvite = (text: string): string => {
 	if (!HAS_ESCAPE.test(text)) return redactCore(text);
@@ -140,18 +140,24 @@ export const redactInvite = (text: string): string => {
 		LONE_INTRODUCER.test(sequence) ? ESCAPE_PLACEHOLDER : ''
 	);
 	const deleted = view(TERMINAL_ESCAPES_FULL, () => '');
-	return count(deleted) > count(shown) ? deleted : shown;
+	// Chosen by what is left, not by how many markers matched: the view that keeps the fewest characters in long
+	// base64url runs (what a token looks like), the deleted view on a tie.
+	// Nothing found in either: the placeholder stays visible.
+	if (!shown.includes('[redacted]') && !deleted.includes('[redacted]')) return shown;
+	return exposed(shown) < exposed(deleted) ? shown : deleted;
 };
 
-const count = (text: string) => text.split('[redacted]').length - 1;
+/** How many characters of a record sit in base64url runs of 20 or more: a direct measure of token-like text left. */
+const exposed = (text: string) =>
+	(text.match(/[A-Za-z0-9_-]{20,}/g) ?? []).reduce((sum, run) => sum + run.length, 0);
 
 /**
- * In a record that held an escape, every bare run of exactly 43 base64url characters (the shape of an invite
- * token) is redacted wherever it stands, since an escape or what it drags along (a space, a `;`) can separate a
+ * In a record that held an escape, every bare run of 43 or more base64url characters (an invite token, or a token
+ * with a word glued to it) is redacted wherever it stands, since an escape or what it drags along (a space, a `;`) can separate a
  * token from its marker in ways no marker pattern follows. Never applied to escape-free text.
  */
 const redactBareTokens = (text: string) =>
-	text.replace(/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g, '[redacted]');
+	text.replace(/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43,}/g, '[redacted]');
 
 /** What a console call would print for these arguments (`%s` and friends, Errors with stack and `cause`), redacted. */
 export const redactedLine = (args: unknown[]): string => {

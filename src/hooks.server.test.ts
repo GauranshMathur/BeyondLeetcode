@@ -315,6 +315,9 @@ describe('redaction at the console', () => {
 				console.log('/invite/' + E + ']0;never ended ' + x);
 				console.log('beyondleetcode_invite=' + E + ']0;x;' + x);
 				console.log(E + '[ /i' + x);
+				console.log('beyondleetcode_invite=' + E + '[ /i' + x);
+				console.log('/invite/' + E + '[ /i' + x);
+				console.log('word' + E + 'xyz' + x);
 				console.log('/invite/' + E + '[ ' + x + ' tail');
 				console.log('prefix ' + E + ' ' + x + ' suffix');
 			}
@@ -327,8 +330,9 @@ describe('redaction at the console', () => {
 		for (const x of tokens) {
 			expect(text).not.toContain(x);
 			expect(text).not.toContain(x.slice(5));
+			expect(text).not.toContain(x.slice(10));
 		}
-		expect(text.match(/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(36);
+		expect(text.match(/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(45);
 		expect(text.match(/\/invite\/\[redacted\]/g)?.length).toBeGreaterThanOrEqual(12);
 		expect(text.match(/beyondleetcode_invite=\[redacted\]/g)?.length).toBeGreaterThanOrEqual(12);
 		// The route id is not a token and prints as it is; an escape-free 43-character string is not touched.

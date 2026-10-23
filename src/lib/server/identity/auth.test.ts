@@ -2411,6 +2411,9 @@ describe('redactInvite with terminal escapes', () => {
 				`/invite/${E}]0;never ended ${tok}`,
 				`${INVITE_COOKIE}=${E}]0;x;${tok}`,
 				`${E}[ /i${tok}`,
+				`${INVITE_COOKIE}=${E}[ /i${tok}`,
+				`/invite/${E}[ /i${tok}`,
+				`word${E}xyz${tok}`,
 				`prefix ${E} ${tok} suffix`
 			]) {
 				expect(redactInvite(text), text).not.toContain(tok.slice(3));
@@ -2422,7 +2425,8 @@ describe('redactInvite with terminal escapes', () => {
 		const bare = `id ${'A'.repeat(43)} ok`;
 		expect(redactInvite(bare)).toBe(bare);
 		expect(redactInvite(`${E} ${bare}`)).not.toContain('A'.repeat(43));
-		expect(redactInvite(`${E} ${'A'.repeat(42)} ${'B'.repeat(44)}`)).toContain('A'.repeat(42));
+		expect(redactInvite(`${E} ${'A'.repeat(42)}`)).toContain('A'.repeat(42));
+		expect(redactInvite(`${E} ${'B'.repeat(44)}`)).not.toContain('B'.repeat(44));
 	});
 
 	it('leaves the route id alone', () => {
