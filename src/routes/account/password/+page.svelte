@@ -39,6 +39,12 @@ const general = $derived(form && 'field' in form && form.field === null ? form.m
 			<h2>Password</h2>
 			<p>At least 12 characters.</p>
 		</div>
+		{#if data.signedOut}
+			<div class="control">
+				{#if general}<p class="hint" role="alert">{general}</p>{/if}
+				<a class="cancel" href="/signin">Sign in</a>
+			</div>
+		{:else}
 		<form class="control" method="POST" use:enhance>
 			{#each fields as field (field.id)}
 				{@const message = under(field.id)}
@@ -68,6 +74,7 @@ const general = $derived(form && 'field' in form && form.field === null ? form.m
 				{#if !data.forced}<a class="cancel" href="/settings">Cancel</a>{/if}
 			</div>
 		</form>
+		{/if}
 	</section>
 </main>
 

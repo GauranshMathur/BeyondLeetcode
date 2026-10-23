@@ -84,7 +84,8 @@ describe('the sign-out action', () => {
 				code: 'SQLITE_BUSY'
 			});
 		};
-		const e = event({ auth: { api: { signOut } } });
+		const getSession = async () => ({ user: { mustChangePassword: false } });
+		const e = event({ auth: { api: { signOut, getSession } } });
 
 		const result = await run(e);
 
@@ -95,6 +96,28 @@ describe('the sign-out action', () => {
 		expect(JSON.stringify(result)).not.toMatch(/SQLITE|app\.db|DELETE/);
 		expect(JSON.stringify(spy.mock.calls)).not.toMatch(/app\.db|DELETE/);
 		expect(e.cookies.set).not.toHaveBeenCalled();
+	});
+});
+
+describe('a failed sign-out for an Account that must change its password', () => {
+	it.each([
+		['a session that says so', async () => ({ user: { mustChangePassword: true } })],
+		[
+			'a session that cannot be read',
+			async () => {
+				throw new Error('down');
+			}
+		]
+	])('goes back to the password page, never renders Settings: %s', async (_what, getSession) => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const signOut = async () => {
+			throw new Error('down');
+		};
+		const e = event({ auth: { api: { signOut, getSession } } });
+
+		const result = await run(e);
+
+		expect(result).toMatchObject({ status: 303, location: '/account/password' });
 	});
 });
 

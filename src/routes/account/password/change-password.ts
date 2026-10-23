@@ -16,7 +16,8 @@ const MESSAGES = {
 	long: `Use at most ${MAX_PASSWORD_LENGTH} characters.`,
 	mismatch: 'The two new passwords do not match.',
 	same: 'Choose a password different from your current one.',
-	failed: 'Changing your password failed. Try again.'
+	failed:
+		'Changing your password failed, and it may have changed. You are signed out of every session. Sign in with your new password, or your old one if that fails.'
 } as const;
 
 type Field = 'current' | 'new' | 'confirm';
@@ -83,12 +84,19 @@ export function createChangePassword(throttle: Throttle) {
 		 * gone, so the answer is a redirect to a request that carries the new cookie.
 		 */
 		async load(event: Pick<RequestEvent, 'request' | 'locals' | 'url'>) {
+			// A no-JavaScript post whose failure ended every session loads with a cookie that names none: the
+			// page is shown with the failure and a link to Sign in, not a redirect that would hide it.
+			if (event.request.method === 'POST' && event.locals.auth) {
+				const session = await event.locals.auth.api.getSession({ headers: event.request.headers });
+				if (!session) return { forced: false, changed: false, unfinished: false, signedOut: true };
+			}
 			const { forced } = await who(event);
 			const { searchParams } = event.url;
 			return {
 				forced,
 				changed: searchParams.has('changed'),
-				unfinished: searchParams.has('unfinished')
+				unfinished: searchParams.has('unfinished'),
+				signedOut: false
 			};
 		},
 
@@ -113,7 +121,9 @@ export function createChangePassword(throttle: Throttle) {
 			if (current === '' || current.length > MAX_PASSWORD_LENGTH) {
 				return refused(400, 'current', MESSAGES.wrong);
 			}
-			if (next === current) return refused(400, 'new', MESSAGES.same);
+			// Better Auth hashes the NFKC form, so two spellings of one password are the same password.
+			if (next.normalize('NFKC') === current.normalize('NFKC'))
+				return refused(400, 'new', MESSAGES.same);
 
 			let headers: Headers;
 			try {
@@ -129,6 +139,14 @@ export function createChangePassword(throttle: Throttle) {
 					return refused(400, 'current', MESSAGES.wrong);
 				}
 				logFailure('changing the password failed', failure);
+				// The library's change is separate writes: the credential may be new while other sessions survive,
+				// or the caller's own session may be gone. Whichever, no session from before the change survives.
+				try {
+					const { internalAdapter } = await auth.$context;
+					await internalAdapter.deleteUserSessions(userId);
+				} catch (cleanup) {
+					logFailure('ending the sessions after a failure failed', cleanup);
+				}
 				return refused(500, null, MESSAGES.failed);
 			}
 			// The right current password takes its own attempt back.

@@ -141,6 +141,57 @@ describe('changing a password', () => {
 		expect(await sessionOf(other)).toBeNull();
 	});
 
+	it('treats two spellings of one password as the same, so the one-time password cannot be kept', async () => {
+		const { auth, account, signIn } = await setup();
+		const { action } = createChangePassword(throttleFor());
+		const me = await account(true);
+		// Fullwidth "c": Better Auth hashes the NFKC form, so this signs in as the old password does.
+		const spelled = `\uFF43${oldPassword.slice(1)}`;
+
+		const { result } = await run(action, event(auth, me.cookie, form(oldPassword, spelled)).ev);
+
+		expect(result).toMatchObject({ status: 400, data: { field: 'new' } });
+		expect(
+			(await (await auth.$context).internalAdapter.findUserById(me.id)) as {
+				mustChangePassword?: boolean;
+			}
+		).toMatchObject({ mustChangePassword: true });
+		expect(await signIn(me.email, oldPassword)).not.toBeNull();
+	});
+
+	it.each([
+		['deleting the sessions', 'deleteUserSessions'],
+		['creating the new session', 'createSession']
+	] as const)(
+		'if %s fails inside the change: no earlier session survives and the user is told plainly',
+		async (_what, method) => {
+			const { auth, account, signIn, sessionOf } = await setup();
+			const { action } = createChangePassword(throttleFor());
+			const me = await account(true);
+			const other = (await signIn(me.email, oldPassword)) as string;
+			const context = await auth.$context;
+			const spy = vi
+				.spyOn(context.internalAdapter, method)
+				.mockRejectedValueOnce(new Error('down: /secret/path'));
+			const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+			const { result } = await run(
+				action,
+				event(auth, me.cookie, form(oldPassword, newPassword)).ev
+			);
+
+			expect(result).toMatchObject({ status: 500, data: { field: null } });
+			expect((result as { data: { message: string } }).data.message).toContain('may have changed');
+			expect(JSON.stringify(result)).not.toContain('secret');
+			expect(await sessionOf(me.cookie)).toBeNull();
+			expect(await sessionOf(other)).toBeNull();
+			// The change itself did go through.
+			expect(await signIn(me.email, newPassword)).not.toBeNull();
+			spy.mockRestore();
+			log.mockRestore();
+		}
+	);
+
 	it('refuses a wrong current password with a fixed text, changing nothing', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
 		const { action } = createChangePassword(throttleFor());
@@ -323,10 +374,7 @@ describe('changing a password', () => {
 			event(broken, me.cookie, form(oldPassword, newPassword)).ev
 		);
 
-		expect(result).toMatchObject({
-			status: 500,
-			data: { message: 'Changing your password failed. Try again.' }
-		});
+		expect(result).toMatchObject({ status: 500, data: { field: null } });
 		expect(JSON.stringify(log.mock.calls)).not.toContain(newPassword);
 		log.mockRestore();
 	});
@@ -339,7 +387,20 @@ describe('changing a password', () => {
 		).toMatchObject({ status: 404 });
 		const signedOut = await run(action, event(auth, '', form(oldPassword, newPassword)).ev);
 		expect(signedOut.thrown).toMatchObject({ status: 303, location: '/signin' });
-		await expect(load(event(auth, '', {}).ev)).rejects.toMatchObject({ status: 303 });
+		await expect(
+			load({
+				...event(auth, '', {}).ev,
+				request: new Request('http://localhost/account/password')
+			} as never)
+		).rejects.toMatchObject({ status: 303 });
+	});
+
+	it('load of a post that ended every session shows the page signed out instead of redirecting', async () => {
+		const { auth, account } = await setup();
+		const { load } = createChangePassword(throttleFor());
+		const me = await account(false);
+		await (await auth.$context).internalAdapter.deleteUserSessions(me.id);
+		expect(await load(event(auth, me.cookie, {}).ev)).toMatchObject({ signedOut: true });
 	});
 
 	it('load says whether the user must change their password', async () => {
@@ -350,12 +411,14 @@ describe('changing a password', () => {
 		expect(await load(event(auth, forced.cookie, {}).ev)).toEqual({
 			forced: true,
 			changed: false,
-			unfinished: false
+			unfinished: false,
+			signedOut: false
 		});
 		expect(await load(event(auth, free.cookie, {}).ev)).toEqual({
 			forced: false,
 			changed: false,
-			unfinished: false
+			unfinished: false,
+			signedOut: false
 		});
 		expect(await load(event(auth, free.cookie, {}, '10.0.0.1', '?changed').ev)).toMatchObject({
 			changed: true

@@ -47,6 +47,19 @@ export const actions: Actions = {
 				failure instanceof Error ? failure.name : typeof failure,
 				typeof code === 'string' ? code : undefined
 			);
+			// A user who must change their password is held to that page: a rendered Settings would be a page
+			// they may not see. Whether they must is read afresh; if it cannot be read they are treated as held.
+			let held = true;
+			try {
+				const session = await auth.api.getSession({ headers: request.headers });
+				held =
+					(session?.user as { mustChangePassword?: boolean | null } | undefined)
+						?.mustChangePassword === true;
+				if (!session) held = true;
+			} catch {
+				held = true;
+			}
+			if (held) redirect(303, '/account/password');
 			return fail(500, { signOut: 'Signing out failed. Try again.' });
 		}
 		redirect(303, '/signin');
