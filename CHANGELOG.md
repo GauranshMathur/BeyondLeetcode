@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.52.0...v0.53.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C42a Packaging: reset the admin's password from the server ([#198](https://github.com/GauranshMathur/BeyondLeetcode/issues/198)) ([4b04ae7](https://github.com/GauranshMathur/BeyondLeetcode/commit/4b04ae7cb153921d50565abcdf673e106c92263a))
+
 ## [0.52.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.51.0...v0.52.0) (2026-10-23)
 
 
