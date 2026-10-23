@@ -2,7 +2,10 @@ import { error, fail } from '@sveltejs/kit';
 import {
 	listAccounts,
 	NotAdminError,
+	ProgressNotRemovedError,
+	removeAccount,
 	resetPassword,
+	SelfRemoveError,
 	SelfResetError,
 	UnknownAccountError
 } from '$lib/server/identity/accounts';
@@ -14,7 +17,7 @@ import type { Actions, PageServerLoad } from './$types';
  * already sent a signed-out visitor to Sign in, given a learner 403 and hidden the page in Local
  * Mode (404); this load checks again and fails closed, because it is the one that reads the Accounts.
  */
-export const load: PageServerLoad = async ({ locals, request }) => {
+export const load: PageServerLoad = async ({ locals, request, url }) => {
 	const { auth, identity, invites } = locals;
 	// Better Auth is set only in Multi-user Mode: Local Mode has no Accounts, whatever role it gives the Local Learner.
 	if (!auth) error(404, 'Not found');
@@ -24,7 +27,16 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 		// Set exactly when `auth` is; fail closed anyway. After the Accounts, whose read refuses a learner first.
 		if (!invites) error(404, 'Not found');
 		const pending = await invites.listPending({ who: identity, now: new Date() });
-		return { accounts, pending, registration: locals.instance.registrationMode() };
+		// "Remove" is a plain GET that opens the confirm under the row, so it works without JavaScript. Only
+		// another Account's row has one; anything else (an unknown id, your own) opens nothing.
+		const asked = url.searchParams.get('remove');
+		const confirmingRemove = accounts.some((a) => a.id === asked && !a.you) ? asked : null;
+		return {
+			accounts,
+			pending,
+			registration: locals.instance.registrationMode(),
+			confirmingRemove
+		};
 	} catch (thrown) {
 		if (thrown instanceof NotAdminError) error(403, 'Forbidden');
 		throw thrown;
@@ -137,6 +149,46 @@ export const actions: Actions = {
 				thrown instanceof Error ? thrown.name : typeof thrown
 			);
 			return fail(500, { message: 'The password could not be reset. Try again.' });
+		}
+	},
+
+	/**
+	 * Removes an Account and its Learner with all its progress (`removeAccount`: the user first, then the
+	 * Learner, and the bare plugin endpoint is off over HTTP). Admin only, checked first; removing yourself is
+	 * refused. Failures answer with fixed texts and log only the kind of error.
+	 */
+	remove: async ({ locals, request }) => {
+		const { auth, identity, deleteLearner } = locals;
+		if (identity?.role !== 'admin') error(403, 'Forbidden');
+		if (!auth || !deleteLearner) error(404, 'Not found');
+		const id = (await request.formData()).get('id');
+		try {
+			await removeAccount(auth, {
+				deleteLearner,
+				who: identity,
+				headers: request.headers,
+				userId: typeof id === 'string' ? id : ''
+			});
+			return { removed: true };
+		} catch (thrown) {
+			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
+			if (thrown instanceof UnknownAccountError) {
+				return fail(404, { removeMessage: 'That user no longer exists.' });
+			}
+			if (thrown instanceof SelfRemoveError) {
+				return fail(400, { removeMessage: 'You cannot remove yourself.' });
+			}
+			console.error(
+				'Users: removing an Account failed:',
+				thrown instanceof Error ? thrown.name : typeof thrown
+			);
+			if (thrown instanceof ProgressNotRemovedError) {
+				return fail(500, {
+					removeMessage:
+						'The account was removed, but its progress could not be deleted. It can no longer sign in.'
+				});
+			}
+			return fail(500, { removeMessage: 'The account could not be removed. Try again.' });
 		}
 	}
 };

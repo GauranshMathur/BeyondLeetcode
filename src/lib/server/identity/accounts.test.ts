@@ -5,7 +5,6 @@ import {
 	type AccountRow,
 	listAccounts,
 	NotAdminError,
-	ProgressNotRemovedError,
 	removeAccount,
 	resetAdminPassword,
 	resetPassword,

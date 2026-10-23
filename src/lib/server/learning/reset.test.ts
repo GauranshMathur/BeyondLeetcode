@@ -96,7 +96,7 @@ describe('deleteLearner()', () => {
 		const other = await core.forLearner('b').map();
 		const beforeA = await remaining(db, 'a');
 		for (const table of PROGRESS_TABLES) {
-			expect(beforeA[table as keyof typeof before_a], table).toBeGreaterThan(0);
+			expect(beforeA[table as keyof typeof beforeA], table).toBeGreaterThan(0);
 		}
 
 		await deleteLearner(db, 'a');

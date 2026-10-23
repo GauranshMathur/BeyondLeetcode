@@ -20,6 +20,9 @@ let sam: Session;
 
 const RESET_ENHANCED = { name: 'Rae Reset', email: 'rae.users@example.com' };
 const RESET_PLAIN = { name: 'Pat Plain', email: 'pat.users@example.com' };
+const REMOVE_ENHANCED = { name: 'Rhea Remove', email: 'rhea.users@example.com' };
+const REMOVE_PLAIN = { name: 'Rob Removed', email: 'rob.users@example.com' };
+const REMOVE_CANCEL = { name: 'Cy Cancel', email: 'cy.users@example.com' };
 
 test.beforeAll(async () => {
 	fixture = await openMultiUserDatabase();
@@ -28,6 +31,9 @@ test.beforeAll(async () => {
 	await fixture.ensureLearner(MARKUP);
 	await fixture.ensureLearner(RESET_ENHANCED);
 	await fixture.ensureLearner(RESET_PLAIN);
+	await fixture.ensureLearner(REMOVE_ENHANCED);
+	await fixture.ensureLearner(REMOVE_PLAIN);
+	await fixture.ensureLearner(REMOVE_CANCEL);
 	// Sam's stored role only contains admin: the plugin would call that an admin, the app does not.
 	await fixture.db.user.update({ where: { email: SAM.email }, data: { role: 'admin,learner' } });
 	admin = await fixture.signIn(E2E_ADMIN.email, E2E_ADMIN.password);
@@ -75,12 +81,15 @@ test('the admin finds Users in the nav and sees every Account on it', async ({ c
 			await expect(cells.nth(1)).toHaveText(user.email);
 			await expect(cells.nth(2)).toHaveText(user.role === 'admin' ? 'admin' : 'learner');
 			await expect(cells.nth(3)).toHaveText(user.createdAt.toISOString().slice(0, 10));
-			await expect(cells.nth(4)).toHaveText(you ? 'you cannot remove yourself' : 'Reset password');
+			await expect(cells.nth(4)).toContainText(
+				you ? 'you cannot remove yourself' : 'Reset password'
+			);
+			if (!you) await expect(cells.nth(4)).toContainText('Remove');
 		}
 	}).toPass();
 
-	// The admin and the learners made above are among them; Remove is a later card, so a row's only
-	// action is Reset password, and the admin's own row has none.
+	// The admin and the learners made above are among them; a row's actions are Reset password and
+	// Remove, and the admin's own row has neither.
 	await expect(
 		table.getByRole('row', { name: new RegExp(`${E2E_ADMIN.email}.*admin`) })
 	).toBeVisible();
@@ -132,6 +141,105 @@ test('the admin resets a password: the one-time password is shown once with a co
 	await page.reload();
 	await expect(page.getByLabel('One-time password')).toHaveCount(0);
 	await expect(page.locator('body')).not.toContainText(shown);
+});
+
+/** A progress row for an Account's Learner, so a removal has something to delete. */
+async function giveProgress(email: string) {
+	const { learnerId } = await fixture.db.user.findUniqueOrThrow({ where: { email } });
+	await fixture.db.chapterRead.upsert({
+		where: { learnerId_chapterId: { learnerId, chapterId: 'removal-e2e' } },
+		update: {},
+		create: { learnerId, chapterId: 'removal-e2e' }
+	});
+	return learnerId;
+}
+
+/** What a removal must have done: no Account, no sign-in, no row of its Learner; another Learner's progress stays. */
+async function expectRemoved(email: string, learnerId: string, keptLearnerId: string) {
+	expect(await fixture.db.user.count({ where: { email } })).toBe(0);
+	await expect(fixture.signIn(email, LEARNER_PASSWORD)).rejects.toThrow();
+	expect(await fixture.db.chapterRead.count({ where: { learnerId } })).toBe(0);
+	expect(await fixture.db.learner.count({ where: { id: learnerId } })).toBe(0);
+	expect(await fixture.db.chapterRead.count({ where: { learnerId: keptLearnerId } })).toBe(1);
+}
+
+test('the admin removes a user: the confirm opens under the row, and the Account and its progress go', async ({
+	context,
+	page
+}) => {
+	const learnerId = await giveProgress(REMOVE_ENHANCED.email);
+	const keptLearnerId = await giveProgress(LIN.email);
+	await fixture.signIn(REMOVE_ENHANCED.email, LEARNER_PASSWORD); // a live session
+	await context.addCookies(admin.cookies);
+	await page.goto('/users');
+	const row = page.getByRole('row', { name: new RegExp(REMOVE_ENHANCED.email) });
+
+	await row.getByRole('button', { name: 'Remove' }).click();
+
+	const confirm = page.getByRole('group', { name: `Remove ${REMOVE_ENHANCED.name}` });
+	await expect(confirm).toBeVisible();
+	await expect(confirm).toContainText(`Remove ${REMOVE_ENHANCED.name}?`);
+	await expect(confirm).toContainText(
+		'This deletes their account, saved code and Submissions. It cannot be undone.'
+	);
+	// Nothing is deleted until the confirm is answered.
+	expect(await fixture.db.user.count({ where: { email: REMOVE_ENHANCED.email } })).toBe(1);
+
+	await confirm.getByRole('button', { name: 'Remove user' }).click();
+
+	await expect(page.getByRole('row', { name: new RegExp(REMOVE_ENHANCED.email) })).toHaveCount(0);
+	await expect(page.getByText('The account was removed.')).toBeVisible();
+	await expect(confirm).toHaveCount(0);
+	await expectRemoved(REMOVE_ENHANCED.email, learnerId, keptLearnerId);
+});
+
+test('Cancel closes the confirm and removes nothing', async ({ context, page }) => {
+	await context.addCookies(admin.cookies);
+	await page.goto('/users');
+	await page
+		.getByRole('row', { name: new RegExp(REMOVE_CANCEL.email) })
+		.getByRole('button', { name: 'Remove' })
+		.click();
+	const confirm = page.getByRole('group', { name: `Remove ${REMOVE_CANCEL.name}` });
+	await expect(confirm).toBeVisible();
+
+	await confirm.getByRole('link', { name: 'Cancel' }).click();
+
+	await expect(confirm).toHaveCount(0);
+	expect(await fixture.db.user.count({ where: { email: REMOVE_CANCEL.email } })).toBe(1);
+});
+
+test('the admin has no Remove on their own row, and a hand-made address opens no confirm for it', async ({
+	context,
+	page
+}) => {
+	await context.addCookies(admin.cookies);
+	const { id } = await fixture.db.user.findUniqueOrThrow({ where: { email: E2E_ADMIN.email } });
+
+	await page.goto(`/users?remove=${id}`);
+
+	await expect(page.getByRole('group', { name: /^Remove / })).toHaveCount(0);
+	await expect(
+		page.getByRole('row', { name: new RegExp(E2E_ADMIN.email) }).getByRole('button')
+	).toHaveCount(0);
+});
+
+test('Auth answers 404 over HTTP for every admin path and for change-password', async ({
+	request
+}) => {
+	for (const path of [
+		'admin/list-users',
+		'admin/set-user-password',
+		'admin/revoke-user-sessions',
+		'admin/remove-user',
+		'change-password'
+	]) {
+		const response = await request.post(`/api/auth/${path}`, {
+			data: {},
+			headers: { cookie: admin.cookies.map((c) => `${c.name}=${c.value}`).join('; ') }
+		});
+		expect(response.status(), path).toBe(404);
+	}
 });
 
 test('the admin has no Reset password on their own row', async ({ context, page }) => {
@@ -215,6 +323,37 @@ test.describe('without JavaScript', () => {
 		// Clean up, so a later file sees no stray pending Invite.
 		await page.getByRole('button', { name: 'Cancel invite' }).first().click();
 		await expect(page.getByLabel('Invite link')).toHaveCount(0);
+	});
+
+	test('a plain form post removes a user, and the answer is never cached', async ({
+		context,
+		page
+	}) => {
+		const learnerId = await giveProgress(REMOVE_PLAIN.email);
+		const keptLearnerId = await giveProgress(LIN.email);
+		await context.addCookies(admin.cookies);
+		await page.goto('/users');
+
+		// Remove is a link-style GET that opens the confirm, so it needs no script either.
+		await page
+			.getByRole('row', { name: new RegExp(REMOVE_PLAIN.email) })
+			.getByRole('button', { name: 'Remove' })
+			.click();
+		const confirm = page.getByRole('group', { name: `Remove ${REMOVE_PLAIN.name}` });
+		await expect(confirm).toBeVisible();
+		const posted = page.waitForResponse(
+			(r) => r.request().method() === 'POST' && r.url().includes('/users?/remove')
+		);
+
+		await confirm.getByRole('button', { name: 'Remove user' }).click();
+
+		// SvelteKit ran the action and then the load in one request: the answer is the page, not a 500.
+		const response = await posted;
+		expect(response.status()).toBe(200);
+		expect(response.headers()['cache-control']).toBe('no-store');
+		await expect(page.getByText('The account was removed.')).toBeVisible();
+		await expect(page.getByRole('row', { name: new RegExp(REMOVE_PLAIN.email) })).toHaveCount(0);
+		await expectRemoved(REMOVE_PLAIN.email, learnerId, keptLearnerId);
 	});
 
 	test('a plain form post resets a password, shows it once and is never cached', async ({

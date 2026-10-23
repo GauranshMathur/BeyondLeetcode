@@ -245,6 +245,36 @@ describe('createAuth', () => {
 		}
 	});
 
+	it('changes a password through auth.api although /change-password is off over HTTP (the form action calls it)', async () => {
+		const { auth } = await setup();
+		const signedUp = await auth.api.signUpEmail({ body, returnHeaders: true });
+		const cookie = signedUp.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+		const newPassword = 'a brand new passphrase 42';
+		const overHttp = await auth.handler(
+			new Request('http://localhost:3000/api/auth/change-password', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000', cookie },
+				body: JSON.stringify({ currentPassword: body.password, newPassword })
+			})
+		);
+		expect(overHttp.status).toBe(404);
+		await expect(
+			auth.api.signInEmail({ body: { email: body.email, password: newPassword } })
+		).rejects.toBeTruthy();
+
+		await auth.api.changePassword({
+			headers: new Headers({ cookie }),
+			body: { currentPassword: body.password, newPassword, revokeOtherSessions: true }
+		});
+
+		await expect(
+			auth.api.signInEmail({ body: { email: body.email, password: newPassword } })
+		).resolves.toBeTruthy();
+	});
+
 	it('serves no password sign-in over HTTP: the Sign in form, with its per-Account limits, is the one way', async () => {
 		const { auth } = await setup();
 		await auth.api.signUpEmail({ body });
