@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.59.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.58.0...v0.59.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C37 Users: remove an Account and its progress ([#210](https://github.com/GauranshMathur/BeyondLeetcode/issues/210)) ([141889e](https://github.com/GauranshMathur/BeyondLeetcode/commit/141889e43fe49b97a2d3805426944973bdd606ab))
+
 ## [0.58.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.57.0...v0.58.0) (2026-10-23)
 
 
