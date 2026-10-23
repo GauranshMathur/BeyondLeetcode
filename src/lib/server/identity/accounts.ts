@@ -169,3 +169,50 @@ export async function resetPassword(
 	}
 	return { password };
 }
+
+/**
+ * The server command's reset (`reset-admin-password`): gives the admin Account a one-time password,
+ * ends its sessions and makes it set a new password. The proof of ownership is shell access to the
+ * server, so there is no session to check; a caller must never reach this from a request.
+ *
+ * Returns null, having changed nothing, when no Account is an admin (role exactly `admin`, as everywhere
+ * else). If several are, the oldest is reset. Same order as `resetPassword`: the flag, then the password
+ * (hashed by Better Auth's own hasher, so sign-in accepts it), then the sessions in a `finally`, so no
+ * outcome leaves a session from before the reset alive with the flag unset. A failure throws and no
+ * password is returned: run the command again. The password is not logged or kept.
+ */
+export async function resetAdminPassword(
+	auth: Auth
+): Promise<{ email: string; password: string } | null> {
+	const context = await auth.$context;
+	const { internalAdapter } = context;
+	const admins = await context.adapter.findMany<{ id: string; email: string }>({
+		model: 'user',
+		where: [{ field: 'role', value: 'admin' }],
+		sortBy: { field: 'createdAt', direction: 'asc' },
+		limit: 1
+	});
+	const target = admins[0];
+	if (!target) return null;
+
+	const password = oneTimePassword();
+	const hashed = await context.password.hash(password);
+	await internalAdapter.updateUser(target.id, { mustChangePassword: true });
+	try {
+		if (await internalAdapter.findCredentialAccount(target.id)) {
+			await internalAdapter.updatePassword(target.id, hashed);
+		} else {
+			await internalAdapter.createAccount({
+				userId: target.id,
+				providerId: 'credential',
+				accountId: target.id,
+				password: hashed
+			});
+		}
+	} finally {
+		// Whatever the password step did: once it has changed no earlier session survives, and one that
+		// outlives a failure carries the flag, so the gate confines it to the password page.
+		await internalAdapter.deleteUserSessions(target.id);
+	}
+	return { email: target.email, password };
+}
