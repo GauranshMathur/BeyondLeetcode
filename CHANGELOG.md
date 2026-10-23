@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.63.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.62.0...v0.63.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C53 a sign-in cannot outlive a password change or reset ([#218](https://github.com/GauranshMathur/BeyondLeetcode/issues/218)) ([ed43c25](https://github.com/GauranshMathur/BeyondLeetcode/commit/ed43c252c5a3910b51e2ff3b0384a0dad53f92bb))
+
 ## [0.62.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.61.0...v0.62.0) (2026-10-23)
 
 
