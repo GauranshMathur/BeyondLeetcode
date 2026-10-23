@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.55.0...v0.56.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C54 Setup: refuse Local once Accounts exist; the reset command repairs a lost mode ([#203](https://github.com/GauranshMathur/BeyondLeetcode/issues/203)) ([63b8c9e](https://github.com/GauranshMathur/BeyondLeetcode/commit/63b8c9e813d0b7ebd7a77f824d4bc200de73cdd2))
+
 ## [0.55.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.54.0...v0.55.0) (2026-10-23)
 
 
