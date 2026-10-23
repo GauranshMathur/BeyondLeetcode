@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
-import { createFileTestDb } from '../test-db.ts';
+import { createFileTestDb, createTestDb } from '../test-db.ts';
 import {
 	type Admission,
 	CLIENT_IP_HEADER,
@@ -1120,5 +1120,31 @@ describe('redactInvite', () => {
 		for (const harmless of ['/invite/[token]', 'unrelated text', 'beyond_invite=1']) {
 			expect(redactInvite(harmless)).toBe(harmless);
 		}
+	});
+});
+
+describe('an Account is unique per provider identity', () => {
+	it('refuses a second Account with the same providerId and accountId', async () => {
+		const db = await createTestDb();
+		for (const id of ['u1', 'u2']) {
+			await db.learner.create({ data: { id: `l-${id}` } });
+			await db.user.create({
+				data: { id, name: id, email: `${id}@example.com`, learnerId: `l-${id}` }
+			});
+		}
+		const account = (id: string, userId: string, providerId: string) => ({
+			id,
+			userId,
+			providerId,
+			accountId: 'google-sub-1'
+		});
+		await db.account.create({ data: account('a1', 'u1', 'google') });
+
+		await expect(db.account.create({ data: account('a2', 'u2', 'google') })).rejects.toMatchObject({
+			code: 'P2002'
+		});
+		// The same accountId under another provider is another identity.
+		await db.account.create({ data: account('a3', 'u2', 'github') });
+		expect(await db.account.count()).toBe(2);
 	});
 });

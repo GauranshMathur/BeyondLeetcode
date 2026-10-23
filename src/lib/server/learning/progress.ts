@@ -116,7 +116,9 @@ type Tx = Parameters<Parameters<Db['$transaction']>[0]>[0];
 
 /**
  * How each table holding a Learner's progress (a Prisma model with a `learnerId`) is cleared.
- * Adding such a model without an entry here fails reset.test.ts.
+ * Adding such a model without an entry here fails reset.test.ts. Each table also has a foreign key
+ * to Learner with ON DELETE CASCADE (C56), so removing a Learner row deletes this progress anyway;
+ * `deleteLearner` keeps clearing it by name so the transaction does not rely on the database alone.
  */
 const CLEAR: Record<string, (tx: Tx, learnerId: string) => Promise<unknown>> = {
 	chapterRead: (tx, learnerId) => tx.chapterRead.deleteMany({ where: { learnerId } }),

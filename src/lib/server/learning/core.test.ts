@@ -3,7 +3,45 @@ import { describe, expect, it } from 'vitest';
 import { type Language, loadCatalogue } from '../content/catalogue.ts';
 import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
-import { type BuildRef, createLearningCore, LearningError } from './core.ts';
+import {
+	type BuildRef,
+	createLearningCore as createCoreOnDb,
+	type LearningCoreDeps,
+	LearningError
+} from './core.ts';
+
+/**
+ * The Learning core, with every Learner a test names given its row first: the database refuses
+ * progress for a Learner that has none (C56), as it does for a removed one.
+ */
+function createLearningCore(deps: LearningCoreDeps) {
+	const core = createCoreOnDb(deps);
+	const created = new Map<string, Promise<unknown>>();
+	return {
+		...core,
+		forLearner: (id: string) => {
+			const learner = core.forLearner(id);
+			const ready = () => {
+				let p = created.get(id);
+				if (!p) {
+					p = deps.db.learner.upsert({ where: { id }, update: {}, create: { id } });
+					created.set(id, p);
+				}
+				return p;
+			};
+			return new Proxy(learner, {
+				get: (target, key) => {
+					const member = target[key as keyof typeof target];
+					if (typeof member !== 'function') return member;
+					return async (...args: unknown[]) => {
+						await ready();
+						return (member as (...a: unknown[]) => unknown)(...args);
+					};
+				}
+			});
+		}
+	};
+}
 
 const ref = (problemId: string, revision: number, language: Language = 'python'): BuildRef => ({
 	problemId,
