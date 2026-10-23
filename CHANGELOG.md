@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.62.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.61.0...v0.62.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C57 Identity: every Account has its Learner, and no Learner outlives its Account ([#217](https://github.com/GauranshMathur/BeyondLeetcode/issues/217)) ([68b2659](https://github.com/GauranshMathur/BeyondLeetcode/commit/68b2659aada66c45b26d33ea98227ca8152a60f6))
+
 ## [0.61.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.60.0...v0.61.0) (2026-10-23)
 
 

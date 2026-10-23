@@ -117,6 +117,8 @@ Pull a new image and recreate: `docker compose pull && docker compose up -d`. Mi
    docker compose up -d
    ```
 
+**Upgrading from a version before 0.60.0 on a Multi-user Instance:** an Account whose Learner row was never created (its sign-up's Account or Session insert failed, after which the user signed in and saved work) loses that saved progress when the 0.60.0 migration runs. The Account itself is repaired at the next start and keeps working. Each Multi-user start also repairs Accounts and Learners that drifted apart, and logs `Multi-user startup repair: N missing Learner(s) created, M orphan Learner(s) removed.` only when it changed something: it created a Learner for an Account that had none, and removed Learners no Account references, with their progress. If the repair itself fails, the server stops rather than serve with Accounts and Learners out of step (fail-closed).
+
 ## Contributing
 
 Content requests (a new chapter, problem or topic) and bugs go in [Issues](https://github.com/GauranshMathur/BeyondLeetcode/issues).
