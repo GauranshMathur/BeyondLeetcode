@@ -1,4 +1,4 @@
-import { createHash, randomUUID as createId } from 'node:crypto';
+import { randomUUID as createId } from 'node:crypto';
 import { formatWithOptions, inspect } from 'node:util';
 import type { BetterAuthPlugin } from 'better-auth';
 import { BASE_ERROR_CODES, betterAuth } from 'better-auth';
@@ -452,13 +452,11 @@ export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 128;
 
 /**
- * What a password sign-in checked: whose password, and a digest of the stored hash it was checked against.
+ * What a password sign-in checked: whose password, and the credential generation it was checked under.
  * `null`s are the record of a sign-in for which the hook found no user or no password: nothing was recorded to
- * check against, and such a sign-in can create no session (see `checkedPasswordStillCurrent`).
+ * check against, and such a sign-in can create no session (see `sessionGeneration`).
  */
-type CredentialChecked = { userId: string | null; digest: string | null };
-
-const digestOf = (hash: string) => createHash('sha256').update(hash).digest('hex');
+type CredentialChecked = { userId: string | null; generation: string | null };
 
 export type CreateAuthOptions = {
 	db: Db;
@@ -615,51 +613,52 @@ export function createAuth({
 	if (isPlaceholderSecret(secret)) {
 		throw new Error('createAuth: secret is a placeholder or default value anyone can read');
 	}
-	/** A digest of the Account's stored password hash, or null when it has no password to check. */
-	async function credentialDigest(userId: string): Promise<string | null> {
-		const credential = await db.account.findFirst({
-			where: { userId, providerId: 'credential' },
-			select: { password: true }
-		});
-		return credential?.password ? digestOf(credential.password) : null;
+	/**
+	 * The credential generation of an Account: the value `credentialGeneration` of its password Account, which the
+	 * hooks below replace in the very write that replaces the hash, or "" when it has none. A session is bound to
+	 * the generation it was created under and resolves only while that is still the current one.
+	 */
+	async function currentGeneration(userId: string): Promise<string> {
+		return (await passwordGeneration(userId)) ?? '';
 	}
 
-	/**
-	 * Whether the Account's password was set after this session began. Every writer of a password (the admin's
-	 * reset, the reset command, a change) updates the credential row and then ends the user's sessions; a session
-	 * that outlived the second step (a failed or lost deletion) began before the first and is refused here.
-	 */
-	async function passwordChangedSince(userId: string, since: Date): Promise<boolean> {
+	/** The generation of the Account's password Account, or null when it has none. */
+	async function passwordGeneration(userId: string): Promise<string | null> {
 		const credential = await db.account.findFirst({
 			where: { userId, providerId: 'credential' },
-			select: { updatedAt: true }
+			select: { credentialGeneration: true }
 		});
-		return credential !== null && credential.updatedAt.getTime() > since.getTime();
+		return credential ? credential.credentialGeneration : null;
 	}
 
 	/**
 	 * Requests whose sessions check no password, by the endpoint path: a sign-up (a new Account with its first
 	 * session), a provider's callback (no password is involved), and the password change's own replacement
-	 * session (made after the change, for the signed-in user). Every other path that creates a session is a
-	 * password sign-in and is held to its record.
+	 * session (made after the change, for the signed-in user). They are bound to the generation current when they
+	 * are made. Every other path that creates a session is a password sign-in and is held to its record.
 	 */
 	const SESSIONS_WITHOUT_A_PASSWORD_CHECK = ['/sign-up/email', '/callback/:id', '/change-password'];
 
 	/**
-	 * A password sign-in must create its session against the password it checked. The request hook recorded a
-	 * digest of the hash before the check (see `hooks.before`); this compares it with the stored hash now. It
-	 * fails closed: a sign-in with no record, or a record for another user or with nothing in it (the hook
-	 * found no Account, which may have been made since), creates no session. Only the named exemptions skip it.
+	 * The generation a new session is bound to, or a refusal. A password sign-in is bound to the generation the
+	 * request hook recorded before it checked the password, and fails closed: with no record, a record for another
+	 * user, or one holding nothing (the hook found no Account, which may have been made since), or when the
+	 * generation has moved on since, it creates no session. The row is written already holding that generation, so
+	 * a sign-in that loses the race after this check still never resolves.
 	 */
-	async function checkedPasswordStillCurrent(ctx: unknown, userId: string): Promise<boolean> {
+	async function sessionGeneration(ctx: unknown, userId: string): Promise<string> {
 		const endpoint = ctx as
 			| { path?: string; credentialChecked?: CredentialChecked }
 			| null
 			| undefined;
-		if (endpoint?.path && SESSIONS_WITHOUT_A_PASSWORD_CHECK.includes(endpoint.path)) return true;
+		if (endpoint?.path && SESSIONS_WITHOUT_A_PASSWORD_CHECK.includes(endpoint.path)) {
+			return currentGeneration(userId);
+		}
 		const checked = endpoint?.credentialChecked;
-		if (!checked || checked.userId !== userId || checked.digest === null) return false;
-		return (await credentialDigest(userId)) === checked.digest;
+		if (!checked || checked.userId !== userId || checked.generation === null)
+			throw staleCredential();
+		if ((await currentGeneration(userId)) !== checked.generation) throw staleCredential();
+		return checked.generation;
 	}
 
 	return betterAuth({
@@ -714,7 +713,14 @@ export function createAuth({
 		//
 		// Provider tokens are stored encrypted (with the secret), and never handed to a browser: the endpoints that
 		// would (`/get-access-token`, `/refresh-token`, `/account-info`) are off.
-		account: { accountLinking: { enabled: false }, encryptOAuthTokens: true },
+		account: {
+			accountLinking: { enabled: false },
+			encryptOAuthTokens: true,
+			additionalFields: {
+				// Set by `databaseHooks.account`; never taken from a request.
+				credentialGeneration: { type: 'string', required: false, input: false }
+			}
+		},
 		// Added only when both of a provider's variables were set. Its profile name is mapped to a name the rules
 		// accept (`providerName`); the Account itself is made by `user.create.before` like any other.
 		socialProviders: {
@@ -738,7 +744,13 @@ export function createAuth({
 			})
 		},
 		// A removed or reset user must lose access on the next request.
-		session: { cookieCache: { enabled: false } },
+		session: {
+			cookieCache: { enabled: false },
+			additionalFields: {
+				// Set by `databaseHooks.session.create.before`; never taken from a request.
+				credentialGeneration: { type: 'string', required: false, input: false }
+			}
+		},
 		user: {
 			additionalFields: {
 				// Not `required`: that would demand it in the sign-up body. The hook below always sets it.
@@ -749,27 +761,48 @@ export function createAuth({
 		databaseHooks: {
 			// Provider tokens: `encryptOAuthTokens` covers the access and refresh tokens, not the ID token (Google's), which
 			// the app never reads. It is not stored at all, so no plain ID token sits in the Account row.
+			//
+			// The credential generation changes in the same write as the password hash, whoever writes it: Better Auth's
+			// password change (`updateAccount`), the admin's reset and the reset command (`updatePassword`), and the
+			// creation of a password Account. All of them go through these hooks, in the statement that writes the hash.
 			account: {
-				create: { before: async (account) => ({ data: { ...account, idToken: null } }) },
-				update: { before: async (account) => ({ data: { ...account, idToken: null } }) }
+				create: {
+					before: async (account) => ({
+						data: {
+							...account,
+							idToken: null,
+							...(account.providerId === 'credential' ? { credentialGeneration: createId() } : {})
+						}
+					})
+				},
+				update: {
+					before: async (account) => ({
+						data: {
+							...account,
+							idToken: null,
+							...('password' in account ? { credentialGeneration: createId() } : {})
+						}
+					})
+				}
 			},
 			// A password sign-in verifies the password, then creates the session, and the two are not one step. A
 			// writer (an admin's reset, the reset command, a password change) can change the password and end every
-			// session in between, and the session would then outlive the change. The sign-in records the hash it is
-			// about to check; the session is refused before it is written if the stored hash is no longer that one,
-			// and checked again once written, because the writer can also land between the first check and the
-			// insert: a writer changes the password and only then ends the sessions, so a session written after its
-			// deletions reads the new hash here and removes itself, and one written before them is deleted by them.
+			// session in between. Every session is therefore written bound to a credential generation (the one the
+			// sign-in checked), refused before it is written when that is no longer current, and checked again once
+			// written. A session whose generation is not the current one never resolves (`/get-session` below), so a
+			// failed deletion, by the writer or by the cleanup here, cannot leave a usable session.
 			session: {
 				create: {
-					before: async (session, ctx) => {
-						if (!(await checkedPasswordStillCurrent(ctx, session.userId))) throw staleCredential();
-					},
-					after: async (session, ctx) => {
-						if (!session || (await checkedPasswordStillCurrent(ctx, session.userId))) return;
-						// If this delete fails too, the row is unreachable all the same: the error below leaves before the
-						// session cookie is set, so nobody ever holds the token.
-						await db.session.deleteMany({ where: { id: session.id } });
+					before: async (session, ctx) => ({
+						data: { credentialGeneration: await sessionGeneration(ctx, session.userId) }
+					}),
+					after: async (session) => {
+						if (!session) return;
+						const bound = (session as { credentialGeneration?: string }).credentialGeneration;
+						if (bound === (await currentGeneration(session.userId))) return;
+						// A writer landed between the check and the insert. The row holds the old generation, so it
+						// cannot resolve whether or not this delete works; the error leaves before the cookie is set.
+						await db.session.deleteMany({ where: { id: session.id } }).catch(() => undefined);
 						throw staleCredential();
 					}
 				}
@@ -860,18 +893,19 @@ export function createAuth({
 		hooks: {
 			after: createAuthMiddleware(async (ctx) => {
 				if (ctx.path === '/get-session') {
-					// A session that began before the Account's password was last set is over, even if the writer's
-					// deletion of it failed (both of a password change's deletions, say).
+					// A session resolves only under the credential generation it was created under. Every path that
+					// accepts a session for the app goes through here: the identity of a request (`multi-user.ts`), and
+					// the actions that check the session first (`accounts.ts`, `routes/account/password`).
 					const found = ctx.context.returned as
-						| { session?: { id: string; userId: string; createdAt: Date | string } }
+						| { session?: { id: string; userId: string; credentialGeneration?: string } }
 						| null
 						| undefined;
 					const session = found && !isAPIError(found) ? found.session : undefined;
 					if (
 						session &&
-						(await passwordChangedSince(session.userId, new Date(session.createdAt)))
+						session.credentialGeneration !== (await currentGeneration(session.userId))
 					) {
-						await db.session.deleteMany({ where: { id: session.id } });
+						await db.session.deleteMany({ where: { id: session.id } }).catch(() => undefined);
 						return ctx.json(null);
 					}
 					return;
@@ -937,8 +971,11 @@ export function createAuth({
 									select: { id: true }
 								})
 							: null;
-					const digest = user ? await credentialDigest(user.id) : null;
-					const checked: CredentialChecked = { userId: user && digest ? user.id : null, digest };
+					const generation = user ? await passwordGeneration(user.id) : null;
+					const checked: CredentialChecked = {
+						userId: user && generation !== null ? user.id : null,
+						generation
+					};
 					return { context: { credentialChecked: checked } };
 				}
 				if (ctx.path !== '/sign-up/email') return;
