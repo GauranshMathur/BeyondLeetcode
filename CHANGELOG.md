@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.55.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.54.0...v0.55.0) (2026-10-23)
+
+
+### Features
+
+* **beyondleetcode:** C36b Account: a one-time password must be changed ([#199](https://github.com/GauranshMathur/BeyondLeetcode/issues/199)) ([acdf59b](https://github.com/GauranshMathur/BeyondLeetcode/commit/acdf59b4b7671a0bbca0bbb4d54b00ef801219ba))
+
 ## [0.54.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.53.0...v0.54.0) (2026-10-23)
 
 

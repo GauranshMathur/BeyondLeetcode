@@ -158,18 +158,27 @@ describe('gate', () => {
 			}),
 			redirect('/account/password')
 		],
-		// /account/password has no route until its page lands; the user must not be sent round in a loop.
 		[
-			'must change, /account/password with no route yet -> pass (the 404 page, not a redirect to itself)',
-			request(null, {
+			'must change, POST to the password page (its form action) -> pass',
+			request('/account/password', {
 				who: learner,
 				mustChangePassword: true,
+				method: 'POST',
 				pathname: '/account/password'
 			}),
 			pass
 		],
 		[
-			'must change, other path with no route -> password, even one that starts like it',
+			'must change, the password page path with no route matched -> password (no exemption for the bare path)',
+			request(null, {
+				who: learner,
+				mustChangePassword: true,
+				pathname: '/account/password'
+			}),
+			redirect('/account/password')
+		],
+		[
+			'must change, a path that starts like it but has no route -> password',
 			request(null, {
 				who: learner,
 				mustChangePassword: true,

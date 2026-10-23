@@ -88,6 +88,19 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		</div>
 	</section>
 
+	<!-- Passwords belong to Accounts, so the row is for a Multi-user Instance only. -->
+	{#if data.multiUser}
+		<section class="group">
+			<div class="label">
+				<h2>Password</h2>
+				<p>Change the password you sign in with.</p>
+			</div>
+			<div class="control">
+				<a class="button outline" href="/account/password">Change password</a>
+			</div>
+		</section>
+	{/if}
+
 	<!-- Sign out is for a Multi-user Instance only: Local Mode has no accounts and no sign-in. -->
 	{#if data.multiUser}
 		<section class="group last">
@@ -189,7 +202,11 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		letter-spacing: 0;
 		text-transform: none;
 	}
-	button {
+	button,
+	.button {
+		display: inline-flex;
+		align-items: center;
+		text-decoration: none;
 		align-self: flex-start;
 		height: 52px;
 		padding: 0 28px;

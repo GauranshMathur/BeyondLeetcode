@@ -432,14 +432,14 @@ describe('Multi-user Mode', () => {
 		expect(resolve).not.toHaveBeenCalled();
 	});
 
-	it('does not send a user who must change their password round in a loop while /account/password has no route', async () => {
+	it('lets a user who must change their password reach /account/password, where the route exists', async () => {
 		const { handle, asking, db } = await multiSetup();
 		await db.user.updateMany({ data: { mustChangePassword: true } });
-		const { event, resolve } = asking('/account/password', null);
+		const { event, resolve } = asking('/account/password', '/account/password');
 
 		const response = await handle({ event, resolve });
 
-		// Where the redirect points, they arrive: the 404 page renders, nothing redirects again.
+		// Where the redirect points, they arrive: the page renders, nothing redirects again.
 		expect(response.status).toBe(200);
 		expect(resolve).toHaveBeenCalledOnce();
 	});
