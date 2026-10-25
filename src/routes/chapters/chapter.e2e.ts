@@ -186,3 +186,30 @@ test.describe('the Chapter on a phone', () => {
 		});
 	});
 });
+
+// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
+test.describe('reading a Chapter on a phone, as a flow', () => {
+	test.use({ storageState: asLearner('e2e-chapter-flow'), viewport: { width: 390, height: 844 } });
+
+	test('opening a Chapter from its Topic and reading to the end marks it Read', {
+		tag: '@mobile'
+	}, async ({ page }) => {
+		await page.goto('/topics/stacks');
+		const chapterRow = page.locator('section.chapter', {
+			has: page.getByRole('link', { name: 'An undo log' })
+		});
+		await expect(chapterRow).toContainText('not read');
+
+		await page.getByRole('link', { name: 'An undo log' }).tap();
+		await expect(page).toHaveURL('/chapters/stacks-undo-log');
+		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved.
+		const marked = page.waitForResponse(/\?\/reachEnd/);
+		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
+		expect((await marked).ok()).toBe(true);
+
+		await page.getByRole('link', { name: '↑ Stacks' }).tap();
+		await expect(page).toHaveURL('/topics/stacks');
+		await expect(chapterRow).toContainText('read');
+		await expect(chapterRow).not.toContainText('not read');
+	});
+});

@@ -74,6 +74,8 @@ export default defineConfig({
 			name: 'e2e',
 			testMatch: '**/*.e2e.{ts,js}',
 			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts', '**/convert.e2e.ts'],
+			// The @mobile flows run in the "mobile" project.
+			grepInvert: /@mobile/,
 			dependencies: ['setup']
 		},
 		{
@@ -90,8 +92,25 @@ export default defineConfig({
 			name: 'e2e-multi',
 			testMatch: '**/*.multi.e2e.ts',
 			testIgnore: '**/setup.multi.e2e.ts',
+			grepInvert: /@mobile/,
 			use: { baseURL: 'http://localhost:4174' },
 			dependencies: ['setup-multi']
+		},
+		// C51: a phone (390 x 844, touch) walks one flow on each of the Map, Topic, Chapter, Problem and Sign in
+		// screens: the tests tagged @mobile in their files. Each has its own Learner, so none meets another's
+		// leftovers. The Sign in flow uses the Multi-user server (4174) and its admin, hence "setup-multi".
+		{
+			name: 'mobile',
+			testMatch: [
+				'**/routes/page.e2e.ts',
+				'**/topics/topic.e2e.ts',
+				'**/chapters/chapter.e2e.ts',
+				'**/problems/problem.e2e.ts',
+				'**/signin/signin.multi.e2e.ts'
+			],
+			grep: /@mobile/,
+			use: { viewport: { width: 390, height: 844 }, hasTouch: true },
+			dependencies: ['setup', 'setup-multi']
 		}
 	]
 });

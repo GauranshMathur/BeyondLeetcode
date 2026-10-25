@@ -75,3 +75,22 @@ test.describe('mobile layout', () => {
 		expect(overflow).toBeLessThanOrEqual(0);
 	});
 });
+
+// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
+test.describe('the Topic on a phone, as a flow', () => {
+	test.use({ storageState: asLearner('e2e-topic-flow'), viewport: { width: 390, height: 844 } });
+
+	test('a Chapter and a Problem are reached by tapping their rows', { tag: '@mobile' }, async ({
+		page
+	}) => {
+		await page.goto('/topics/stacks');
+		await page.getByRole('link', { name: 'An undo log' }).tap();
+		await expect(page).toHaveURL('/chapters/stacks-undo-log');
+
+		await page.goBack();
+		await expect(page).toHaveURL('/topics/stacks');
+		await page.getByRole('link', { name: 'Push and size' }).tap();
+		await expect(page).toHaveURL('/problems/stacks-push');
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Push and size');
+	});
+});

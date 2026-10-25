@@ -11,7 +11,7 @@ Learn DSA the way senior engineers actually use it — not isolated leetcode puz
 
 ## Status
 
-Local Mode and Multi-user Mode both work. A released image is published at `ghcr.io/gauranshmathur/beyondleetcode`.
+MVP1 is complete: everything in it works on a desktop and on a phone, in Local Mode and in Multi-user Mode. A released image is published at `ghcr.io/gauranshmathur/beyondleetcode`.
 
 - **Design:** [BeyondLeetcode — UI](https://claude.ai/artifact/WRJr84ccDYXAd3Yg1Xvp1d), a canvas with every screen in light and dark, organised by area.
 - **Roadmap:** [project board](https://github.com/users/GauranshMathur/projects/1), with every piece of planned work as a card.
