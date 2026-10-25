@@ -316,7 +316,7 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 		white-space: nowrap;
 	}
 	/* Mobile follows the Sign in board: one column, no side panel, a stretched button and the link under a rule. */
-	@media (max-width: 900px) {
+	@media (max-width: 767.98px) {
 		main {
 			grid-template-columns: minmax(0, 1fr);
 			min-height: 0;
@@ -341,6 +341,18 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 			font-size: 18px;
 			line-height: 1.6;
 		}
+		label {
+			font-size: 12px;
+			letter-spacing: 0.08em;
+		}
+		/* The board sets the one message in the serif, sentence case, under the password. */
+		.hint {
+			font-family: var(--font-serif);
+			font-size: 16px;
+			line-height: 1.5;
+			letter-spacing: 0;
+			text-transform: none;
+		}
 		input,
 		button {
 			height: 48px;
@@ -351,6 +363,7 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 		button {
 			align-self: stretch;
 			justify-content: center;
+			font-size: 14px;
 		}
 		.switch {
 			margin-top: 20px;

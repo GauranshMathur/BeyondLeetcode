@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.66.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.65.0...v0.66.0) (2026-10-25)
+
+
+### Features
+
+* **beyondleetcode:** C50 Sign in mobile layout below 768 px ([#234](https://github.com/GauranshMathur/BeyondLeetcode/issues/234)) ([2f7f6c5](https://github.com/GauranshMathur/BeyondLeetcode/commit/2f7f6c56660e5d6e333e73bf8520472455048f78))
+
 ## [0.65.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.64.0...v0.65.0) (2026-10-23)
 
 
