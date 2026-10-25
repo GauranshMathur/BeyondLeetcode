@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.67.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.66.0...v0.67.0) (2026-10-25)
+
+
+### Features
+
+* **beyondleetcode:** C49 mobile app header ([#237](https://github.com/GauranshMathur/BeyondLeetcode/issues/237)) ([9571e3e](https://github.com/GauranshMathur/BeyondLeetcode/commit/9571e3efdda9542267f82cb859ddda71ae29b8e7))
+
 ## [0.66.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.65.0...v0.66.0) (2026-10-25)
 
 
