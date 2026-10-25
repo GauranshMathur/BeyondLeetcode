@@ -592,3 +592,39 @@ test.describe('on a phone', () => {
 		await expectNoPageScroll(page);
 	});
 });
+
+// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
+test.describe('solving a Problem on a phone, as a flow', () => {
+	test.use({ storageState: asLearner('e2e-problem-flow'), viewport: { width: 390, height: 844 } });
+
+	test('type code, Run it, fix it, Submit and reach Accepted', { tag: '@mobile' }, async ({
+		page
+	}) => {
+		const tab = (name: string) =>
+			page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name });
+		await page.goto('/topics/stacks');
+		await page.getByRole('link', { name: 'Push and size' }).tap();
+		await expect(page).toHaveURL('/problems/stacks-push');
+
+		await tab('Code').tap();
+		await page.getByLabel('Code: main.py').tap();
+		await expect(page.getByLabel('Code: main.py')).toBeFocused();
+		await page.keyboard.press('ControlOrMeta+a');
+		await page.keyboard.press('Backspace');
+		await page.keyboard.type('print(99)', { delay: 25 });
+		await page.getByRole('button', { name: 'Run' }).tap();
+		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText(
+			'fail · wrong answer',
+			{ timeout: 60_000 }
+		);
+
+		await tab('Code').tap();
+		await setCode(page, correct);
+		await page.getByRole('button', { name: 'Submit' }).tap();
+		await expect(page.getByLabel('Verdict')).toContainText('Accepted', { timeout: 60_000 });
+		await expect(page.getByLabel('Accepted panel')).toBeVisible();
+
+		await page.goto('/topics/stacks');
+		await expect(page.getByRole('link', { name: /^1.1 Push and size/ })).toContainText('solved');
+	});
+});

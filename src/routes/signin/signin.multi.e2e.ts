@@ -540,3 +540,28 @@ base.describe('a fresh Instance started like a released one, with no test switch
 		}
 	);
 });
+
+// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts). It uses the
+// Multi-user server on 4174 and its admin, like the tests above; the project depends on "setup-multi" for that.
+base.describe('signing in on a phone, as a flow', () => {
+	base.use({ baseURL: 'http://localhost:4174', viewport: { width: 390, height: 844 } });
+
+	base(
+		'the admin signs in, is taken to the page they asked for, and signs out',
+		{ tag: '@mobile' },
+		async ({ page }) => {
+			await page.goto('/topics/stacks');
+			await expect(page).toHaveURL('/signin?next=%2Ftopics%2Fstacks');
+
+			await page.getByLabel('Email').fill(E2E_ADMIN.email);
+			await page.getByLabel('Password').fill(E2E_ADMIN.password);
+			await page.getByRole('button', { name: 'Sign in →' }).tap();
+			await expect(page).toHaveURL('/topics/stacks');
+
+			// Sign out is on Settings only, on a phone.
+			await page.goto('/settings');
+			await page.getByRole('main').getByRole('button', { name: 'Sign out' }).tap();
+			await expect(page).toHaveURL('/signin');
+		}
+	);
+});

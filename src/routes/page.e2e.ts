@@ -127,3 +127,21 @@ test.describe('on a phone', () => {
 		);
 	});
 });
+
+// C51: the Sprint 5 exit. Tests tagged @mobile run again in the "mobile" project (playwright.config.ts) at 390 x 844.
+// Its own Learner, so it never meets another file's leftovers.
+test.describe('the Map on a phone, as a flow', () => {
+	test.use({ storageState: asLearner('e2e-page-flow'), viewport: { width: 390, height: 844 } });
+
+	test('Map to an Unlocked Topic by tapping it', { tag: '@mobile' }, async ({ page }) => {
+		await page.goto('/');
+		await page.getByRole('link', { name: /^Stacks 0\/2 solved/ }).tap();
+		await expect(page).toHaveURL('/topics/stacks');
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Stacks');
+
+		// The Locked Topic is not a way in.
+		await page.goBack();
+		await expect(page).toHaveURL('/');
+		await expect(page.getByRole('link', { name: /^Queues/ })).toHaveCount(0);
+	});
+});
