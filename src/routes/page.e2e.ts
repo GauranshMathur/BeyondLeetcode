@@ -11,7 +11,9 @@ test('the Map shows Unlocked and Locked Topics from the fixture content', async 
 	);
 
 	// Stacks has no Prerequisites, so it is Unlocked and links on to its Topic page.
-	const stacks = page.getByRole('link', { name: 'Stacks, unlocked, 0 of 2 core problems solved' });
+	const stacks = page.getByRole('link', {
+		name: 'Stacks, unlocked, 0 of 2 core problems solved'
+	});
 	await expect(stacks).toHaveAttribute('href', '/topics/stacks');
 
 	// Queues and Heaps wait on Prerequisites: Locked, and not links.
@@ -89,5 +91,39 @@ test.describe('on a phone', () => {
 			);
 		expect(heights.length).toBeGreaterThan(0);
 		for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
+	});
+	test('the Local header is the 56 px bar: BLC to the Map and one Settings link, nothing sideways', async ({
+		page
+	}) => {
+		await page.goto('/');
+		const header = page.locator('header');
+		expect((await header.boundingBox())?.height).toBe(56); // the 56 px bar, rule included
+
+		const nav = page.getByRole('navigation', { name: 'Primary' });
+		await expect(page.getByRole('link', { name: 'BLC' })).toHaveAttribute('href', '/');
+		await expect(nav.getByRole('link')).toHaveCount(1); // the Map link is hidden: BLC is the way there
+		await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
+		// On the Map no link is marked.
+		await expect(nav.getByRole('link', { name: 'Settings' })).not.toHaveAttribute(
+			'aria-current',
+			/.*/
+		);
+		await expect(nav.getByRole('button', { name: 'Sign out' })).toBeHidden();
+
+		for (const link of await header.getByRole('link').all()) {
+			expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+		}
+		const overflow = await page.evaluate(
+			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+		);
+		expect(overflow).toBeLessThanOrEqual(0);
+
+		// On Settings the one link is marked.
+		await nav.getByRole('link', { name: 'Settings' }).click();
+		await expect(page).toHaveURL('/settings');
+		await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute(
+			'aria-current',
+			'page'
+		);
 	});
 });

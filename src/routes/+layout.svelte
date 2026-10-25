@@ -16,16 +16,18 @@ const BARE = new Set(['/setup', '/signin', '/signup']);
 
 {#if !(page.route.id === '/problems/[problemId]' && !page.error)}
 <header>
-	<a class="brand" href="/">Beyond Leetcode</a>
+	<a class="brand" href="/"><span class="wide">Beyond Leetcode</span><span class="narrow">BLC</span></a>
 	{#if !BARE.has(page.route.id ?? '')}
 	<nav aria-label="Primary">
-		<a href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
+		<!-- Below 768px the wordmark is the link to the Map, so this one is hidden there (F.10f). -->
+		<a class="map" href="/" aria-current={page.url.pathname === '/' ? 'page' : undefined}>Map</a>
 		<!-- Users is the admin's, in Multi-user Mode only (the layout load decides). -->
 		{#if data.showUsers}
-		<a href="/users" aria-current={page.url.pathname === '/users' ? 'page' : undefined}>Users</a>
+		<a class="users" href="/users" aria-current={page.url.pathname === '/users' ? 'page' : undefined}>Users</a>
 		{/if}
 		<!-- The display name opens Settings; Local Mode's Identity names it "Local". -->
-		<a href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}>{data.displayName}</a>
+		<!-- Local Mode: "Local" on a desktop, "Settings" below 768px (F.10f), drawn by ::after so the markup keeps one name. -->
+		<a class="account" class:local={!data.showSignOut} href="/settings" aria-current={page.url.pathname === '/settings' ? 'page' : undefined}><span>{data.displayName}</span></a>
 		<!-- Sign out is a POST, never a link; Settings has it too, and on a phone only Settings does. -->
 		{#if data.showSignOut}
 		<form class="signout" method="POST" action="/settings?/signout">
@@ -87,16 +89,61 @@ const BARE = new Set(['/setup', '/signin', '/signup']);
 		font-size: inherit;
 		cursor: pointer;
 	}
-	/* Below 768px the header keeps at most Users and the name; Sign out is on Settings (F.10). */
-	@media (max-width: 767px) {
-		.signout {
-			display: none;
-		}
+	.narrow {
+		display: none;
 	}
 	nav a[aria-current='page'] {
 		text-decoration: underline;
 		text-decoration-color: var(--accent);
 		text-decoration-thickness: 2px;
 		text-underline-offset: 8px;
+	}
+
+	/* Below 768px (F.10f): a 56px bar, BLC left, at most two 44px links right, Sign out only on Settings.
+	   A long name truncates with an ellipsis instead of widening the bar. */
+	@media (max-width: 767.98px) {
+		header {
+			height: 56px;
+			box-sizing: border-box;
+			padding: 0 20px;
+			gap: 24px;
+		}
+		.wide {
+			display: none;
+		}
+		.narrow {
+			display: inline;
+		}
+		.brand {
+			flex-shrink: 0;
+			font-size: 18px;
+			padding: 12px 0;
+			line-height: 20px;
+		}
+		nav {
+			min-width: 0;
+			gap: 24px;
+		}
+		.signout,
+		.map {
+			display: none;
+		}
+		nav a {
+			white-space: nowrap;
+		}
+		.users {
+			flex-shrink: 0;
+		}
+		.account.local span {
+			display: none;
+		}
+		.account.local::after {
+			content: 'Settings';
+		}
+		.account {
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
 	}
 </style>
