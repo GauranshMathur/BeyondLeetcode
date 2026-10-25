@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rmSync } from 'node:fs';
+import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Client, createClient } from '@libsql/client';
@@ -55,26 +56,75 @@ export async function createTestDb(): Promise<Db> {
 }
 
 /**
+ * How long a connection waits for another connection's lock before SQLite fails with SQLITE_BUSY
+ * (libSQL's default is 0, so a write that meets a lock fails at once). A timeout absorbs short waits
+ * only: SQLite still refuses at once a read-to-write upgrade when another connection holds the write
+ * lock, whatever the timeout (see multi-fixture.ts).
+ */
+const BUSY_TIMEOUT_MS = 10_000;
+
+// Replaying 11 migrations into a fresh file costs more than most tests spend, so the schema is
+// applied once per worker, into a template file, and each database is a copy of that file. The
+// template lives in its own temp directory, removed when the worker exits.
+let template: Promise<string> | undefined;
+
+function templateDatabase(): Promise<string> {
+	template ??= (async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'beyondleetcode-template-'));
+		process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+		const file = join(dir, 'template.db');
+		const client = createClient({ url: `file:${file}` });
+		try {
+			// Durability is pointless for a file that is copied and thrown away.
+			await client.execute('PRAGMA synchronous = OFF');
+			await client.executeMultiple(schemaSql);
+		} finally {
+			client.close();
+		}
+		return file;
+	})();
+	return template;
+}
+
+// Prisma's adapter opens one libSQL client per connect and hands each transaction its own connection.
+// Keeping every client lets teardown close them all, so none can reopen the file once its directory
+// is gone (the SQLITE_CANTOPEN seen on CI).
+class PrismaLibSqlTracked extends PrismaLibSql {
+	readonly clients: Client[] = [];
+
+	constructor(url: string) {
+		super({ url, timeout: BUSY_TIMEOUT_MS });
+	}
+
+	override createClient(config: Parameters<PrismaLibSql['createClient']>[0]): Client {
+		const client = super.createClient(config);
+		this.clients.push(client);
+		return client;
+	}
+}
+
+/**
  * A fresh SQLite database in a temp file with every migration applied, deleted when the test
  * ends. For tests of concurrency: unlike the in-memory database above it gives each Prisma
  * transaction its own connection, as production does, so writers really contend for the lock.
  */
 export async function createFileTestDb(): Promise<Db> {
+	const source = await templateDatabase();
 	const dir = await mkdtemp(join(tmpdir(), 'beyondleetcode-test-'));
-	const url = `file:${join(dir, 'test.db')}`;
-	const client = createClient({ url });
-	try {
-		await client.executeMultiple(schemaSql);
-	} finally {
-		client.close();
-	}
-	const db = new PrismaClient({ adapter: new PrismaLibSql({ url }) });
+	const file = join(dir, 'test.db');
+	const adapter = new PrismaLibSqlTracked(`file:${file}`);
+	const db = new PrismaClient({ adapter });
 	onTestFinished(async () => {
 		try {
 			await db.$disconnect();
 		} finally {
-			await rm(dir, { recursive: true, force: true });
+			try {
+				for (const client of adapter.clients) if (!client.closed) client.close();
+			} finally {
+				await rm(dir, { recursive: true, force: true, maxRetries: 3 });
+			}
 		}
 	});
+	await copyFile(source, file);
 	return db;
 }
