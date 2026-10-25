@@ -29,7 +29,8 @@ const people = {
 	typo: { name: 'Tia Typo', email: 'tia.signin@example.com' },
 	phone: { name: 'Pat Phone', email: 'pat.signin@example.com' },
 	forced: { name: 'Fay Forced', email: 'fay.signin@example.com' },
-	forcedData: { name: 'Dee Data', email: 'dee.signin@example.com' }
+	forcedData: { name: 'Dee Data', email: 'dee.signin@example.com' },
+	narrow: { name: 'Nia Narrow', email: 'nia.signin@example.com' }
 };
 
 async function signInWith(page: Page, email: string, password: string) {
@@ -167,6 +168,110 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 			await expect(page).toHaveURL(/\/signin$/);
 		}
 	);
+});
+
+/** True when the page is wider than the window: the sideways scroll the phone layout must not have. */
+const scrollsSideways = (page: Page) =>
+	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+
+onOpen.describe('Sign in on a phone (390 x 844)', () => {
+	onOpen.use({ viewport: { width: 390, height: 844 } });
+
+	onOpen(
+		'is one column of 48 px fields and full-width buttons, without the figure or sideways scroll',
+		async ({ page }) => {
+			await page.goto('/signin');
+
+			await expect(page.getByRole('img', { name: /session token/ })).toBeHidden();
+			const form = page.locator('form');
+			const formBox = await form.boundingBox();
+			for (const control of [
+				page.getByLabel('Email'),
+				page.getByLabel('Password'),
+				page.getByRole('button', { name: 'Sign in →' })
+			]) {
+				const box = await control.boundingBox();
+				expect(box?.height).toBe(48);
+				expect(box?.width).toBe(formBox?.width);
+			}
+			// The forgot-password line is under the button, the sign-up link under both.
+			const button = await page.getByRole('button', { name: 'Sign in →' }).boundingBox();
+			const forgot = await page.getByText('Forgot password? Ask your admin.').boundingBox();
+			const signup = await page.getByRole('link', { name: 'Create an account' }).boundingBox();
+			expect(forgot?.y).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
+			expect(signup?.y).toBeGreaterThan(forgot?.y ?? 0);
+			expect(await scrollsSideways(page)).toBe(false);
+		}
+	);
+
+	onOpen('switches to the phone layout below 768 px, as the other pages do', async ({ page }) => {
+		// Whether the side panel is laid out at all, not whether it has room to show at 768.
+		const display = () =>
+			page.locator('aside').evaluate((aside) => getComputedStyle(aside).display);
+		await page.setViewportSize({ width: 767, height: 844 });
+		await page.goto('/signin');
+		expect(await display()).toBe('none');
+		await page.setViewportSize({ width: 768, height: 844 });
+		expect(await display()).not.toBe('none');
+	});
+
+	onOpen(
+		'signs in, and shows a wrong password under the password field, with no sideways scroll',
+		async ({ page }) => {
+			await page.goto('/signin');
+			await signInWith(page, people.narrow.email, 'not the password at all');
+
+			const message = page.getByText(WRONG);
+			await expect(message).toBeVisible();
+			const password = await page.getByLabel('Password').boundingBox();
+			const shown = await message.boundingBox();
+			const button = await page.getByRole('button', { name: 'Sign in →' }).boundingBox();
+			expect(shown?.y).toBeGreaterThanOrEqual((password?.y ?? 0) + (password?.height ?? 0));
+			expect(shown?.y).toBeLessThan(button?.y ?? 0);
+			expect(await scrollsSideways(page)).toBe(false);
+
+			await signInWith(page, people.narrow.email, PASSWORD);
+			await expect(page).toHaveURL('/');
+		}
+	);
+});
+
+base.describe('Sign in on a phone, on an Instance with GitHub and Google', () => {
+	base.use({ viewport: { width: 390, height: 844 } });
+
+	base('stacks a full-width button per provider, with no sideways scroll', async ({ browser }) => {
+		base.setTimeout(120_000);
+		// The fresh server inherits this process's environment; the variables are set only while it starts.
+		const names = [
+			'GITHUB_CLIENT_ID',
+			'GITHUB_CLIENT_SECRET',
+			'GOOGLE_CLIENT_ID',
+			'GOOGLE_CLIENT_SECRET'
+		];
+		for (const name of names) process.env[name] = `e2e-only-${name.toLowerCase()}`;
+		let server: FreshServer;
+		try {
+			server = await startFreshServer({ openRegistration: true });
+		} finally {
+			for (const name of names) delete process.env[name];
+		}
+		try {
+			const context = await browser.newContext({ baseURL: server.url });
+			const page = await context.newPage();
+			await page.goto('/signin');
+
+			const form = await page.locator('form').boundingBox();
+			for (const name of ['Continue with GitHub', 'Continue with Google']) {
+				const box = await page.getByRole('button', { name }).boundingBox();
+				expect(box?.height, name).toBe(48);
+				expect(box?.width, name).toBe(form?.width);
+			}
+			expect(await scrollsSideways(page)).toBe(false);
+			await context.close();
+		} finally {
+			await server.stop();
+		}
+	});
 });
 
 onOpen.describe('a user who must change their password', () => {
