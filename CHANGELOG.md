@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.67.0...v1.0.0) (2026-10-25)
+
+
+### Features
+
+* **beyondleetcode:** C51 Sprint 5 exit: mobile runs, then 1.0.0 ([#242](https://github.com/GauranshMathur/BeyondLeetcode/issues/242)) ([07b69bd](https://github.com/GauranshMathur/BeyondLeetcode/commit/07b69bdbf49e066ec27154d1b1f0e7f9238fea6d))
+
 ## [0.67.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.66.0...v0.67.0) (2026-10-25)
 
 
