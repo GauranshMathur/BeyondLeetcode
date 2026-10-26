@@ -3,6 +3,7 @@ import { languageById } from '$lib/languages';
 import type { BuildFiles } from '$lib/server/content/catalogue';
 import type { BuildRef, Learner } from '$lib/server/learning/core';
 import { refuse, withLearningErrors } from '$lib/server/learning-http';
+import { signedIn } from '$lib/server/signed-in';
 import type { Actions, PageServerLoad } from './$types';
 
 /** The tabs of the left pane; the Problem is the default and has no `?tab`. */
@@ -15,16 +16,16 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	const tab = tabOf(url.searchParams.get('tab'));
 	return {
 		tab,
-		problem: await withLearningErrors(() => locals.learning.problem(params.problemId)),
+		problem: await withLearningErrors(() => signedIn(locals).learning.problem(params.problemId)),
 		// Only the revealed Hints, and only when the tab is open.
 		hints:
 			tab === 'hints'
-				? await withLearningErrors(() => locals.learning.hints(params.problemId))
+				? await withLearningErrors(() => signedIn(locals).learning.hints(params.problemId))
 				: undefined,
 		// The Solution is read only when its tab is open, never with the Problem.
 		solution:
 			tab === 'solution'
-				? await withLearningErrors(() => locals.learning.solution(params.problemId))
+				? await withLearningErrors(() => signedIn(locals).learning.solution(params.problemId))
 				: undefined
 	};
 };
@@ -62,7 +63,7 @@ const buildAction =
 	(act: (learner: Learner, build: BuildRef, files: BuildFiles) => Promise<object>): Action =>
 	async ({ locals, params, request }) => {
 		const { build, files } = readBuild(await request.formData(), params.problemId ?? '');
-		return withLearningErrors(() => act(locals.learning, build, files));
+		return withLearningErrors(() => act(signedIn(locals).learning, build, files));
 	};
 
 export const actions: Actions = {
@@ -71,20 +72,22 @@ export const actions: Actions = {
 		const language = String((await request.formData()).get('language'));
 		const picked = languageById(language)?.id;
 		if (!picked) refuse({ code: 'BadRequest' });
-		await withLearningErrors(() => locals.learning.switchLanguage(params.problemId, picked));
+		await withLearningErrors(() =>
+			signedIn(locals).learning.switchLanguage(params.problemId, picked)
+		);
 		return { language: picked };
 	},
 
 	/** Reveals the next Hint; the core answers a reveal past the last one with the Hints as they are. */
 	revealHint: ({ locals, params }) =>
 		withLearningErrors(async () => ({
-			hints: await locals.learning.revealHint(params.problemId ?? '')
+			hints: await signedIn(locals).learning.revealHint(params.problemId ?? '')
 		})),
 
 	/** Replaces this Build with the Reference Code after the previous Problem; the core decides what that is. */
 	startFromReferenceCode: async ({ locals, params, request }) => {
 		const build = readRef(await request.formData(), params.problemId ?? '');
-		return withLearningErrors(() => locals.learning.startFromReferenceCode(build));
+		return withLearningErrors(() => signedIn(locals).learning.startFromReferenceCode(build));
 	},
 
 	/** Autosave. */
