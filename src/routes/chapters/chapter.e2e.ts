@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-chapter') });
 
 test('reaching the end of a Chapter marks it Read on the Topic', async ({ page }) => {
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 	const chapterRow = page.locator('section.chapter', {
 		has: page.getByRole('link', { name: 'An undo log' })
 	});
@@ -40,7 +41,7 @@ test('a Locked Topic Chapter returns 403 and an unknown Chapter 404', async ({ p
 });
 
 test('a Chapter links to a prefilled new GitHub issue in a new tab', async ({ page }) => {
-	await page.goto('/chapters/stacks-undo-log');
+	await gotoHydrated(page, '/chapters/stacks-undo-log');
 	const link = page.getByRole('link', { name: /Report an issue/ });
 	await expect(link).toHaveAttribute('target', '_blank');
 	await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -73,7 +74,7 @@ test.describe('a link clicked while the Chapter is being marked Read', () => {
 		});
 
 		const reachEndPosted = page.waitForRequest(/\?\/reachEnd/);
-		await page.goto('/chapters/stacks-undo-log');
+		await gotoHydrated(page, '/chapters/stacks-undo-log');
 		await reachEndPosted; // the page is hydrated and the end has been reached
 		const problemLoading = page.waitForRequest(/stacks-push\/__data\.json/);
 		await page.getByRole('link', { name: 'Push and size' }).click();
@@ -109,7 +110,7 @@ test.describe('the Chapter on a phone', () => {
 	});
 
 	test('code and tables scroll inside their own box, never the page', async ({ page }) => {
-		await page.goto('/chapters/stacks-undo-log');
+		await gotoHydrated(page, '/chapters/stacks-undo-log');
 		const code = page.getByRole('group', { name: 'Code block' });
 		await expect(code).toHaveAttribute('tabindex', '0');
 		const table = page.getByRole('group', { name: 'Table' });
@@ -135,7 +136,7 @@ test.describe('the Chapter on a phone', () => {
 	});
 
 	test('rows and end links are at least 44 px tall, end links come last', async ({ page }) => {
-		await page.goto('/chapters/stacks-undo-log');
+		await gotoHydrated(page, '/chapters/stacks-undo-log');
 		const row = page.getByRole('link', { name: 'Push and size' });
 		const topic = page.getByRole('link', { name: '↑ Stacks' });
 		const next = page.getByRole('link', { name: 'Next chapter →' });
@@ -174,10 +175,10 @@ test.describe('the Chapter on a phone', () => {
 
 		test('scrolling to the end marks the Chapter Read', async ({ page }) => {
 			const marked = page.waitForResponse(/\?\/reachEnd/);
-			await page.goto('/chapters/stacks-undo-log');
+			await gotoHydrated(page, '/chapters/stacks-undo-log');
 			await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 			expect((await marked).ok()).toBe(true);
-			await page.goto('/topics/stacks');
+			await gotoHydrated(page, '/topics/stacks');
 			const chapterRow = page.locator('section.chapter', {
 				has: page.getByRole('link', { name: 'An undo log' })
 			});
@@ -194,7 +195,7 @@ test.describe('reading a Chapter on a phone, as a flow', () => {
 	test('opening a Chapter from its Topic and reading to the end marks it Read', {
 		tag: '@mobile'
 	}, async ({ page }) => {
-		await page.goto('/topics/stacks');
+		await gotoHydrated(page, '/topics/stacks');
 		const chapterRow = page.locator('section.chapter', {
 			has: page.getByRole('link', { name: 'An undo log' })
 		});

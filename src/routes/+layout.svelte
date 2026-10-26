@@ -1,4 +1,5 @@
 <script lang="ts">
+import { onMount } from 'svelte';
 import { page } from '$app/state';
 import favicon from '$lib/assets/favicon.svg';
 import '$lib/styles/tokens.css';
@@ -7,6 +8,11 @@ let { children, data } = $props();
 
 // These pages show the wordmark alone: before the Instance is set up, or before anyone is signed in,
 // there is no Map and no name to link to.
+// The e2e tests wait for this before they type or click (src/lib/test/hydrated.ts). No visible behaviour.
+onMount(() => {
+	document.documentElement.dataset.hydrated = 'true';
+});
+
 const BARE = new Set(['/setup', '/signin', '/signup', '/invite/[token]']);
 </script>
 

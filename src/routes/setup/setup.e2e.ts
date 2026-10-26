@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { gotoHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
 
 // The "setup" project: it runs first, on the fresh database the web server starts with, and chooses
 // Local through the real screen. Every other e2e file depends on it, so they all start on a Local Instance.
@@ -12,7 +13,7 @@ test('a fresh Instance shows Setup everywhere; choosing Local opens the Map', as
 		'/settings',
 		'/no/such/page'
 	]) {
-		await page.goto(path);
+		await gotoHydrated(page, path);
 		await expect(page, path).toHaveURL('/setup');
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Set up this instance.');
 	}
@@ -23,13 +24,13 @@ test('a fresh Instance shows Setup everywhere; choosing Local opens the Map', as
 	await expect(page.getByLabel('Multi-user')).toBeDisabled();
 	await expect(page.getByText(/Add BETTER_AUTH_SECRET=.*to your \.env/)).toBeVisible();
 
-	await page.getByRole('button', { name: 'Start in Local mode →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Start in Local mode →' }));
 	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText(
 		'Every topic, in the order it builds.'
 	);
 
 	// Set up for good: Setup is gone.
-	await page.goto('/setup');
+	await gotoHydrated(page, '/setup');
 	await expect(page).toHaveURL('/');
 });

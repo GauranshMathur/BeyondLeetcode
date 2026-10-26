@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
+import { gotoHydrated } from '../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-sprint3-exit') });
@@ -21,7 +22,7 @@ async function setCode(page: Page, code: string) {
 }
 
 async function resetProgress(page: Page) {
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await page.getByRole('button', { name: 'Reset progress' }).click();
 	await page
 		.getByRole('group', { name: 'Reset progress' })
@@ -31,13 +32,13 @@ async function resetProgress(page: Page) {
 }
 
 async function readChapter(page: Page, chapter: string) {
-	await page.goto(`/chapters/${chapter}`);
+	await gotoHydrated(page, `/chapters/${chapter}`);
 	await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
 	await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
 }
 
 async function submitAccepted(page: Page, problem: string, code: string) {
-	await page.goto(`/problems/${problem}`);
+	await gotoHydrated(page, `/problems/${problem}`);
 	await setCode(page, code);
 	await page.getByRole('button', { name: 'Submit' }).click();
 	await expect(page.getByLabel('Verdict')).toContainText('Accepted', { timeout: 60_000 });
@@ -54,12 +55,12 @@ test('a Learner reads both Stacks Chapters, solves both Core Problems, and the M
 		).toBeVisible();
 
 		// A Hint and the Solution tab are help, not progress.
-		await page.goto('/problems/stacks-push?tab=hints');
+		await gotoHydrated(page, '/problems/stacks-push?tab=hints');
 		await page.getByRole('button', { name: 'Reveal hint 1' }).click();
 		await expect(page.getByText('First hint.')).toBeVisible();
-		await page.goto('/problems/stacks-push?tab=solution');
+		await gotoHydrated(page, '/problems/stacks-push?tab=solution');
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Solution');
-		await page.goto('/topics/stacks');
+		await gotoHydrated(page, '/topics/stacks');
 		await expect(page.getByLabel('Topic progress')).toContainText('0 of 2');
 		await expect(page.getByText('core solved').locator('..')).toContainText('0 of 2');
 		await expect(page.getByRole('row', { name: /^Push and size/ })).not.toContainText('solved');
@@ -83,7 +84,7 @@ test('a Learner reads both Stacks Chapters, solves both Core Problems, and the M
 		await expect(panel).not.toContainText('Heaps');
 
 		// The Map: Stacks complete, Queues unlocked, Heaps still waiting on Queues.
-		await page.goto('/');
+		await gotoHydrated(page, '/');
 		await expect(
 			page.getByRole('link', { name: 'Stacks, complete, 2 of 2 core problems solved' })
 		).toBeVisible();

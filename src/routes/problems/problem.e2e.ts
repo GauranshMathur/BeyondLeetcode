@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-problem') });
@@ -17,7 +18,7 @@ async function typeInEditor(page: Page, text: string) {
 test('a Problem shows its statement and Example Tests, and typed code survives a reload', async ({
 	page
 }) => {
-	await page.goto('/chapters/stacks-undo-log');
+	await gotoHydrated(page, '/chapters/stacks-undo-log');
 	await page.getByRole('link', { name: 'Push and size' }).click();
 	await expect(page).toHaveURL('/problems/stacks-push');
 
@@ -30,14 +31,14 @@ test('a Problem shows its statement and Example Tests, and typed code survives a
 	await expect(page.getByRole('status')).toHaveText('edited');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
-	await page.reload();
+	await reloadHydrated(page);
 	await expect(page.getByLabel('Code: main.py')).toContainText('print(42)');
 });
 
 test('a second tab with a stale revision is told to reload', async ({ page, context }) => {
-	await page.goto('/problems/stacks-pop');
+	await gotoHydrated(page, '/problems/stacks-pop');
 	const other = await context.newPage();
-	await other.goto('/problems/stacks-pop');
+	await gotoHydrated(other, '/problems/stacks-pop');
 
 	await typeInEditor(page, '# one');
 	await expect(page.getByRole('status')).toHaveText('saved');
@@ -45,7 +46,7 @@ test('a second tab with a stale revision is told to reload', async ({ page, cont
 	await typeInEditor(other, '# two');
 	await expect(other.getByRole('status')).toHaveText('edited elsewhere — reload');
 
-	await other.reload();
+	await reloadHydrated(other);
 	await expect(other.getByLabel('Code: main.py')).toContainText('# one');
 });
 
@@ -59,22 +60,22 @@ test('error pages under /problems keep the site header, a Problem page does not'
 }) => {
 	const siteNav = page.getByRole('navigation', { name: 'Primary' });
 	for (const path of ['/problems/queues-enqueue', '/problems/nope']) {
-		await page.goto(path);
+		await gotoHydrated(page, path);
 		await expect(siteNav.getByRole('link', { name: 'Map' })).toBeVisible();
 	}
 
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	await expect(siteNav).toHaveCount(0);
 	await expect(page.locator('header')).toHaveCount(1);
 	await expect(page.locator('header.workspace-bar')).toBeVisible();
 });
 
 test('edits typed just before leaving are still saved', async ({ page }) => {
-	await page.goto('/problems/stacks-peek');
+	await gotoHydrated(page, '/problems/stacks-peek');
 	await typeInEditor(page, '# last second');
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 
-	await page.goto('/problems/stacks-peek');
+	await gotoHydrated(page, '/problems/stacks-peek');
 	await expect(page.getByLabel('Code: main.py')).toContainText('# last second');
 });
 
@@ -97,7 +98,7 @@ async function setCode(page: Page, code: string, file = 'main.py') {
 }
 
 test('Run shows pass for a correct solution and fail for a wrong one', async ({ page }) => {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 
 	await setCode(page, correct);
 	await page.getByRole('button', { name: 'Run' }).click();
@@ -116,12 +117,12 @@ test('Run shows pass for a correct solution and fail for a wrong one', async ({ 
 	await expect(page.getByText('0 of 1 passed')).toBeVisible();
 
 	// Run never changes progress: the Problem is not Solved.
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('0 of 2');
 });
 
 test('Run shows a runtime error and a compile error block', async ({ page }) => {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 
 	await setCode(page, 'raise ValueError("boom")\n');
 	await page.getByRole('button', { name: 'Run' }).click();
@@ -139,7 +140,7 @@ test('Run shows a runtime error and a compile error block', async ({ page }) => 
 test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code is Accepted and Solved', async ({
 	page
 }) => {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 
 	await setCode(page, 'print(99)\n');
 	await page.getByRole('button', { name: 'Submit' }).click();
@@ -148,10 +149,10 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await expect(page.getByLabel('Failed Example Test 01')).toContainText('99');
 	await expect(page.getByRole('button', { name: 'Submit' })).toBeEnabled();
 
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('0 of 2');
 
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	await setCode(page, correct);
 	await page.getByRole('button', { name: 'Submit' }).click();
 	await expect(verdict).toContainText('Accepted', { timeout: 60_000 });
@@ -162,14 +163,14 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	);
 	await expect(panel).not.toContainText('Topic complete');
 
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('1 of 2');
 	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
 
 	// Solved or not, the Solution is open and the status stays Solved.
-	await page.goto('/problems/stacks-push?tab=solution');
+	await gotoHydrated(page, '/problems/stacks-push?tab=solution');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Solution');
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 	await expect(page.getByRole('row', { name: /^Push and size/ })).toContainText('solved');
 });
 
@@ -190,7 +191,7 @@ test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1
 	page
 }) => {
 	await page.setViewportSize({ width: 1440, height: 1000 });
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 
 	const bar = page.getByRole('banner');
 	await expect(bar).toHaveCount(1);
@@ -213,7 +214,7 @@ test('the Problem page stays one screen tall: the statement, the editor and the 
 }) => {
 	// A short window makes the fixture's statement and one failing result overflow their panes.
 	await page.setViewportSize({ width: 1440, height: 500 });
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 
 	// Enough lines that the editor needs its own scrollbar.
 	await setCode(page, `${'x = 1\n'.repeat(60)}print(99)\n`);
@@ -260,7 +261,7 @@ const correctTypeScript = referenceCode('main.ts', 'typescript');
 test('switching to TypeScript asks first, keeps the Python build, and Run passes', async ({
 	page
 }) => {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	await setCode(page, '# my python build\n');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
@@ -299,9 +300,9 @@ test('a tab left on one Language is told to reload after another tab switches La
 	page,
 	context
 }) => {
-	await page.goto('/problems/stacks-pop');
+	await gotoHydrated(page, '/problems/stacks-pop');
 	const stale = await context.newPage();
-	await stale.goto('/problems/stacks-pop');
+	await gotoHydrated(stale, '/problems/stacks-pop');
 
 	try {
 		await page.getByLabel('build language').selectOption('typescript');
@@ -320,7 +321,7 @@ test('a tab left on one Language is told to reload after another tab switches La
 const correctGo = referenceCode('main.go', 'go');
 
 test('switching to Go keeps the Python build, and Run passes', async ({ page }) => {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	await setCode(page, '# my python build\n');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
@@ -347,7 +348,7 @@ test('switching to Go keeps the Python build, and Run passes', async ({ page }) 
 });
 
 test('a Problem links to a prefilled new GitHub issue in a new tab', async ({ page }) => {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	const link = page.getByRole('link', { name: /Report an issue/ });
 	await expect(link).toHaveAttribute('target', '_blank');
 	await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -362,7 +363,7 @@ test('a Problem links to a prefilled new GitHub issue in a new tab', async ({ pa
 test('Hints reveal one at a time, in order, link to the Chapter, and survive a reload', async ({
 	page
 }) => {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	await page.getByRole('link', { name: 'Hints' }).click();
 	await expect(page).toHaveURL('/problems/stacks-push?tab=hints');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Hints');
@@ -381,7 +382,7 @@ test('Hints reveal one at a time, in order, link to the Chapter, and survive a r
 	await expect(page.getByRole('button', { name: /Reveal hint/ })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: /An undo log/ })).toHaveCount(2);
 
-	await page.reload();
+	await reloadHydrated(page);
 	await expect(page.getByText('First hint.')).toBeVisible();
 	await expect(page.getByText('Second hint.')).toBeVisible();
 
@@ -401,7 +402,7 @@ test('Reveal hint says so when the session has ended', async ({ page }) => {
 			body: JSON.stringify({ type: 'redirect', status: 303, location: '/signin' })
 		})
 	);
-	await page.goto('/problems/stacks-pop?tab=hints');
+	await gotoHydrated(page, '/problems/stacks-pop?tab=hints');
 	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
 	await expect(page.getByRole('alert')).toContainText('You are signed out');
 	await expect(page.getByRole('link', { name: 'Sign in again' })).toBeVisible();
@@ -410,7 +411,7 @@ test('Reveal hint says so when the session has ended', async ({ page }) => {
 
 test('Reveal hint says so when the request fails', async ({ page }) => {
 	await page.route('**/problems/stacks-pop?tab=hints&/revealHint', (route) => route.abort());
-	await page.goto('/problems/stacks-pop?tab=hints');
+	await gotoHydrated(page, '/problems/stacks-pop?tab=hints');
 	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
 	await expect(page.getByRole('alert')).toContainText('The hint could not be revealed');
 	await expect(page.getByRole('button', { name: 'Reveal hint 1' })).toBeEnabled();
@@ -421,7 +422,7 @@ test('the browser receives only the Hints already revealed', async ({ page }) =>
 	expect(body).not.toContain('First hint.');
 	expect(body).not.toContain('Second hint.');
 
-	await page.goto('/problems/stacks-peek?tab=hints');
+	await gotoHydrated(page, '/problems/stacks-peek?tab=hints');
 	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
 	await expect(page.getByText('First hint.')).toBeVisible();
 
@@ -437,7 +438,7 @@ test('the Solution tab shows the explanation and the Reference Code in each Lang
 	const plain = await (await page.request.get('/problems/stacks-push')).text();
 	expect(plain).not.toContain('readFileSync');
 
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	await typeInEditor(page, '# mine');
 	await page.getByRole('link', { name: 'Solution' }).click();
 	await expect(page).toHaveURL('/problems/stacks-push?tab=solution');
@@ -467,14 +468,14 @@ test('the Solution tab shows the explanation and the Reference Code in each Lang
 	await page.getByRole('link', { name: 'Problem', exact: true }).click();
 	await expect(page.getByRole('status')).toHaveText('saved');
 	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
-	await page.reload();
+	await reloadHydrated(page);
 	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
 });
 
 test('Start from reference code asks first, cancel changes nothing, confirm puts the previous Problem Reference Code in the editor', async ({
 	page
 }) => {
-	await page.goto('/problems/stacks-pop');
+	await gotoHydrated(page, '/problems/stacks-pop');
 	await setCode(page, 'broken(\n');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
@@ -494,7 +495,7 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 	await expect(page.getByLabel('Code: main.py')).not.toContainText('broken(');
 	await expect(page.getByRole('status')).toHaveText('saved');
 
-	await page.reload();
+	await reloadHydrated(page);
 	await expect(page.getByLabel('Code: main.py')).toContainText('items.append(int(parts[1]))');
 
 	// The new Build is saved with a fresh revision: a Run goes straight through.
@@ -522,7 +523,7 @@ test.describe('on a phone', () => {
 	test('three tabs switch one pane at a time; Run and Submit land on Tests; typed code survives; every target is 44px', async ({
 		page
 	}) => {
-		await page.goto('/problems/stacks-push');
+		await gotoHydrated(page, '/problems/stacks-push');
 
 		// The bar is the 56px one: brand left, breadcrumb right, no Run or Submit in it.
 		const bar = page.getByRole('banner');
@@ -595,7 +596,7 @@ test.describe('on a phone', () => {
 	});
 
 	test('switching language on the Code tab stays on the Code tab', async ({ page }) => {
-		await page.goto('/problems/stacks-push');
+		await gotoHydrated(page, '/problems/stacks-push');
 		await tab(page, 'Code').click();
 		const picker = page.getByLabel('build language');
 		try {
@@ -611,7 +612,7 @@ test.describe('on a phone', () => {
 	});
 
 	test('the tabs work from the keyboard', async ({ page }) => {
-		await page.goto('/problems/stacks-push');
+		await gotoHydrated(page, '/problems/stacks-push');
 		await tab(page, 'Tests').focus();
 		await page.keyboard.press('Enter');
 		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
@@ -619,7 +620,7 @@ test.describe('on a phone', () => {
 	});
 
 	test('with the Solution open, the Tests tab still shows the console', async ({ page }) => {
-		await page.goto('/problems/stacks-push?tab=solution');
+		await gotoHydrated(page, '/problems/stacks-push?tab=solution');
 		await tab(page, 'Tests').click();
 		await expect(page.getByLabel('Console')).toBeVisible();
 		await expect(page.locator('.cm-content:visible')).toHaveCount(0);
@@ -639,7 +640,7 @@ test.describe('solving a Problem on a phone, as a flow', () => {
 	}) => {
 		const tab = (name: string) =>
 			page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name });
-		await page.goto('/topics/stacks');
+		await gotoHydrated(page, '/topics/stacks');
 		await page.getByRole('link', { name: 'Push and size' }).tap();
 		await expect(page).toHaveURL('/problems/stacks-push');
 
@@ -663,7 +664,7 @@ test.describe('solving a Problem on a phone, as a flow', () => {
 		});
 		await expect(page.getByLabel('Accepted panel')).toBeVisible();
 
-		await page.goto('/topics/stacks');
+		await gotoHydrated(page, '/topics/stacks');
 		await expect(page.getByRole('link', { name: /^1.1 Push and size/ })).toContainText('solved');
 	});
 });
@@ -680,9 +681,9 @@ test.describe('a refused Run on a phone', () => {
 	}, async ({ page, context }) => {
 		const tab = (p: Page, name: string) =>
 			p.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name });
-		await page.goto('/problems/stacks-pop');
+		await gotoHydrated(page, '/problems/stacks-pop');
 		const other = await context.newPage();
-		await other.goto('/problems/stacks-pop');
+		await gotoHydrated(other, '/problems/stacks-pop');
 		await tab(other, 'Code').tap();
 		await typeInEditor(other, '# saved elsewhere');
 		await expect(other.getByRole('status')).toHaveText('saved');
