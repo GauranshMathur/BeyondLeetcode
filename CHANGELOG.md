@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.1.1...v1.1.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C72 Change password tells an Account with no password so ([#286](https://github.com/GauranshMathur/BeyondLeetcode/issues/286)) ([0eb6d4e](https://github.com/GauranshMathur/BeyondLeetcode/commit/0eb6d4e0181b5c0bf49b867a3d5a870dd611c57c))
+
 ## [1.1.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.1.0...v1.1.1) (2026-10-26)
 
 
