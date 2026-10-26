@@ -9,6 +9,8 @@ let { problem, hints }: { problem: ProblemView; hints: HintsView } = $props();
 // (which would hand the editor a stale copy of the code). A page load brings the stored state back.
 let revealed = $state.raw<HintsView | undefined>(undefined);
 let revealing = $state(false);
+// Why the last reveal did not go through. A redirect to sign-in is not followed: the Learner stays on the tab.
+let failure = $state<'signedOut' | 'failed' | undefined>(undefined);
 const view = $derived(revealed ?? hints);
 const next = $derived(view.revealed.length + 1);
 const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => next + 1 + i));
@@ -40,15 +42,24 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 					action="?tab=hints&/revealHint"
 					use:enhance={() => {
 						revealing = true;
+						failure = undefined;
 						return async ({ result }) => {
 							revealing = false;
 							if (result.type === 'success') revealed = (result.data as ReplyData['revealHint']).hints;
+							else if (result.type === 'redirect' || (result.type === 'error' && result.status === 401))
+								failure = 'signedOut';
+							else failure = 'failed';
 						};
 					}}
 				>
 					<span class="mono label">Hint {next} of {view.total}</span>
 					<button type="submit" class="mono button" disabled={revealing}>Reveal hint {next}</button>
 				</form>
+				{#if failure === 'signedOut'}
+					<p class="notice" role="alert">You are signed out. <a href="/signin">Sign in again</a> to reveal hints.</p>
+				{:else if failure === 'failed'}
+					<p class="notice" role="alert">The hint could not be revealed. Try again.</p>
+				{/if}
 				{#each unrevealed as number (number)}
 					<div class="row locked">
 						<span class="mono label muted">Hint {number} of {view.total} · not revealed</span>
@@ -184,6 +195,16 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 		color: var(--muted);
 		border-color: var(--muted);
 		cursor: default;
+	}
+	.notice {
+		margin: 0;
+		padding: 12px 0;
+		font-size: 16px;
+		line-height: 1.5;
+		color: var(--body);
+	}
+	.notice a {
+		color: var(--ink);
 	}
 	.end {
 		border-top: 1px solid var(--rule);
