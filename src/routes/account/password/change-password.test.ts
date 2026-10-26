@@ -219,40 +219,58 @@ describe('changing a password', () => {
 		expect(await signIn(me.email, oldPassword)).not.toBeNull();
 	});
 
-	it.each([
-		['deleting the sessions', 'deleteUserSessions'],
-		['creating the new session', 'createSession']
-	] as const)(
-		'if %s fails inside the change: no earlier session survives and the user is told plainly',
-		async (_what, method) => {
-			const { auth, account, signIn, sessionOf } = await setup();
-			const { action } = createChangePassword(throttleFor());
-			const me = await account(true);
-			const other = (await signIn(me.email, oldPassword)) as string;
-			const context = await auth.$context;
-			const spy = vi
-				.spyOn(context.internalAdapter, method)
-				.mockRejectedValueOnce(new Error('down: /secret/path'));
-			const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+	it('if creating the new session fails inside the change: no earlier session survives and the user is told plainly', async () => {
+		const { auth, account, signIn, sessionOf } = await setup();
+		const { action } = createChangePassword(throttleFor());
+		const me = await account(true);
+		const other = (await signIn(me.email, oldPassword)) as string;
+		const context = await auth.$context;
+		const spy = vi
+			.spyOn(context.internalAdapter, 'createSession')
+			.mockRejectedValueOnce(new Error('down: /secret/path'));
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-			const { result } = await run(
-				action,
-				event(auth, me.cookie, form(oldPassword, newPassword)).ev
-			);
+		const { result } = await run(action, event(auth, me.cookie, form(oldPassword, newPassword)).ev);
 
-			expect(result).toMatchObject({ status: 500, data: { field: null } });
-			expect((result as { data: { message: string } }).data.message).toContain('may have changed');
-			expect(JSON.stringify(result)).not.toContain('secret');
-			expect(await sessionOf(me.cookie)).toBeNull();
-			expect(await sessionOf(other)).toBeNull();
-			// The change itself did go through.
-			expect(await signIn(me.email, newPassword)).not.toBeNull();
-			spy.mockRestore();
-			log.mockRestore();
-		}
-	);
+		expect(result).toMatchObject({ status: 500, data: { field: null } });
+		expect((result as { data: { message: string } }).data.message).toContain('may have changed');
+		expect(JSON.stringify(result)).not.toContain('secret');
+		expect(await sessionOf(me.cookie)).toBeNull();
+		expect(await sessionOf(other)).toBeNull();
+		// The adapter has no transaction, so the hash was written before the session failed.
+		expect(await signIn(me.email, newPassword)).not.toBeNull();
+		spy.mockRestore();
+		log.mockRestore();
+	});
 
-	it('if ending the sessions fails twice: says so plainly, and the earlier sessions are not accepted', async () => {
+	// Better Auth 1.7.8 (#11626) ends the other sessions before it writes the hash, so a failed revocation leaves
+	// the old password in place. The action then ends the sessions itself, which works here.
+	it('if deleting the sessions fails inside the change: the old password stays, every session is ended, the user is told plainly', async () => {
+		const { auth, account, signIn, sessionOf } = await setup();
+		const { action } = createChangePassword(throttleFor());
+		const me = await account(true);
+		const other = (await signIn(me.email, oldPassword)) as string;
+		const context = await auth.$context;
+		const spy = vi
+			.spyOn(context.internalAdapter, 'deleteUserSessions')
+			.mockRejectedValueOnce(new Error('down: /secret/path'));
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		const { result } = await run(action, event(auth, me.cookie, form(oldPassword, newPassword)).ev);
+
+		expect(result).toMatchObject({ status: 500, data: { field: null } });
+		expect((result as { data: { message: string } }).data.message).toContain('may have changed');
+		expect(JSON.stringify(result)).not.toContain('secret');
+		expect(await sessionOf(me.cookie)).toBeNull();
+		expect(await sessionOf(other)).toBeNull();
+		// Nothing was written: the old password signs in, the new one does not.
+		expect(await signIn(me.email, newPassword)).toBeNull();
+		expect(await signIn(me.email, oldPassword)).not.toBeNull();
+		spy.mockRestore();
+		log.mockRestore();
+	});
+
+	it('if ending the sessions fails twice: the password is unchanged, and the message says other sessions may still be signed in', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
 		const { action } = createChangePassword(throttleFor());
 		const me = await account(true);
@@ -270,12 +288,12 @@ describe('changing a password', () => {
 		expect(message).toContain('Other sessions may still be signed in');
 		expect(message).not.toContain('signed out of every session');
 		expect(JSON.stringify(result)).not.toContain('secret');
-		// The password changed and the earlier session rows survived, but a session that began before the password
-		// was set is not accepted (C53), so the message's "may still be signed in" is the safe side.
-		expect(await sessionOf(other)).toBeNull();
 		spy.mockRestore();
 		log.mockRestore();
-		expect(await signIn(me.email, newPassword)).not.toBeNull();
+		// Nothing was written, so the sessions are the same ones, still confined to the password page by the flag.
+		expect(await sessionOf(other)).toMatchObject({ mustChangePassword: true });
+		expect(await signIn(me.email, newPassword)).toBeNull();
+		expect(await signIn(me.email, oldPassword)).not.toBeNull();
 	});
 
 	it('refuses a wrong current password with a fixed text, changing nothing', async () => {
