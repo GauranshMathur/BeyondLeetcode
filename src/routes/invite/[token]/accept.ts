@@ -31,7 +31,7 @@ const MESSAGES = {
 type Field = 'name' | 'email' | 'password';
 type AcceptEvent = Pick<
 	RequestEvent,
-	'request' | 'locals' | 'cookies' | 'params' | 'getClientAddress' | 'setHeaders'
+	'request' | 'locals' | 'cookies' | 'params' | 'url' | 'getClientAddress' | 'setHeaders'
 >;
 
 /** How long the browser keeps the invite cookie: long enough to fill in the form, then it is gone. */
@@ -48,9 +48,13 @@ const COOKIE_PATH = INVITE_COOKIE_PATH;
 /** Where earlier versions set it. Cleared wherever the cookie is, so a leftover one cannot linger. */
 const OLD_COOKIE_PATH = '/invite';
 
-function forget(cookies: Pick<RequestEvent['cookies'], 'delete'>) {
-	cookies.delete(INVITE_COOKIE, { path: COOKIE_PATH });
-	cookies.delete(INVITE_COOKIE, { path: OLD_COOKIE_PATH });
+/**
+ * `secure` is stated outright: SvelteKit defaults it to true on any host but localhost, and a browser drops
+ * a Secure cookie (a clear included) that arrives over plain http.
+ */
+function forget(cookies: Pick<RequestEvent['cookies'], 'delete'>, secure: boolean) {
+	cookies.delete(INVITE_COOKIE, { path: COOKIE_PATH, secure });
+	cookies.delete(INVITE_COOKIE, { path: OLD_COOKIE_PATH, secure });
 }
 
 /** What the form page gets back from a refused attempt: always the same keys, never the password. */
@@ -126,7 +130,7 @@ export function createAccept(throttle: Throttle) {
 			if (locals.identity) redirect(303, '/');
 			const invite = await locals.invites?.lookup(params.token ?? '', new Date());
 			if (!invite) {
-				forget(cookies);
+				forget(cookies, secure({ url }));
 				return { valid: false };
 			}
 			cookies.set(INVITE_COOKIE, params.token ?? '', {
@@ -214,7 +218,7 @@ export function createAccept(throttle: Throttle) {
 				return refused(500, typed, MESSAGES.failed);
 			}
 			forwardSetCookies(cookies, headers.getSetCookie());
-			forget(cookies);
+			forget(cookies, secure(event));
 			redirect(303, '/');
 		}
 	};

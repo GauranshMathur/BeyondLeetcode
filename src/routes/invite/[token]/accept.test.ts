@@ -100,6 +100,32 @@ describe('the page', () => {
 		);
 	});
 
+	it.each([
+		['plain http on a LAN address', 'http://192.168.1.20:3000', false],
+		['https', 'https://learn.example.com', true]
+	])('clears the invite cookie with secure stated, over %s', async (_name, address, secure) => {
+		const { accept, event, cookies } = await real();
+		const token = 'A'.repeat(43); // no such Invite, so the page clears what an earlier one left
+
+		await accept.load({ ...event(token), url: new URL(`${address}/invite/${token}`) } as never);
+
+		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/api/auth', secure });
+		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/invite', secure });
+	});
+
+	it('clears the invite cookie with secure stated after an accepted sign-up on plain http', async () => {
+		const { post, create, cookies } = await real();
+		const { token } = await create();
+
+		await post(token, lin);
+
+		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, {
+			path: '/api/auth',
+			secure: false
+		});
+		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/invite', secure: false });
+	});
+
 	it('sets no cookie for an unknown, used, expired or cancelled token', async () => {
 		const { accept, event, create, cookies, invites, db } = await real();
 		const used = await create();
@@ -147,8 +173,11 @@ describe('accepting', () => {
 			expect.any(String),
 			expect.objectContaining({ httpOnly: true })
 		);
-		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/api/auth' });
-		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/invite' });
+		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, {
+			path: '/api/auth',
+			secure: false
+		});
+		expect(cookies.delete).toHaveBeenCalledWith(INVITE_COOKIE, { path: '/invite', secure: false });
 		expect(await invites.lookup(token, new Date())).toBeNull();
 	});
 
