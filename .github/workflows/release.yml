@@ -29,6 +29,9 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
+          # Opened with RELEASE_PAT, not the built-in token: workflows do not run on PRs the
+          # built-in token creates, and the main ruleset requires those checks.
+          token: ${{ secrets.RELEASE_PAT }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -56,16 +59,16 @@ jobs:
       - name: Merge the release PR
         if: ${{ steps.find.outputs.number }}
         env:
-          # RELEASE_PAT lets this merge through the main ruleset (the repo admin bypasses it);
-          # the built-in token cannot, because workflows do not run on PRs it creates.
-          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
           RELEASE_PR_NUMBER: ${{ steps.find.outputs.number }}
-        run: gh pr merge "$RELEASE_PR_NUMBER" --squash --admin --repo "$GITHUB_REPOSITORY"
+        # Auto-merge: GitHub merges once the required checks pass. The merge pushes to main, which
+        # runs this workflow again; release-please then tags and publishes the merged release.
+        run: gh pr merge "$RELEASE_PR_NUMBER" --squash --auto --repo "$GITHUB_REPOSITORY"
 
-      # A merge made with GITHUB_TOKEN does not trigger this workflow again, so
-      # run release-please once more to tag and publish what was just merged.
-      # If this misses it, the next push to main releases it instead, since
-      # release-please picks up any merged PR still labelled autorelease: pending.
+      # Normally a no-op now: auto-merge lands the release PR later, and that push re-runs this
+      # workflow, whose first release-please step tags it. This step still releases a release PR
+      # that was merged by hand before this run reached it. If it misses, the next push to main
+      # releases it, since release-please picks up any merged PR labelled autorelease: pending.
       - name: Tag and publish the release
         id: tag
         if: ${{ steps.find.outputs.number }}
