@@ -150,7 +150,10 @@ export const actions: Actions = {
 				'Users: resetting a password failed:',
 				thrown instanceof Error ? thrown.name : typeof thrown
 			);
-			return fail(500, { resetMessage: 'The password could not be reset. Try again.', resetUserId });
+			return fail(500, {
+				resetMessage: 'The password could not be reset. Try again.',
+				resetUserId
+			});
 		}
 	},
 
