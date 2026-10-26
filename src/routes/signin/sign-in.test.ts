@@ -992,7 +992,15 @@ describe('a provider sign-in that completes gives its start back', () => {
 					headers: { cookie }
 				})
 			);
-		return { db, press, callback, next: () => void (person += 1), starts };
+		return {
+			db,
+			press,
+			callback,
+			next: () => {
+				person += 1;
+			},
+			starts
+		};
 	}
 
 	it('lets 30 sign-ins from one address each complete with a new session', async () => {
