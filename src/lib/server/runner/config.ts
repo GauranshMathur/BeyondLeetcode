@@ -6,6 +6,9 @@ const typescriptImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-node:1';
 /** Built from Dockerfile.sandbox-go: bump the tag number by hand whenever that file changes. */
 const goImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-go:1';
 
+/** Longest a lifecycle call (create, start, kill, remove, wait) may wait for the daemon. */
+export const engineCallTimeoutMs = 15_000;
+
 /** Every Sandbox limit lives here (ADR 0002). A request's `limits` may lower them, never raise them. */
 export const sandboxConfig = {
 	/** Pinned by tag, in one place. */
@@ -64,11 +67,17 @@ export const containerLabel = 'beyondleetcode.runner';
 /** The `containerLabel` value of containers made before instance ids existed. */
 export const legacyContainerLabelValue = 'true';
 
+/** Docker's list `Created` is whole seconds, so a container can look up to this much older than it is. */
+const createdTruncationMs = 1_000;
+
 /**
- * A start-up sweep removes another instance's container only once it is older than this: past the
- * hard wall clock (`containerTimeoutMs`) plus a margin, so no live Runner's in-flight run is touched.
+ * A start-up sweep removes another instance's container only once it is older than this. The
+ * owner's hard stop (`containerTimeoutMs`) starts only when Docker answers the create call, which
+ * may take up to `engineCallTimeoutMs`, and the listed `Created` is truncated to the second; the
+ * margin sits on top of both. So no live Runner's in-flight run is touched before its hard stop.
  */
-export const sweepMinAgeMs = sandboxConfig.containerTimeoutMs + 5_000;
+export const sweepMinAgeMs =
+	engineCallTimeoutMs + sandboxConfig.containerTimeoutMs + createdTruncationMs + 5_000;
 
 /** The Runner process's own settings, from its environment. Throws a message fit for the log. */
 export function readRunnerEnv(

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { containerLabel, sandboxConfig, sweepMinAgeMs } from './config';
+import { containerLabel, engineCallTimeoutMs, sandboxConfig, sweepMinAgeMs } from './config';
 import type { Engine } from './engine';
 import {
 	containerSpec,
@@ -235,6 +235,28 @@ describe('Sandbox runner: start-up sweep', () => {
 		]);
 
 		expect(removed).toEqual(['old']);
+	});
+
+	it('leaves a live run whose create answered just inside the engine call timeout, Created truncated from .999 s', async () => {
+		// Created is stamped at the true create time (second .999), listed truncated to the second.
+		const trueCreateMs = 1_000_000_000_999;
+		const listedCreatedS = Math.floor(trueCreateMs / 1000);
+		const hardStopMs = trueCreateMs + (engineCallTimeoutMs - 1) + sandboxConfig.containerTimeoutMs;
+		const removed: string[] = [];
+		const engine = {
+			listContainers: async () => [
+				{
+					id: 'live',
+					created: listedCreatedS,
+					labels: { [containerLabel]: 'other' }
+				}
+			],
+			remove: async (id: string) => void removed.push(id)
+		} as unknown as Engine;
+
+		await removeStaleContainers(engine, 'me', hardStopMs - 1);
+
+		expect(removed).toEqual([]);
 	});
 
 	it('removes a container from before instance ids whatever its age', async () => {
