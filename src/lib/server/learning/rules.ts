@@ -465,6 +465,15 @@ export function validateBuild(files: Readonly<Record<string, unknown>>): BuildFi
 	return files as BuildFiles;
 }
 
+/** Whether two Builds hold the same paths with the same content, whatever order the paths come in. */
+export function sameBuild(a: BuildFiles, b: BuildFiles): boolean {
+	const paths = Object.keys(a);
+	return (
+		paths.length === Object.keys(b).length &&
+		paths.every((path) => Object.hasOwn(b, path) && a[path] === b[path])
+	);
+}
+
 export type RunTestStatus = 'passed' | 'wrongAnswer' | 'runtimeError' | 'timeout';
 
 /** One Example Test after a Run: visible content, so input, expected and actual are all shown. */
