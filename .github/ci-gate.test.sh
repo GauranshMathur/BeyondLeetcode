@@ -15,6 +15,7 @@ if [ "$2" = list ]; then printf '%s' "${FAKE_RUN_ID-}"; exit 0; fi
 n="$(cat "$FAKE_DIR/n" 2>/dev/null || echo 1)"
 [ -f "$FAKE_DIR/view.$n" ] || n=$((n - 1))
 echo $((n + 1)) >"$FAKE_DIR/n"
+[ "$(cat "$FAKE_DIR/view.$n")" = EXIT1 ] && exit 1
 cat "$FAKE_DIR/view.$n"
 FAKE
 chmod +x "$work/bin/gh"
@@ -39,7 +40,7 @@ run() {
   rm -rf "$work/d"; mkdir "$work/d"
   for p in "$@"; do printf '%s' "$p" >"$work/d/view.$i"; i=$((i + 1)); done
   got="$(FAKE_DIR="$work/d" FAKE_RUN_ID="$runid" PATH="$work/bin:$PATH" GITHUB_REPOSITORY=o/r \
-    CI_GATE_FIND_TRIES=2 CI_GATE_FIND_SLEEP=0 CI_GATE_POLL=0 CI_GATE_TIMEOUT=2 \
+    CI_GATE_FIND_BUDGET=1 CI_GATE_FIND_SLEEP=0.1 CI_GATE_POLL=0.1 CI_GATE_TIMEOUT=${TIMEOUT:-3} \
     "$here/ci-gate.sh" abc 2>&1)"
   code=$?
   if [ "$code" != "$want" ]; then
@@ -66,6 +67,21 @@ run() {
   run "re-run: second poll shows the new attempt" 0 7 "$(jobs ${all_ok/e2e:completed:success/e2e:in_progress:})" "$(jobs $all_ok)"
   run "no jobs listed yet, then green" 0 7 '{"jobs":[]}' "$(jobs $all_ok)"
   run "poll error, then green" 0 7 "" "$(jobs $all_ok)"
-  run "no ci run" 1 "" ""
+  run "no ci run within the discovery budget" 1 "" ""
+  # Same-name entries (a re-run or a matrix): every one must succeed.
+  run "duplicate unit: success then failed" 1 7 "$(jobs $all_ok unit:completed:failure)"
+  run "duplicate unit: failed then success" 1 7 "$(jobs unit:completed:failure $all_ok)"
+  run "duplicate unit: success then cancelled" 1 7 "$(jobs $all_ok unit:completed:cancelled)"
+  run "duplicate unit: success then running (waits, times out)" 1 7 "$(jobs $all_ok unit:in_progress:)"
+  run "duplicate unit: success then running, then both green" 0 7 "$(jobs $all_ok unit:in_progress:)" "$(jobs $all_ok unit:completed:success)"
+  run "unexpected conclusion text" 1 7 "$(jobs $all_ok | sed 's/"unit","status":"completed","conclusion":"success"/"unit","status":"completed","conclusion":"failure success"/')"
+  run "unknown conclusion" 1 7 "$(jobs ${all_ok/unit:completed:success/unit:completed:neutral})"
+  run "empty conclusion on a completed job" 1 7 "$(jobs ${all_ok/unit:completed:success/unit:completed:})"
+  run "malformed JSON, then green" 0 7 "not json {" "$(jobs $all_ok)"
+  run "{} , then green" 0 7 "{}" "$(jobs $all_ok)"
+  run "jobs not an array, then green" 0 7 '{"jobs":"x"}' "$(jobs $all_ok)"
+  run "gh exits nonzero, then green" 0 7 EXIT1 "$(jobs $all_ok)"
+  run "gh keeps failing (deadline)" 1 7 EXIT1
+  TIMEOUT=1 run "deadline expires while a job is pending" 1 7 "$(jobs ${all_ok/docker:completed:success/docker:queued:})"
 }
 exit $fail
