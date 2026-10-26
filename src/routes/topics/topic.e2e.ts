@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-topic') });
 
 test('Map to an Unlocked Topic shows its Chapters and Problems', async ({ page }) => {
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await page.getByRole('link', { name: /^Stacks, unlocked/ }).click();
 	await expect(page).toHaveURL('/topics/stacks');
 
@@ -47,12 +48,12 @@ test.describe('mobile layout', () => {
 
 	test('shows progress, read state, Problem rows and no sideways scroll', async ({ page }) => {
 		// Read the first Chapter to its end, so the Topic shows one read and one unread Chapter.
-		await page.goto('/chapters/stacks-undo-log');
+		await gotoHydrated(page, '/chapters/stacks-undo-log');
 		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved.
 		const marked = page.waitForResponse(/\?\/reachEnd/);
 		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
 		await marked;
-		await page.goto('/topics/stacks');
+		await gotoHydrated(page, '/topics/stacks');
 		await expect(page.getByLabel('Topic progress')).toContainText('chapters read');
 		await expect(page.getByLabel('Topic progress')).toContainText('extra solved · not counted');
 		await expect(page.getByText('not read', { exact: true })).toHaveCount(1);
@@ -83,7 +84,7 @@ test.describe('the Topic on a phone, as a flow', () => {
 	test('a Chapter and a Problem are reached by tapping their rows', { tag: '@mobile' }, async ({
 		page
 	}) => {
-		await page.goto('/topics/stacks');
+		await gotoHydrated(page, '/topics/stacks');
 		await page.getByRole('link', { name: 'An undo log' }).tap();
 		await expect(page).toHaveURL('/chapters/stacks-undo-log');
 

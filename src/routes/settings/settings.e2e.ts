@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-settings') });
@@ -19,7 +20,7 @@ const LIGHT = 'rgb(243, 238, 228)';
 const DARK = 'rgb(23, 21, 18)';
 
 test('the nav links Local to Settings', async ({ page }) => {
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await page
 		.getByRole('navigation', { name: 'Primary' })
 		.getByRole('link', { name: 'Local' })
@@ -37,7 +38,7 @@ test('dark wins on the next load whatever the device prefers, and follow-my-devi
 		colorScheme: 'light'
 	});
 	const page = await context.newPage();
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	expect(await paper(page)).toBe(LIGHT);
 
 	await chooseTheme(page, 'dark');
@@ -48,9 +49,9 @@ test('dark wins on the next load whatever the device prefers, and follow-my-devi
 	expect(await response?.text()).toContain('data-theme="dark"');
 	expect(await paper(page)).toBe(DARK);
 
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await chooseTheme(page, 'system');
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
 	expect(await paper(page)).toBe(LIGHT);
 	await context.close();
@@ -62,11 +63,11 @@ test('light wins on a dark device', async ({ browser }) => {
 		colorScheme: 'dark'
 	});
 	const page = await context.newPage();
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	expect(await paper(page)).toBe(DARK);
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await chooseTheme(page, 'light');
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	expect(await paper(page)).toBe(LIGHT);
 	await context.close();
 });
@@ -100,7 +101,7 @@ for line in sys.stdin.read().splitlines():
 `;
 
 async function solvePush(page: import('@playwright/test').Page) {
-	await page.goto('/problems/stacks-push');
+	await gotoHydrated(page, '/problems/stacks-push');
 	const editor = page.getByLabel('Code: main.py');
 	await editor.click();
 	await expect(editor).toBeFocused();
@@ -119,7 +120,7 @@ test('cancelling the Reset progress confirm changes nothing; confirming makes th
 }) => {
 	await solvePush(page);
 
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await expect(
 		page.getByText(
 			'Deletes the Chapters you have read, your saved code, your Submissions and the Hints you have revealed.'
@@ -133,10 +134,10 @@ test('cancelling the Reset progress confirm changes nothing; confirming makes th
 
 	await confirm.getByRole('link', { name: 'Cancel' }).click();
 	await expect(page.getByRole('group', { name: 'Reset progress' })).toHaveCount(0);
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await expect(solvedStacks(page)).toBeVisible();
 
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await chooseTheme(page, 'dark');
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 	await page.getByRole('button', { name: 'Reset progress' }).click();
@@ -151,7 +152,7 @@ test('cancelling the Reset progress confirm changes nothing; confirming makes th
 	).toBeVisible();
 	// The theme is not progress.
 	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await chooseTheme(page, 'system');
 	await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.*/);
 });

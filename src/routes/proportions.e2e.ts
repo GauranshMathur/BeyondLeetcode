@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
+import { gotoHydrated } from '../lib/test/hydrated.ts';
 
 // The canvas boards (Nav, Map, Topic, Chapter) are 1440 wide; these are their control sizes.
 // This file acts as its own Learner, so it never depends on another file's leftovers.
@@ -25,7 +26,7 @@ async function expectHeader(page: Page) {
 }
 
 test('Map: header, heading and Topic nodes match the Map board', async ({ page }) => {
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await expectHeader(page);
 	await expect(page.locator('h1')).toHaveCSS('font-size', '64px');
 	// The Topic nodes are the Map's controls: 200 x 64 on the board.
@@ -43,7 +44,7 @@ test('Map: header, heading and Topic nodes match the Map board', async ({ page }
 });
 
 test('Topic: header, title, progress and problem links match the Topic board', async ({ page }) => {
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 	await expectHeader(page);
 	await expect(page.locator('h1')).toHaveCSS('font-size', '76px');
 	await expect(page.locator('h2').first()).toHaveCSS('font-size', '44px');
@@ -62,7 +63,7 @@ test('Chapter: sidebar, title and links match the Chapter board', async ({ page 
 	await page.route('**/chapters/**', (route) =>
 		route.request().method() === 'POST' ? route.abort() : route.continue()
 	);
-	await page.goto('/chapters/stacks-call-frames');
+	await gotoHydrated(page, '/chapters/stacks-call-frames');
 	await expectHeader(page);
 	await expect(page.locator('main > header h1')).toHaveCSS('font-size', '64px');
 	await expect(page.locator('main')).toHaveCSS('padding-left', '80px');

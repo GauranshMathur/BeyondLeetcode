@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import { gotoHydrated, submitHydrated } from '../../../lib/test/hydrated.ts';
 import {
 	openMultiUserDatabase,
 	type ServerTarget,
@@ -41,12 +42,17 @@ test.afterAll(async () => {
 	await fixture?.close();
 });
 
-/** The admin's Users page makes an Invite; returns its path (`/invite/<token>`) and id. */
+/** The admin's Users page makes an Invite; returns its path (`/invite/<token>`) and id. It runs with JavaScript
+ * on even inside the "without JavaScript" tests: it is only the setup, and a page without JS never hydrates. */
 async function newInvite(browser: import('@playwright/test').Browser, url: string) {
-	const context = await browser.newContext({ baseURL: url, storageState: admin });
+	const context = await browser.newContext({
+		baseURL: url,
+		storageState: admin,
+		javaScriptEnabled: true
+	});
 	try {
 		const page = await context.newPage();
-		await page.goto('/users');
+		await gotoHydrated(page, '/users');
 		await page.getByRole('button', { name: 'Invite a user' }).click();
 		const link = await page.getByLabel('Invite link').inputValue();
 		return { path: new URL(link).pathname, token: link.slice(link.lastIndexOf('/') + 1) };
@@ -62,12 +68,16 @@ const tokenHashOf = async (token: string) => {
 
 async function fillAndSubmit(
 	page: import('@playwright/test').Page,
-	who: { name: string; email: string; password?: string }
+	who: { name: string; email: string; password?: string },
+	// False in the tests without JavaScript, where no page hydrates.
+	javaScript = true
 ) {
 	await page.getByLabel('Name').fill(who.name);
 	await page.getByLabel('Email').fill(who.email);
 	await page.getByLabel('Password').fill(who.password ?? PASSWORD);
-	await page.getByRole('button', { name: 'Create account →' }).click();
+	const submit = page.getByRole('button', { name: 'Create account →' });
+	if (javaScript) await submitHydrated(submit);
+	else await submit.click();
 }
 
 test('a link creates one learner Account, signed in, and then stops working', async ({
@@ -108,7 +118,7 @@ test('a link creates one learner Account, signed in, and then stops working', as
 	// A second use of the link, from a visitor who is not signed in.
 	const visitor = await browser.newContext({ baseURL: own.url });
 	const second = await visitor.newPage();
-	await second.goto(invite.path);
+	await gotoHydrated(second, invite.path);
 	await expect(second.getByRole('heading', { level: 1 })).toHaveText(
 		'This invite link does not work.'
 	);
@@ -127,7 +137,7 @@ test('signed out, the page shows the wordmark alone at 1440 and 390 px', async (
 			viewport: { width, height: 844 }
 		});
 		const page = await context.newPage();
-		await page.goto(invite.path);
+		await gotoHydrated(page, invite.path);
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('You are invited.');
 		await expect(page.getByRole('link', { name: /Beyond Leetcode|BLC/ })).toBeVisible();
 		await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
@@ -153,7 +163,7 @@ test('an expired link and a cancelled link do not work, and no Account is made',
 	for (const link of [expired, cancelled]) {
 		const context = await browser.newContext({ baseURL: own.url });
 		const page = await context.newPage();
-		await page.goto(link.path);
+		await gotoHydrated(page, link.path);
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
 			'This invite link does not work.'
 		);
@@ -169,7 +179,7 @@ test('a link spent after its form was shown is refused on submit, with no Accoun
 	const invite = await newInvite(browser, own.url);
 	const context = await browser.newContext({ baseURL: own.url });
 	const page = await context.newPage();
-	await page.goto(invite.path);
+	await gotoHydrated(page, invite.path);
 	await expect(page.getByLabel('Password')).toBeVisible();
 	await fixture.db.invite.update({
 		where: { tokenHash: await tokenHashOf(invite.token) },
@@ -192,7 +202,7 @@ test('a refused name keeps the form and the link, and the next try works', async
 	const invite = await newInvite(browser, own.url);
 	const context = await browser.newContext({ baseURL: own.url });
 	const page = await context.newPage();
-	await page.goto(invite.path);
+	await gotoHydrated(page, invite.path);
 
 	await fillAndSubmit(page, { name: 'x'.repeat(101), email: 'long.name@example.com' });
 
@@ -238,11 +248,11 @@ test.describe('without JavaScript', () => {
 		const refusedPost = page.waitForResponse(
 			(r) => r.request().method() === 'POST' && r.url().includes(invite.path)
 		);
-		await fillAndSubmit(page, {
-			name: 'No Script',
-			email: 'no.script@example.com',
-			password: 'short'
-		});
+		await fillAndSubmit(
+			page,
+			{ name: 'No Script', email: 'no.script@example.com', password: 'short' },
+			false
+		);
 		// The action and the page load run in one request: headers set once, so SvelteKit does not throw.
 		const refused = await refusedPost;
 		expect(refused.status()).toBe(400);
@@ -253,7 +263,7 @@ test.describe('without JavaScript', () => {
 		const acceptedPost = page.waitForResponse(
 			(r) => r.request().method() === 'POST' && r.url().includes(invite.path)
 		);
-		await fillAndSubmit(page, { name: 'No Script', email: 'no.script@example.com' });
+		await fillAndSubmit(page, { name: 'No Script', email: 'no.script@example.com' }, false);
 		expect((await acceptedPost).status()).toBe(303);
 		await expect(page).toHaveURL(`${own.url}/`);
 		await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText('No Script');

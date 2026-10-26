@@ -1,4 +1,5 @@
 import { test as base, expect, type Page, type PlaywrightWorkerArgs } from '@playwright/test';
+import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 import {
 	LEARNER_PASSWORD,
 	openMultiUserDatabase,
@@ -90,7 +91,7 @@ test.describe('on a Multi-user server of its own', () => {
 	}) => {
 		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
 		const page = await context.newPage();
-		await page.goto('/users');
+		await gotoHydrated(page, '/users');
 
 		const headings = page.getByRole('heading', { level: 2 });
 		await expect(headings.first()).toHaveText('Registration');
@@ -146,7 +147,7 @@ test.describe('on a Multi-user server of its own', () => {
 		const adminPage = await adminContext.newPage();
 		const visitor = await visitorContext.newPage();
 		const closed = async () => {
-			await visitor.goto('/signup');
+			await gotoHydrated(visitor, '/signup');
 			await expect(visitor.getByRole('heading', { level: 1 })).toHaveText('Sign-up is closed.');
 			await expect(visitor.getByLabel('Password')).toHaveCount(0);
 			// A form posted anyway, the way a script would, is refused too.
@@ -164,20 +165,20 @@ test.describe('on a Multi-user server of its own', () => {
 		// A new instance is invite-only.
 		await closed();
 
-		await adminPage.goto('/users');
+		await gotoHydrated(adminPage, '/users');
 		await expect(registration(adminPage)).toHaveValue('invite');
 		await choose(adminPage, 'Open');
 		await expect(adminPage.getByText(OPEN)).toBeVisible();
 		await expect(adminPage.getByText(INVITE_ONLY)).toHaveCount(0);
 
 		// The very next request to /signup offers the form.
-		await visitor.goto('/signup');
+		await gotoHydrated(visitor, '/signup');
 		await expect(visitor.getByRole('heading', { level: 1 })).toHaveText('Start reading.');
 		await expect(visitor.getByLabel('Password')).toBeVisible();
 		await expect(visitor.getByRole('button', { name: 'Create account →' })).toBeVisible();
 
 		// The choice is the stored one: a reload shows it, and so does a fresh page.
-		await adminPage.reload();
+		await reloadHydrated(adminPage);
 		await expect(registration(adminPage)).toHaveValue('open');
 
 		await choose(adminPage, 'Invite only');
@@ -185,7 +186,7 @@ test.describe('on a Multi-user server of its own', () => {
 
 		// The next request after switching back is closed again, and an Account cannot be made.
 		await closed();
-		await adminPage.reload();
+		await reloadHydrated(adminPage);
 		await expect(registration(adminPage)).toHaveValue('invite');
 		expect(
 			await fixture.db.user.findUnique({ where: { email: 'late.comer@example.com' } })
@@ -262,7 +263,7 @@ test.describe('on a Multi-user server of its own', () => {
 			viewport: { width: 390, height: 844 }
 		});
 		const page = await context.newPage();
-		await page.goto('/users');
+		await gotoHydrated(page, '/users');
 
 		await expect(registration(page)).toBeVisible();
 		const overflow = await page.evaluate(

@@ -1,6 +1,7 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
 import { createDb } from '../../lib/server/db.ts';
+import { gotoHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
 import { type FreshServer, startFreshServer } from './fresh-server.ts';
 
 // Sign in and Sign out in the browser, on three kinds of server:
@@ -38,7 +39,7 @@ const people = {
 async function signInWith(page: Page, email: string, password: string) {
 	await page.getByLabel('Email').fill(email);
 	await page.getByLabel('Password').fill(password);
-	await page.getByRole('button', { name: 'Sign in →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Sign in →' }));
 }
 
 /** The own server with Registration Open and one Account for each person above, made through Sign up. */
@@ -76,11 +77,11 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 		'lands on Sign in from any page and, once signed in, on the page they asked for',
 		async ({ page }) => {
 			for (const path of ['/', '/topics/stacks', '/settings', '/users', '/no/such/page']) {
-				await page.goto(path);
+				await gotoHydrated(page, path);
 				await expect(page, path).toHaveURL(`/signin?next=${encodeURIComponent(path)}`);
 			}
 
-			await page.goto('/topics/stacks?x=1');
+			await gotoHydrated(page, '/topics/stacks?x=1');
 			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome back.');
 			await signInWith(page, people.asker.email, PASSWORD);
 
@@ -90,7 +91,7 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 	);
 
 	onOpen('sees the board, with a way to create an account', async ({ page }) => {
-		await page.goto('/signin');
+		await gotoHydrated(page, '/signin');
 
 		await expect(page.getByRole('navigation', { name: NAV })).toHaveCount(0);
 		await expect(page.getByRole('link', { name: 'Beyond Leetcode' })).toBeVisible();
@@ -101,12 +102,12 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 			'href',
 			'/signup'
 		);
-		await page.goto('/signup');
+		await gotoHydrated(page, '/signup');
 		await expect(page.getByRole('navigation', { name: NAV })).toHaveCount(0);
 	});
 
 	onOpen('is never sent off the site by a hostile next', async ({ page }) => {
-		await page.goto(`/signin?next=${encodeURIComponent('//evil.example/phish')}`);
+		await gotoHydrated(page, `/signin?next=${encodeURIComponent('//evil.example/phish')}`);
 
 		await signInWith(page, people.hostile.email, PASSWORD);
 
@@ -116,7 +117,7 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 	onOpen(
 		'is told one thing for a wrong password and for no such account, keeping the email but not the password',
 		async ({ page, browser, open }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			await signInWith(page, people.typo.email, 'not the password at all');
 
 			await expect(page).toHaveURL(/\/signin$/);
@@ -127,13 +128,13 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 			await expect(page.getByLabel('Password')).toHaveAttribute('aria-invalid', 'true');
 			// The right password then works from that very form.
 			await page.getByLabel('Password').fill(PASSWORD);
-			await page.getByRole('button', { name: 'Sign in →' }).click();
+			await submitHydrated(page.getByRole('button', { name: 'Sign in →' }));
 			await expect(page).toHaveURL('/');
 
 			// No Account at all: the same words, the same fields marked.
 			const stranger = await browser.newContext({ baseURL: open.url });
 			const other = await stranger.newPage();
-			await other.goto('/signin');
+			await gotoHydrated(other, '/signin');
 			await signInWith(other, 'nobody.signin@example.com', 'whatever whatever');
 			await expect(other.getByText(WRONG)).toBeVisible();
 			await expect(other.getByLabel('Email')).toHaveAttribute('aria-invalid', 'true');
@@ -144,7 +145,7 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 	onOpen(
 		'is refused on the sixth wrong password, with the same message, even with the right one',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			for (let attempt = 1; attempt <= 5; attempt++) {
 				await signInWith(page, people.locked.email, `wrong password number ${attempt}`);
 				await expect(page.getByText(WRONG), `wrong password ${attempt}`).toBeVisible();
@@ -162,7 +163,7 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 	onOpen(
 		'is refused on the sixth wrong try for an email with no Account too, in the same words',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			for (let attempt = 1; attempt <= 6; attempt++) {
 				await signInWith(page, 'nobody.six@example.com', `wrong password number ${attempt}`);
 				await expect(page.getByText(WRONG), `try ${attempt}`).toBeVisible();
@@ -182,7 +183,7 @@ onOpen.describe('Sign in on a phone (390 x 844)', () => {
 	onOpen(
 		'is one column of 48 px fields and full-width buttons, without the figure or sideways scroll',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 
 			await expect(page.getByRole('img', { name: /session token/ })).toBeHidden();
 			const form = page.locator('form');
@@ -211,7 +212,7 @@ onOpen.describe('Sign in on a phone (390 x 844)', () => {
 		const display = () =>
 			page.locator('aside').evaluate((aside) => getComputedStyle(aside).display);
 		await page.setViewportSize({ width: 767, height: 844 });
-		await page.goto('/signin');
+		await gotoHydrated(page, '/signin');
 		expect(await display()).toBe('none');
 		await page.setViewportSize({ width: 768, height: 844 });
 		expect(await display()).not.toBe('none');
@@ -220,7 +221,7 @@ onOpen.describe('Sign in on a phone (390 x 844)', () => {
 	onOpen(
 		'signs in, and shows a wrong password under the password field, with no sideways scroll',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			await signInWith(page, people.narrow.email, 'not the password at all');
 
 			const message = page.getByText(WRONG);
@@ -260,7 +261,7 @@ base.describe('Sign in on a phone, on an Instance with GitHub and Google', () =>
 		try {
 			const context = await browser.newContext({ baseURL: server.url });
 			const page = await context.newPage();
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 
 			const form = await page.locator('form').boundingBox();
 			for (const name of ['Continue with GitHub', 'Continue with Google']) {
@@ -282,7 +283,7 @@ onOpen.describe('a user who must change their password', () => {
 	onOpen(
 		'is held to that page: no page, no load data, and no Settings data through the sign-out exception',
 		async ({ page, open }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			await signInWith(page, people.forced.email, PASSWORD);
 			await expect(page).toHaveURL('/');
 			const db = createDb(open.databaseUrl);
@@ -297,7 +298,7 @@ onOpen.describe('a user who must change their password', () => {
 			const headers = { origin: open.url, accept: 'text/html' };
 
 			// A page and its load data are both sent to /account/password.
-			await page.goto('/settings');
+			await gotoHydrated(page, '/settings');
 			await expect(page).toHaveURL('/account/password');
 			const data = await page.request.get('/settings/__data.json');
 			expect(await data.json()).toMatchObject({ type: 'redirect', location: '/account/password' });
@@ -316,7 +317,7 @@ onOpen.describe('a user who must change their password', () => {
 	onOpen(
 		'cannot read the Settings load data by posting to the data URL with the sign-out action',
 		async ({ page, open }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			await signInWith(page, people.forcedData.email, PASSWORD);
 			await expect(page).toHaveURL('/');
 			const db = createDb(open.databaseUrl);
@@ -349,17 +350,17 @@ onOpen.describe('a signed-in user', () => {
 	onOpen(
 		'signs out from the nav and is back at Sign in, with the old page no longer theirs',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			await signInWith(page, people.asker.email, PASSWORD);
 			const nav = page.getByRole('navigation', { name: NAV });
 			await expect(nav.getByRole('link')).toHaveText(['Map', people.asker.name]);
 			await expect(nav.getByRole('button')).toHaveText(['Sign out']);
 
-			await nav.getByRole('button', { name: 'Sign out' }).click();
+			await submitHydrated(nav.getByRole('button', { name: 'Sign out' }));
 
 			await expect(page).toHaveURL('/signin');
 			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome back.');
-			await page.goto('/topics/stacks');
+			await gotoHydrated(page, '/topics/stacks');
 			await expect(page).toHaveURL('/signin?next=%2Ftopics%2Fstacks');
 			expect((await page.context().cookies()).map((c) => c.name)).not.toContain(
 				'better-auth.session_token'
@@ -370,27 +371,27 @@ onOpen.describe('a signed-in user', () => {
 	onOpen(
 		'signs out from Settings too, and Sign out is not a link: a plain GET changes nothing',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			await signInWith(page, people.settings.email, PASSWORD);
 			await expect(page).toHaveURL('/');
-			await page.goto('/settings');
+			await gotoHydrated(page, '/settings');
 			await expect(page.getByRole('heading', { name: 'Session' })).toBeVisible();
 
 			// A GET to the action's URL is just the Settings page, and still signed in.
-			await page.goto('/settings?/signout');
+			await gotoHydrated(page, '/settings?/signout');
 			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings');
 			await expect(page.getByRole('navigation', { name: NAV })).toContainText(people.settings.name);
 
-			await page.getByRole('main').getByRole('button', { name: 'Sign out' }).click();
+			await submitHydrated(page.getByRole('main').getByRole('button', { name: 'Sign out' }));
 
 			await expect(page).toHaveURL('/signin');
-			await page.goto('/settings');
+			await gotoHydrated(page, '/settings');
 			await expect(page).toHaveURL('/signin?next=%2Fsettings');
 		}
 	);
 
 	onOpen('sees the 404 page for a path with no route, signed in', async ({ page }) => {
-		await page.goto('/signin');
+		await gotoHydrated(page, '/signin');
 		await signInWith(page, people.asker.email, PASSWORD);
 		await expect(page).toHaveURL('/');
 
@@ -401,28 +402,28 @@ onOpen.describe('a signed-in user', () => {
 	});
 
 	onOpen('has Sign out only on Settings on a phone', async ({ page }) => {
-		await page.goto('/signin');
+		await gotoHydrated(page, '/signin');
 		await signInWith(page, people.phone.email, PASSWORD);
 		await expect(page).toHaveURL('/');
 		await page.setViewportSize({ width: 390, height: 844 });
 
-		await page.goto('/');
+		await gotoHydrated(page, '/');
 		await expect(page.getByRole('navigation', { name: NAV })).toContainText(people.phone.name);
 		await expect(
 			page.getByRole('navigation', { name: NAV }).getByRole('button', { name: 'Sign out' })
 		).toBeHidden();
 
-		await page.goto('/settings');
-		await page.getByRole('main').getByRole('button', { name: 'Sign out' }).click();
+		await gotoHydrated(page, '/settings');
+		await submitHydrated(page.getByRole('main').getByRole('button', { name: 'Sign out' }));
 		await expect(page).toHaveURL('/signin');
 	});
 
 	onOpen('is sent from Sign in to where they were going, not shown the form', async ({ page }) => {
-		await page.goto('/signin');
+		await gotoHydrated(page, '/signin');
 		await signInWith(page, people.asker.email, PASSWORD);
 		await expect(page).toHaveURL('/');
 
-		await page.goto(`/signin?next=${encodeURIComponent('/topics/stacks')}`);
+		await gotoHydrated(page, `/signin?next=${encodeURIComponent('/topics/stacks')}`);
 
 		await expect(page).toHaveURL('/topics/stacks');
 	});
@@ -434,7 +435,7 @@ base.describe('the shared Multi-user server', () => {
 		'sends a signed-out visitor from any page, even an unknown one, to Sign in',
 		async ({ page }) => {
 			for (const path of ['/', '/topics/stacks', '/settings', '/users', '/no/such/page']) {
-				await page.goto(path);
+				await gotoHydrated(page, path);
 				await expect(page, path).toHaveURL(`/signin?next=${encodeURIComponent(path)}`);
 			}
 		}
@@ -443,7 +444,7 @@ base.describe('the shared Multi-user server', () => {
 	base(
 		'shows the board with no sign-up link while registration is invite-only',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 
 			await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome back.');
 			await expect(page.getByRole('navigation', { name: NAV })).toHaveCount(0);
@@ -452,7 +453,7 @@ base.describe('the shared Multi-user server', () => {
 	);
 
 	base('shows no provider button when no provider is configured', async ({ page }) => {
-		await page.goto('/signin');
+		await gotoHydrated(page, '/signin');
 
 		await expect(page.getByRole('button', { name: /^Continue with/ })).toHaveCount(0);
 	});
@@ -460,7 +461,8 @@ base.describe('the shared Multi-user server', () => {
 	base(
 		'tells a visitor sent back by a provider that accounts are by invite, in fixed words',
 		async ({ page }) => {
-			await page.goto(
+			await gotoHydrated(
+				page,
 				'/signin?error=SIGN_UP_CLOSED&error_description=%3Cscript%3Ewindow.pwned%3D1%3C%2Fscript%3E'
 			);
 
@@ -492,13 +494,13 @@ base.describe('the shared Multi-user server', () => {
 	base(
 		'gives the admin Users, their name and Sign out in the nav, in that order',
 		async ({ page }) => {
-			await page.goto('/signin');
+			await gotoHydrated(page, '/signin');
 			await signInWith(page, E2E_ADMIN.email, E2E_ADMIN.password);
 
 			const nav = page.getByRole('navigation', { name: NAV });
 			await expect(nav.getByRole('link')).toHaveText(['Map', 'Users', E2E_ADMIN.name]);
 			await expect(nav.getByRole('button')).toHaveText(['Sign out']);
-			await nav.getByRole('button', { name: 'Sign out' }).click();
+			await submitHydrated(nav.getByRole('button', { name: 'Sign out' }));
 			await expect(page).toHaveURL('/signin');
 		}
 	);
@@ -516,23 +518,23 @@ base.describe('a fresh Instance started like a released one, with no test switch
 				const context = await browser.newContext({ baseURL: server.url });
 				const page = await context.newPage();
 
-				await page.goto('/');
+				await gotoHydrated(page, '/');
 				await expect(page).toHaveURL('/setup');
 				await expect(page.getByLabel('Multi-user')).toBeEnabled();
 				await expect(page.getByText(/next update/)).toHaveCount(0);
 				await page.getByLabel('Multi-user').check();
-				await page.getByRole('button', { name: 'Continue →' }).click();
+				await submitHydrated(page.getByRole('button', { name: 'Continue →' }));
 				await page.getByLabel('Name').fill('Fresh Admin');
 				await page.getByLabel('Email').fill('fresh.admin@example.com');
 				await page.getByLabel('Password').fill('a long enough password');
-				await page.getByRole('button', { name: 'Create admin account →' }).click();
+				await submitHydrated(page.getByRole('button', { name: 'Create admin account →' }));
 				await expect(page).toHaveURL('/');
 				const nav = page.getByRole('navigation', { name: NAV });
 				await expect(nav).toContainText('Fresh Admin');
 
-				await nav.getByRole('button', { name: 'Sign out' }).click();
+				await submitHydrated(nav.getByRole('button', { name: 'Sign out' }));
 				await expect(page).toHaveURL('/signin');
-				await page.goto('/topics/stacks');
+				await gotoHydrated(page, '/topics/stacks');
 				await expect(page).toHaveURL('/signin?next=%2Ftopics%2Fstacks');
 
 				await signInWith(page, 'fresh.admin@example.com', 'a long enough password');
@@ -556,17 +558,17 @@ base.describe('signing in on a phone, as a flow', () => {
 		'the admin signs in, is taken to the page they asked for, and signs out',
 		{ tag: '@mobile' },
 		async ({ page }) => {
-			await page.goto('/topics/stacks');
+			await gotoHydrated(page, '/topics/stacks');
 			await expect(page).toHaveURL('/signin?next=%2Ftopics%2Fstacks');
 
 			await page.getByLabel('Email').fill(E2E_ADMIN.email);
 			await page.getByLabel('Password').fill(E2E_ADMIN.password);
-			await page.getByRole('button', { name: 'Sign in →' }).tap();
+			await submitHydrated(page.getByRole('button', { name: 'Sign in →' }), 'tap');
 			await expect(page).toHaveURL('/topics/stacks');
 
 			// Sign out is on Settings only, on a phone.
-			await page.goto('/settings');
-			await page.getByRole('main').getByRole('button', { name: 'Sign out' }).tap();
+			await gotoHydrated(page, '/settings');
+			await submitHydrated(page.getByRole('main').getByRole('button', { name: 'Sign out' }), 'tap');
 			await expect(page).toHaveURL('/signin');
 		}
 	);
