@@ -20,6 +20,7 @@ import {
 	type FirstAdminInput,
 	MultiUserNotAvailableError
 } from './identity/setup.ts';
+import { providerStarts } from './identity/throttle.ts';
 import { createInstance, type Instance } from './instance.ts';
 import { createLearningCore, type LearningCore } from './learning/core.ts';
 import { deleteLearner } from './learning/progress.ts';
@@ -240,7 +241,8 @@ function buildAuth(
 			secret,
 			admitSignUp: createRegistration({ instance, invites }),
 			socialProviders: socialProvidersFrom(providerEnvironment(env)),
-			claimInvite: (token, now) => invites.claim(token, now)
+			claimInvite: (token, now) => invites.claim(token, now),
+			providerStarts
 		})
 	};
 }

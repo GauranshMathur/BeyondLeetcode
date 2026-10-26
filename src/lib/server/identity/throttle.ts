@@ -69,6 +69,12 @@ export interface Throttle {
 	 * is good once. A token with no Account (a blank form, as Sign up uses) gives nothing back.
 	 */
 	succeed(token: ThrottleToken): void;
+	/**
+	 * Takes back the one count `attempt` added to the address, for a token that names no Account (a provider
+	 * sign-in start, whose count `succeed` ignores). Same window rule as `succeed`, and a token is good once.
+	 * Only the address counter moves: nothing else was counted for such a token.
+	 */
+	refund(token: ThrottleToken): void;
 	size(): number;
 }
 
@@ -281,6 +287,69 @@ export const createThrottle = ({
 			giveBack(addresses, address);
 			giveBack(named.accounts, account);
 		},
+		refund(token) {
+			if (token.spent) return;
+			token.spent = true;
+			giveBack(addresses, token.counted.address);
+		},
 		size: () => everyCounter.reduce((total, c) => total + c.entries.size, 0)
 	};
 };
+
+export interface ProviderStarts {
+	/** The limit on starts (20 per address per window): the flood guard for the state rows a start writes. */
+	readonly throttle: Throttle;
+	/** Remembers which counted start the provider flow named `state` belongs to. */
+	record(state: string, token: ThrottleToken): void;
+	/** Gives that start back, once. A state never recorded, expired or already refunded changes nothing. */
+	refund(state: string): void;
+	size(): number;
+}
+
+/**
+ * The starts of provider sign-ins, shared by the Sign in page (which starts them) and the provider callback
+ * (which completes them). A start is counted when it begins, because it writes a state row and the limit is
+ * its flood guard; it is given back only when its callback signs someone in. Each start is keyed by the OAuth
+ * `state` of its authorize URL, so one callback refunds exactly one start, once. The map holds `maxKeys`
+ * entries and keeps each for `windowMs`, as the throttle does; a full map drops the oldest, whose start then
+ * simply stays counted.
+ */
+export const createProviderStarts = ({
+	throttle = createThrottle(),
+	windowMs = 10 * 60_000,
+	maxKeys = 10_000,
+	now = Date.now
+}: {
+	throttle?: Throttle;
+	windowMs?: number;
+	maxKeys?: number;
+	now?: () => number;
+} = {}): ProviderStarts => {
+	// Insertion order is expiry order, as the window is fixed.
+	const started = new Map<string, { token: ThrottleToken; expiresAt: number }>();
+	return {
+		throttle,
+		record(state, token) {
+			const at = now();
+			for (const [key, entry] of started) {
+				if (entry.expiresAt > at) break;
+				started.delete(key);
+			}
+			if (started.size >= maxKeys) {
+				const oldest = started.keys().next().value;
+				if (oldest !== undefined) started.delete(oldest);
+			}
+			started.set(state, { token, expiresAt: at + windowMs });
+		},
+		refund(state) {
+			const entry = started.get(state);
+			if (!entry) return;
+			started.delete(state);
+			if (entry.expiresAt > now()) throttle.refund(entry.token);
+		},
+		size: () => started.size
+	};
+};
+
+/** The one set of provider starts of this process: the Sign in page and the auth callback share it. */
+export const providerStarts = createProviderStarts();

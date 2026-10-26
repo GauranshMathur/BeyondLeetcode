@@ -4,7 +4,7 @@ import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/identity/auth';
 import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
-import { createThrottle } from '$lib/server/identity/throttle';
+import { createProviderStarts, createThrottle } from '$lib/server/identity/throttle';
 import { createFileTestDb } from '$lib/server/test-db';
 import { createSignIn, landing, providerNotice } from './sign-in';
 
@@ -919,5 +919,139 @@ describe('provider buttons with the real Better Auth', () => {
 		);
 		expect(location.searchParams.get('state')).toBeTruthy();
 		expect(jar.size).toBeGreaterThan(0);
+	});
+});
+
+describe('a provider sign-in that completes gives its start back', () => {
+	const origin = 'http://localhost:3000';
+
+	/** A GitHub that answers from memory, as a different person each time `who` changes. */
+	function github(who: () => number) {
+		return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+			const url = String(input instanceof Request ? input.url : input);
+			const n = who();
+			if (url === 'https://github.com/login/oauth/access_token') {
+				return Response.json({
+					access_token: 'gh-token',
+					token_type: 'bearer',
+					scope: 'read:user'
+				});
+			}
+			if (url === 'https://api.github.com/user') {
+				return Response.json({
+					id: n,
+					login: `octo${n}`,
+					name: `Octo ${n}`,
+					email: `o${n}@example.com`
+				});
+			}
+			if (url === 'https://api.github.com/user/emails') {
+				return Response.json([{ email: `o${n}@example.com`, primary: true, verified: true }]);
+			}
+			throw new Error('unexpected request');
+		});
+	}
+
+	async function world() {
+		const db = await createFileTestDb();
+		const starts = createProviderStarts();
+		const auth = createAuth({
+			db,
+			origin,
+			secret: 'test-secret-test-secret-test-secret-0123',
+			admitSignUp: () => ({}),
+			socialProviders: { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } },
+			providerStarts: starts
+		});
+		const signIn = createSignIn(createThrottle(), starts);
+		let person = 0;
+		github(() => person);
+		/** The button: returns the state of the authorize URL and the cookies the browser would send back. */
+		async function press(address = '203.0.113.9') {
+			const jar = new Map<string, string>();
+			const event = {
+				request: { formData: async () => formOf({ provider: 'github' }) },
+				locals: { instance: { registrationMode: () => 'open' }, auth },
+				cookies: { set: (name: string, value: string) => void jar.set(name, value) },
+				url: new URL(`${origin}/signin`),
+				getClientAddress: () => address
+			};
+			try {
+				await signIn.action(event as never);
+			} catch (thrown) {
+				if (!isRedirect(thrown)) throw thrown;
+				const state = new URL(thrown.location).searchParams.get('state');
+				const cookie = [...jar].map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('; ');
+				return { started: true as const, state, cookie };
+			}
+			return { started: false as const };
+		}
+		const callback = (state: string | null, cookie: string) =>
+			auth.handler(
+				new Request(`${origin}/api/auth/callback/github?code=c&state=${state}`, {
+					headers: { cookie }
+				})
+			);
+		return {
+			db,
+			press,
+			callback,
+			next: () => {
+				person += 1;
+			},
+			starts
+		};
+	}
+
+	it('lets 30 sign-ins from one address each complete with a new session', async () => {
+		const { db, press, callback, next } = await world();
+
+		for (let i = 0; i < 30; i++) {
+			next();
+			const start = await press();
+			expect(start.started, `start ${i + 1}`).toBe(true);
+			if (!start.started) return;
+			const done = await callback(start.state, start.cookie);
+			expect(done.headers.get('location'), `callback ${i + 1}`).toBe('/');
+		}
+
+		expect(await db.session.count()).toBe(30);
+	});
+
+	it('still refuses the 21st start when none completes a callback', async () => {
+		const { press } = await world();
+
+		const results = [];
+		for (let i = 0; i < 21; i++) results.push((await press()).started);
+
+		expect(results.slice(0, 20).every(Boolean)).toBe(true);
+		expect(results[20]).toBe(false);
+	});
+
+	it('gives back one start per callback: replaying a completed callback refunds nothing more', async () => {
+		const { press, callback, next, starts } = await world();
+		next();
+		const first = await press();
+		if (!first.started) throw new Error('refused');
+		await callback(first.state, first.cookie);
+		expect(starts.size()).toBe(0);
+		for (let i = 0; i < 19; i++) await press();
+
+		await callback(first.state, first.cookie);
+
+		// 19 outstanding starts and the refund was spent: the 20th is allowed, the 21st is refused.
+		expect((await press()).started).toBe(true);
+		expect((await press()).started).toBe(false);
+	});
+
+	it('does not give a start back when the callback does not sign anyone in', async () => {
+		const { press, callback, starts } = await world();
+		const start = await press();
+		if (!start.started) throw new Error('refused');
+
+		const refused = await callback(start.state, '');
+
+		expect(refused.headers.get('location')).toContain('error=');
+		expect(starts.size()).toBe(1);
 	});
 });

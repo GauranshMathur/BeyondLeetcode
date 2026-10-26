@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createThrottle, type ThrottleCheck, type ThrottleToken } from './throttle.ts';
+import {
+	createProviderStarts,
+	createThrottle,
+	type ThrottleCheck,
+	type ThrottleToken
+} from './throttle.ts';
 
 const MIN = 60_000;
 
@@ -462,5 +467,76 @@ describe('emails that have no Account', () => {
 			flood(throttle, maxKeys + 1, 100);
 			expect(throttle.attempt(unknown('1.1.1.1', 'target')).allowed).toBe(true);
 		});
+	});
+});
+
+describe('refund and provider starts', () => {
+	it('refund gives back the address count of an attempt that names no Account, once', () => {
+		const { throttle } = setup();
+		const tokens = Array.from({ length: 20 }, () =>
+			tokenOf(throttle.attempt({ address: '1.1.1.1', accountId: null }))
+		);
+		expect(throttle.attempt(from('1.1.1.1', null)).allowed).toBe(false);
+
+		throttle.refund(tokens[0]);
+		throttle.refund(tokens[0]);
+
+		expect(throttle.attempt(from('1.1.1.1', null)).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', null)).allowed).toBe(false);
+	});
+
+	it('refund leaves the new window alone when the attempt was counted in an earlier one', () => {
+		const { throttle, advance } = setup();
+		const old = tokenOf(throttle.attempt({ address: '1.1.1.1', accountId: null }));
+		advance(11 * MIN);
+		for (let i = 0; i < 20; i++) throttle.attempt({ address: '1.1.1.1', accountId: null });
+
+		throttle.refund(old);
+
+		expect(throttle.attempt(from('1.1.1.1', null)).allowed).toBe(false);
+	});
+
+	it('gives a start back by its state, once, and forgets starts after the window', () => {
+		let t = 1_000_000;
+		const starts = createProviderStarts({
+			now: () => t,
+			throttle: createThrottle({ now: () => t })
+		});
+		const record = (state: string) => {
+			starts.record(
+				state,
+				tokenOf(starts.throttle.attempt({ address: '1.1.1.1', accountId: null }))
+			);
+		};
+		for (let i = 0; i < 20; i++) record(`s${i}`);
+		expect(starts.throttle.attempt(from('1.1.1.1', null)).allowed).toBe(false);
+
+		starts.refund('s3');
+		starts.refund('s3');
+		starts.refund('never-started');
+
+		expect(starts.size()).toBe(19);
+		expect(starts.throttle.attempt(from('1.1.1.1', null)).allowed).toBe(true);
+		expect(starts.throttle.attempt(from('1.1.1.1', null)).allowed).toBe(false);
+		t += 11 * MIN;
+		starts.record(
+			'late',
+			tokenOf(starts.throttle.attempt({ address: '1.1.1.1', accountId: null }))
+		);
+		expect(starts.size()).toBe(1);
+	});
+
+	it('keeps at most maxKeys starts, dropping the oldest, whose start then stays counted', () => {
+		const starts = createProviderStarts({ maxKeys: 2 });
+		const record = (state: string, address: string) =>
+			starts.record(state, tokenOf(starts.throttle.attempt({ address, accountId: null })));
+		record('a', '1.1.1.1');
+		record('b', '1.1.1.2');
+		record('c', '1.1.1.3');
+
+		expect(starts.size()).toBe(2);
+		starts.refund('a');
+		for (let i = 0; i < 19; i++) starts.throttle.attempt({ address: '1.1.1.1', accountId: null });
+		expect(starts.throttle.attempt({ address: '1.1.1.1', accountId: null }).allowed).toBe(false);
 	});
 });
