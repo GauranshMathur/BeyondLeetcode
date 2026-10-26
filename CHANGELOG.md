@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.1.0...v1.1.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C71 theme and invite cookies on plain-http Instances ([#279](https://github.com/GauranshMathur/BeyondLeetcode/issues/279)) ([77dc600](https://github.com/GauranshMathur/BeyondLeetcode/commit/77dc60067dde8964208393d13c41bffa972d5bf5))
+* **beyondleetcode:** C79 sweep minimum age covers the engine call timeout ([#277](https://github.com/GauranshMathur/BeyondLeetcode/issues/277)) ([cfd6313](https://github.com/GauranshMathur/BeyondLeetcode/commit/cfd63131b6316c7c5e74984f203c4d80d9dffe1b))
+
 ## [1.1.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.0.2...v1.1.0) (2026-10-26)
 
 
