@@ -5,7 +5,7 @@ import { deserialize } from '$app/forms';
 import { invalidateAll } from '$app/navigation';
 import CodeEditor from '$lib/editor/CodeEditor.svelte';
 import { LANGUAGES, type Language, languageById } from '$lib/languages';
-import { type Reply, toReply } from '$lib/problem-wire';
+import { filesDigest, type Reply, toReply } from '$lib/problem-wire';
 import type { ProblemView, SolutionView } from '$lib/server/learning/core';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
@@ -44,6 +44,18 @@ function dispatch(event: Event) {
 
 /** The one place that talks to the server: posts the request and reports what came back. */
 async function perform(request: Request) {
+	// The unload keepalive save rides on top of the save already on the wire: that save owns the
+	// session's answer, so this one's reply (if the page is still there to see it) is not fed back.
+	if ('inflightDigest' in request && request.inflightDigest !== undefined) {
+		await post(request);
+		return;
+	}
+	// The digest is async and a page that is unloading cannot wait for it, so it is computed as the
+	// request goes out and kept in the session for a flush to use.
+	if ('files' in request && !request.keepalive) {
+		const files = request.files;
+		void filesDigest(files).then((digest) => dispatch({ type: 'digest', of: files, digest }));
+	}
 	dispatch({ type: 'response', reply: await post(request) });
 }
 
@@ -59,6 +71,8 @@ async function post(request: Request): Promise<Reply> {
 			body.set('language', request.language);
 		} else {
 			if (request.kind !== 'restart') body.set('files', JSON.stringify(request.files));
+			if ('inflightDigest' in request && request.inflightDigest !== undefined)
+				body.set('inflightDigest', request.inflightDigest);
 			body.set('build', JSON.stringify(request.build));
 		}
 		const action = ACTION[request.kind] ?? request.kind;

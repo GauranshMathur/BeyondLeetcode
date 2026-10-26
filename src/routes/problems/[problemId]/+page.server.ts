@@ -91,7 +91,16 @@ export const actions: Actions = {
 	},
 
 	/** Autosave. */
-	save: buildAction((learner, build, files) => learner.saveCode(build, files)),
+	save: async ({ locals, params, request }) => {
+		const form = await request.formData();
+		const { build, files } = readBuild(form, params.problemId ?? '');
+		// Only a closing tab's keepalive save carries the digest of its own save still on the wire.
+		const digest = form.get('inflightDigest');
+		if (digest !== null && !/^[0-9a-f]{64}$/.test(String(digest))) refuse({ code: 'BadRequest' });
+		return withLearningErrors(() =>
+			signedIn(locals).learning.saveCode(build, files, digest === null ? undefined : String(digest))
+		);
+	},
 
 	/** Run: saves, then the Example Tests only. Never changes progress. */
 	run: buildAction((learner, build, files) => learner.run(build, files)),

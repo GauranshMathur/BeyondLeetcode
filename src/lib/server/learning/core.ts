@@ -1,3 +1,4 @@
+import { filesDigest } from '../../problem-wire.ts';
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import { LANGUAGES } from '../content/schema.ts';
 import type { Db } from '../db.ts';
@@ -82,8 +83,20 @@ export interface Learner {
 	 * validateBuild) is answered with the head's revision and writes nothing: it is a save whose
 	 * reply was lost, or one whose result is already stored. Two or more behind is always
 	 * RevisionConflict. Throws InvalidBuild for bad paths or too much code, NotFound or TopicLocked.
+	 *
+	 * A second exception, for the save a closing tab sends on top of its own unconfirmed one:
+	 * `inflightDigest` is filesDigest of the files of the tab's save still on the wire. With it, a
+	 * revision exactly one behind is accepted when the stored head's files match that digest (the
+	 * in-flight save landed first) and the files are stored at head + 1. Whichever of the two lands
+	 * first is stored: if this one lands first (revision equal to the head, the normal rule), the
+	 * in-flight save is then one behind with other files and conflicts. A digest that does not match
+	 * (another tab saved) stays RevisionConflict.
 	 */
-	saveCode(build: BuildRef, files: BuildFiles): Promise<{ revision: number }>;
+	saveCode(
+		build: BuildRef,
+		files: BuildFiles,
+		inflightDigest?: string
+	): Promise<{ revision: number }>;
 	/**
 	 * Replaces the Learner's Build for this Problem and Language with the Reference Code as it stands
 	 * after the previous Problem (empty before a Topic's first Problem; an Extra's previous is its
@@ -238,7 +251,11 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						renderMarkdown
 					);
 				},
-				saveCode: async ({ problemId, language, revision: baseRevision }, files) => {
+				saveCode: async (
+					{ problemId, language, revision: baseRevision },
+					files,
+					inflightDigest
+				) => {
 					// The screen read's checks (NotFound, TopicLocked) and the stored step, no Markdown.
 					const topicId = await openStep(problemId);
 					const current = await loadLanguage(deps.db, learnerId, topicId);
@@ -250,7 +267,15 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					// Every write below is keyed on the tab's Language, so a switchLanguage landing after
 					// this check can only leave the write on the Build the tab was showing.
 					const key = { learnerId, topicId: view.topicId, language, problemId };
-					if (baseRevision !== view.revision) {
+					// A keepalive save on top of the tab's own in-flight save, which landed first: the head is
+					// one ahead of the base and holds exactly the files that save carried. Store on the head.
+					const onOwnSave =
+						inflightDigest !== undefined &&
+						view.files !== undefined &&
+						baseRevision === view.revision - 1 &&
+						inflightDigest === (await filesDigest(view.files));
+					const expected = onOwnSave ? view.revision : baseRevision;
+					if (baseRevision !== view.revision && !onOwnSave) {
 						// A retry of a save whose reply was lost: it committed, so the stored head is one
 						// ahead of the tab and holds exactly these files. Answer it as saved; write nothing.
 						// Two or more behind stays a conflict, so a later edit back to old code is not mistaken for a retry.
@@ -265,11 +290,11 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						}
 						// Only the save still based on the stored revision updates it.
 						const { count } = await deps.db.buildStep.updateMany({
-							where: { ...key, revision: baseRevision },
-							data: { files: build, revision: baseRevision + 1 }
+							where: { ...key, revision: expected },
+							data: { files: build, revision: expected + 1 }
 						});
 						if (count === 0) throw new LearningError('RevisionConflict');
-						return { revision: baseRevision + 1 };
+						return { revision: expected + 1 };
 					} catch (e) {
 						if ((e as { code?: string }).code === 'P2002')
 							throw new LearningError('RevisionConflict');

@@ -39,7 +39,14 @@ const sameFiles = (a: Files, b: Files) => {
 
 /** What the machine asks the component to send. Save, Run and Submit all carry the Build and its reference. */
 export type Request =
-	| { kind: 'save' | Act; build: BuildRef; files: Files; keepalive?: true }
+	| {
+			kind: 'save' | Act;
+			build: BuildRef;
+			files: Files;
+			keepalive?: true;
+			/** Unload only: filesDigest of the files of the save still on the wire (see `sentDigest`). */
+			inflightDigest?: string;
+	  }
 	| { kind: 'switch'; language: Language }
 	/** Start from reference code: replaces the Build, so it carries the reference alone. */
 	| { kind: 'restart'; build: BuildRef };
@@ -68,6 +75,14 @@ export interface Session {
 	/** The files of the save, Run or Submit on the wire (or last sent), kept in case no reply comes. */
 	readonly sent?: Files;
 	/**
+	 * filesDigest of `sent`, computed by the component when the request went out (the digest is
+	 * async, which a page that is unloading cannot wait for), so a flush has it ready. Absent until
+	 * it is computed and once the request is answered.
+	 */
+	readonly sentDigest?: string;
+	/** The latest files already sent as the unload keepalive save, so a second flush does not repeat it. */
+	readonly unloadSent?: Files;
+	/**
 	 * The request that got no reply (network trouble or a 5xx) and may have committed. It is re-sent
 	 * first, exactly as it was and with the same base revision, so a copy that did commit is answered
 	 * as saved and newer edits then go out on the revision it reports. A Run or Submit is re-sent
@@ -84,6 +99,8 @@ export type Event =
 	| { type: 'switch'; language: Language }
 	| { type: 'restart' }
 	| { type: 'response'; reply: Reply }
+	/** filesDigest of `of` has been computed; kept only if `of` is still what is on the wire. */
+	| { type: 'digest'; of: Files; digest: string }
 	/** Leaving the page: send what is pending. `final` when the screen is going away for good. */
 	| { type: 'flush'; final: boolean };
 
@@ -237,10 +254,40 @@ export function transition(s: Session, event: Event): Step {
 			return sendRestart(next);
 		}
 
+		case 'digest':
+			return s.inFlight && s.sent && sameFiles(s.sent, event.of)
+				? { state: { ...s, sentDigest: event.digest } }
+				: { state: s };
+
 		case 'flush': {
 			const closed = s.closed || event.final;
 			// A restart waiting to be re-sent keeps its timer, so coming back from the page cache still retries.
 			if (s.restarting) return { state: { ...s, closed } };
+			// A save is on the wire and newer edits are unsent: its reply cannot be waited for. Send the
+			// latest files on the same base with the digest of what is on the wire; the server stores
+			// them whichever of the two lands first. The edits stay unconfirmed (dirty) until a reply
+			// shows the revision, so a page restored from the cache sends them again on it.
+			if (
+				s.inFlight &&
+				s.inFlight !== 'switch' &&
+				s.inFlight !== 'restart' &&
+				s.dirty &&
+				!halted(s) &&
+				s.sentDigest !== undefined &&
+				!(s.unloadSent && sameFiles(s.unloadSent, s.files))
+			) {
+				return {
+					state: { ...s, closed, unloadSent: s.files },
+					send: {
+						kind: 'save',
+						build: s.build,
+						files: s.files,
+						keepalive: true,
+						inflightDigest: s.sentDigest
+					},
+					timer: 'cancel'
+				};
+			}
 			if (s.inFlight || !s.dirty || halted(s)) {
 				return { state: { ...s, closed }, timer: 'cancel' };
 			}
@@ -257,7 +304,12 @@ export function transition(s: Session, event: Event): Step {
 /** The answer to the request of `kind`. */
 function answered(before: Session, kind: Request['kind'], reply: Reply): Step {
 	// Any answer settles what had got no reply; only trouble without an answer (below) sets it again.
-	const s: Session = { ...before, unreplied: undefined };
+	const s: Session = {
+		...before,
+		unreplied: undefined,
+		sentDigest: undefined,
+		unloadSent: undefined
+	};
 	const wasAct = kind === 'run' || kind === 'submit';
 	const refused = !reply.ok && reply.kind === 'refused' ? reply : undefined;
 	const restartWaiting = s.queued === 'restart';

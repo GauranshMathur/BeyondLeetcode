@@ -384,6 +384,69 @@ describe('leaving the page', () => {
 	});
 });
 
+describe('leaving the page while a save is on the wire (C69)', () => {
+	const onWire = () =>
+		play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'digest', of: { 'main.py': 'b' }, digest: 'D-b' },
+			{ type: 'edit', files: { 'main.py': 'c' } }
+		);
+
+	it('sends the latest files as a keepalive save carrying the digest of the save in flight, on the same base', () => {
+		const { step } = play(onWire().state, { type: 'flush', final: true });
+		expect(step.send).toEqual({
+			kind: 'save',
+			build,
+			files: { 'main.py': 'c' },
+			keepalive: true,
+			inflightDigest: 'D-b'
+		});
+		expect(step.state).toMatchObject({ closed: true, dirty: true });
+		expect(step.timer).toBe('cancel');
+	});
+
+	it('sends it once, however many times the page reports leaving', () => {
+		const { sent } = play(
+			onWire().state,
+			{ type: 'flush', final: false },
+			{ type: 'flush', final: true }
+		);
+		expect(sent).toHaveLength(1);
+	});
+
+	it('sends nothing when the digest is not computed yet, or the edits are already on the wire', () => {
+		const undigested = play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'edit', files: { 'main.py': 'c' } }
+		);
+		expect(play(undigested.state, { type: 'flush', final: true }).sent).toEqual([]);
+		const sameAsSent = play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'digest', of: { 'main.py': 'b' }, digest: 'D-b' }
+		);
+		expect(play(sameAsSent.state, { type: 'flush', final: true }).sent).toEqual([]);
+	});
+
+	it('ignores a digest of files that are not the ones in flight', () => {
+		const { state } = play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'digest', of: { 'main.py': 'zzz' }, digest: 'D-z' }
+		);
+		expect(state.sentDigest).toBeUndefined();
+	});
+
+	it('forgets the digest once the save is answered, and sends the unconfirmed edits on the new revision', () => {
+		const { step } = play(onWire().state, respond(ok({ revision: 4 })));
+		expect(step.state.sentDigest).toBeUndefined();
+		expect(step.state.build.revision).toBe(4);
+		expect(step.timer).toEqual({ afterMs: 0 });
+	});
+});
+
 it('ignores an answer when nothing is on the wire', () => {
 	const { state, sent } = play(fresh(), respond(ok({ revision: 9 })));
 	expect(state).toEqual(fresh());
