@@ -24,6 +24,7 @@ import {
 	type SavedStep,
 	type SolutionView,
 	type SubmitView,
+	sameBuild,
 	seedSourceOf,
 	solutionView,
 	submitPlan,
@@ -76,14 +77,18 @@ export interface Learner {
 	 * Stores the Learner's code for a Build. `build` is the reference the screen was issued
 	 * (ProblemView.build): `revision` is what the code was based on (0 for a step never saved) and
 	 * `language` the Language the tab showed. Throws RevisionConflict when the revision is stale or
-	 * the Topic is no longer built in that Language, InvalidBuild for bad paths or too much code,
-	 * NotFound or TopicLocked.
+	 * the Topic is no longer built in that Language. One exception, so a retried save lands as
+	 * saved: a revision exactly one behind whose files equal the stored head (per path, after
+	 * validateBuild) is answered with the head's revision and writes nothing: it is a save whose
+	 * reply was lost, or one whose result is already stored. Two or more behind is always
+	 * RevisionConflict. Throws InvalidBuild for bad paths or too much code, NotFound or TopicLocked.
 	 */
 	saveCode(build: BuildRef, files: BuildFiles): Promise<{ revision: number }>;
 	/**
 	 * Replaces the Learner's Build for this Problem and Language with the Reference Code as it stands
 	 * after the previous Problem (empty before a Topic's first Problem; an Extra's previous is its
-	 * parent). Same checks and errors as saveCode. Returns the new files and revision. Changes no
+	 * parent). Same checks, errors and retry exception as saveCode (a restart whose reply was lost, sent
+	 * again, is answered as started). Returns the new files and revision. Changes no
 	 * Submission, progress or Hint.
 	 */
 	startFromReferenceCode(build: BuildRef): Promise<{ files: BuildFiles; revision: number }>;
@@ -232,7 +237,14 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					// Every write below is keyed on the tab's Language, so a switchLanguage landing after
 					// this check can only leave the write on the Build the tab was showing.
 					const key = { learnerId, topicId: view.topicId, language, problemId };
-					if (baseRevision !== view.build.revision) throw new LearningError('RevisionConflict');
+					if (baseRevision !== view.build.revision) {
+						// A retry of a save whose reply was lost: it committed, so the stored head is one
+						// ahead of the tab and holds exactly these files. Answer it as saved; write nothing.
+						// Two or more behind stays a conflict, so a later edit back to old code is not mistaken for a retry.
+						if (baseRevision === view.build.revision - 1 && sameBuild(view.files, build))
+							return { revision: view.build.revision };
+						throw new LearningError('RevisionConflict');
+					}
 					try {
 						if (view.build.revision === 0) {
 							await deps.db.buildStep.create({ data: { ...key, files: build, revision: 1 } });
