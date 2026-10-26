@@ -173,6 +173,16 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				}
 			};
 			/**
+			 * The access check every read of a Problem makes, without its view: the Topic id, or
+			 * NotFound / TopicLocked. Three queries lighter than `learner.problem` and renders no Markdown.
+			 */
+			const openStep = async (problemId: string): Promise<string> => {
+				const topicId = deps.catalogue.problem(problemId)?.topicId;
+				if (topicId === undefined) throw new LearningError('NotFound');
+				topicView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId), topicId); // TopicLocked
+				return topicId;
+			};
+			/**
 			 * Save-then-act: saves the Build, then runs `act` with the revision the save produced. A
 			 * Runner outage in `act` leaves the saved code, so it is rethrown carrying that revision.
 			 */
@@ -229,24 +239,27 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					);
 				},
 				saveCode: async ({ problemId, language, revision: baseRevision }, files) => {
-					// Same checks as the screen read: NotFound, TopicLocked.
-					const view = await learner.problem(problemId);
+					// The screen read's checks (NotFound, TopicLocked) and the stored step, no Markdown.
+					const topicId = await openStep(problemId);
+					const current = await loadLanguage(deps.db, learnerId, topicId);
+					const stored = await loadStep(deps.db, learnerId, topicId, current, problemId);
+					const view = { topicId, files: stored?.files, revision: stored?.revision ?? 0 };
 					const build = validateBuild(files);
 					// A tab showing another Language than the current one is stale (switched elsewhere).
-					if (language !== view.build.language) throw new LearningError('RevisionConflict');
+					if (language !== current) throw new LearningError('RevisionConflict');
 					// Every write below is keyed on the tab's Language, so a switchLanguage landing after
 					// this check can only leave the write on the Build the tab was showing.
 					const key = { learnerId, topicId: view.topicId, language, problemId };
-					if (baseRevision !== view.build.revision) {
+					if (baseRevision !== view.revision) {
 						// A retry of a save whose reply was lost: it committed, so the stored head is one
 						// ahead of the tab and holds exactly these files. Answer it as saved; write nothing.
 						// Two or more behind stays a conflict, so a later edit back to old code is not mistaken for a retry.
-						if (baseRevision === view.build.revision - 1 && sameBuild(view.files, build))
-							return { revision: view.build.revision };
+						if (baseRevision === view.revision - 1 && view.files && sameBuild(view.files, build))
+							return { revision: view.revision };
 						throw new LearningError('RevisionConflict');
 					}
 					try {
-						if (view.build.revision === 0) {
+						if (view.revision === 0) {
 							await deps.db.buildStep.create({ data: { ...key, files: build, revision: 1 } });
 							return { revision: 1 };
 						}
@@ -264,7 +277,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					}
 				},
 				startFromReferenceCode: async (build) => {
-					await learner.problem(build.problemId); // NotFound / TopicLocked
+					await openStep(build.problemId); // NotFound / TopicLocked
 					const files = referenceStartOf(deps.catalogue, build.problemId, build.language);
 					return { files, ...(await learner.saveCode(build, files)) };
 				},

@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { submitPlan } from '../learning/rules.ts';
+import { sandboxConfig } from '../runner/config.ts';
 import { type Catalogue, ContentError, loadCatalogue } from './catalogue.ts';
 
 const fixtureDir = fileURLToPath(new URL('./fixture', import.meta.url));
@@ -436,6 +438,72 @@ describe('malformed content', () => {
 				})
 			)
 		).rejects.toThrow(/stacks-call-frames\/chapter\.json: .*lowercase slug/);
+	});
+
+	describe("Submit's batches against the Runner's limits", () => {
+		const hiddenDir = (dir: string) => join(pushProblem(dir), 'tests/hidden');
+		/** Adds `count` Hidden Tests to stacks-push, each with `bytes` of input. */
+		const addHidden = async (dir: string, count: number, bytes: number) => {
+			for (let i = 0; i < count; i++) {
+				await writeFile(join(hiddenDir(dir), `big${i}.in`), 'x'.repeat(bytes));
+				await writeFile(join(hiddenDir(dir), `big${i}.out`), '');
+			}
+		};
+
+		it('refuses a Problem whose hidden batch has more Tests than the Runner takes', async () => {
+			const error = await loadBroken((dir) => addHidden(dir, sandboxConfig.maxTests, 0)).catch(
+				(e: unknown) => e
+			);
+			expect(error).toBeInstanceOf(ContentError);
+			expect(String(error)).toMatch(
+				/stacks-push: Submit's hidden batch has \d+ Tests, over the Runner's limit of 200/
+			);
+		});
+
+		it('accepts a hidden batch of exactly the Runner limit', async () => {
+			const dir = await mkdtemp(join(tmpdir(), 'content-'));
+			copies.push(dir);
+			await cp(fixtureDir, dir, { recursive: true });
+			const base = await loadCatalogue(dir);
+			const largest = Math.max(
+				...['stacks-push', 'stacks-peek', 'stacks-pop'].map(
+					(id) => submitPlan(base, id).hidden.length
+				)
+			);
+			// Every later Problem on the Main Line runs these too, so the largest batch lands on the limit.
+			await addHidden(dir, sandboxConfig.maxTests - largest, 0);
+			await expect(loadCatalogue(dir)).resolves.toBeDefined();
+		});
+
+		it('refuses a hidden batch whose serialised Runner request body is over the limit', async () => {
+			const error = await loadBroken((dir) =>
+				addHidden(dir, 4, Math.ceil(sandboxConfig.requestBodyMaxBytes / 4))
+			).catch((e: unknown) => e);
+			expect(error).toBeInstanceOf(ContentError);
+			expect(String(error)).toMatch(
+				/stacks-push: Submit's hidden batch is \d+ bytes as a Runner request, over the limit of 2097152/
+			);
+		});
+
+		it('counts the earlier Core Problems that a later Problem runs with its own', async () => {
+			const error = await loadBroken(async (dir) => {
+				// stacks-pop runs stacks-push's Tests too: split the weight over both.
+				await addHidden(dir, 2, Math.ceil(sandboxConfig.requestBodyMaxBytes / 3));
+				const popHidden = join(
+					stacks(dir),
+					'chapters/stacks-call-frames/problems/stacks-pop/tests/hidden'
+				);
+				for (let i = 0; i < 2; i++) {
+					await writeFile(
+						join(popHidden, `big${i}.in`),
+						'x'.repeat(sandboxConfig.requestBodyMaxBytes / 3)
+					);
+					await writeFile(join(popHidden, `big${i}.out`), '');
+				}
+			}).catch((e: unknown) => e);
+			expect(String(error)).toMatch(/stacks-pop: Submit's hidden batch is/);
+			expect(String(error)).not.toMatch(/stacks-push: Submit's/);
+		});
 	});
 
 	it('ignores dotfiles such as .DS_Store', async () => {

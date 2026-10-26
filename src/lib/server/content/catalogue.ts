@@ -1,6 +1,8 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
+import { MAX_BUILD_BYTES, submitPlan } from '../learning/rules.ts';
+import { sandboxConfig } from '../runner/config.ts';
 import type { Language } from '../runner/port.ts';
 import {
 	chapterManifest,
@@ -211,6 +213,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	const chapters = new Map<string, Chapter>();
 	const problems = new Map<string, Problem>();
 	const hidden = new Map<string, Test[]>();
+	const problemDirs = new Map<string, string>();
 
 	const content = await readJson(join(dir, 'content.json'), contentManifest);
 	if (content) await checkListed(join(dir, 'topics'), content.topics, 'content.json');
@@ -235,6 +238,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 			for (const problemId of chapter.problems) {
 				const problemDir = join(chapterDir, 'problems', problemId);
 				claimId(problemId, problemDir);
+				problemDirs.set(problemId, problemDir);
 				const manifest = await readJson(join(problemDir, 'problem.json'), problemManifest);
 				if (!manifest) {
 					unreadable.add(problemId);
@@ -296,6 +300,22 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		report(join(dir, 'topics', topicId, 'topic.json'), message)
 	);
 
+	const catalogue: Catalogue = {
+		topicMap: () => topicMap,
+		topic: (id) => topics.get(id),
+		chapter: (id) => chapters.get(id),
+		problem: (id) => problems.get(id),
+		hiddenTests: (problemId) => hidden.get(problemId)
+	};
+	// Only a complete catalogue has Submit batches worth measuring.
+	if (issues.length === 0) {
+		for (const [problemId, problemDir] of problemDirs) {
+			for (const message of checkSubmitBatches(submitPlan(catalogue, problemId))) {
+				report(problemDir, message);
+			}
+		}
+	}
+
 	if (issues.length > 0) throw new ContentError(issues);
 
 	const topicMap = [...topics.values()].map(({ id, title, summary, prerequisites }) => ({
@@ -306,13 +326,42 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	}));
 	deepFreeze([topicMap, topics, chapters, problems, hidden]);
 
-	return {
-		topicMap: () => topicMap,
-		topic: (id) => topics.get(id),
-		chapter: (id) => chapters.get(id),
-		problem: (id) => problems.get(id),
-		hiddenTests: (problemId) => hidden.get(problemId)
-	};
+	return catalogue;
+}
+
+/**
+ * Submit sends each batch to the Runner as one request, and the Runner refuses one past its Test or
+ * body limit, so a Topic whose batch is over would answer RunnerUnavailable on every Submit. The
+ * content check runs the Sandbox directly and would not see it. The body is measured as the
+ * adapter sends it (the JSON of the request, `files` empty), plus room for the largest Build a
+ * Learner may save, so the answer holds for any code.
+ */
+function checkSubmitBatches(plan: { visible: readonly Test[]; hidden: readonly Test[] }): string[] {
+	const messages: string[] = [];
+	const { maxTests, requestBodyMaxBytes, testTimeoutMs, memoryMb } = sandboxConfig;
+	for (const [name, batch] of [
+		['visible', plan.visible],
+		['hidden', plan.hidden]
+	] as const) {
+		if (batch.length > maxTests) {
+			messages.push(
+				`Submit's ${name} batch has ${batch.length} Tests, over the Runner's limit of ${maxTests}`
+			);
+		}
+		const body = JSON.stringify({
+			language: 'typescript', // the longest Language id
+			files: {},
+			tests: batch.map(({ id, input }) => ({ id, input })),
+			limits: { timeoutMs: testTimeoutMs, memoryMb }
+		});
+		const bytes = Buffer.byteLength(body) + MAX_BUILD_BYTES;
+		if (bytes > requestBodyMaxBytes) {
+			messages.push(
+				`Submit's ${name} batch is ${bytes} bytes as a Runner request, over the limit of ${requestBodyMaxBytes}`
+			);
+		}
+	}
+	return messages;
 }
 
 /** Every Prerequisite is a Topic, and Prerequisites never form a cycle. */
