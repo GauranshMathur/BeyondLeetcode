@@ -230,7 +230,7 @@ async function removeContainer(engine: Engine, id: string): Promise<void> {
 /**
  * At Runner start-up: containers left by a Runner that died mid-run. Another live Runner's
  * in-flight run is never touched, so a container is removed only if it predates instance ids, or
- * belongs to another instance and is older than `sweepMinAgeMs`. Age is the only liveness test.
+ * belongs to another instance and is older than `sweepMinAgeMs` (create timeout, hard stop, `Created` truncation, margin). Age is the only liveness test.
  */
 export async function removeStaleContainers(
 	engine: Engine,

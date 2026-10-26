@@ -4,6 +4,7 @@
  */
 import { request } from 'node:http';
 import { connect } from 'node:net';
+import { engineCallTimeoutMs } from './config';
 
 export type ContainerSpec = Record<string, unknown>;
 
@@ -18,8 +19,7 @@ export type AttachedContainer = {
 	destroy(): void;
 };
 
-/** Longest a lifecycle call (create, start, kill, remove, wait) may wait for the daemon. */
-export const engineCallTimeoutMs = 15_000;
+export { engineCallTimeoutMs };
 
 /** Longest an image pull may go without the daemon sending anything. */
 export const pullIdleTimeoutMs = 60_000;
