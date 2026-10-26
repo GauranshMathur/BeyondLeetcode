@@ -26,6 +26,17 @@ export type SaveState =
 type Files = Record<string, string>;
 type Act = 'run' | 'submit';
 
+/** A request that got no reply: the server may or may not have committed it. */
+type Unreplied = { kind: 'save'; files: Files } | { kind: 'restart' };
+
+const sameFiles = (a: Files, b: Files) => {
+	const paths = Object.keys(a);
+	return (
+		paths.length === Object.keys(b).length &&
+		paths.every((path) => Object.hasOwn(b, path) && a[path] === b[path])
+	);
+};
+
 /** What the machine asks the component to send. Save, Run and Submit all carry the Build and its reference. */
 export type Request =
 	| { kind: 'save' | Act; build: BuildRef; files: Files; keepalive?: true }
@@ -54,6 +65,15 @@ export interface Session {
 	readonly inFlight?: Request['kind'];
 	/** What waits for it. */
 	readonly queued?: Act | 'restart' | { switchTo: Language };
+	/** The files of the save, Run or Submit on the wire (or last sent), kept in case no reply comes. */
+	readonly sent?: Files;
+	/**
+	 * The request that got no reply (network trouble or a 5xx) and may have committed. It is re-sent
+	 * first, exactly as it was and with the same base revision, so a copy that did commit is answered
+	 * as saved and newer edits then go out on the revision it reports. A Run or Submit is re-sent
+	 * as a save, never as itself, so no Submission is recorded twice.
+	 */
+	readonly unreplied?: Unreplied;
 }
 
 export type Event =
@@ -96,10 +116,47 @@ export const isBusy = (s: Session) =>
 const halted = (s: Session) => s.save === 'conflict' || s.save === 'signedOut';
 const blocked = (s: Session) => halted(s) || s.save === 'rejected';
 
-/** Sends `kind` now with the latest code, which saves it too. */
-function sendBuild(s: Session, kind: 'save' | Act, keepalive = false): Step {
+/** Sends the request that got no reply again, as it was; `then` is what waits for its answer. */
+function resend(s: Session, lost: Unreplied, then?: Session['queued']): Step {
+	const queued = then ?? s.queued;
+	if (lost.kind === 'restart') {
+		return {
+			state: {
+				...s,
+				restarting: true,
+				restartFailed: false,
+				dirty: false,
+				inFlight: 'restart',
+				queued
+			},
+			send: { kind: 'restart', build: s.build },
+			timer: 'cancel'
+		};
+	}
 	return {
-		state: { ...s, dirty: false, save: 'saving', inFlight: kind },
+		state: {
+			...s,
+			dirty: !sameFiles(s.files, lost.files),
+			save: 'saving',
+			inFlight: 'save',
+			sent: lost.files,
+			queued
+		},
+		send: { kind: 'save', build: s.build, files: lost.files },
+		timer: 'cancel'
+	};
+}
+
+/** Sends `kind` now with the latest code, which saves it too (first re-sending what got no reply). */
+function sendBuild(s: Session, kind: 'save' | Act, keepalive = false): Step {
+	if (s.unreplied) {
+		const step = resend(s, s.unreplied, kind === 'save' ? undefined : kind);
+		return keepalive && step.send?.kind === 'save'
+			? { ...step, send: { ...step.send, keepalive: true } }
+			: step;
+	}
+	return {
+		state: { ...s, dirty: false, save: 'saving', inFlight: kind, sent: s.files },
 		send: { kind, build: s.build, files: s.files, ...(keepalive && { keepalive: true as const }) },
 		timer: 'cancel'
 	};
@@ -107,6 +164,8 @@ function sendBuild(s: Session, kind: 'save' | Act, keepalive = false): Step {
 
 /** Sends the reference request; edits not yet sent are replaced with the rest of the Build. */
 function sendRestart(s: Session): Step {
+	// A save that got no reply may have moved the revision: it goes first, the restart follows on its revision.
+	if (s.unreplied?.kind === 'save') return resend(s, s.unreplied, 'restart');
 	return {
 		state: { ...s, dirty: false, inFlight: 'restart', queued: undefined },
 		send: { kind: 'restart', build: s.build },
@@ -192,7 +251,9 @@ export function transition(s: Session, event: Event): Step {
 }
 
 /** The answer to the request of `kind`. */
-function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
+function answered(before: Session, kind: Request['kind'], reply: Reply): Step {
+	// Any answer settles what had got no reply; only trouble without an answer (below) sets it again.
+	const s: Session = { ...before, unreplied: undefined };
 	const wasAct = kind === 'run' || kind === 'submit';
 	const refused = !reply.ok && reply.kind === 'refused' ? reply : undefined;
 	const restartWaiting = s.queued === 'restart';
@@ -220,41 +281,6 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 		return { state: { ...s, switching: false, switchFailed: !reply.ok } };
 	}
 
-	if (kind === 'restart') {
-		if (reply.ok) {
-			const { files, revision } = reply.data as ReplyData['startFromReferenceCode'];
-			return {
-				state: {
-					...s,
-					files: { ...files },
-					build: { ...s.build, revision },
-					save: 'saved',
-					dirty: false,
-					outcome: undefined,
-					restarting: false,
-					restartFailed: false,
-					restarts: s.restarts + 1
-				}
-			};
-		}
-		if (refused) {
-			return {
-				state: {
-					...s,
-					save: refused.code === 'RevisionConflict' ? 'conflict' : s.save,
-					restarting: false,
-					restartFailed: true,
-					dirty: refused.code === 'RevisionConflict' ? s.dirty : true
-				}
-			};
-		}
-		// Network trouble or a 5xx: the Learner's code is still the Build; it goes out again as a save.
-		return follow(
-			{ ...s, dirty: true, save: 'failed', restarting: false, restartFailed: true },
-			true
-		);
-	}
-
 	// What waited for a save: Run or Submit go out with the new revision; a switch or a restart goes on.
 	const resume = (after: Session): Step => {
 		const waiting = after.queued;
@@ -264,6 +290,63 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 			return continueSwitch({ ...after, queued: undefined }, waiting.switchTo);
 		return sendBuild({ ...after, queued: undefined }, waiting);
 	};
+
+	/** What waited for a restart that got no reply (or was refused) cannot go on: it is dropped. */
+	const dropQueued = (after: Session): Session => {
+		const waiting = after.queued;
+		const switchWaiting = typeof waiting === 'object';
+		return {
+			...after,
+			queued: undefined,
+			outcome: waiting === 'run' || waiting === 'submit' ? undefined : after.outcome,
+			switching: switchWaiting ? false : after.switching,
+			switchFailed: switchWaiting ? true : after.switchFailed,
+			restarting: waiting === 'restart' ? false : after.restarting,
+			restartFailed: waiting === 'restart' ? true : after.restartFailed
+		};
+	};
+
+	if (kind === 'restart') {
+		if (reply.ok) {
+			const { files, revision } = reply.data as ReplyData['startFromReferenceCode'];
+			const restarted: Session = {
+				...s,
+				files: { ...files },
+				build: { ...s.build, revision },
+				save: 'saved',
+				dirty: false,
+				outcome: s.queued === 'run' || s.queued === 'submit' ? s.outcome : undefined,
+				restarting: false,
+				restartFailed: false,
+				restarts: s.restarts + 1
+			};
+			// A Run, Submit or switch asked while the restart was being re-sent goes on from the restarted Build.
+			return s.queued === undefined ? { state: restarted } : resume(restarted);
+		}
+		if (refused) {
+			return {
+				state: dropQueued({
+					...s,
+					save: refused.code === 'RevisionConflict' ? 'conflict' : s.save,
+					restarting: false,
+					restartFailed: true,
+					dirty: refused.code === 'RevisionConflict' ? s.dirty : true
+				})
+			};
+		}
+		// Network trouble or a 5xx: it may have committed, so the next try is a restart again, not a save of the old code.
+		return follow(
+			dropQueued({
+				...s,
+				dirty: true,
+				save: 'failed',
+				restarting: false,
+				restartFailed: true,
+				unreplied: { kind: 'restart' }
+			}),
+			true
+		);
+	}
 
 	if (refused && refused.code !== 'RunnerUnavailable') {
 		// RevisionConflict: the Build moved on (another tab, a switched Language). Anything else the server will never accept.
@@ -318,13 +401,19 @@ function answered(s: Session, kind: Request['kind'], reply: Reply): Step {
 	}
 
 	// Network trouble or a 5xx: the code is still unsent; try again.
+	// It may have committed: the next try re-sends these very files with this base (a Run or Submit as a save).
 	const failed: Session = {
 		...s,
 		dirty: true,
 		save: 'failed',
-		outcome: wasAct ? undefined : s.outcome
+		outcome: wasAct ? undefined : s.outcome,
+		unreplied: { kind: 'save', files: s.sent ?? s.files }
 	};
 	const waiting = failed.queued;
+	if (kind === 'save' && waiting !== undefined && before.unreplied) {
+		// The re-send failed too: what waited for it gives up, and the re-send is tried again on the retry timer.
+		return follow(dropQueued(failed), true);
+	}
 	if (kind === 'save' && waiting !== undefined) {
 		// Run or Submit save the Build themselves, so they go anyway; a switch does not.
 		if (waiting === 'restart') return sendRestart(failed);
