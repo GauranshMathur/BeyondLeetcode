@@ -149,8 +149,8 @@ interface Entry {
  *
  * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
  * count for it. Filling a map takes up to maxKeys admitted tries; after that each new key evicts the entry
- * that ends earliest, so a key that is the oldest goes after one new key, and any other after as many new
- * keys as there are entries ahead of it (at most maxKeys, or about maxKeys / 20 addresses). For a known
+ * that ends earliest, so a key that is the oldest goes after one new key, and any other after the number of
+ * entries ahead of it plus one (at most maxKeys, or about maxKeys / 20 addresses). For a known
  * Account a fresh pair count is at most 5 more tries from one address, still counted against the address
  * (20) and the Account (50), so the total guesses on an Account do not grow.
  *
@@ -163,7 +163,8 @@ interface Entry {
  * hash, while an email with none sits in `emailPairs`, which that flood does not touch, and stays refused
  * fast. The cost scales with maxKeys; it is accepted. An attacker with more addresses than maxKeys inside
  * one window gets fresh per-address budgets and is still held to the per-Account limit. The Account map
- * skips new keys beyond maxKeys Accounts, so Accounts past that point have no 50 cap (card C85).
+ * skips new keys once more than maxKeys Account entries are live in one window, so Accounts past that
+ * point have no 50 cap (card C85).
  *
  * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
  * their window is still the one it was counted in, so only wrong passwords spend budget. Callers that

@@ -439,13 +439,22 @@ describe('the address x Account map at maxKeys', () => {
 		expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(true);
 		expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(false);
 		throttle.succeed(old);
-		// The old token matches the re-created pair by key and resetAt, so the pair is cleared.
-		expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(true);
+		// The old token matches the re-created pair by key and resetAt, so the pair is cleared: five fit.
+		for (let i = 0; i < 5; i++) expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(false);
 		// refund moves only the address counter: the pair keeps the count it has (one try, so 4 more fit).
 		const again = tokenOf(throttle.attempt(from('5.5.5.5', 'z')));
 		throttle.refund(again);
 		for (let i = 0; i < 4; i++) expect(throttle.attempt(from('5.5.5.5', 'z')).allowed).toBe(true);
 		expect(throttle.attempt(from('5.5.5.5', 'z')).allowed).toBe(false);
+		// ... and the address counter did get its count back: with a limit of 2, a refund frees one try.
+		const small = setup({ maxKeys: 2, addressLimit: 2 }).throttle;
+		const first = tokenOf(small.attempt(from('7.7.7.7', 'q')));
+		small.attempt(from('7.7.7.7', 'r'));
+		expect(small.attempt(from('7.7.7.7', 's')).allowed).toBe(false);
+		small.refund(first);
+		expect(small.attempt(from('7.7.7.7', 's')).allowed).toBe(true);
+		expect(small.attempt(from('7.7.7.7', 't')).allowed).toBe(false);
 	});
 
 	it('gives nothing back to a counter in a window the attempt was not counted in', () => {
