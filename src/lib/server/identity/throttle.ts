@@ -148,17 +148,22 @@ interface Entry {
  * goes, and each of these maps still lets a fresh key in with a full budget.
  *
  * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
- * count for it. Each new key on a full map evicts the entry that ends earliest, so a key goes after as many
- * new keys as there are entries ahead of it: at most maxKeys, so up to maxKeys / 20 addresses, for each
- * fresh set of guesses, and fewer for a key that was among the first counted in the window. For a known Account that is at most 5 more tries from one address,
- * still counted against the address (20) and the Account (50), so the total guesses on an Account do not
- * grow. Timing residual of the same flood: an unknown email pushed out is counted afresh and runs the slow
- * password hash, while a known Account's try is refused fast once its Account counter is full, so an
- * attacker who spends more than maxKeys keys from about maxKeys / 20 addresses or /64s in one window can
- * tell the two apart again by their response time, for as long as the flood lasts. The cost scales with
- * maxKeys; it is accepted. An attacker with more addresses than maxKeys inside one window gets fresh
- * per-address budgets and is still held to the per-Account limit.
- * per-address budgets and is still held to the per-Account limit.
+ * count for it. Filling a map takes up to maxKeys admitted tries; after that each new key evicts the entry
+ * that ends earliest, so a key that is the oldest goes after one new key, and any other after as many new
+ * keys as there are entries ahead of it (at most maxKeys, or about maxKeys / 20 addresses). For a known
+ * Account a fresh pair count is at most 5 more tries from one address, still counted against the address
+ * (20) and the Account (50), so the total guesses on an Account do not grow.
+ *
+ * Timing residual, in two directions, both from a flood of more than maxKeys keys from about maxKeys / 20
+ * addresses or /64s in one window, for as long as the flood lasts. (1) Unknown email: the flood pushes its
+ * entry out of `emailPairs`; its next try is counted afresh and runs the slow password hash, while a known
+ * Account's try is refused fast once its pair counter (5) is full. (2) Known email: the attacker spends the
+ * target's 5 tries from one address, then floods `pairs` with other known Accounts from other addresses
+ * until that pair is evicted; if the email has an Account, its next tries are admitted again and run the
+ * hash, while an email with none sits in `emailPairs`, which that flood does not touch, and stays refused
+ * fast. The cost scales with maxKeys; it is accepted. An attacker with more addresses than maxKeys inside
+ * one window gets fresh per-address budgets and is still held to the per-Account limit. The Account map
+ * skips new keys beyond maxKeys Accounts, so Accounts past that point have no 50 cap (card C85).
  *
  * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
  * their window is still the one it was counted in, so only wrong passwords spend budget. Callers that

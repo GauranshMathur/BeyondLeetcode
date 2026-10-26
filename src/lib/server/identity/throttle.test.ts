@@ -411,6 +411,43 @@ describe('the address x Account map at maxKeys', () => {
 		expect(throttle.attempt(from('2.2.2.2', 'o4')).allowed).toBe(false);
 	});
 
+	it('gives an address 5 more tries on a known Account once its pair was evicted, inside the address and Account caps', () => {
+		const { throttle } = setup({ maxKeys: 4 });
+		for (let i = 0; i < 5; i++)
+			expect(throttle.attempt(from('1.1.1.1', 'victim')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'victim')).allowed).toBe(false);
+		// Other addresses and other Accounts fill the pair map until the victim's pair goes.
+		for (const id of ['o1', 'o2', 'o3', 'o4'])
+			throttle.attempt(from(`2.2.2.${id.length}${id}`, id));
+		let more = 0;
+		while (throttle.attempt(from('1.1.1.1', 'victim')).allowed) more++;
+		expect(more).toBe(5);
+		// 10 tries so far on the Account; the Account cap of 50 still ends it from fresh addresses.
+		let fresh = 0;
+		for (let i = 0; i < 100; i++)
+			if (throttle.attempt(from(`3.3.${i >> 8}.${i & 255}`, 'victim')).allowed) fresh++;
+		expect(fresh).toBe(40);
+	});
+
+	it('lets the token of an evicted pair clear a pair re-created in the same millisecond (as on main, where succeed clears that pair anyway); refund touches only the address', () => {
+		const { throttle } = setup({ maxKeys: 2, addressLimit: 1_000_000 });
+		const old = tokenOf(throttle.attempt(from('1.1.1.1', 'a')));
+		throttle.attempt(from('2.2.2.2', 'b'));
+		throttle.attempt(from('3.3.3.3', 'c'));
+		// 'a' was evicted; the same key comes back at the same fixed time, so it has the same resetAt.
+		for (let i = 0; i < 4; i++) throttle.attempt(from('1.1.1.1', 'a'));
+		expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(false);
+		throttle.succeed(old);
+		// The old token matches the re-created pair by key and resetAt, so the pair is cleared.
+		expect(throttle.attempt(from('1.1.1.1', 'a')).allowed).toBe(true);
+		// refund moves only the address counter: the pair keeps the count it has (one try, so 4 more fit).
+		const again = tokenOf(throttle.attempt(from('5.5.5.5', 'z')));
+		throttle.refund(again);
+		for (let i = 0; i < 4; i++) expect(throttle.attempt(from('5.5.5.5', 'z')).allowed).toBe(true);
+		expect(throttle.attempt(from('5.5.5.5', 'z')).allowed).toBe(false);
+	});
+
 	it('gives nothing back to a counter in a window the attempt was not counted in', () => {
 		const { throttle, advance } = setup({ maxKeys, addressLimit: 1_000_000 });
 		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'victim')));
