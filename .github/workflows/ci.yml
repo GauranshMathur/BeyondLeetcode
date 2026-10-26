@@ -11,6 +11,7 @@ permissions:
 jobs:
   typecheck:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -21,6 +22,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -35,6 +37,7 @@ jobs:
 
   unit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -47,6 +50,7 @@ jobs:
 
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -57,13 +61,25 @@ jobs:
 
   e2e:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
+      # The apt half of this step (the Azure mirror) stalled at 25 kB/s on 2026-10-26 (12 minutes for
+      # 19 MB; twice it never finished), while the browser download takes seconds, so caching the browsers
+      # would not help. Each attempt gets 4 minutes (normally under one), the step 10, and one retry.
+      - name: Install Playwright's Chromium
+        timeout-minutes: 10
+        run: |
+          for attempt in 1 2; do
+            if timeout 4m bunx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning::Playwright install attempt $attempt failed or timed out"
+            sudo pkill -x apt-get || true
+          done
+          exit 1
       # Run goes through the real Runner (started by the Playwright config), which needs the Sandbox image.
       - run: docker pull python:3.13-slim
       # Built here under the exact name:tag config.ts uses, so the Runner finds it locally and never waits
@@ -75,6 +91,7 @@ jobs:
 
   sandbox:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -103,6 +120,7 @@ jobs:
       cancel-in-progress: false
     needs: sandbox
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -142,6 +160,7 @@ jobs:
       cancel-in-progress: false
     needs: sandbox
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -173,6 +192,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -190,7 +210,18 @@ jobs:
         with:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
-      - run: bunx playwright install --with-deps chromium
+      # The apt half of this step (the Azure mirror) stalled at 25 kB/s on 2026-10-26 (12 minutes for
+      # 19 MB; twice it never finished), while the browser download takes seconds, so caching the browsers
+      # would not help. Each attempt gets 4 minutes (normally under one), the step 10, and one retry.
+      - name: Install Playwright's Chromium
+        timeout-minutes: 10
+        run: |
+          for attempt in 1 2; do
+            if timeout 4m bunx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning::Playwright install attempt $attempt failed or timed out"
+            sudo pkill -x apt-get || true
+          done
+          exit 1
       # Web, runner and init + compose up, then the browser flow in three Languages. Shared with
       # release.yml, so the image published there passes the very same test.
       - name: Smoke test
@@ -202,6 +233,7 @@ jobs:
     if: github.event_name == 'push'
     needs: [typecheck, lint, unit, build, e2e, sandbox, docker]
     runs-on: ubuntu-24.04
+    timeout-minutes: 40
     concurrency:
       group: publish-edge
       cancel-in-progress: false
