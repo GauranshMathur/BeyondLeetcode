@@ -76,6 +76,27 @@ describe('Engine attach', () => {
 		await expect(createEngine(socketPath, 100).wait('c1')).rejects.toThrow();
 	});
 
+	it('rejects a call whose reply keeps trickling in past the deadline', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'engine-'));
+		const socketPath = join(dir, 'docker.sock');
+		const server = createServer((socket) => {
+			socket.once('data', () => {
+				socket.write('HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n');
+				const drip = setInterval(() => socket.write('x'), 30);
+				socket.once('close', () => clearInterval(drip));
+			});
+		}).listen(socketPath);
+		cleanup.push(() => {
+			server.close();
+			rmSync(dir, { recursive: true, force: true });
+		});
+		await new Promise((resolve) => server.once('listening', resolve));
+
+		const started = Date.now();
+		await expect(createEngine(socketPath, 200).create('img', {})).rejects.toThrow(/timed out/);
+		expect(Date.now() - started).toBeLessThan(300);
+	});
+
 	it('fails a lifecycle call after 15 s by default', () => {
 		expect(engineCallTimeoutMs).toBe(15_000);
 	});
