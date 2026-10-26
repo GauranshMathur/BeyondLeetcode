@@ -79,7 +79,7 @@ jobs:
 
   # The release gate. A tag created with GITHUB_TOKEN triggers no workflow, so release publishing
   # runs here, in the release run. This job holds no write permission and builds nothing: it ties
-  # the tag to the commit ci tested and waits for that ci run (smoke test, sandbox tests and all).
+  # the tag to the commit ci tested and waits for that ci run's test jobs (smoke test, sandbox tests and all).
   release-gate:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
@@ -123,19 +123,11 @@ jobs:
           tested="$(git show "$GITHUB_SHA:package.json" | jq -S 'del(.version)')"
           released="$(git show "$RELEASE_SHA:package.json" | jq -S 'del(.version)')"
           [ "$tested" = "$released" ] || { echo "package.json differs beyond .version"; exit 1; }
-      - name: Wait for ci to pass on the tested commit
-        run: |
-          # ci starts on the same push as this run, so give it a few minutes to appear.
-          id=
-          for i in $(seq 1 30); do
-            id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" \
-              --event push --json databaseId --jq '.[0].databaseId // empty')"
-            [ -n "$id" ] && break
-            sleep 10
-          done
-          [ -n "$id" ] || { echo "No ci run found for $GITHUB_SHA"; exit 1; }
-          # Bounded: gives up after 40 minutes (a normal run takes well under 15).
-          timeout 2400 gh run watch "$id" --repo "$GITHUB_REPOSITORY" --exit-status
+      # Gates on ci's test jobs, not the run's conclusion: publish-edge can be cancelled by a newer
+      # push while pending, which ends the run `cancelled` though every test passed. The script
+      # (from the tag, which the check above tied to the tested commit) waits up to 40 minutes.
+      - name: Wait for ci's test jobs to pass on the tested commit
+        run: .github/ci-gate.sh "$GITHUB_SHA"
 
   # Publishes the app image as vX.Y.Z and latest, once the gate passed. The only job here with a
   # write permission. It runs no test; the only repo content it executes is .github/published.sh (from the gated sha) and
