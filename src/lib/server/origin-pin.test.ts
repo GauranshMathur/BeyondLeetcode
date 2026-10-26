@@ -153,6 +153,26 @@ async function pinned(pin: { protocol: string; host: string }) {
 	return { send, close: () => server.close() };
 }
 
+describe('pinRequest', () => {
+	it('does not assign the target of an ordinary request (it is left exactly as it arrived)', () => {
+		let assigned = 0;
+		const req = {
+			headers: {} as http.IncomingHttpHeaders,
+			get url() {
+				return '/signin?next=%2F';
+			},
+			set url(_value: string | undefined) {
+				assigned++;
+			}
+		};
+
+		pinRequest(req, { protocol: 'https', host: 'learn.example.com' });
+
+		expect(assigned).toBe(0);
+		expect(req.headers[HOST_HEADER]).toBe('learn.example.com');
+	});
+});
+
 describe('the pin on raw requests', () => {
 	const open: Array<() => void> = [];
 	afterEach(() => {

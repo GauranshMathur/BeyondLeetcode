@@ -67,5 +67,6 @@ export function originForm(target: string): string {
 export function pinRequest(req: Pick<IncomingMessage, 'headers' | 'url'>, pin: Pin): void {
 	req.headers[PROTOCOL_HEADER] = pin.protocol;
 	req.headers[HOST_HEADER] = pin.host;
-	if (req.url !== undefined) req.url = originForm(req.url);
+	// Assigned only when it changes: an ordinary request is left exactly as it arrived.
+	if (req.url !== undefined && !req.url.startsWith('/')) req.url = originForm(req.url);
 }
