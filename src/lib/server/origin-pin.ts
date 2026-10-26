@@ -45,8 +45,27 @@ export function pinEnvironment(env: NodeJS.ProcessEnv): Pin | null {
 	return pin;
 }
 
-/** Per request: drops whatever the client sent under the private names and sets them from the pin. */
-export function pinRequest(req: Pick<IncomingMessage, 'headers'>, pin: Pin): void {
+const ABSOLUTE_FORM = /^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i;
+
+/**
+ * The request target as a path and query only. The adapter builds the URL as `origin + req.url`, so an
+ * absolute-form target (`GET http://evil.example/x HTTP/1.1`, which HTTP allows) would turn ORIGIN
+ * `https://learn.example.com` into `https://learn.example.comhttp://...`. An ordinary target, which starts with
+ * `/`, is returned untouched; otherwise the scheme and authority are dropped, and leading slashes collapse to one
+ * so the result is never protocol-relative (`//evil.example/x`).
+ */
+export function originForm(target: string): string {
+	if (target.startsWith('/')) return target;
+	const rest = target.replace(ABSOLUTE_FORM, '');
+	return `/${rest.replace(/^\/+/, '')}`;
+}
+
+/**
+ * Per request: drops whatever the client sent under the private names and sets them from the pin, and puts the
+ * request target in origin form. Both must run before the adapter's own listener.
+ */
+export function pinRequest(req: Pick<IncomingMessage, 'headers' | 'url'>, pin: Pin): void {
 	req.headers[PROTOCOL_HEADER] = pin.protocol;
 	req.headers[HOST_HEADER] = pin.host;
+	if (req.url !== undefined) req.url = originForm(req.url);
 }

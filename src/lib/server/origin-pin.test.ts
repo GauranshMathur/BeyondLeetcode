@@ -1,8 +1,15 @@
 import { spawnSync } from 'node:child_process';
 import http from 'node:http';
-import type { AddressInfo } from 'node:net';
+import net, { type AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { HOST_HEADER, PROTOCOL_HEADER, pinEnvironment, pinFor, pinRequest } from './origin-pin.ts';
+import {
+	HOST_HEADER,
+	originForm,
+	PROTOCOL_HEADER,
+	pinEnvironment,
+	pinFor,
+	pinRequest
+} from './origin-pin.ts';
 
 describe('pinFor', () => {
 	it('takes the protocol and host, port included, from ORIGIN', () => {
@@ -89,6 +96,142 @@ describe('pinRequest on a real server', () => {
 
 		expect(seen[HOST_HEADER]).toBe('learn.example.com');
 		expect(seen[PROTOCOL_HEADER]).toBe('https');
+	});
+});
+
+describe('originForm', () => {
+	it.each([
+		['/settings?/theme', '/settings?/theme'],
+		['//evil.example/x', '//evil.example/x'],
+		['/', '/'],
+		['http://evil.example/settings', '/settings'],
+		['https://evil.example:8443/a/b?c=d', '/a/b?c=d'],
+		['http://evil.example', '/'],
+		['http://evil.example?q=1', '/?q=1'],
+		['http://evil.example//evil2.example/x', '/evil2.example/x'],
+		['HTTP://EVIL.example///x', '/x'],
+		['*', '/*']
+	])('%s becomes %s', (target, expected) => {
+		expect(originForm(target)).toBe(expected);
+	});
+});
+
+/** A server behind `pinRequest`, and a raw client: the way a request target or header copy actually arrives. */
+async function pinned(pin: { protocol: string; host: string }) {
+	const server = http.createServer((req, res) => {
+		// What the adapter does: the origin it is given, then the request target.
+		const origin = `${req.headers[PROTOCOL_HEADER]}://${req.headers[HOST_HEADER]}`;
+		const url = new URL(req.url ?? '', origin);
+		res.end(
+			JSON.stringify({
+				origin: url.origin,
+				pathname: url.pathname,
+				search: url.search,
+				proto: req.headers[PROTOCOL_HEADER],
+				host: req.headers[HOST_HEADER]
+			})
+		);
+	});
+	server.prependListener('request', (req) => pinRequest(req, pin));
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const { port } = server.address() as AddressInfo;
+	/** Sends `raw` and returns the JSON bodies of every response, in order. */
+	const send = (raw: string, responses = 1) =>
+		new Promise<Record<string, string>[]>((done, fail) => {
+			const socket = net.connect(port, '127.0.0.1', () => socket.write(raw));
+			let text = '';
+			socket.on('data', (chunk) => {
+				text += chunk;
+				const bodies = [...text.matchAll(/\r\n\r\n(\{[^}]*\})/g)].map((m) => JSON.parse(m[1]));
+				if (bodies.length >= responses) {
+					socket.destroy();
+					done(bodies);
+				}
+			});
+			socket.on('error', fail);
+		});
+	return { send, close: () => server.close() };
+}
+
+describe('the pin on raw requests', () => {
+	const open: Array<() => void> = [];
+	afterEach(() => {
+		for (const close of open.splice(0)) close();
+	});
+	const start = async (pin: { protocol: string; host: string }) => {
+		const s = await pinned(pin);
+		open.push(s.close);
+		return s;
+	};
+	const get = (target: string, headers = '') =>
+		`GET ${target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n${headers}\r\n`;
+
+	it.each([
+		['https', 'learn.example.com'],
+		['https', 'learn.example.com:8443'],
+		['http', 'localhost:3000']
+	])('an absolute-form target cannot change the origin of %s://%s', async (protocol, host) => {
+		const { send } = await start({ protocol, host });
+
+		const [seen] = await send(get('http://evil.example/settings?a=1'));
+
+		expect(seen).toMatchObject({
+			origin: `${protocol}://${host}`,
+			pathname: '/settings',
+			search: '?a=1'
+		});
+	});
+
+	it('an absolute-form target never becomes a protocol-relative path', async () => {
+		const { send } = await start({ protocol: 'https', host: 'learn.example.com' });
+
+		const [seen] = await send(get('http://evil.example//other.example/x'));
+
+		expect(seen).toMatchObject({
+			origin: 'https://learn.example.com',
+			pathname: '/other.example/x'
+		});
+	});
+
+	it('an ordinary target is left as it is', async () => {
+		const { send } = await start({ protocol: 'https', host: 'learn.example.com' });
+
+		const [seen] = await send(get('/chapters/a?b=c'));
+
+		expect(seen).toMatchObject({ pathname: '/chapters/a', search: '?b=c' });
+	});
+
+	it('overwrites duplicate, comma-joined and differently cased copies of the private headers', async () => {
+		const { send } = await start({ protocol: 'https', host: 'learn.example.com' });
+		const copies = [
+			`${HOST_HEADER}: evil.example\r\n${HOST_HEADER}: evil2.example\r\n`,
+			`${HOST_HEADER}: evil.example, evil2.example\r\n`,
+			`X-BL-Origin-Host: evil.example\r\nX-Bl-Origin-Proto: http\r\n`
+		];
+
+		for (const headers of copies) {
+			const [seen] = await send(get('/', headers));
+
+			expect(seen).toMatchObject({
+				proto: 'https',
+				host: 'learn.example.com',
+				origin: 'https://learn.example.com'
+			});
+		}
+	});
+
+	it('pins each of two pipelined requests on one connection', async () => {
+		const { send } = await start({ protocol: 'https', host: 'learn.example.com' });
+
+		const seen = await send(
+			get('/a', `${HOST_HEADER}: evil.example\r\n`) +
+				get('http://evil.example/b', `${PROTOCOL_HEADER}: http\r\n`),
+			2
+		);
+
+		expect(seen).toHaveLength(2);
+		expect(seen[0]).toMatchObject({ origin: 'https://learn.example.com', pathname: '/a' });
+		expect(seen[1]).toMatchObject({ origin: 'https://learn.example.com', pathname: '/b' });
 	});
 });
 

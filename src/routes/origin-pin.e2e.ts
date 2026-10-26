@@ -38,7 +38,10 @@ test('a form posted from ORIGIN over plain http is accepted', async ({ request }
 		maxRedirects: 0
 	});
 
-	expect(response.status()).not.toBe(403);
+	// The action ran: 200 with the page, and the cookie it sets for the chosen theme.
+	expect(response.status()).toBe(200);
+	expect(response.headers()['set-cookie']).toMatch(/(^|\n)theme=dark;.*Path=\//i);
+	expect(response.headers()['set-cookie']).not.toMatch(/secure/i);
 });
 
 test('a client that spoofs the private host header cannot make another origin the right one', async ({
