@@ -56,7 +56,9 @@ jobs:
       - name: Merge the release PR
         if: ${{ steps.find.outputs.number }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          # RELEASE_PAT lets this merge through the main ruleset (the repo admin bypasses it);
+          # the built-in token cannot, because workflows do not run on PRs it creates.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
           RELEASE_PR_NUMBER: ${{ steps.find.outputs.number }}
         run: gh pr merge "$RELEASE_PR_NUMBER" --squash --repo "$GITHUB_REPOSITORY"
 
