@@ -18,11 +18,25 @@ const socketPath = join(dir, 'docker.sock');
 const server = createServer(() => {}).listen(socketPath);
 await new Promise((resolve) => server.once('listening', resolve));
 
+const trickleSocketPath = join(dir, 'trickle.sock');
+// Answers, then keeps the reply arriving: only an absolute deadline ends it.
+const trickle = createServer((socket) => {
+	socket.once('data', () => {
+		socket.write('HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n');
+		const drip = setInterval(() => socket.write('x'), 30);
+		socket.once('close', () => clearInterval(drip));
+		socket.on('error', () => {});
+	});
+}).listen(trickleSocketPath);
+await new Promise((resolve) => trickle.once('listening', resolve));
+
 const engine = createEngine(socketPath, timeoutMs);
+const trickling = createEngine(trickleSocketPath, timeoutMs);
 const checks: [string, () => Promise<unknown>][] = [
 	['create', () => engine.create('python:3.13-slim', {})],
 	['wait', () => engine.wait('c1')],
-	['attach', () => engine.attach('c1', () => {}, timeoutMs)]
+	['attach', () => engine.attach('c1', () => {}, timeoutMs)],
+	['create (reply trickles in)', () => trickling.create('python:3.13-slim', {})]
 ];
 
 let failed = false;
@@ -31,18 +45,22 @@ for (const [name, run] of checks) {
 	const outcome = await Promise.race([
 		run().then(
 			() => 'resolved',
-			() => 'rejected'
+			(error: unknown) =>
+				/timed out/.test(String((error as Error)?.message))
+					? 'rejected'
+					: `rejected for another reason: ${error}`
 		),
 		new Promise<string>((resolve) => setTimeout(() => resolve('pending'), timeoutMs + slackMs))
 	]);
 	const took = Date.now() - started;
-	const ok = outcome === 'rejected';
+	const ok = outcome === 'rejected' && took >= timeoutMs - 10;
 	if (!ok) failed = true;
 	console.log(
 		`${ok ? 'ok  ' : 'FAIL'} engine.${name}: ${outcome} after ${took} ms (limit ${timeoutMs + slackMs} ms)`
 	);
 }
 
+trickle.close();
 server.close();
 rmSync(dir, { recursive: true, force: true });
 process.exit(failed ? 1 : 0);
