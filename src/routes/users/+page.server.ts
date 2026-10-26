@@ -92,7 +92,7 @@ export const actions: Actions = {
 				'Users: creating an Invite failed:',
 				thrown instanceof Error ? thrown.name : typeof thrown
 			);
-			return fail(500, { message: 'The invite could not be created. Try again.' });
+			return fail(500, { inviteMessage: 'The invite could not be created. Try again.' });
 		}
 	},
 
@@ -104,14 +104,14 @@ export const actions: Actions = {
 		const id = (await request.formData()).get('id');
 		try {
 			const cancelled = typeof id === 'string' && (await invites.cancel({ who: identity, id }));
-			if (!cancelled) return fail(404, { message: 'That invite is no longer pending.' });
+			if (!cancelled) return fail(404, { cancelMessage: 'That invite is no longer pending.' });
 		} catch (thrown) {
 			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
 			console.error(
 				'Users: cancelling an Invite failed:',
 				thrown instanceof Error ? thrown.name : typeof thrown
 			);
-			return fail(500, { message: 'The invite could not be cancelled. Try again.' });
+			return fail(500, { cancelMessage: 'The invite could not be cancelled. Try again.' });
 		}
 		return { cancelled: true };
 	},
@@ -129,26 +129,28 @@ export const actions: Actions = {
 		if (identity?.role !== 'admin') error(403, 'Forbidden');
 		if (!auth) error(404, 'Not found');
 		const id = (await request.formData()).get('id');
+		// Which row a failure belongs to; the page shows it on that row.
+		const resetUserId = typeof id === 'string' ? id : '';
 		try {
 			const { password } = await resetPassword(auth, {
 				who: identity,
 				headers: request.headers,
-				userId: typeof id === 'string' ? id : ''
+				userId: resetUserId
 			});
-			return { reset: { userId: typeof id === 'string' ? id : '', password } };
+			return { reset: { userId: resetUserId, password } };
 		} catch (thrown) {
 			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
 			if (thrown instanceof UnknownAccountError) {
-				return fail(404, { message: 'That user no longer exists.' });
+				return fail(404, { resetMessage: 'That user no longer exists.', resetUserId });
 			}
 			if (thrown instanceof SelfResetError) {
-				return fail(400, { message: 'You cannot reset your own password here.' });
+				return fail(400, { resetMessage: 'You cannot reset your own password here.', resetUserId });
 			}
 			console.error(
 				'Users: resetting a password failed:',
 				thrown instanceof Error ? thrown.name : typeof thrown
 			);
-			return fail(500, { message: 'The password could not be reset. Try again.' });
+			return fail(500, { resetMessage: 'The password could not be reset. Try again.', resetUserId });
 		}
 	},
 
