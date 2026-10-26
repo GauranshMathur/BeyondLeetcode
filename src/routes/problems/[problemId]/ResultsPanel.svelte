@@ -222,7 +222,7 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		overflow-x: auto;
 	}
 	/* Phones: the Tests tab gives the console the whole pane; 20px margins, a full-width Next button. */
-	@media (max-width: 767px) {
+	@media (max-width: 767.98px) {
 		.head {
 			padding: 0 20px;
 		}
