@@ -1,6 +1,13 @@
 import type { ActionResult } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
-import { decodeRefusal, encodeRefusal, toReply, WIRE_CODES, type WireCode } from './problem-wire';
+import {
+	decodeRefusal,
+	encodeRefusal,
+	filesDigest,
+	toReply,
+	WIRE_CODES,
+	type WireCode
+} from './problem-wire';
 
 describe('a refusal on the wire', () => {
 	it.each(WIRE_CODES)('%s reaches the reader as itself, with its revision', (code: WireCode) => {
@@ -77,5 +84,15 @@ describe('toReply', () => {
 		});
 		expect(toReply(sent(502), undefined)).toEqual({ ok: false, kind: 'unreachable' });
 		expect(toReply(sent(200), undefined)).toEqual({ ok: false, kind: 'unreachable' });
+	});
+});
+
+describe('the digest of a Build', () => {
+	it('is the same whatever order the paths come in, and tells different files apart', async () => {
+		const a = await filesDigest({ 'a.py': 'x', 'b.py': 'y' });
+		expect(await filesDigest({ 'b.py': 'y', 'a.py': 'x' })).toBe(a);
+		expect(a).toMatch(/^[0-9a-f]{64}$/);
+		expect(await filesDigest({ 'a.py': 'x', 'b.py': 'z' })).not.toBe(a);
+		expect(await filesDigest({ 'a.py': 'xy' })).not.toBe(await filesDigest({ 'a.pyx': 'y' }));
 	});
 });
