@@ -190,7 +190,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 	}
-	@media (min-width: 901px), (max-width: 767px) {
+	@media (min-width: 901px), (max-width: 767.98px) {
 		.left {
 			display: flex;
 			flex-direction: column;
@@ -213,7 +213,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		}
 	}
 	/* Phones: the Problem tab fills its pane; its own row scrolls sideways if it does not fit. */
-	@media (max-width: 767px) {
+	@media (max-width: 767.98px) {
 		.left {
 			border-right: 0;
 		}

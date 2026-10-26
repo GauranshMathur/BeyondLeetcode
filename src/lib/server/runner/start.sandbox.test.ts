@@ -91,7 +91,8 @@ describe('Runner start: sweep', { timeout: 60_000 }, () => {
 		await engine.start(id);
 		return id;
 	}
-	const alive = async (id: string) => (await engine.listByLabel(containerLabel)).includes(id);
+	const alive = async (id: string) =>
+		(await engine.listContainers(containerLabel)).some((c) => c.id === id);
 
 	it('leaves a fresh container of another instance and removes an old one', async () => {
 		const other = await sleeper('another-instance');
