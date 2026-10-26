@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { THEME_COOKIE } from '$lib/theme';
-import { actions } from './+page.server';
+import { actions, load } from './+page.server';
 
 // SvelteKit marks a cookie Secure unless `secure` is stated, on any host but localhost, and a browser drops a
 // Secure cookie it gets over plain http: an Instance on a LAN address or a Tailscale name would keep no theme.
@@ -35,5 +35,32 @@ describe.each([
 		const { cookies } = await choose('system', address);
 
 		expect(cookies.delete).toHaveBeenCalledWith(THEME_COOKIE, { path: '/', secure });
+	});
+});
+
+describe('the Settings load offers "Change password" only to an Account that has a password', () => {
+	const run = (credential: { password: string | null } | null) =>
+		load({
+			cookies: { get: () => undefined },
+			url: new URL('http://localhost/settings'),
+			request: { headers: new Headers() },
+			locals: {
+				instance: { mode: () => 'multi' },
+				auth: {
+					api: { getSession: async () => ({ user: { id: 'u1' } }) },
+					$context: Promise.resolve({
+						internalAdapter: { findCredentialAccount: async () => credential }
+					})
+				}
+			}
+		} as never);
+
+	it('has one', async () => {
+		expect(await run({ password: 'hash' })).toMatchObject({ hasPassword: true });
+	});
+
+	it('has none (GitHub or Google only)', async () => {
+		expect(await run(null)).toMatchObject({ hasPassword: false });
+		expect(await run({ password: null })).toMatchObject({ hasPassword: false });
 	});
 });
