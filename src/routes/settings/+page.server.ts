@@ -1,6 +1,7 @@
 import { error, fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
+import { signedIn } from '$lib/server/signed-in';
 import { parseTheme, THEME_COOKIE } from '$lib/theme';
 import { hasPassword } from '../account/password/change-password';
 import type { Actions, PageServerLoad } from './$types';
@@ -87,7 +88,7 @@ export const actions: Actions = {
 	},
 	/** The confirmed reset: deletes the Learner's progress (the theme cookie stays) and shows the Map. */
 	reset: async ({ locals }) => {
-		await locals.learning.resetProgress();
+		await signedIn(locals).learning.resetProgress();
 		redirect(303, '/');
 	}
 };
