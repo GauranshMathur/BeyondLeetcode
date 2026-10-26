@@ -34,9 +34,12 @@ type Reply = { status: number; body: string };
  */
 function guard(req: ClientRequest, ms: number, what: string, reject: (error: Error) => void) {
 	let timer: ReturnType<typeof setTimeout> | undefined;
+	let expired = false;
 	function arm(): void {
 		clearTimeout(timer);
+		if (expired) return;
 		timer = setTimeout(() => {
+			expired = true;
 			reject(new Error(`${what} timed out`));
 			req.destroy();
 		}, ms);
@@ -46,6 +49,10 @@ function guard(req: ClientRequest, ms: number, what: string, reject: (error: Err
 		arm,
 		clear(): void {
 			clearTimeout(timer);
+		},
+		/** True once the deadline has fired: a reply that arrives after it is discarded. */
+		get expired(): boolean {
+			return expired;
 		}
 	};
 }
@@ -88,6 +95,7 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 						: {}
 				},
 				(res) => {
+					if (timer?.expired) return void res.destroy();
 					const chunks: Buffer[] = [];
 					res.on('data', (chunk: Buffer) => {
 						chunks.push(chunk);
@@ -253,6 +261,7 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 						path: `/containers/${id}/wait?condition=next-exit`
 					},
 					(res) => {
+						if (timer?.expired) return void res.destroy();
 						// Registered: the status itself comes at exit, which the hard stop bounds.
 						if (res.statusCode === 200) timer?.clear();
 						const chunks: Buffer[] = [];
