@@ -2,6 +2,7 @@ import { error, fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
+import { clientAddress } from '$lib/server/identity/client-address';
 import type { Throttle } from '$lib/server/identity/throttle';
 
 /**
@@ -52,15 +53,6 @@ const text = (data: FormData, key: string) => {
 	return typeof value === 'string' ? value : '';
 };
 
-/** The caller's address, or '' when the server cannot tell: the throttle keeps those in one shared bucket. */
-function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
-	try {
-		return event.getClientAddress();
-	} catch {
-		return '';
-	}
-}
-
 /** The kind of failure only: the error text may hold paths, query text and the input. */
 function logFailure(what: string, failure: unknown) {
 	const code = isAPIError(failure) ? failure.body?.code : (failure as { code?: unknown })?.code;
@@ -107,7 +99,14 @@ export function createChangePassword(throttle: Throttle) {
 			// page is shown with the failure and a link to Sign in, not a redirect that would hide it.
 			if (event.request.method === 'POST' && event.locals.auth) {
 				const session = await event.locals.auth.api.getSession({ headers: event.request.headers });
-				if (!session) return { forced: false, changed: false, unfinished: false, signedOut: true };
+				if (!session)
+					return {
+						forced: false,
+						changed: false,
+						unfinished: false,
+						signedOut: true,
+						minPasswordLength: MIN_PASSWORD_LENGTH
+					};
 			}
 			const { forced } = await who(event);
 			const { searchParams } = event.url;
@@ -115,7 +114,8 @@ export function createChangePassword(throttle: Throttle) {
 				forced,
 				changed: searchParams.has('changed'),
 				unfinished: searchParams.has('unfinished'),
-				signedOut: false
+				signedOut: false,
+				minPasswordLength: MIN_PASSWORD_LENGTH
 			};
 		},
 

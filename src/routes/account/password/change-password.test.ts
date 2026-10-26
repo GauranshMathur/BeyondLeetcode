@@ -498,13 +498,15 @@ describe('changing a password', () => {
 			forced: true,
 			changed: false,
 			unfinished: false,
-			signedOut: false
+			signedOut: false,
+			minPasswordLength: 12
 		});
 		expect(await load(event(auth, free.cookie, {}).ev)).toEqual({
 			forced: false,
 			changed: false,
 			unfinished: false,
-			signedOut: false
+			signedOut: false,
+			minPasswordLength: 12
 		});
 		expect(await load(event(auth, free.cookie, {}, '10.0.0.1', '?changed').ev)).toMatchObject({
 			changed: true

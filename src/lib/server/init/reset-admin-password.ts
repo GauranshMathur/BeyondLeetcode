@@ -1,6 +1,7 @@
 import { createDb, type Db } from '../db.ts';
 import { resetAdminPassword } from '../identity/accounts.ts';
 import { createAuth, isPlaceholderSecret, MIN_SECRET_LENGTH } from '../identity/auth.ts';
+import { parseOrigin } from '../identity/origin.ts';
 import { clearEmptyMultiInstance, restoreMultiInstance } from '../instance.ts';
 
 /**
@@ -44,16 +45,6 @@ const fail = (code: number, message: string): CommandResult => ({
 	stderr: `reset-admin-password: ${message}\n`
 });
 
-/** ORIGIN as an http(s) origin, or '' when it is unset or not a URL (a bare `http://` is not one). */
-export function parseOrigin(value: string | undefined): string {
-	try {
-		const url = new URL(value ?? '');
-		return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : '';
-	} catch {
-		return '';
-	}
-}
-
 export async function runResetAdminPassword(
 	args: string[],
 	env: { DATABASE_URL?: string; BETTER_AUTH_SECRET?: string; ORIGIN?: string },
@@ -79,7 +70,7 @@ export async function runResetAdminPassword(
 		// ORIGIN is optional: nothing here makes a cookie or checks a request origin. It is passed along
 		// only to keep Better Auth from warning that it has no base URL.
 		db = open(env.DATABASE_URL);
-		auth = createAuth({ db, origin: parseOrigin(env.ORIGIN), secret });
+		auth = createAuth({ db, origin: parseOrigin(env.ORIGIN) ?? '', secret });
 	} catch {
 		return fail(EXIT_FAILED, 'could not open the database. Nothing was changed.');
 	}

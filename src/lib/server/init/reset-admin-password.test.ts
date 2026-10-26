@@ -7,7 +7,6 @@ import {
 	EXIT_NO_ADMIN,
 	EXIT_OK,
 	EXIT_USAGE,
-	parseOrigin,
 	runResetAdminPassword,
 	USAGE
 } from './reset-admin-password.ts';
@@ -170,21 +169,6 @@ describe('reset-admin-password command', () => {
 
 		expect(result.code).toBe(EXIT_NO_ADMIN);
 		expect((await createInstance(db)).mode()).toBe('local');
-	});
-
-	it('reads ORIGIN as a URL: a bare scheme, a non-http scheme or text is ignored', () => {
-		expect(parseOrigin('https://learn.example.com/')).toBe('https://learn.example.com');
-		expect(parseOrigin('http://localhost:3000')).toBe('http://localhost:3000');
-		for (const bad of [
-			undefined,
-			'',
-			'http://',
-			'https://',
-			'ftp://x.example',
-			'learn.example.com'
-		]) {
-			expect(parseOrigin(bad)).toBe('');
-		}
 	});
 
 	it('fails plainly, without opening the database, when BETTER_AUTH_SECRET is missing or unusable', async () => {

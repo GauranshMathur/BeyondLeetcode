@@ -11,6 +11,7 @@ import {
 	MIN_PASSWORD_LENGTH
 } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
+import { clientAddress } from '$lib/server/identity/client-address';
 import type { Throttle } from '$lib/server/identity/throttle';
 
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
@@ -98,15 +99,6 @@ function known(
 	}
 }
 
-/** The caller's address, or '' when the server cannot tell: the throttle keeps those in one shared bucket. */
-function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
-	try {
-		return event.getClientAddress();
-	} catch {
-		return '';
-	}
-}
-
 /**
  * The Accept invite page. The token is in the URL path, so nothing here logs the path or the token, and
  * `handle.ts` answers this route with `Referrer-Policy: strict-origin` and `Cache-Control: no-store`
@@ -131,7 +123,7 @@ export function createAccept(throttle: Throttle) {
 			const invite = await locals.invites?.lookup(params.token ?? '', new Date());
 			if (!invite) {
 				forget(cookies, secure({ url }));
-				return { valid: false };
+				return { valid: false, minPasswordLength: MIN_PASSWORD_LENGTH };
 			}
 			cookies.set(INVITE_COOKIE, params.token ?? '', {
 				path: COOKIE_PATH,
@@ -140,7 +132,7 @@ export function createAccept(throttle: Throttle) {
 				secure: secure({ url }),
 				maxAge: COOKIE_MAX_AGE_SECONDS
 			});
-			return { valid: true };
+			return { valid: true, minPasswordLength: MIN_PASSWORD_LENGTH };
 		},
 
 		async action(event: AcceptEvent) {
