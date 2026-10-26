@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.6.2/schema.json",
 	"vcs": {
 		"enabled": true,
 		"clientKind": "git",
@@ -26,6 +26,14 @@
 			"trailingCommas": "none"
 		}
 	},
+	"markdown": {
+		"formatter": {
+			"enabled": false
+		},
+		"linter": {
+			"enabled": false
+		}
+	},
 	"assist": {
 		"enabled": true,
 		"actions": {
@@ -46,6 +54,16 @@
 					"correctness": {
 						"noUnusedVariables": "off",
 						"noUnusedImports": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["**/*.test.ts", "src/lib/server/runner/contract.ts"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"usePlaywrightValidDescribeCallback": "off"
 					}
 				}
 			}
