@@ -1,17 +1,13 @@
-import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test as base, expect } from '@playwright/test';
+import { startFreshServer } from '../signin/fresh-server.ts';
 
 // Two kinds of server, because the Multi-user server on 4174 starts invite-only (as every new Instance does)
 // and the Users page's toggle (C34b) can open registration, but a test that flipped it would change the
 // shared server for every other file:
 //   - the 4174 server itself shows the closed state;
 //   - for the open state this file starts its own server from the same build, on a fresh database and a free
-//     port, whose Instance a fixture made Multi-user and Open (seed-open-instance.ts), the state the toggle
-//     leaves behind. The seed is a test fixture only: nothing in the app imports it.
+//     port, whose Instance is already Multi-user and Open, the state the toggle leaves behind
+//     (startFreshServer({ openRegistration: true }), shared with the other files that need a server of their own).
 
 const LEARNER = {
 	name: 'Grace Hopper',
@@ -25,85 +21,16 @@ const test = base.extend<object, { open: OpenServer }>({
 	open: [
 		// biome-ignore lint/correctness/noEmptyPattern: Playwright reads the fixtures this one needs from this pattern
 		async ({}, use) => {
-			const dir = mkdtempSync(join(tmpdir(), 'beyondleetcode-signup-'));
-			const databaseUrl = `file:${join(dir, 'open.db')}`;
-			const port = await freePort();
-			const url = `http://localhost:${port}`;
-			const env: NodeJS.ProcessEnv = {
-				...process.env,
-				DATABASE_URL: databaseUrl,
-				CONTENT_DIR: 'src/lib/server/content/fixture',
-				ORIGIN: url,
-				PORT: String(port),
-				BETTER_AUTH_SECRET: 'e2e-only-secret-e2e-only-secret-e2e-only-0123',
-				// A multi-user Instance never takes the test switches; the Runner is never called by these pages.
-				RUNNER_URL: 'http://127.0.0.1:9',
-				RUNNER_TOKEN: 'e2e-unused'
-			};
-			delete env.IDENTITY_TEST_LEARNER;
-			delete env.RUNNER_ADAPTER;
-
-			execFileSync('node_modules/.bin/prisma', ['migrate', 'deploy'], { env, stdio: 'pipe' });
-			execFileSync('bun', ['src/routes/signup/seed-open-instance.ts', databaseUrl], {
-				env,
-				stdio: 'pipe'
-			});
-			const server = spawn('bun', ['./build/index.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-			let output = '';
-			server.stdout?.on('data', (chunk) => {
-				output += chunk;
-			});
-			server.stderr?.on('data', (chunk) => {
-				output += chunk;
-			});
+			const server = await startFreshServer({ openRegistration: true });
 			try {
-				await ready(server, `${url}/signup`, () => output);
-				await use({ url });
+				await use({ url: server.url });
 			} finally {
-				await stop(server);
-				rmSync(dir, { recursive: true, force: true });
+				await server.stop();
 			}
 		},
 		{ scope: 'worker', timeout: 60_000 }
 	]
 });
-
-async function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const probe = createServer();
-		probe.once('error', reject);
-		probe.listen(0, '127.0.0.1', () => {
-			const { port } = probe.address() as { port: number };
-			probe.close(() => resolve(port));
-		});
-	});
-}
-
-async function ready(server: ChildProcess, url: string, output: () => string) {
-	const stopped = () => server.exitCode !== null || server.signalCode !== null;
-	for (let i = 0; i < 150; i++) {
-		if (stopped()) throw new Error(`the open-registration server exited:\n${output()}`);
-		try {
-			if ((await fetch(url)).ok) return;
-		} catch {
-			// not listening yet
-		}
-		await new Promise((resolve) => setTimeout(resolve, 200));
-	}
-	throw new Error(`the open-registration server did not answer in time:\n${output()}`);
-}
-
-async function stop(server: ChildProcess) {
-	if (server.exitCode !== null || server.signalCode !== null) return;
-	const exited = new Promise((resolve) => server.once('exit', resolve));
-	server.kill('SIGTERM');
-	const timedOut = Symbol('timeout');
-	const result = await Promise.race([
-		exited,
-		new Promise((resolve) => setTimeout(() => resolve(timedOut), 5_000))
-	]);
-	if (result === timedOut) server.kill('SIGKILL');
-}
 
 test.describe('registration closed (the Multi-user server starts invite-only)', () => {
 	test('shows the closed state and no form', async ({ page }) => {

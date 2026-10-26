@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { createServer } from 'node:net';
+import { freePort } from '../../test/free-port.ts';
 import { containerLabel, sandboxConfig } from './config';
 import type { createEngine } from './engine';
 
@@ -33,17 +33,6 @@ export async function waitUntilHealthy(
 		await new Promise((resolve) => setTimeout(resolve, intervalMs));
 	}
 	throw new Error(`Runner process did not become healthy within ${healthBudgetMs / 1000} s`);
-}
-
-async function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServer();
-		server.listen(0, '127.0.0.1', () => {
-			const { port } = server.address() as { port: number };
-			server.close(() => resolve(port));
-		});
-		server.on('error', reject);
-	});
 }
 
 /**
