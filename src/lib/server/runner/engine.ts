@@ -2,7 +2,7 @@
  * Docker Engine API over the unix socket (ADR 0002). Only the Runner process builds one of these:
  * the socket is root on the host, so the web process never gets it.
  */
-import { request } from 'node:http';
+import { type ClientRequest, request } from 'node:http';
 import { connect } from 'node:net';
 import { engineCallTimeoutMs } from './config';
 
@@ -26,15 +26,55 @@ export const pullIdleTimeoutMs = 60_000;
 
 type Reply = { status: number; body: string };
 
+/**
+ * A deadline that rejects on its own. `req.setTimeout(..., () => req.destroy(err))` is not enough:
+ * on Bun 1.2.19, the production runtime, `destroy(err)` closes the socket without emitting 'error',
+ * so the promise never settled (#284). Here the timer rejects first, then destroys the request;
+ * anything the request emits afterwards (a late 'error', a late response) lands on a settled guard.
+ */
+function guard(req: ClientRequest, ms: number, what: string, reject: (error: Error) => void) {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	function arm(): void {
+		clearTimeout(timer);
+		timer = setTimeout(() => {
+			reject(new Error(`${what} timed out`));
+			req.destroy();
+		}, ms);
+	}
+	return {
+		/** (Re)starts the clock: the first call sets an absolute deadline, a later one makes it an idle timeout. */
+		arm,
+		clear(): void {
+			clearTimeout(timer);
+		}
+	};
+}
+
 export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeoutMs) {
+	/**
+	 * `timeoutMs` is an absolute deadline for the whole reply; with `idle` it restarts whenever the
+	 * daemon sends a chunk (a pull streams progress).
+	 */
 	function call(
 		method: string,
 		path: string,
 		json?: unknown,
-		timeoutMs = callTimeoutMs
+		timeoutMs = callTimeoutMs,
+		idle = false
 	): Promise<Reply> {
 		return new Promise((resolve, reject) => {
 			const payload = json === undefined ? undefined : JSON.stringify(json);
+			let timer: ReturnType<typeof guard> | undefined;
+			const settle = {
+				resolve: (reply: Reply) => {
+					timer?.clear();
+					resolve(reply);
+				},
+				reject: (error: Error) => {
+					timer?.clear();
+					reject(error);
+				}
+			};
 			const req = request(
 				{
 					socketPath,
@@ -49,18 +89,22 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 				},
 				(res) => {
 					const chunks: Buffer[] = [];
-					res.on('data', (chunk: Buffer) => chunks.push(chunk));
+					res.on('data', (chunk: Buffer) => {
+						chunks.push(chunk);
+						if (idle) timer?.arm();
+					});
 					res.on('end', () =>
-						resolve({
+						settle.resolve({
 							status: res.statusCode ?? 0,
 							body: Buffer.concat(chunks).toString('utf8')
 						})
 					);
-					res.on('error', reject);
+					res.on('error', settle.reject);
 				}
 			);
-			req.on('error', reject);
-			req.setTimeout(timeoutMs, () => req.destroy(new Error(`Docker ${method} ${path} timed out`)));
+			timer = guard(req, timeoutMs, `Docker ${method} ${path}`, reject);
+			req.on('error', settle.reject);
+			timer.arm();
 			req.end(payload);
 		});
 	}
@@ -79,7 +123,8 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 			'POST',
 			`/images/create?fromImage=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`,
 			undefined,
-			pullIdleTimeoutMs
+			pullIdleTimeoutMs,
+			true
 		);
 		await assertStatus(reply, `pull ${image}`, 200);
 		if (/"error"\s*:/.test(reply.body)) throw new Error(`Docker pull ${image} failed`);
@@ -198,6 +243,9 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 		 */
 		wait(id: string): Promise<{ status: Promise<number> }> {
 			return new Promise((resolve, reject) => {
+				// A stalled daemon must not hold a concurrency slot: the deadline covers the
+				// registration, or the whole reply when the daemon answers with an error.
+				let timer: ReturnType<typeof guard> | undefined;
 				const req = request(
 					{
 						socketPath,
@@ -205,9 +253,8 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 						path: `/containers/${id}/wait?condition=next-exit`
 					},
 					(res) => {
-						// Registered: the status itself comes at exit, which the hard stop bounds. An error
-						// reply keeps the timeout, so a stalled error body cannot hold the caller either.
-						if (res.statusCode === 200) req.setTimeout(0);
+						// Registered: the status itself comes at exit, which the hard stop bounds.
+						if (res.statusCode === 200) timer?.clear();
 						const chunks: Buffer[] = [];
 						const status = new Promise<number>((done, fail) => {
 							res.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -227,12 +274,15 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 						});
 						status.catch(() => {});
 						if (res.statusCode === 200) resolve({ status });
-						else status.then(resolve as never, reject);
+						else status.then(resolve as never, reject).finally(() => timer?.clear());
 					}
 				);
-				req.on('error', reject);
-				// A stalled daemon must not hold a concurrency slot.
-				req.setTimeout(callTimeoutMs, () => req.destroy(new Error(`Docker wait ${id} timed out`)));
+				timer = guard(req, callTimeoutMs, `Docker wait ${id}`, reject);
+				req.on('error', (error) => {
+					timer?.clear();
+					reject(error);
+				});
+				timer.arm();
 				req.end();
 			});
 		},

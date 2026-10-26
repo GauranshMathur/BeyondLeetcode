@@ -40,6 +40,8 @@ jobs:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
       - run: bun run test
+      # vitest runs under Node; the engine's timeouts must also hold on the pinned Bun (#284).
+      - run: bun run test:bun
 
   build:
     runs-on: ubuntu-24.04
