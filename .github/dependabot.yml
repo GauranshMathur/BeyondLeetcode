@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Bun: security updates only. open-pull-requests-limit: 0 turns off version-update PRs
+  # and leaves security-update PRs (separate fixed limit). The ecosystem must be "bun"
+  # because the repo has bun.lock and no npm/yarn/pnpm lockfile.
+  - package-ecosystem: "bun"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
+
+  # GitHub Actions: monthly version updates (workflows pin major tags such as @v4).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+
+  # No docker entry: every Dockerfile builds its FROM line from an ARG.
