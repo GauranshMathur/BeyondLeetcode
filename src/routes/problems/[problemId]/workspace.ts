@@ -239,7 +239,9 @@ export function transition(s: Session, event: Event): Step {
 
 		case 'flush': {
 			const closed = s.closed || event.final;
-			if (s.inFlight || !s.dirty || halted(s) || s.restarting) {
+			// A restart waiting to be re-sent keeps its timer, so coming back from the page cache still retries.
+			if (s.restarting) return { state: { ...s, closed } };
+			if (s.inFlight || !s.dirty || halted(s)) {
 				return { state: { ...s, closed }, timer: 'cancel' };
 			}
 			return sendBuild({ ...s, closed }, 'save', true);

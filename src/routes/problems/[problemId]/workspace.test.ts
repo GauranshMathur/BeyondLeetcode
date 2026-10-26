@@ -688,6 +688,15 @@ describe('a request that got no reply (it may have committed)', () => {
 		expect(sent.map((r) => r.kind)).toEqual(['restart', 'restart']);
 	});
 
+	it('a non-final flush leaves the retry timer of a lost restart running', () => {
+		const { step } = play(fresh(), { type: 'restart' }, respond(unreachable), {
+			type: 'flush',
+			final: false
+		});
+		expect(step.timer).toBeUndefined();
+		expect(step.send).toBeUndefined();
+	});
+
 	it('a restart asked after a lost save waits for that save to be re-sent, then restarts on its revision', () => {
 		const { sent } = play(
 			edited(),
