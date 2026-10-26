@@ -15,7 +15,7 @@ deadline=$((SECONDS + ${CI_GATE_TIMEOUT:-2400})) # a normal run takes well under
 
 id=
 for ((i = 0; i < find_tries; i++)); do
-  id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" \
+  id="$(timeout 60 gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" \
     --event push --json databaseId --jq '.[0].databaseId // empty')"
   [ -n "$id" ] && break
   sleep "$find_sleep"
@@ -25,7 +25,7 @@ echo "Waiting for the test jobs ($JOBS) of ci run $id"
 
 while :; do
   # `gh run view` lists the latest attempt's jobs, so a re-run is judged by its own results.
-  json="$(gh run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs)" || json=
+  json="$(timeout 60 gh run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs)" || json=
   if [ -n "$json" ]; then
     # One verdict per wanted job: success | failed:<conclusion> | pending | missing.
     verdicts="$(jq -r --arg wanted "$JOBS" '
@@ -38,10 +38,21 @@ while :; do
           elif $j.conclusion == "success" then "success"
           else "failed:\($j.conclusion)" end)' <<<"$json")" || verdicts=
     if [ -n "$verdicts" ]; then
-      if grep -qE ' (missing|failed:)' <<<"$verdicts"; then
+      # Pure bash, no grep: a tool error must not read as "nothing failed". Only a line for every
+      # wanted job, each ending in success, passes.
+      bad= pending= ok=0 want=0
+      for _ in $JOBS; do want=$((want + 1)); done
+      while IFS= read -r line; do
+        case "$line" in
+          *" success") ok=$((ok + 1)) ;;
+          *" pending") pending=1 ;;
+          *) bad=1 ;;
+        esac
+      done <<<"$verdicts"
+      if [ -n "$bad" ]; then
         echo "ci run $id did not pass its test jobs:"; echo "$verdicts"; exit 1
       fi
-      if ! grep -qv ' success$' <<<"$verdicts"; then
+      if [ -z "$pending" ] && [ "$ok" = "$want" ]; then
         echo "Every test job succeeded in ci run $id"; exit 0
       fi
     fi
