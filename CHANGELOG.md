@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.1...v1.4.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C78 one Build rule for the Learning core and the Runner ([#308](https://github.com/GauranshMathur/BeyondLeetcode/issues/308)) ([2f1e2be](https://github.com/GauranshMathur/BeyondLeetcode/commit/2f1e2be9a99c9c3493cd2ca0dd8e2a2b36f75e3d))
+
 ## [1.4.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.0...v1.4.1) (2026-10-26)
 
 
