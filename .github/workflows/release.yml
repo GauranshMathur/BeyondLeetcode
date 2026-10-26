@@ -185,7 +185,7 @@ jobs:
       # and never touches anything else on the tailnet.
       - name: Join tailnet to notify the release webhook
         if: steps.exists.outputs.published != 'true'
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ""
           authkey: ${{ secrets.TS_AUTHKEY }}
