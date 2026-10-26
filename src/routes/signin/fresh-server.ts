@@ -1,9 +1,9 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDb } from '../../lib/server/db.ts';
+import { freePort } from '../../lib/test/free-port.ts';
 
 // Test-only (imported by the browser tests, never by the app): a second server from the same build, on a
 // free port and a fresh database, started the way a released Instance is, with no test switch and no
@@ -67,17 +67,6 @@ export async function startFreshServer(
 		throw error;
 	}
 	return { url, databaseUrl: env.DATABASE_URL as string, stop: stopAll };
-}
-
-async function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const probe = createServer();
-		probe.once('error', reject);
-		probe.listen(0, '127.0.0.1', () => {
-			const { port } = probe.address() as { port: number };
-			probe.close(() => resolve(port));
-		});
-	});
 }
 
 async function ready(server: ChildProcess, url: string, output: () => string) {

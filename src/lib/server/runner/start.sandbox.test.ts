@@ -1,6 +1,6 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
-import { createServer } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { freePort } from '../../test/free-port.ts';
 import { containerLabel, sandboxConfig, sweepMinAgeMs } from './config';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
@@ -15,17 +15,6 @@ const engine = createEngine(socket);
 const image = sandboxConfig.pythonImage;
 const keeper = 'beyondleetcode-test-keep:1';
 const docker = (...args: string[]) => execFileSync('docker', args, { stdio: 'pipe' });
-
-async function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const server = createServer();
-		server.listen(0, '127.0.0.1', () => {
-			const { port } = server.address() as { port: number };
-			server.close(() => resolve(port));
-		});
-		server.on('error', reject);
-	});
-}
 
 describe('Runner start: image pull', { timeout: 180_000 }, () => {
 	let runnerProcess: ChildProcess | undefined;
