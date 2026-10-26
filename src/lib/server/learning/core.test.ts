@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type Language, loadCatalogue } from '../content/catalogue.ts';
 import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
@@ -47,6 +47,18 @@ const ref = (problemId: string, revision: number, language: Language = 'python')
 	problemId,
 	language,
 	revision
+});
+
+const rendered = vi.hoisted(() => ({ calls: 0 }));
+vi.mock('../markdown.ts', async (original) => {
+	const actual = await original<typeof import('../markdown.ts')>();
+	return {
+		...actual,
+		renderMarkdown: (markdown: string) => {
+			rendered.calls++;
+			return actual.renderMarkdown(markdown);
+		}
+	};
 });
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
@@ -1539,5 +1551,43 @@ describe('learner.startFromReferenceCode()', () => {
 		expect((await learner.problem('stacks-pop')).status).toBe(before.status);
 		expect(await learner.hints('stacks-pop')).toEqual(before.hints);
 		expect(await learner.map()).toEqual(before.map);
+	});
+});
+
+describe('the autosave read', () => {
+	async function setup() {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const core = createLearningCore({ catalogue, db: await createTestDb() });
+		return core.forLearner('any-learner');
+	}
+
+	it('renders no Markdown on saveCode, nor on Start from reference code', async () => {
+		const learner = await setup();
+		await learner.problem('stacks-pop'); // the screen read does render
+		expect(rendered.calls).toBeGreaterThan(0);
+
+		rendered.calls = 0;
+		const saved = await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'a' });
+		await learner.saveCode(ref('stacks-push', saved.revision), { 'main.py': 'b' });
+		await learner.startFromReferenceCode(ref('stacks-pop', 0));
+		expect(rendered.calls).toBe(0);
+	});
+
+	it('still answers NotFound and TopicLocked, on a save and on a restart', async () => {
+		const learner = await setup();
+		await expect(learner.saveCode(ref('nope', 0), { 'main.py': '' })).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		await expect(learner.startFromReferenceCode(ref('nope', 0))).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		// queues needs stacks first
+		const locked = ref('queues-enqueue', 0);
+		await expect(learner.saveCode(locked, { 'main.py': '' })).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		await expect(learner.startFromReferenceCode(locked)).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
 	});
 });
