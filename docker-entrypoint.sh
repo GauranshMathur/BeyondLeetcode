@@ -28,13 +28,13 @@ USAGE
 
 case "${1:-}" in
 web)
-	# adapter-node stops on ORIGIN="" (compose passes an empty one when .env has none); unset means unset.
+	# compose passes an empty ORIGIN when .env has none; unset means unset.
 	if [ -z "${ORIGIN:-}" ]; then unset ORIGIN; fi
 	# /data may be a bind mount or restored backup owned by someone else.
 	chown -R bun:bun /data
 	export HOME=/home/bun
 	setpriv --reuid=bun --regid=bun --init-groups bunx prisma migrate deploy
-	exec setpriv --reuid=bun --regid=bun --init-groups bun ./build/index.js
+	exec setpriv --reuid=bun --regid=bun --init-groups bun src/lib/server/web-entry.ts
 	;;
 reset-admin-password)
 	shift
