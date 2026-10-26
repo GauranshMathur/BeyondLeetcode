@@ -1,13 +1,22 @@
 version: 2
 updates:
-  # Bun: security updates only. open-pull-requests-limit: 0 turns off version-update PRs
-  # and leaves security-update PRs (separate fixed limit). The ecosystem must be "bun"
-  # because the repo has bun.lock and no npm/yarn/pnpm lockfile.
+  # Bun: one grouped monthly version-update PR for minor and patch updates. Majors are
+  # ignored here because each major gets its own card (like C67). The ecosystem must be
+  # "bun" because the repo has bun.lock and no npm/yarn/pnpm lockfile.
   - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 0
+    groups:
+      bun-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions: monthly version updates (workflows pin major tags such as @v4).
   - package-ecosystem: "github-actions"
