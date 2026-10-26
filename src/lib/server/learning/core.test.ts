@@ -1620,11 +1620,11 @@ describe('one Build rule for the Learning core and the Runner (C78)', () => {
 
 	it.each(shapes)('has the scripted Runner refuse %s too', async (_n, files) => {
 		const request = {
-			language: 'python',
-			files,
+			language: 'python' as const,
+			files: { ...files },
 			tests: [],
 			limits: { timeoutMs: 1000, memoryMb: 64 }
-		} as const;
+		};
 		await expect(createScriptedRunner().execute(request)).rejects.toThrow(/Invalid Build/);
 	});
 
