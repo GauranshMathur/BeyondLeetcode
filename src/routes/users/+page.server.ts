@@ -8,8 +8,8 @@ import {
 	SelfRemoveError,
 	SelfResetError,
 	UnknownAccountError
-} from '$lib/server/identity/accounts';
-import { isRegistrationMode, RegistrationNotAvailableError } from '$lib/server/instance';
+} from '#lib/server/identity/accounts.js';
+import { isRegistrationMode, RegistrationNotAvailableError } from '#lib/server/instance.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /**

@@ -1,9 +1,9 @@
 import type { Action } from '@sveltejs/kit';
-import { languageById } from '$lib/languages';
-import type { BuildFiles } from '$lib/server/content/catalogue';
-import type { BuildRef, Learner } from '$lib/server/learning/core';
-import { refuse, withLearningErrors } from '$lib/server/learning-http';
-import { signedIn } from '$lib/server/signed-in';
+import { languageById } from '#lib/languages.js';
+import type { BuildFiles } from '#lib/server/content/catalogue.js';
+import type { BuildRef, Learner } from '#lib/server/learning/core.js';
+import { refuse, withLearningErrors } from '#lib/server/learning-http.js';
+import { signedIn } from '#lib/server/signed-in.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /** The tabs of the left pane; the Problem is the default and has no `?tab`. */

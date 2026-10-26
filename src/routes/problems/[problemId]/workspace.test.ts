@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Reply, WireCode } from '$lib/problem-wire';
-import type { BuildRef, RunView, SubmitView } from '$lib/server/learning/core';
+import type { Reply, WireCode } from '#lib/problem-wire.js';
+import type { BuildRef, RunView, SubmitView } from '#lib/server/learning/core.js';
 import {
 	begin,
 	type Event,

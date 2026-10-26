@@ -1,4 +1,4 @@
-import { signedIn } from '$lib/server/signed-in';
+import { signedIn } from '#lib/server/signed-in.js';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => ({

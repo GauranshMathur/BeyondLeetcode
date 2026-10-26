@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { handleAuthRequest } from '$lib/server/identity/auth-handler';
+import { handleAuthRequest } from '#lib/server/identity/auth-handler.js';
 import type { RequestHandler } from './$types';
 
 /**

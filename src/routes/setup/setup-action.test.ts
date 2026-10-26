@@ -1,14 +1,14 @@
 import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MultiUserChoice } from '$lib/server/app';
-import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
+import type { MultiUserChoice } from '#lib/server/app.js';
+import { InvalidFirstAdminError, MultiUserNotAvailableError } from '#lib/server/identity/setup.js';
 import {
 	AccountsExistError,
 	createInstance,
 	InstanceAlreadySetUpError
-} from '$lib/server/instance';
-import { createTestDb } from '$lib/server/test-db';
+} from '#lib/server/instance.js';
+import { createTestDb } from '#lib/server/test-db.js';
 import { actions, load } from './+page.server';
 
 afterEach(() => vi.restoreAllMocks());

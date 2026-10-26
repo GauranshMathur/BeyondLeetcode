@@ -1,5 +1,5 @@
 <script lang="ts">
-import TopicMap from '$lib/map/TopicMap.svelte';
+import TopicMap from '#lib/map/TopicMap.svelte';
 import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();

@@ -1,6 +1,6 @@
-import type { Language } from '$lib/languages';
-import type { Reply, ReplyData } from '$lib/problem-wire';
-import type { BuildRef } from '$lib/server/learning/core';
+import type { Language } from '#lib/languages.js';
+import type { Reply, ReplyData } from '#lib/problem-wire.js';
+import type { BuildRef } from '#lib/server/learning/core.js';
 import type { Outcome } from './outcome';
 
 /**

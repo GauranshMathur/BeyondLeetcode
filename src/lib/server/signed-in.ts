@@ -1,5 +1,5 @@
-import type { Identity } from '$lib/server/identity';
-import type { Learner } from '$lib/server/learning/core';
+import type { Identity } from '#lib/server/identity/index.js';
+import type { Learner } from '#lib/server/learning/core.js';
 
 /**
  * Who a signed-in route acts for. `handle.ts` leaves `locals.identity` and `locals.learning` unset

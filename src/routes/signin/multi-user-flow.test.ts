@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isRedirect } from '@sveltejs/kit';
 import { expect, it, onTestFinished } from 'vitest';
-import { createApp } from '$lib/server/app';
-import { createHandle } from '$lib/server/handle';
-import { createThrottle } from '$lib/server/identity/throttle';
+import { createApp } from '#lib/server/app.js';
+import { createHandle } from '#lib/server/handle.js';
+import { createThrottle } from '#lib/server/identity/throttle.js';
 import { actions as settingsActions } from '../settings/+page.server';
 import { createSignIn } from './sign-in';
 

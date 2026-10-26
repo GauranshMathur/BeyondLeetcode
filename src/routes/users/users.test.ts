@@ -1,17 +1,22 @@
-import type { RequestEvent, ResolveOptions } from '@sveltejs/kit';
+import type { RequestEvent } from '@sveltejs/kit';
+import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { describe, expect, it, vi } from 'vitest';
-import type { App } from '$lib/server/app';
-import type { Db } from '$lib/server/db';
-import { createHandle } from '$lib/server/handle';
-import { createAuth } from '$lib/server/identity/auth';
-import { createLocalIdentity } from '$lib/server/identity/index';
-import { createInvites } from '$lib/server/identity/invites';
-import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
-import { createRegistration } from '$lib/server/identity/registration';
-import { createFirstAdmin } from '$lib/server/identity/setup';
-import { createInstance, type Instance, RegistrationNotAvailableError } from '$lib/server/instance';
-import { deleteLearner } from '$lib/server/learning/progress';
-import { createFileTestDb } from '$lib/server/test-db';
+import type { App } from '#lib/server/app.js';
+import type { Db } from '#lib/server/db.js';
+import { createHandle } from '#lib/server/handle.js';
+import { createAuth } from '#lib/server/identity/auth.js';
+import { createLocalIdentity } from '#lib/server/identity/index.js';
+import { createInvites } from '#lib/server/identity/invites.js';
+import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
+import { createRegistration } from '#lib/server/identity/registration.js';
+import { createFirstAdmin } from '#lib/server/identity/setup.js';
+import {
+	createInstance,
+	type Instance,
+	RegistrationNotAvailableError
+} from '#lib/server/instance.js';
+import { deleteLearner } from '#lib/server/learning/progress.js';
+import { createFileTestDb } from '#lib/server/test-db.js';
 import { load as layoutLoad } from '../+layout.server';
 import { load as signupLoad } from '../signup/+page.server';
 import { actions, load } from './+page.server';
@@ -228,7 +233,12 @@ describe('the Users page in Local Mode', () => {
 
 describe('the load, if the hook ever let a request through', () => {
 	const event = (locals: Record<string, unknown>) =>
-		({ locals, request: { headers: new Headers() }, setHeaders: vi.fn() }) as never;
+		({
+			locals,
+			request: { headers: new Headers() },
+			setHeaders: vi.fn()
+		}) as never;
+
 	const identity = (role: 'admin' | 'learner') => ({ learnerId: 'l', displayName: 'N', role });
 	const auth = { api: { listUsers: vi.fn() } };
 
@@ -424,8 +434,10 @@ describe('the Registration switch', () => {
 describe('the Registration action, if the hook ever let a request through', () => {
 	const admin = { learnerId: 'l', displayName: 'N', role: 'admin' as const };
 	const learner = { ...admin, role: 'learner' as const };
+
 	const request = (formData = vi.fn(async () => new URLSearchParams({ registration: 'open' }))) =>
 		({ formData }) as unknown as Request;
+
 	const instance = () => ({ setRegistrationMode: vi.fn(async () => {}) });
 	const call = (locals: Record<string, unknown>, req: Request) =>
 		actions.registration({ locals, request: req } as never);
@@ -642,6 +654,7 @@ describe('Invites on the Users page', () => {
 			const admin = { ...learner, role: 'admin' as const };
 			const event = (locals: Record<string, unknown>) =>
 				({ locals, setHeaders: vi.fn(), request: { formData: vi.fn() } }) as never;
+
 			await expect(actions[name](event({ identity: learner, invites: {} }))).rejects.toMatchObject({
 				status: 403
 			});
@@ -760,6 +773,7 @@ describe('Reset password on the Users page', () => {
 		const formData = vi.fn();
 		const event = (locals: Record<string, unknown>) =>
 			({ locals, request: { formData, headers: new Headers() } }) as never;
+
 		await expect(actions.reset(event({ identity: learner, auth: {} }))).rejects.toMatchObject({
 			status: 403
 		});

@@ -49,5 +49,9 @@
 		"marked": "^18.1.1",
 		"prisma": "^7.10.1",
 		"zod": "^4.6.7"
+	},
+	"imports": {
+		"#lib": "./src/lib/index.js",
+		"#lib/*": "./src/lib/*"
 	}
 }

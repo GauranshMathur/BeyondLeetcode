@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ProblemView, SolutionView } from '$lib/server/learning/core';
+import type { ProblemView, SolutionView } from '#lib/server/learning/core.js';
 
 let { problem, solution }: { problem: ProblemView; solution: SolutionView } = $props();
 </script>

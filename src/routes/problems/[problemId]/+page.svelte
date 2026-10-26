@@ -1,5 +1,5 @@
 <script lang="ts">
-import { reportIssueUrl } from '$lib/issue-link';
+import { reportIssueUrl } from '#lib/issue-link.js';
 import type { PageProps } from './$types';
 import HintsTab from './HintsTab.svelte';
 import ProblemWorkspace from './ProblemWorkspace.svelte';

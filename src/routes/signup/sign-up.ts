@@ -7,10 +7,10 @@ import {
 	MAX_NAME_LENGTH,
 	MAX_PASSWORD_LENGTH,
 	MIN_PASSWORD_LENGTH
-} from '$lib/server/identity/auth';
-import { forwardSetCookies } from '$lib/server/identity/auth-handler';
-import { clientAddress } from '$lib/server/identity/client-address';
-import type { Throttle } from '$lib/server/identity/throttle';
+} from '#lib/server/identity/auth.js';
+import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
+import { clientAddress } from '#lib/server/identity/client-address.js';
+import type { Throttle } from '#lib/server/identity/throttle.js';
 
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
 const MESSAGES = {

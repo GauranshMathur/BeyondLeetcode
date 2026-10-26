@@ -1,4 +1,4 @@
-import type { RunView, SubmitView } from '$lib/server/learning/core';
+import type { RunView, SubmitView } from '#lib/server/learning/core.js';
 
 /** What the console shows: nothing yet, a Run or Submit in flight, a Runner failure, or the result. */
 export type Outcome =

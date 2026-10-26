@@ -1,8 +1,8 @@
 import { error, fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
-import { forwardSetCookies } from '$lib/server/identity/auth-handler';
-import { signedIn } from '$lib/server/signed-in';
-import { parseTheme, THEME_COOKIE } from '$lib/theme';
+import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
+import { signedIn } from '#lib/server/signed-in.js';
+import { parseTheme, THEME_COOKIE } from '#lib/theme.js';
 import { hasPassword } from '../account/password/change-password';
 import type { Actions, PageServerLoad } from './$types';
 

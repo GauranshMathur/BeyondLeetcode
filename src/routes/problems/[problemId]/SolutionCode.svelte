@@ -1,7 +1,7 @@
 <script lang="ts">
-import CodeEditor from '$lib/editor/CodeEditor.svelte';
-import { LANGUAGES, type Language } from '$lib/languages';
-import type { SolutionView } from '$lib/server/learning/core';
+import CodeEditor from '#lib/editor/CodeEditor.svelte';
+import { LANGUAGES, type Language } from '#lib/languages.js';
+import type { SolutionView } from '#lib/server/learning/core.js';
 
 let { solution, startLanguage }: { solution: SolutionView; startLanguage: Language } = $props();
 

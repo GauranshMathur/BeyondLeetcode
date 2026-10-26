@@ -1,14 +1,14 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
-import type { MultiUserChoice } from '$lib/server/app';
+import type { MultiUserChoice } from '#lib/server/app.js';
 import {
 	hasForbiddenNameCharacter,
 	isNameTooLong,
 	MAX_NAME_LENGTH
-} from '$lib/server/identity/auth';
-import { forwardSetCookies } from '$lib/server/identity/auth-handler';
-import { InvalidFirstAdminError, MultiUserNotAvailableError } from '$lib/server/identity/setup';
-import { AccountsExistError, InstanceAlreadySetUpError } from '$lib/server/instance';
+} from '#lib/server/identity/auth.js';
+import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
+import { InvalidFirstAdminError, MultiUserNotAvailableError } from '#lib/server/identity/setup.js';
+import { AccountsExistError, InstanceAlreadySetUpError } from '#lib/server/instance.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Why Multi-user cannot be chosen here: what to add to `.env`. (`later` is never produced, see `MultiUserChoice`.) */

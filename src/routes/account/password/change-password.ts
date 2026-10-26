@@ -1,9 +1,9 @@
 import { error, fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '$lib/server/identity/auth';
-import { forwardSetCookies } from '$lib/server/identity/auth-handler';
-import { clientAddress } from '$lib/server/identity/client-address';
-import type { Throttle } from '$lib/server/identity/throttle';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '#lib/server/identity/auth.js';
+import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
+import { clientAddress } from '#lib/server/identity/client-address.js';
+import type { Throttle } from '#lib/server/identity/throttle.js';
 
 /**
  * Fixed texts only: an error's own message and the passwords typed never reach the form.

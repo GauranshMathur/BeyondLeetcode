@@ -1,7 +1,7 @@
-import type { ActionResult } from '@sveltejs/kit';
-import type { BuildFiles } from '$lib/server/content/catalogue';
-import type { HintsView, RunView, SubmitView } from '$lib/server/learning/core';
-import type { LearningErrorCode } from '$lib/server/learning/errors';
+import type { BuildFiles } from '#lib/server/content/catalogue.js';
+import type { HintsView, RunView, SubmitView } from '#lib/server/learning/core.js';
+import type { LearningErrorCode } from '#lib/server/learning/errors.js';
+import type { ActionResult } from '$app/forms';
 import type { Language } from './languages';
 
 /**
@@ -31,7 +31,10 @@ export interface Refusal {
 	revision?: number;
 }
 
-export function encodeRefusal({ code, revision }: Refusal): { status: number; body: App.Error } {
+export function encodeRefusal({ code, revision }: Refusal): {
+	status: number;
+	body: Omit<App.Error, 'status'>;
+} {
 	return {
 		status: STATUS[code],
 		body: revision === undefined ? { message: code } : { message: code, revision }

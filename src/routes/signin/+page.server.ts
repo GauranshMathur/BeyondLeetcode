@@ -1,4 +1,4 @@
-import { createThrottle, providerStarts } from '$lib/server/identity/throttle';
+import { createThrottle, providerStarts } from '#lib/server/identity/throttle.js';
 import type { Actions, PageServerLoad } from './$types';
 import { createSignIn } from './sign-in';
 

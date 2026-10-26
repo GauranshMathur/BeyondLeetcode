@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { MapView } from '$lib/server/learning/core';
+import type { MapView } from '#lib/server/learning/core.js';
 import { layoutMap, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
 
 let { map }: { map: MapView } = $props();

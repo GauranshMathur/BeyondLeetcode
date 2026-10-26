@@ -1,16 +1,16 @@
 import { createHash } from 'node:crypto';
 import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
-import { enabledProviders, SOCIAL_PROVIDER_NAMES } from '$lib/server/identity/auth';
-import { forwardSetCookies } from '$lib/server/identity/auth-handler';
-import { clientAddress } from '$lib/server/identity/client-address';
-import { safeNext } from '$lib/server/identity/gate';
+import { enabledProviders, SOCIAL_PROVIDER_NAMES } from '#lib/server/identity/auth.js';
+import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
+import { clientAddress } from '#lib/server/identity/client-address.js';
+import { safeNext } from '#lib/server/identity/gate.js';
 import {
 	createProviderStarts,
 	type ProviderStarts,
 	type Throttle,
 	type ThrottleInput
-} from '$lib/server/identity/throttle';
+} from '#lib/server/identity/throttle.js';
 
 /**
  * Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form.
@@ -148,7 +148,9 @@ async function startProvider(
 		// No state to key it by: the start stays counted.
 	}
 	forwardSetCookies(event.cookies, headers.getSetCookie());
-	redirect(303, target);
+	// SvelteKit 3 refuses an external target unless the call opts in. This one is the provider's authorize URL from
+	// Better Auth, checked to be https above; `javascript:` stays blocked either way.
+	redirect(303, target, { external: true });
 }
 
 /**
