@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { filesDigest } from '../../problem-wire.ts';
 import { type Language, loadCatalogue } from '../content/catalogue.ts';
 import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
@@ -1634,5 +1635,73 @@ describe('one Build rule for the Learning core and the Runner (C78)', () => {
 		const files = Object.fromEntries(Array.from({ length: 63 }, (_, i) => [`f${i}.py`, '']));
 		files[`${'a'.repeat(91)}.py`] = 'x';
 		await expect(learner.saveCode(ref('stacks-push', 0), files)).resolves.toEqual({ revision: 1 });
+	});
+});
+
+describe('a keepalive save on top of the tab own unconfirmed save (C69)', () => {
+	async function setup() {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const core = createLearningCore({ catalogue, db: await createTestDb() });
+		const learner = core.forLearner('any-learner');
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'v1' }); // head is revision 1
+		return learner;
+	}
+	const A = { 'main.py': 'v2' }; // the save in flight
+	const B = { 'main.py': 'v3' }; // the keepalive save, with more typing
+	const digestOfA = () => filesDigest(A);
+
+	it('stores the keepalive save when the in-flight save lands first', async () => {
+		const learner = await setup();
+
+		expect(await learner.saveCode(ref('stacks-push', 1), A)).toEqual({ revision: 2 });
+		expect(await learner.saveCode(ref('stacks-push', 1), B, await digestOfA())).toEqual({
+			revision: 3
+		});
+
+		expect((await learner.problem('stacks-push')).files).toEqual(B);
+		expect((await learner.problem('stacks-push')).build.revision).toBe(3);
+	});
+
+	it('stores the keepalive save when it lands first, and the in-flight save then conflicts', async () => {
+		const learner = await setup();
+
+		expect(await learner.saveCode(ref('stacks-push', 1), B, await digestOfA())).toEqual({
+			revision: 2
+		});
+		await expect(learner.saveCode(ref('stacks-push', 1), A)).rejects.toMatchObject({
+			code: 'RevisionConflict'
+		});
+
+		expect((await learner.problem('stacks-push')).files).toEqual(B);
+		expect((await learner.problem('stacks-push')).build.revision).toBe(2);
+	});
+
+	it('refuses a digest that does not match the stored head, for example another tab save', async () => {
+		const learner = await setup();
+		await learner.saveCode(ref('stacks-push', 1), { 'main.py': 'other tab' });
+
+		await expect(
+			learner.saveCode(ref('stacks-push', 1), B, await digestOfA())
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+
+		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.py': 'other tab' });
+	});
+
+	it('still refuses a save two or more behind, whatever the digest', async () => {
+		const learner = await setup();
+		await learner.saveCode(ref('stacks-push', 1), A);
+		await learner.saveCode(ref('stacks-push', 2), B);
+
+		await expect(
+			learner.saveCode(ref('stacks-push', 1), { 'main.py': 'v4' }, await filesDigest(B))
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+	});
+
+	it('keeps the identical-retry rule: a retry of the stored head is answered as saved', async () => {
+		const learner = await setup();
+		await learner.saveCode(ref('stacks-push', 1), A);
+
+		expect(await learner.saveCode(ref('stacks-push', 1), A)).toEqual({ revision: 2 });
+		expect((await learner.problem('stacks-push')).build.revision).toBe(2);
 	});
 });

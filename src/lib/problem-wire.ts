@@ -47,6 +47,20 @@ export function decodeRefusal(body: unknown): Refusal | undefined {
 		: { code: message as WireCode };
 }
 
+/**
+ * A digest of a Build's files, the same on the browser and the server: SHA-256 (hex) over the JSON of
+ * the [path, content] pairs sorted by path, as UTF-8. The keepalive save carries the digest of the
+ * save still in flight so the Learning core can tell it is a save on top of the tab's own.
+ */
+export async function filesDigest(files: BuildFiles): Promise<string> {
+	const pairs = Object.keys(files)
+		.sort()
+		.map((path) => [path, files[path]]);
+	const bytes = new TextEncoder().encode(JSON.stringify(pairs));
+	const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+	return Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 /** What each action of the Problem route answers on success. */
 export interface ReplyData {
 	save: { revision: number };
