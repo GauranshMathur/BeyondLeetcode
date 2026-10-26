@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { sandboxConfig } from './config';
 import { createScriptedRunner } from './fake';
+import { MAX_BUILD_FILES } from './port';
 import { createRunnerHandler } from './server';
 
 const token = 'secret';
@@ -90,6 +92,7 @@ describe('Runner HTTP handler', () => {
 		['an unknown language', { ...valid, language: 'ruby' }],
 		['a file path that escapes the build', { ...valid, files: { '../evil': '' } }],
 		['an absolute file path', { ...valid, files: { '/etc/x': '' } }],
+		['a file path with a null byte', { ...valid, files: { 'a\0b.py': '' } }],
 		[
 			'more than 200 Tests',
 			{
@@ -113,6 +116,10 @@ describe('Runner HTTP handler', () => {
 
 		expect((await handle(post(body))).status).toBe(400);
 		expect(runner.calls).toEqual([]);
+	});
+
+	it('shares its file limit with the Build rule the Learning core applies', () => {
+		expect(sandboxConfig.maxFiles).toBe(MAX_BUILD_FILES);
 	});
 
 	it('answers 500 without details when the runner throws', async () => {

@@ -1,4 +1,4 @@
-import type { ExecuteRequest, RunnerPort, TestStatus } from './port';
+import { buildPathsIssue, type ExecuteRequest, type RunnerPort, type TestStatus } from './port';
 
 export type ScriptedTest = {
 	status: TestStatus;
@@ -25,6 +25,9 @@ export function createScriptedRunner(script: RunnerScript = {}): ScriptedRunner 
 		calls,
 		async execute(request) {
 			calls.push(request);
+			// Refuse what the real Runner's schema refuses, so a Seam-1 test cannot pass on a Build it would 400.
+			const issue = buildPathsIssue(Object.keys(request.files));
+			if (issue) throw new Error(`Invalid Build: ${issue}`);
 			if (script.unavailable) throw new Error('Runner unavailable (scripted)');
 			if (script.compileError !== undefined) {
 				return { compileError: script.compileError, results: [] };

@@ -1591,3 +1591,47 @@ describe('the autosave read', () => {
 		});
 	});
 });
+
+describe('one Build rule for the Learning core and the Runner (C78)', () => {
+	const tooMany = Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`f${i}.py`, '']));
+	const shapes = [
+		['a path over 94 bytes', { [`${'a'.repeat(95)}.py`]: 'x' }],
+		['a path containing a null byte', { 'main\0.py': 'x' }],
+		['more than 64 files', tooMany],
+		['a file under another file', { a: 'x', 'a/b': 'x' }]
+	] as const;
+
+	async function setup() {
+		const runner = createScriptedRunner();
+		const db = await createTestDb();
+		const core = createLearningCore({ catalogue: await loadCatalogue(fixtureDir), db, runner });
+		return { runner, learner: core.forLearner('any-learner') };
+	}
+
+	it.each(shapes)('refuses %s on run, submit and save, and stores nothing', async (_n, files) => {
+		const { learner, runner } = await setup();
+		const build = ref('stacks-push', 0);
+		for (const act of [learner.run, learner.submit, learner.saveCode]) {
+			await expect(act(build, files)).rejects.toMatchObject({ code: 'InvalidBuild' });
+		}
+		expect((await learner.problem('stacks-push')).build.revision).toBe(0);
+		expect(runner.calls).toEqual([]);
+	});
+
+	it.each(shapes)('has the scripted Runner refuse %s too', async (_n, files) => {
+		const request = {
+			language: 'python',
+			files,
+			tests: [],
+			limits: { timeoutMs: 1000, memoryMb: 64 }
+		} as const;
+		await expect(createScriptedRunner().execute(request)).rejects.toThrow(/Invalid Build/);
+	});
+
+	it('accepts a path of exactly 94 bytes and exactly 64 files', async () => {
+		const { learner } = await setup();
+		const files = Object.fromEntries(Array.from({ length: 63 }, (_, i) => [`f${i}.py`, '']));
+		files[`${'a'.repeat(91)}.py`] = 'x';
+		await expect(learner.saveCode(ref('stacks-push', 0), files)).resolves.toEqual({ revision: 1 });
+	});
+});

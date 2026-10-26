@@ -3,39 +3,17 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { LANGUAGE_IDS } from '../../languages';
 import { sandboxConfig } from './config';
-import type { RunnerPort } from './port';
-
-/** Paths land under `build/` in a ustar archive: relative, no `..`, at most 94 bytes. */
-const buildPath = z
-	.string()
-	.min(1)
-	.refine(
-		(path) =>
-			new TextEncoder().encode(path).length <= 94 &&
-			!path.startsWith('/') &&
-			!path.includes('\\') &&
-			!path.includes('\0') &&
-			!path.split('/').some((part) => part === '..' || part === '' || part === '.'),
-		'Invalid file path'
-	);
-
-/** One path may not be a directory of another: `a` and `a/b` cannot both be extracted. */
-function hasNoFileUnderFile(files: Record<string, string>): boolean {
-	const paths = new Set(Object.keys(files));
-	for (const path of paths) {
-		for (let slash = path.indexOf('/'); slash >= 0; slash = path.indexOf('/', slash + 1)) {
-			if (paths.has(path.slice(0, slash))) return false;
-		}
-	}
-	return true;
-}
+import { buildPathsIssue, type RunnerPort } from './port';
 
 const executeRequest = z.object({
 	language: z.enum(LANGUAGE_IDS),
 	files: z
-		.record(buildPath, z.string())
-		.refine((files) => Object.keys(files).length <= sandboxConfig.maxFiles, 'Too many files')
-		.refine(hasNoFileUnderFile, 'A file path is a directory of another'),
+		.record(z.string(), z.string())
+		// The same rule the Learning core applies before it saves a Build (runner/port.ts).
+		.superRefine((files, ctx) => {
+			const issue = buildPathsIssue(Object.keys(files));
+			if (issue) ctx.addIssue({ code: 'custom', message: issue });
+		}),
 	// Unknown keys are stripped, so an expected output can never reach a container.
 	tests: z.array(z.object({ id: z.string(), input: z.string() })).max(sandboxConfig.maxTests),
 	limits: z.object({
