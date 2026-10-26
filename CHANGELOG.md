@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.3...v1.5.0) (2026-10-26)
+
+
+### Features
+
+* **beyondleetcode:** C69 edits typed during an in-flight autosave survive closing the tab ([#319](https://github.com/GauranshMathur/BeyondLeetcode/issues/319)) ([f136b99](https://github.com/GauranshMathur/BeyondLeetcode/commit/f136b992d77b03f9c26f645fc56d22b05109cbef))
+
 ## [1.4.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.2...v1.4.3) (2026-10-26)
 
 
