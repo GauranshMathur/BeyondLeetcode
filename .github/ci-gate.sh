@@ -8,7 +8,9 @@
 # queued or running is waited for; a missing job, or any other conclusion, fails.
 # Bounds (seconds, by the clock): the ci run must appear within CI_GATE_FIND_BUDGET (300), the
 # whole gate gives up after CI_GATE_TIMEOUT (2400), and each gh call is capped at 60 or the time
-# left. A success that arrives just after the deadline is still accepted.
+# left. No call or sleep is started or run past a limit. A success from a call that started before
+# the deadline but returned just after it is still accepted, on purpose: a good release is not
+# failed over seconds.
 set -u
 sha="${1:?usage: ci-gate.sh <sha>}"
 JOBS="${CI_GATE_JOBS:-typecheck lint unit build e2e sandbox docker}"
@@ -19,23 +21,34 @@ total="${CI_GATE_TIMEOUT:-2400}"
 start=$SECONDS
 deadline=$((start + total))
 
-# gh_call <args>: gh with a timeout of min(60, seconds left, at least 1).
+# gh_call <cap> <args>: gh with a timeout of min(60, cap, seconds left overall); the caller has
+# already checked that time is left.
 gh_call() {
-  local left=$((deadline - SECONDS))
+  local cap="$1" left=$((deadline - SECONDS))
+  shift
+  [ "$left" -gt "$cap" ] && left=$cap
   [ "$left" -gt 60 ] && left=60
-  [ "$left" -lt 1 ] && left=1
   timeout "$left" gh "$@"
+}
+
+# nap <seconds> <cap>: sleep, but never past cap or the overall deadline.
+nap() {
+  local n="$1" cap="$2" left=$((deadline - SECONDS))
+  [ "$left" -lt "$cap" ] && cap=$left
+  awk -v n="$n" -v c="$cap" 'BEGIN { exit !(c > 0) }' || return 0
+  sleep "$(awk -v n="$n" -v c="$cap" 'BEGIN { print (n < c ? n : c) }')"
 }
 
 id=
 while :; do
-  id="$(gh_call run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" \
-    --event push --json databaseId --jq '.[0].databaseId // empty')" || id=
-  [ -n "$id" ] && break
-  if [ $((SECONDS - start)) -ge "$find_budget" ] || [ "$SECONDS" -ge "$deadline" ]; then
+  dleft=$((find_budget - (SECONDS - start)))
+  if [ "$dleft" -le 0 ] || [ "$SECONDS" -ge "$deadline" ]; then
     echo "No ci run found for $sha"; exit 1
   fi
-  sleep "$find_sleep"
+  id="$(gh_call "$dleft" run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$sha" \
+    --event push --json databaseId --jq '.[0].databaseId // empty')" || id=
+  [ -n "$id" ] && break
+  nap "$find_sleep" $((find_budget - (SECONDS - start)))
 done
 echo "Waiting for the test jobs ($JOBS) of ci run $id"
 
@@ -43,9 +56,12 @@ want=0
 for _ in $JOBS; do want=$((want + 1)); done
 
 while :; do
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "Gave up waiting for ci run $id"; exit 1
+  fi
   # `gh run view` lists the latest attempt's jobs, so a re-run is judged by its own results.
   verdicts=
-  if json="$(gh_call run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs)"; then
+  if json="$(gh_call 60 run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs)"; then
     # One line per wanted job: "<name> <token>", token one of success | pending | failed | missing,
     # worst over every job entry of that name. Anything unexpected (conclusion text, shape) is
     # failed or pending, never success.
@@ -76,8 +92,5 @@ while :; do
       echo "Every test job succeeded in ci run $id"; exit 0
     fi
   fi
-  if [ "$SECONDS" -ge "$deadline" ]; then
-    echo "Gave up waiting for ci run $id"; echo "$verdicts"; exit 1
-  fi
-  sleep "$poll"
+  nap "$poll" "$total"
 done

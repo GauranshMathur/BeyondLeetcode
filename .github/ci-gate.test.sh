@@ -11,6 +11,8 @@ cat >"$work/bin/gh" <<'FAKE'
 #!/usr/bin/env bash
 # gh run list ...  -> prints $FAKE_RUN_ID (empty = no run yet)
 # gh run view ...  -> prints the next $FAKE_DIR/view.N file, repeating the last one
+# FAKE_SLEEP makes the call slow; exec so a timeout kills the sleep itself, as it would real gh.
+[ -n "${FAKE_SLEEP-}" ] && [ "$2" = "${FAKE_SLEEP_ON:-list}" ] && exec sleep "$FAKE_SLEEP"
 if [ "$2" = list ]; then printf '%s' "${FAKE_RUN_ID-}"; exit 0; fi
 n="$(cat "$FAKE_DIR/n" 2>/dev/null || echo 1)"
 [ -f "$FAKE_DIR/view.$n" ] || n=$((n - 1))
@@ -35,16 +37,19 @@ publish="publish-sandbox-node:completed:success publish-sandbox-go:completed:suc
 
 # run <name> <expected exit> <run id> <poll JSON>...   (polls are served in order)
 run() {
-  local name="$1" want="$2" runid="$3" i=1 got code
+  local name="$1" want="$2" runid="$3" i=1 got code t0=$SECONDS
   shift 3
   rm -rf "$work/d"; mkdir "$work/d"
   for p in "$@"; do printf '%s' "$p" >"$work/d/view.$i"; i=$((i + 1)); done
   got="$(FAKE_DIR="$work/d" FAKE_RUN_ID="$runid" PATH="$work/bin:$PATH" GITHUB_REPOSITORY=o/r \
-    CI_GATE_FIND_BUDGET=1 CI_GATE_FIND_SLEEP=0.1 CI_GATE_POLL=0.1 CI_GATE_TIMEOUT=${TIMEOUT:-3} \
+    FAKE_SLEEP=${FAKE_SLEEP-} FAKE_SLEEP_ON=${FAKE_SLEEP_ON-} CI_GATE_FIND_BUDGET=${FIND_BUDGET:-1} CI_GATE_FIND_SLEEP=${FIND_SLEEP:-0.1} CI_GATE_POLL=${POLL:-0.1} CI_GATE_TIMEOUT=${TIMEOUT:-3} \
     "$here/ci-gate.sh" abc 2>&1)"
   code=$?
+  took=$((SECONDS - t0))
   if [ "$code" != "$want" ]; then
     echo "FAIL $name: exit $code, want $want"; echo "$got"; fail=1
+  elif [ -n "${MAXSECS-}" ] && [ "$took" -gt "$MAXSECS" ]; then
+    echo "FAIL $name: took ${took}s, more than ${MAXSECS}s"; fail=1
   else
     echo "ok   $name"
   fi
@@ -82,6 +87,14 @@ run() {
   run "jobs not an array, then green" 0 7 '{"jobs":"x"}' "$(jobs $all_ok)"
   run "gh exits nonzero, then green" 0 7 EXIT1 "$(jobs $all_ok)"
   run "gh keeps failing (deadline)" 1 7 EXIT1
+  # Elapsed time: the fake gh sleeps 20 s per call; a gate that honours its bounds is back in a
+  # few seconds (whole-second clock, so allow 1-2 s of slack on a loaded runner).
+  FAKE_SLEEP=20 FIND_BUDGET=2 TIMEOUT=30 MAXSECS=5 run "slow run list: gives up within the discovery budget" 1 7 "$(jobs $all_ok)"
+  FAKE_SLEEP=20 FIND_BUDGET=30 TIMEOUT=3 MAXSECS=6 run "slow run list: bounded by the overall timeout" 1 7 "$(jobs $all_ok)"
+  FAKE_SLEEP=20 FAKE_SLEEP_ON=view TIMEOUT=3 MAXSECS=6 run "slow run view: exits within the overall timeout" 1 7 "$(jobs $all_ok)"
+  POLL=30 TIMEOUT=2 MAXSECS=5 run "poll interval longer than the time left: sleep cut short" 1 7 "$(jobs ${all_ok/docker:completed:success/docker:queued:})"
+  FIND_SLEEP=30 FIND_BUDGET=2 MAXSECS=5 run "discovery sleep longer than the budget: cut short" 1 "" ""
+  FIND_BUDGET=0 MAXSECS=1 run "zero discovery budget exits at once" 1 7 "$(jobs $all_ok)"
   TIMEOUT=1 run "deadline expires while a job is pending" 1 7 "$(jobs ${all_ok/docker:completed:success/docker:queued:})"
 }
 exit $fail
