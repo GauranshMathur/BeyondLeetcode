@@ -31,7 +31,7 @@ const MESSAGES = {
 type Field = 'name' | 'email' | 'password';
 type AcceptEvent = Pick<
 	RequestEvent,
-	'request' | 'locals' | 'cookies' | 'params' | 'getClientAddress' | 'setHeaders'
+	'request' | 'locals' | 'cookies' | 'params' | 'url' | 'getClientAddress' | 'setHeaders'
 >;
 
 /** How long the browser keeps the invite cookie: long enough to fill in the form, then it is gone. */
