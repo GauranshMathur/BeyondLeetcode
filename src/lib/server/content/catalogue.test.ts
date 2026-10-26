@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { submitPlan } from '../learning/rules.ts';
+import { MAX_BUILD_BYTES, submitPlan } from '../learning/rules.ts';
 import { sandboxConfig } from '../runner/config.ts';
 import { type Catalogue, ContentError, loadCatalogue } from './catalogue.ts';
 
@@ -441,6 +441,8 @@ describe('malformed content', () => {
 	});
 
 	describe("Submit's batches against the Runner's limits", () => {
+		/** What the Tests may weigh once room for the largest Build is reserved (see the guard). */
+		const room = sandboxConfig.requestBodyMaxBytes - MAX_BUILD_BYTES * 6;
 		const hiddenDir = (dir: string) => join(pushProblem(dir), 'tests/hidden');
 		/** Adds `count` Hidden Tests to stacks-push, each with `bytes` of input. */
 		const addHidden = async (dir: string, count: number, bytes: number) => {
@@ -476,9 +478,9 @@ describe('malformed content', () => {
 		});
 
 		it('refuses a hidden batch whose serialised Runner request body is over the limit', async () => {
-			const error = await loadBroken((dir) =>
-				addHidden(dir, 4, Math.ceil(sandboxConfig.requestBodyMaxBytes / 4))
-			).catch((e: unknown) => e);
+			const error = await loadBroken((dir) => addHidden(dir, 4, Math.ceil(room / 4))).catch(
+				(e: unknown) => e
+			);
 			expect(error).toBeInstanceOf(ContentError);
 			expect(String(error)).toMatch(
 				/stacks-push: Submit's hidden batch is \d+ bytes as a Runner request, over the limit of 2097152/
@@ -488,16 +490,13 @@ describe('malformed content', () => {
 		it('counts the earlier Core Problems that a later Problem runs with its own', async () => {
 			const error = await loadBroken(async (dir) => {
 				// stacks-pop runs stacks-push's Tests too: split the weight over both.
-				await addHidden(dir, 2, Math.ceil(sandboxConfig.requestBodyMaxBytes / 3));
+				await addHidden(dir, 2, Math.ceil(room / 3));
 				const popHidden = join(
 					stacks(dir),
 					'chapters/stacks-call-frames/problems/stacks-pop/tests/hidden'
 				);
 				for (let i = 0; i < 2; i++) {
-					await writeFile(
-						join(popHidden, `big${i}.in`),
-						'x'.repeat(sandboxConfig.requestBodyMaxBytes / 3)
-					);
+					await writeFile(join(popHidden, `big${i}.in`), 'x'.repeat(Math.ceil(room / 3)));
 					await writeFile(join(popHidden, `big${i}.out`), '');
 				}
 			}).catch((e: unknown) => e);

@@ -329,12 +329,16 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	return catalogue;
 }
 
+/** `"":"",` around one file's path and contents. */
+const FILE_JSON_OVERHEAD = 8;
+
 /**
  * Submit sends each batch to the Runner as one request, and the Runner refuses one past its Test or
  * body limit, so a Topic whose batch is over would answer RunnerUnavailable on every Submit. The
  * content check runs the Sandbox directly and would not see it. The body is measured as the
  * adapter sends it (the JSON of the request, `files` empty), plus room for the largest Build a
- * Learner may save, so the answer holds for any code.
+ * Learner may save at its worst JSON escaping (a control character becomes 6 bytes, `\u00XX`) and
+ * the per-file JSON syntax, so the answer holds for any code.
  */
 function checkSubmitBatches(plan: { visible: readonly Test[]; hidden: readonly Test[] }): string[] {
 	const messages: string[] = [];
@@ -354,7 +358,8 @@ function checkSubmitBatches(plan: { visible: readonly Test[]; hidden: readonly T
 			tests: batch.map(({ id, input }) => ({ id, input })),
 			limits: { timeoutMs: testTimeoutMs, memoryMb }
 		});
-		const bytes = Buffer.byteLength(body) + MAX_BUILD_BYTES;
+		const bytes =
+			Buffer.byteLength(body) + MAX_BUILD_BYTES * 6 + sandboxConfig.maxFiles * FILE_JSON_OVERHEAD;
 		if (bytes > requestBodyMaxBytes) {
 			messages.push(
 				`Submit's ${name} batch is ${bytes} bytes as a Runner request, over the limit of ${requestBodyMaxBytes}`
