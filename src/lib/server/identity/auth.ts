@@ -11,7 +11,7 @@ import type { Db } from '../db.ts';
 export interface Admission {
 	learnerId?: string;
 	role?: 'admin' | 'learner';
-	/** Set when an Invite is what admitted the sign-up: the `after` hook spends it, or deletes the Account. */
+	/** Set when an Invite is what admitted the sign-up: `user.create.before` claims it (it is spent there, before anything is written). */
 	inviteToken?: string;
 }
 
@@ -904,7 +904,8 @@ export function createAuth({
 			// the app never reads. It is not stored at all, so no plain ID token sits in the Account row.
 			//
 			// The credential generation changes in the same write as the password hash, whoever writes it: Better Auth's
-			// password change (`updateAccount`), the admin's reset and the reset command (`updatePassword`), and the
+			// password change (`updateAccount`), the admin's reset (`updatePassword`, or `createAccount` when the Account
+			// had no password, as a GitHub/Google-only one), the reset command (`updatePassword`), and the
 			// creation of a password Account. All of them go through these hooks, in the statement that writes the hash.
 			account: {
 				create: {
