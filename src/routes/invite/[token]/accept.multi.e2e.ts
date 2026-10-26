@@ -42,9 +42,14 @@ test.afterAll(async () => {
 	await fixture?.close();
 });
 
-/** The admin's Users page makes an Invite; returns its path (`/invite/<token>`) and id. */
+/** The admin's Users page makes an Invite; returns its path (`/invite/<token>`) and id. It runs with JavaScript
+ * on even inside the "without JavaScript" tests: it is only the setup, and a page without JS never hydrates. */
 async function newInvite(browser: import('@playwright/test').Browser, url: string) {
-	const context = await browser.newContext({ baseURL: url, storageState: admin });
+	const context = await browser.newContext({
+		baseURL: url,
+		storageState: admin,
+		javaScriptEnabled: true
+	});
 	try {
 		const page = await context.newPage();
 		await gotoHydrated(page, '/users');
