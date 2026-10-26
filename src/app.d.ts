@@ -24,10 +24,14 @@ declare global {
 			invites?: Invites;
 			/** Deletes a Learner and all its progress (Users, remove an Account); set exactly when `auth` is. */
 			deleteLearner?: (learnerId: string) => Promise<void>;
-			/** Who this request is, from Identity. Unset only on /setup before the Instance is set up. */
-			identity: Identity;
+			/**
+			 * Who this request is, from Identity. Unset where nobody is resolved: /setup before the Instance is
+			 * set up, and the public pages of a multi-user Instance (Sign in, Sign up, Accept invite). A
+			 * signed-in route reads it through `signedIn` (`$lib/server/signed-in`), which throws when unset.
+			 */
+			identity?: Identity;
 			/** The Learning core acting for this request's Learner. Unset exactly when `identity` is. */
-			learning: Learner;
+			learning?: Learner;
 		}
 		// interface PageData {}
 		// interface PageState {}
