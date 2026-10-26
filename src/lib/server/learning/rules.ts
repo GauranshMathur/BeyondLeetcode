@@ -1,6 +1,6 @@
 import { entryFileOf, LANGUAGES } from '../../languages';
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
-import type { ExecuteResult } from '../runner/port.ts';
+import { buildPathsIssue, type ExecuteResult } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 
 /** What a Learner has done: Read marks and Solved Problems, by stable content id. */
@@ -442,23 +442,20 @@ export function solutionView(
 /** The most code one Build may hold, in UTF-8 bytes of paths and contents together. */
 export const MAX_BUILD_BYTES = 256 * 1024;
 
-/** Checks a Build the Learner sends: relative `/`-separated paths with no `..`, within the size limit. */
+/**
+ * Checks a Build the Learner sends: the Runner port's path rule (the Runner would refuse it
+ * otherwise), string contents, and the size limit.
+ */
 export function validateBuild(files: Readonly<Record<string, unknown>>): BuildFiles {
 	const encoder = new TextEncoder();
 	let bytes = 0;
 	const paths = Object.keys(files);
-	if (paths.length === 0) throw new LearningError('InvalidBuild');
+	if (paths.length === 0 || buildPathsIssue(paths) !== undefined) {
+		throw new LearningError('InvalidBuild');
+	}
 	for (const path of paths) {
 		const content = files[path];
-		const segments = path.split('/');
-		if (
-			typeof content !== 'string' ||
-			path.includes('\\') ||
-			path.startsWith('/') ||
-			segments.some((s) => s === '' || s === '.' || s === '..')
-		) {
-			throw new LearningError('InvalidBuild');
-		}
+		if (typeof content !== 'string') throw new LearningError('InvalidBuild');
 		bytes += encoder.encode(path).length + encoder.encode(content).length;
 	}
 	if (bytes > MAX_BUILD_BYTES) throw new LearningError('InvalidBuild');
