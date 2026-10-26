@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.1.2...v1.2.0) (2026-10-26)
+
+
+### Features
+
+* **beyondleetcode:** C76 a provider sign-in that completes gives its start back ([#289](https://github.com/GauranshMathur/BeyondLeetcode/issues/289)) ([b8fea34](https://github.com/GauranshMathur/BeyondLeetcode/commit/b8fea34f7cfcce2f64c113764aa8e51e88c4a598))
+
 ## [1.1.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.1.1...v1.1.2) (2026-10-26)
 
 
