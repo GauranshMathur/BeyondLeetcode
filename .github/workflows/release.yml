@@ -26,7 +26,7 @@ jobs:
     steps:
       # Accumulates conventional commits into a release PR. Merging that PR tags
       # the release and writes CHANGELOG.md.
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           # Opened with RELEASE_PAT, not the built-in token: workflows do not run on PRs the
@@ -72,7 +72,7 @@ jobs:
       - name: Tag and publish the release
         id: tag
         if: ${{ steps.find.outputs.number }}
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
