@@ -616,6 +616,11 @@ export type CreateAuthOptions = {
 	socialProviders?: SocialProviders;
 	/** Plugins the caller owns, e.g. SvelteKit's cookie plugin (keeps `$app/*` out of this file). */
 	extraPlugins?: BetterAuthPlugin[];
+	/**
+	 * The starts of provider sign-ins (`throttle.ts`). A provider callback that signs someone in gives back the
+	 * start named by its `state`; without it nothing is given back.
+	 */
+	providerStarts?: { refund(state: string): void };
 };
 
 // Every admin plugin endpoint is switched off over HTTP, the four we use included (list-users,
@@ -744,7 +749,8 @@ export function createAuth({
 	admitSignUp = () => null,
 	claimInvite = async () => false,
 	socialProviders = {},
-	extraPlugins = []
+	extraPlugins = [],
+	providerStarts
 }: CreateAuthOptions) {
 	if (secret.length < MIN_SECRET_LENGTH) {
 		throw new Error('createAuth: secret is missing or shorter than 32 characters');
@@ -1061,6 +1067,10 @@ export function createAuth({
 				// for the request that still needs it, and a success whose destination has an `error` in its query
 				// still clears it.
 				if (ctx.context.newSession) {
+					// The callback signed someone in: its start (the flood guard's count) is given back, by the
+					// `state` the provider sent back (a query on GET, the body on a POST bounce).
+					const state = ctx.query?.state ?? ctx.body?.state;
+					if (typeof state === 'string') providerStarts?.refund(state);
 					if (inviteToken) {
 						ctx.setCookie(INVITE_COOKIE, '', {
 							path: INVITE_COOKIE_PATH,

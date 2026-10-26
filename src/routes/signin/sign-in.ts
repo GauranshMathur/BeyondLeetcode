@@ -4,7 +4,12 @@ import { isAPIError } from 'better-auth/api';
 import { enabledProviders, SOCIAL_PROVIDER_NAMES } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { safeNext } from '$lib/server/identity/gate';
-import { createThrottle, type Throttle, type ThrottleInput } from '$lib/server/identity/throttle';
+import {
+	createProviderStarts,
+	type ProviderStarts,
+	type Throttle,
+	type ThrottleInput
+} from '$lib/server/identity/throttle';
 
 /**
  * Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form.
@@ -123,13 +128,12 @@ async function startProvider(
 	auth: NonNullable<App.Locals['auth']>,
 	provider: string,
 	next: string,
-	throttle: Throttle
+	starts: ProviderStarts
 ) {
 	const known = enabledProviders(auth).find((id) => id === provider);
 	if (!known) return refused(400, '', MESSAGES.failed);
-	if (!throttle.attempt({ address: clientAddress(event), accountId: null }).allowed) {
-		return refused(400, '', MESSAGES.failed);
-	}
+	const turn = starts.throttle.attempt({ address: clientAddress(event), accountId: null });
+	if (!turn.allowed) return refused(400, '', MESSAGES.failed);
 	let target: string;
 	let headers: Headers;
 	try {
@@ -144,6 +148,13 @@ async function startProvider(
 		return refused(500, '', MESSAGES.failed);
 	}
 	if (!/^https:\/\//.test(target)) return refused(500, '', MESSAGES.failed);
+	// The callback gives this start back when it signs someone in, found by the `state` of the authorize URL.
+	try {
+		const state = new URL(target).searchParams.get('state');
+		if (state) starts.record(state, turn.token);
+	} catch {
+		// No state to key it by: the start stays counted.
+	}
 	forwardSetCookies(event.cookies, headers.getSetCookie());
 	redirect(303, target);
 }
@@ -156,7 +167,7 @@ async function startProvider(
  * every attempt against the caller's address and, when the email names an Account, against that Account
  * (`throttle.ts`). Its counters live in memory in this process.
  */
-export function createSignIn(throttle: Throttle, startThrottle: Throttle = createThrottle()) {
+export function createSignIn(throttle: Throttle, starts: ProviderStarts = createProviderStarts()) {
 	return {
 		/**
 		 * `open` is whether the Registration Mode lets anyone sign up: only then the page links to Sign up.
@@ -190,7 +201,7 @@ export function createSignIn(throttle: Throttle, startThrottle: Throttle = creat
 
 			// A provider button posts here too, with its id and no password.
 			const provider = text(data, 'provider');
-			if (provider !== '') return startProvider(event, auth, provider, next, startThrottle);
+			if (provider !== '') return startProvider(event, auth, provider, next, starts);
 
 			// The Account Better Auth would sign in: looked up the way it does (lowercased, not trimmed), so the
 			// Account limits cannot be dodged by how the email is spelled. With none, the email's digest stands
