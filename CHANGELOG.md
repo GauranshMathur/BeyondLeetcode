@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.2...v1.4.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C83 engine calls reject at an absolute deadline on the production Bun ([#312](https://github.com/GauranshMathur/BeyondLeetcode/issues/312)) ([29d9266](https://github.com/GauranshMathur/BeyondLeetcode/commit/29d92663c62504b0a7c1a4e4d72cef92154eb11d))
+
 ## [1.4.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.1...v1.4.2) (2026-10-26)
 
 
