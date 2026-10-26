@@ -33,6 +33,8 @@ const people = {
 	narrow: { name: 'Nia Narrow', email: 'nia.signin@example.com' }
 };
 
+// The click is not sure to wait for the answer: a test that signs in and then goes to another page waits for
+// where Sign in lands first, or its page.goto can cancel the sign-in before the cookie is set (seen on CI).
 async function signInWith(page: Page, email: string, password: string) {
 	await page.getByLabel('Email').fill(email);
 	await page.getByLabel('Password').fill(password);
@@ -370,6 +372,7 @@ onOpen.describe('a signed-in user', () => {
 		async ({ page }) => {
 			await page.goto('/signin');
 			await signInWith(page, people.settings.email, PASSWORD);
+			await expect(page).toHaveURL('/');
 			await page.goto('/settings');
 			await expect(page.getByRole('heading', { name: 'Session' })).toBeVisible();
 
@@ -389,6 +392,7 @@ onOpen.describe('a signed-in user', () => {
 	onOpen('sees the 404 page for a path with no route, signed in', async ({ page }) => {
 		await page.goto('/signin');
 		await signInWith(page, people.asker.email, PASSWORD);
+		await expect(page).toHaveURL('/');
 
 		const response = await page.goto('/no/such/page');
 
@@ -399,6 +403,7 @@ onOpen.describe('a signed-in user', () => {
 	onOpen('has Sign out only on Settings on a phone', async ({ page }) => {
 		await page.goto('/signin');
 		await signInWith(page, people.phone.email, PASSWORD);
+		await expect(page).toHaveURL('/');
 		await page.setViewportSize({ width: 390, height: 844 });
 
 		await page.goto('/');
@@ -415,6 +420,7 @@ onOpen.describe('a signed-in user', () => {
 	onOpen('is sent from Sign in to where they were going, not shown the form', async ({ page }) => {
 		await page.goto('/signin');
 		await signInWith(page, people.asker.email, PASSWORD);
+		await expect(page).toHaveURL('/');
 
 		await page.goto(`/signin?next=${encodeURIComponent('/topics/stacks')}`);
 
