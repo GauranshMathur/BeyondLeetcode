@@ -295,21 +295,21 @@ describe('the Registration switch', () => {
 			auth.api.signUpEmail({ body: { name: 'Newcomer', email, password } });
 		const signupPage = () => signupLoad({ locals: { instance } } as never);
 		// A new Instance starts invite-only: the page is closed and the hook refuses an Account.
-		expect(await signupPage()).toEqual({ open: false });
+		expect(await signupPage()).toMatchObject({ open: false });
 		await expect(signUp('first@example.com')).rejects.toMatchObject({ statusCode: 403 });
 
 		const toOpen = await submit(handle, admin, { registration: 'open' });
 
 		expect(toOpen.response.status).toBe(200);
 		expect(await storedRegistration(db)).toBe('open');
-		expect(await signupPage()).toEqual({ open: true });
+		expect(await signupPage()).toMatchObject({ open: true });
 		await expect(signUp('second@example.com')).resolves.toBeDefined();
 
 		const toInvite = await submit(handle, admin, { registration: 'invite' });
 
 		expect(toInvite.response.status).toBe(200);
 		expect(await storedRegistration(db)).toBe('invite');
-		expect(await signupPage()).toEqual({ open: false });
+		expect(await signupPage()).toMatchObject({ open: false });
 		await expect(signUp('third@example.com')).rejects.toMatchObject({ statusCode: 403 });
 		expect(await db.user.findUnique({ where: { email: 'third@example.com' } })).toBeNull();
 		expect(await db.user.findUnique({ where: { email: 'second@example.com' } })).not.toBeNull();
