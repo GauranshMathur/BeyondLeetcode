@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.0.0...v1.0.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C65 busy timeout on the production DB client ([#273](https://github.com/GauranshMathur/BeyondLeetcode/issues/273)) ([3c36211](https://github.com/GauranshMathur/BeyondLeetcode/commit/3c362112b41313f1a85a8d72e792b0235dab0d25))
+
 ## [1.0.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.67.0...v1.0.0) (2026-10-25)
 
 
