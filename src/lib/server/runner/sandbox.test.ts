@@ -51,8 +51,7 @@ function fakeEngine(options: {
 			calls.push(`remove ${id}`);
 			if (options.removeFails) throw new Error('daemon down');
 		}),
-		inspect: async () => ({ HostConfig: {} }),
-		listByLabel: async () => []
+		inspect: async () => ({ HostConfig: {} })
 	} as unknown as Engine;
 	return { engine, calls };
 }
@@ -237,26 +236,47 @@ describe('Sandbox runner: start-up sweep', () => {
 		expect(removed).toEqual(['old']);
 	});
 
-	it('leaves a live run whose create answered just inside the engine call timeout, Created truncated from .999 s', async () => {
-		// Created is stamped at the true create time (second .999), listed truncated to the second.
-		const trueCreateMs = 1_000_000_000_999;
-		const listedCreatedS = Math.floor(trueCreateMs / 1000);
-		const hardStopMs = trueCreateMs + (engineCallTimeoutMs - 1) + sandboxConfig.containerTimeoutMs;
-		const removed: string[] = [];
-		const engine = {
-			listContainers: async () => [
-				{
-					id: 'live',
-					created: listedCreatedS,
-					labels: { [containerLabel]: 'other' }
-				}
-			],
-			remove: async (id: string) => void removed.push(id)
-		} as unknown as Engine;
+	it('leaves a live run alone until its hard stop plus the margin, with a slow create and Created truncated', async () => {
+		// Created is stamped at the second .999 and listed truncated to the second; the create call
+		// answers just inside the engine call timeout, so the hard stop is as late as it can be.
+		vi.useFakeTimers({ now: 1_000_000_000_999 });
+		try {
+			const createdMs = Date.now();
+			let killedAtMs = 0;
+			const removed: string[] = [];
+			const { engine: base } = fakeEngine({ neverEnds: true, exitCode: 137 });
+			const engine = {
+				...base,
+				create: () =>
+					new Promise<string>((resolve) =>
+						setTimeout(() => resolve('live'), engineCallTimeoutMs - 1)
+					),
+				kill: async () => {
+					killedAtMs = Date.now();
+				},
+				listContainers: async () => [
+					{
+						id: 'live',
+						created: Math.floor(createdMs / 1000),
+						labels: { [containerLabel]: 'other' }
+					}
+				],
+				remove: async (id: string) => void removed.push(id)
+			} as unknown as Engine;
+			const pending = createSandboxRunner(engine, 'me').execute(request);
 
-		await removeStaleContainers(engine, 'me', hardStopMs - 1);
+			await vi.advanceTimersByTimeAsync(engineCallTimeoutMs - 1 + sandboxConfig.containerTimeoutMs);
+			await pending;
+			removed.length = 0;
 
-		expect(removed).toEqual([]);
+			// The kill time is the hard stop. Sweeping up to the margin after it must still leave the
+			// run alone: dropping the Created truncation term or the margin from sweepMinAgeMs removes it.
+			await removeStaleContainers(engine, 'me', killedAtMs - 1);
+			await removeStaleContainers(engine, 'me', killedAtMs + 5_000);
+			expect(removed).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('removes a container from before instance ids whatever its age', async () => {
