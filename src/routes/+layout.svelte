@@ -1,8 +1,8 @@
 <script lang="ts">
 import { onMount } from 'svelte';
+import favicon from '#lib/assets/favicon.svg';
 import { page } from '$app/state';
-import favicon from '$lib/assets/favicon.svg';
-import '$lib/styles/tokens.css';
+import '#lib/styles/tokens.css';
 
 let { children, data } = $props();
 

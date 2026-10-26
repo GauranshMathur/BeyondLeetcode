@@ -1,11 +1,12 @@
 import { error } from '@sveltejs/kit';
-import { encodeRefusal, type Refusal } from '$lib/problem-wire';
+import { encodeRefusal, type Refusal } from '#lib/problem-wire.js';
 import { LearningError } from './learning/core.ts';
 
-/** Refuses the request with the wire contract's code and status (`$lib/problem-wire`). */
+/** Refuses the request with the wire contract's code and status (`#lib/problem-wire.js`). */
 export function refuse(refusal: Refusal): never {
 	const { status, body } = encodeRefusal(refusal);
-	error(status, body);
+	if (body.revision === undefined) error(status, body.message);
+	error(status, body.message, { revision: body.revision });
 }
 
 /** Runs a Learning core call; a LearningError becomes the refusal with its code, anything else is rethrown. */

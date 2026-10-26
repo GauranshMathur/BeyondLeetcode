@@ -23,7 +23,7 @@ const web = [
 	...common,
 	'bunx prisma migrate deploy',
 	'bun run build',
-	'PORT=4173 bun ./build/index.js'
+	'PORT=4173 bun ./src/lib/server/web-entry.ts'
 ].join(' && ');
 
 const multi = [
@@ -38,7 +38,7 @@ const multi = [
 	// and opens deferred transactions, which in the default journal fail at once when anyone else is writing.
 	// The mode is stored in the file, so the server finds it on.
 	`bun -e 'new (require("bun:sqlite").Database)(process.env.DATABASE_URL.slice(5)).exec("PRAGMA journal_mode=WAL")'`,
-	'PORT=4174 bun ./build/index.js'
+	'PORT=4174 bun ./src/lib/server/web-entry.ts'
 ].join(' && ');
 
 // 4175: a Local Instance that the convert test turns into a Multi-user one. Its own server and database, because
@@ -54,7 +54,7 @@ const convert = [
 	'export IDENTITY_TEST_LEARNER=1',
 	'bunx prisma migrate deploy',
 	`bun -e 'new (require("bun:sqlite").Database)(process.env.DATABASE_URL.slice(5)).exec("PRAGMA journal_mode=WAL")'`,
-	'PORT=4175 bun ./build/index.js'
+	'PORT=4175 bun ./src/lib/server/web-entry.ts'
 ].join(' && ');
 
 export default defineConfig({

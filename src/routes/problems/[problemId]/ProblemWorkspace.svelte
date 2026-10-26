@@ -1,12 +1,11 @@
 <script lang="ts">
-import type { ActionResult } from '@sveltejs/kit';
 import { onDestroy, type Snippet, untrack } from 'svelte';
-import { deserialize } from '$app/forms';
-import { invalidateAll } from '$app/navigation';
-import CodeEditor from '$lib/editor/CodeEditor.svelte';
-import { LANGUAGES, type Language, languageById } from '$lib/languages';
-import { filesDigest, type Reply, toReply } from '$lib/problem-wire';
-import type { ProblemView, SolutionView } from '$lib/server/learning/core';
+import CodeEditor from '#lib/editor/CodeEditor.svelte';
+import { LANGUAGES, type Language, languageById } from '#lib/languages.js';
+import { filesDigest, type Reply, toReply } from '#lib/problem-wire.js';
+import type { ProblemView, SolutionView } from '#lib/server/learning/core.js';
+import { type ActionResult, deserialize } from '$app/forms';
+import { refreshAll } from '$app/navigation';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
 import { begin, type Event, isBusy, type Request, type SaveState, transition } from './workspace';
@@ -88,7 +87,7 @@ async function post(request: Request): Promise<Reply> {
 			result = deserialize(await response.text());
 		} catch {}
 		const reply = toReply(response, result);
-		if (reply.ok && request.kind === 'switch') await invalidateAll();
+		if (reply.ok && request.kind === 'switch') await refreshAll();
 		return reply;
 	} catch {
 		return { ok: false, kind: 'unreachable' };

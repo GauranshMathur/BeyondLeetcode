@@ -1,4 +1,5 @@
-import type { RequestEvent, ResolveOptions } from '@sveltejs/kit';
+import type { RequestEvent } from '@sveltejs/kit';
+import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { describe, expect, it, vi } from 'vitest';
 import type { App } from './app.ts';
 import { createHandle } from './handle.ts';
@@ -161,7 +162,9 @@ it('a refusal from the gate (Multi-user only pages in Local Mode) is a 404 with 
 it('a Learner who chose a theme gets it on <html> in the render', async () => {
 	const { handle } = await setup({ local: true });
 	const { event, resolve } = request('/', '/');
-	event.cookies = { get: (name: string) => (name === 'theme' ? 'dark' : undefined) } as never;
+	Object.assign(event, {
+		cookies: { get: (name: string) => (name === 'theme' ? 'dark' : undefined) }
+	});
 	let html = '';
 	resolve.mockImplementation(async (_event, opts) => {
 		html = opts?.transformPageChunk?.({ html: '<html lang="en">', done: true }) as string;
@@ -283,10 +286,12 @@ describe('Multi-user Mode', () => {
 	it('is not fooled by the test Learner cookie: with the switch on it is still nobody', async () => {
 		const { handle, asking } = await multiSetup({ testLearnerCookie: true });
 		const { event, locals, resolve } = asking('/', '/', '');
-		event.cookies = {
-			get: (name: string) => (name === 'test_learner' ? 'someone' : undefined),
-			set: vi.fn()
-		} as never;
+		Object.assign(event, {
+			cookies: {
+				get: (name: string) => (name === 'test_learner' ? 'someone' : undefined),
+				set: vi.fn()
+			}
+		});
 
 		const response = await handle({ event, resolve });
 

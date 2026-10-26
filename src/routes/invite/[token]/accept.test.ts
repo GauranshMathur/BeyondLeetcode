@@ -1,11 +1,11 @@
 import { inspect } from 'node:util';
 import { isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuth, INVITE_COOKIE } from '$lib/server/identity/auth';
-import { createInvites, INVITE_LIFETIME_MS } from '$lib/server/identity/invites';
-import { createRegistration } from '$lib/server/identity/registration';
-import { createThrottle } from '$lib/server/identity/throttle';
-import { createFileTestDb } from '$lib/server/test-db';
+import { createAuth, INVITE_COOKIE } from '#lib/server/identity/auth.js';
+import { createInvites, INVITE_LIFETIME_MS } from '#lib/server/identity/invites.js';
+import { createRegistration } from '#lib/server/identity/registration.js';
+import { createThrottle } from '#lib/server/identity/throttle.js';
+import { createFileTestDb } from '#lib/server/test-db.js';
 import { createAccept } from './accept';
 
 afterEach(() => vi.restoreAllMocks());

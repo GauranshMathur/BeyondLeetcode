@@ -1,5 +1,5 @@
-import type { Handle } from '@sveltejs/kit';
-import { parseTheme, THEME_COOKIE, withTheme } from '$lib/theme';
+import type { Handle } from '@sveltejs/kit/hooks';
+import { parseTheme, THEME_COOKIE, withTheme } from '#lib/theme.js';
 import type { App } from './app.ts';
 import { gate } from './identity/gate.ts';
 import type { IdentityResolver } from './identity/index.ts';
@@ -101,11 +101,13 @@ const cookieName = (setCookie: string) => setCookie.slice(0, setCookie.indexOf('
 
 /** A gate decision depends on the Instance state, so it is never cached. */
 function refusal(status: 403 | 404 | 503): Response {
-	const text = { 403: 'Forbidden', 404: 'Not found', 503: 'Service unavailable' }[status];
-	return new Response(text, {
-		status,
-		headers: { 'Cache-Control': 'no-store' }
-	});
+	const text = {
+		403: 'Forbidden',
+		404: 'Not found',
+		503: 'Service unavailable'
+	}[status];
+
+	return new Response(text, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
 /** Reset progress is destructive: no other site may frame the app and trick a click (clickjacking). */

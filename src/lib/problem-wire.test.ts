@@ -1,5 +1,5 @@
-import type { ActionResult } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
+import type { ActionResult } from '$app/forms';
 import {
 	decodeRefusal,
 	encodeRefusal,
@@ -35,7 +35,12 @@ describe('a refusal on the wire', () => {
 
 describe('toReply', () => {
 	const sent = (status = 200, redirected = false) => ({ status, redirected });
-	const success: ActionResult = { type: 'success', status: 200, data: { revision: 2 } };
+	const success: ActionResult = {
+		type: 'success',
+		status: 200,
+		data: { revision: 2 },
+		location: '/'
+	};
 
 	it('passes the data of a success', () => {
 		expect(toReply(sent(), success)).toEqual({ ok: true, data: { revision: 2 } });
@@ -43,7 +48,7 @@ describe('toReply', () => {
 
 	it('reads a refusal from the error body, whatever the status', () => {
 		const { status, body } = encodeRefusal({ code: 'RunnerUnavailable', revision: 4 });
-		const result: ActionResult = { type: 'error', status, error: body };
+		const result: ActionResult = { type: 'error', status, error: { ...body, status } };
 
 		expect(toReply(sent(status), result)).toEqual({
 			ok: false,
@@ -57,9 +62,9 @@ describe('toReply', () => {
 		const signedOut = { ok: false, kind: 'signedOut' };
 
 		expect(toReply(sent(401), undefined)).toEqual(signedOut);
-		expect(toReply(sent(401), { type: 'error', status: 401, error: { message: 'x' } })).toEqual(
-			signedOut
-		);
+		expect(
+			toReply(sent(401), { type: 'error', status: 401, error: { message: 'x', status: 401 } })
+		).toEqual(signedOut);
 	});
 
 	it('answers a redirect as signed out: the redirected page, or an action redirect result', () => {
@@ -78,7 +83,9 @@ describe('toReply', () => {
 			kind: 'refused',
 			code: 'BadRequest'
 		});
-		expect(toReply(sent(500), { type: 'error', status: 500, error: { message: 'boom' } })).toEqual({
+		expect(
+			toReply(sent(500), { type: 'error', status: 500, error: { message: 'boom', status: 500 } })
+		).toEqual({
 			ok: false,
 			kind: 'unreachable'
 		});

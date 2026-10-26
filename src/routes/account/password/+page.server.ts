@@ -1,4 +1,4 @@
-import { createThrottle } from '$lib/server/identity/throttle';
+import { createThrottle } from '#lib/server/identity/throttle.js';
 import type { Actions, PageServerLoad } from './$types';
 import { createChangePassword } from './change-password';
 

@@ -1,13 +1,13 @@
 import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { loadCatalogue } from '$lib/server/content/catalogue';
-import { createAuth } from '$lib/server/identity/auth';
-import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
-import { createRegistration } from '$lib/server/identity/registration';
-import { createThrottle } from '$lib/server/identity/throttle';
-import { createLearningCore } from '$lib/server/learning/core';
-import { createFileTestDb } from '$lib/server/test-db';
+import { loadCatalogue } from '#lib/server/content/catalogue.js';
+import { createAuth } from '#lib/server/identity/auth.js';
+import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
+import { createRegistration } from '#lib/server/identity/registration.js';
+import { createThrottle } from '#lib/server/identity/throttle.js';
+import { createLearningCore } from '#lib/server/learning/core.js';
+import { createFileTestDb } from '#lib/server/test-db.js';
 import { createSignUp } from './sign-up';
 
 afterEach(() => vi.restoreAllMocks());

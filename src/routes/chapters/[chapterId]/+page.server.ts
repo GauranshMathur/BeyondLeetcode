@@ -1,5 +1,5 @@
-import { withLearningErrors } from '$lib/server/learning-http';
-import { signedIn } from '$lib/server/signed-in';
+import { withLearningErrors } from '#lib/server/learning-http.js';
+import { signedIn } from '#lib/server/signed-in.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params }) => ({

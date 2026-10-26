@@ -11,7 +11,7 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			// adapter-node: the build runs as a plain server under Bun (`bun ./build/index.js`).
+			// adapter-node: the build runs as a plain server under Bun (`bun src/lib/server/web-entry.ts`, which pins ORIGIN and then runs `build/index.js`).
 			adapter: adapter()
 		})
 	],

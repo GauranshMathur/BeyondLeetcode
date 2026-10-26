@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { THEME_COOKIE } from '$lib/theme';
+import { THEME_COOKIE } from '#lib/theme.js';
 import { actions, load } from './+page.server';
 
 // SvelteKit marks a cookie Secure unless `secure` is stated, on any host but localhost, and a browser drops a

@@ -1,9 +1,9 @@
 import { createHmac } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
-import { createAuth } from '$lib/server/identity/auth';
-import { createThrottle } from '$lib/server/identity/throttle';
-import { createFileTestDb } from '$lib/server/test-db';
+import { createAuth } from '#lib/server/identity/auth.js';
+import { createThrottle } from '#lib/server/identity/throttle.js';
+import { createFileTestDb } from '#lib/server/test-db.js';
 import { createChangePassword } from './change-password';
 
 // Hashing a password is slow on purpose, and some tests change several.

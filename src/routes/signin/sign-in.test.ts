@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from '$lib/server/identity/auth';
-import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
-import { createProviderStarts, createThrottle } from '$lib/server/identity/throttle';
-import { createFileTestDb } from '$lib/server/test-db';
+import { createAuth } from '#lib/server/identity/auth.js';
+import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
+import { createProviderStarts, createThrottle } from '#lib/server/identity/throttle.js';
+import { createFileTestDb } from '#lib/server/test-db.js';
 import { createSignIn, landing, providerNotice } from './sign-in';
 
 afterEach(() => vi.restoreAllMocks());

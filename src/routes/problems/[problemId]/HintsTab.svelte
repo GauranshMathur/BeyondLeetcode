@@ -1,7 +1,7 @@
 <script lang="ts">
+import type { ReplyData } from '#lib/problem-wire.js';
+import type { HintsView, ProblemView } from '#lib/server/learning/core.js';
 import { enhance } from '$app/forms';
-import type { ReplyData } from '$lib/problem-wire';
-import type { HintsView, ProblemView } from '$lib/server/learning/core';
 
 let { problem, hints }: { problem: ProblemView; hints: HintsView } = $props();
 

@@ -1,6 +1,6 @@
 import { isHttpError } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
-import { decodeRefusal } from '$lib/problem-wire';
+import { decodeRefusal } from '#lib/problem-wire.js';
 import { LearningError, type LearningErrorCode } from './learning/core.ts';
 import { withLearningErrors } from './learning-http.ts';
 
@@ -27,7 +27,8 @@ describe('withLearningErrors', () => {
 		const e = await caught(code);
 
 		expect(e.status).toBe(status);
-		expect(e.body).toEqual({ message: code });
+		// SvelteKit 3 adds the status to every error body.
+		expect(e.body).toEqual({ message: code, status });
 		expect(decodeRefusal(e.body)).toEqual({ code });
 	});
 
@@ -35,7 +36,7 @@ describe('withLearningErrors', () => {
 		const e = await caught('RunnerUnavailable', 4);
 
 		expect(e.status).toBe(503);
-		expect(e.body).toEqual({ message: 'RunnerUnavailable', revision: 4 });
+		expect(e.body).toEqual({ message: 'RunnerUnavailable', revision: 4, status: 503 });
 		expect(decodeRefusal(e.body)).toEqual({ code: 'RunnerUnavailable', revision: 4 });
 	});
 

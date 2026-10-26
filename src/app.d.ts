@@ -1,9 +1,9 @@
-import type { Setup } from '$lib/server/app';
-import type { Identity } from '$lib/server/identity';
-import type { Auth } from '$lib/server/identity/auth';
-import type { Invites } from '$lib/server/identity/invites';
-import type { Instance } from '$lib/server/instance';
-import type { Learner } from '$lib/server/learning/core';
+import type { Setup } from '#lib/server/app.js';
+import type { Auth } from '#lib/server/identity/auth.js';
+import type { Identity } from '#lib/server/identity/index.js';
+import type { Invites } from '#lib/server/identity/invites.js';
+import type { Instance } from '#lib/server/instance.js';
+import type { Learner } from '#lib/server/learning/core.js';
 
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
@@ -27,7 +27,7 @@ declare global {
 			/**
 			 * Who this request is, from Identity. Unset where nobody is resolved: /setup before the Instance is
 			 * set up, and the public pages of a multi-user Instance (Sign in, Sign up, Accept invite). A
-			 * signed-in route reads it through `signedIn` (`$lib/server/signed-in`), which throws when unset.
+			 * signed-in route reads it through `signedIn` (`#lib/server/signed-in.js`), which throws when unset.
 			 */
 			identity?: Identity;
 			/** The Learning core acting for this request's Learner. Unset exactly when `identity` is. */

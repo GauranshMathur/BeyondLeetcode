@@ -1,8 +1,7 @@
 <script lang="ts">
-import type { SubmitFunction } from '@sveltejs/kit';
-import { enhance } from '$app/forms';
+import { reportIssueUrl } from '#lib/issue-link.js';
+import { enhance, type SubmitFunction } from '$app/forms';
 import { navigating } from '$app/state';
-import { reportIssueUrl } from '$lib/issue-link';
 import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();

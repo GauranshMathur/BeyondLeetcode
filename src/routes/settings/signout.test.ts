@@ -1,8 +1,8 @@
 import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from '$lib/server/identity/auth';
-import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
-import { createFileTestDb } from '$lib/server/test-db';
+import { createAuth } from '#lib/server/identity/auth.js';
+import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
+import { createFileTestDb } from '#lib/server/test-db.js';
 import { actions, load } from './+page.server';
 
 afterEach(() => vi.restoreAllMocks());

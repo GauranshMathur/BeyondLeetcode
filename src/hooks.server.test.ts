@@ -2,11 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { inspect } from 'node:util';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 
-vi.mock('$env/dynamic/private', () => ({ env: {} }));
-vi.mock('$lib/server/app', () => ({ createApp: vi.fn() }));
+vi.mock('$app/env/private', () => ({}));
+vi.mock('#lib/server/app.js', () => ({ createApp: vi.fn() }));
 
 const { formatServerError, handleError } = await import('./hooks.server.ts');
-const { installLogRedaction } = await import('$lib/server/identity/auth');
+const { installLogRedaction } = await import('#lib/server/identity/auth.js');
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -80,10 +80,9 @@ describe('what an unexpected error logs', () => {
 		);
 
 		const result = handleError({
+			kind: 'unknown',
 			error: new Error(`Failed to parse body at /invite/${token}`),
-			event: event('/invite/[token]'),
-			status: 500,
-			message: 'Internal Error'
+			event: event('/invite/[token]')
 		});
 
 		const logged = spies

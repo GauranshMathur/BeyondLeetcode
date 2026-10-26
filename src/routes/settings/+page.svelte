@@ -1,7 +1,6 @@
 <script lang="ts">
-import type { SubmitFunction } from '@sveltejs/kit';
-import { enhance } from '$app/forms';
-import { parseTheme } from '$lib/theme';
+import { parseTheme } from '#lib/theme.js';
+import { enhance, type SubmitFunction } from '$app/forms';
 import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();

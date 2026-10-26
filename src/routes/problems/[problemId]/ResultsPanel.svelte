@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { RunTestStatus } from '$lib/server/learning/core';
+import type { RunTestStatus } from '#lib/server/learning/core.js';
 import type { Outcome } from './outcome';
 
 let { outcome }: { outcome: Outcome | undefined } = $props();

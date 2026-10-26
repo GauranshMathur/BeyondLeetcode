@@ -49,13 +49,13 @@ function* sourceFiles(dir: string): Generator<string> {
 describe('isolationViolations', () => {
 	it('flags imports of any runner module outside the allow-list, in any import form', () => {
 		for (const line of [
-			"import { createEngine } from '$lib/server/runner/engine';",
-			"import { containerSpec } from '$lib/server/runner/sandbox.ts';",
+			"import { createEngine } from '#lib/server/runner/engine';",
+			"import { containerSpec } from '#lib/server/runner/sandbox.ts';",
 			"import('../runner/engine.js')",
 			"const e = require('./runner/sandbox')",
 			"export * from '../../lib/server/runner/engine';",
-			"import { main } from '$lib/server/runner/main';",
-			"import { c } from '$lib/server/runner/migrate';"
+			"import { main } from '#lib/server/runner/main';",
+			"import { c } from '#lib/server/runner/migrate';"
 		]) {
 			expect(isolationViolations(line), line).not.toEqual([]);
 		}
@@ -67,9 +67,9 @@ describe('isolationViolations', () => {
 
 	it('allows what the web role may use of the runner module', () => {
 		for (const line of [
-			"import { createHttpRunner } from '$lib/server/runner/http-adapter';",
-			"import type { RunnerPort } from '$lib/server/runner/port';",
-			"import { createFakeRunner } from '$lib/server/runner/fake';",
+			"import { createHttpRunner } from '#lib/server/runner/http-adapter';",
+			"import type { RunnerPort } from '#lib/server/runner/port';",
+			"import { createFakeRunner } from '#lib/server/runner/fake';",
 			"import { x } from './engine';"
 		]) {
 			expect(isolationViolations(line), line).toEqual([]);

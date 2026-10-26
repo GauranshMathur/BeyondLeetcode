@@ -69,7 +69,10 @@ export async function startMultiUserServer(): Promise<MultiUserServer> {
 		await db.$disconnect();
 	}
 
-	const server = spawn('bun', ['./build/index.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+	const server = spawn('bun', ['./src/lib/server/web-entry.ts'], {
+		env,
+		stdio: ['ignore', 'pipe', 'pipe']
+	});
 	let output = '';
 	server.stdout?.on('data', (chunk) => {
 		output += chunk;

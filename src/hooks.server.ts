@@ -1,8 +1,18 @@
-import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
-import { createApp } from '$lib/server/app';
-import { createHandle } from '$lib/server/handle';
-import { installLogRedaction, isKnownCode } from '$lib/server/identity/auth';
+import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
+import { createApp } from '#lib/server/app.js';
+import { createHandle } from '#lib/server/handle.js';
+import { installLogRedaction, isKnownCode } from '#lib/server/identity/auth.js';
+import {
+	BETTER_AUTH_SECRET,
+	CONTENT_DIR,
+	DATABASE_URL,
+	IDENTITY_TEST_LEARNER,
+	NODE_ENV,
+	ORIGIN,
+	RUNNER_ADAPTER,
+	RUNNER_TOKEN,
+	RUNNER_URL
+} from '$app/env/private';
 
 let run: Handle;
 
@@ -12,15 +22,15 @@ let run: Handle;
  */
 export const init: ServerInit = async () => {
 	const app = await createApp({
-		CONTENT_DIR: env.CONTENT_DIR,
-		DATABASE_URL: env.DATABASE_URL,
-		RUNNER_URL: env.RUNNER_URL,
-		RUNNER_TOKEN: env.RUNNER_TOKEN,
-		IDENTITY_TEST_LEARNER: env.IDENTITY_TEST_LEARNER,
-		RUNNER_ADAPTER: env.RUNNER_ADAPTER,
-		NODE_ENV: env.NODE_ENV,
-		BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
-		ORIGIN: env.ORIGIN
+		CONTENT_DIR,
+		DATABASE_URL,
+		RUNNER_URL,
+		RUNNER_TOKEN,
+		IDENTITY_TEST_LEARNER,
+		RUNNER_ADAPTER,
+		NODE_ENV,
+		BETTER_AUTH_SECRET,
+		ORIGIN
 	});
 	run = createHandle(app);
 };
@@ -54,7 +64,15 @@ export function formatServerError(
 	return `${head} ${kind}${code ? ` ${code}` : ''}`;
 }
 
-export const handleError: HandleServerError = ({ error, event, status }) => {
+/**
+ * SvelteKit 3 passes every error here, expected ones included. An error thrown with `error(...)` (the Learning
+ * core's refusals) is the app's own and already safe: it goes out unchanged and is not logged, as before. Anything
+ * else is logged as the route id, the class name and a known code only, and answers with the generic message.
+ */
+export const handleError: HandleServerError = (input) => {
+	if (input.kind === 'app') return input.error;
+	const { error, event, kind } = input;
+	const status = kind === 'unknown' ? 500 : error.status;
 	console.error(formatServerError(status, error, event));
 	return { message: status === 404 ? 'Not Found' : 'Internal Error' };
 };

@@ -1,14 +1,15 @@
-import type { RequestEvent, ResolveOptions } from '@sveltejs/kit';
+import type { RequestEvent } from '@sveltejs/kit';
+import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { expect, it, vi } from 'vitest';
-import type { App } from '$lib/server/app';
-import { createHandle } from '$lib/server/handle';
-import { createAuth } from '$lib/server/identity/auth';
-import { createLocalIdentity } from '$lib/server/identity/index';
-import { createInvites } from '$lib/server/identity/invites';
-import { createMultiUserIdentity } from '$lib/server/identity/multi-user';
-import { createRegistration } from '$lib/server/identity/registration';
-import { createInstance } from '$lib/server/instance';
-import { createTestDb } from '$lib/server/test-db';
+import type { App } from '#lib/server/app.js';
+import { createHandle } from '#lib/server/handle.js';
+import { createAuth } from '#lib/server/identity/auth.js';
+import { createLocalIdentity } from '#lib/server/identity/index.js';
+import { createInvites } from '#lib/server/identity/invites.js';
+import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
+import { createRegistration } from '#lib/server/identity/registration.js';
+import { createInstance } from '#lib/server/instance.js';
+import { createTestDb } from '#lib/server/test-db.js';
 
 // /signup is judged by the gate (gate.ts) before the page or its action runs. These tests pin what the
 // gate answers for it, through the real hook, so the Sign up code never has to guard against them.
