@@ -37,7 +37,7 @@ const general = $derived(form && 'field' in form && form.field === null ? form.m
 	<section class="group">
 		<div class="label">
 			<h2>Password</h2>
-			<p>At least 12 characters.</p>
+			<p>At least {data.minPasswordLength} characters.</p>
 		</div>
 		{#if data.signedOut}
 			<div class="control">

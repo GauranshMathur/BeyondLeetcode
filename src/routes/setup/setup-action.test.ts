@@ -77,6 +77,22 @@ describe('step 1: choose a mode', () => {
 		expect(result).toMatchObject({ status: 303, location: '/' });
 	});
 
+	it('redirects on an InstanceAlreadySetUpError whatever its message, and not on a plain Error that says so', async () => {
+		class Reworded extends InstanceAlreadySetUpError {
+			override message = 'text that no longer says it';
+		}
+		const redirected = await choose('local', async () => {
+			throw new Reworded();
+		});
+		expect(redirected).toMatchObject({ status: 303, location: '/' });
+
+		await expect(
+			choose('local', async () => {
+				throw new Error('The Instance is already set up; its mode cannot be chosen again.');
+			})
+		).rejects.toThrow('already set up');
+	});
+
 	it('choosing Local once an Account exists is refused with a fixed message, and Setup stays unset', async () => {
 		const db = await createTestDb();
 		await db.user.create({

@@ -76,7 +76,10 @@ describe('the page', () => {
 		const { accept, event, create, cookies } = await real();
 		const { token } = await create();
 
-		expect(await accept.load(event(token) as never)).toEqual({ valid: true });
+		expect(await accept.load(event(token) as never)).toEqual({
+			valid: true,
+			minPasswordLength: 12
+		});
 		expect(cookies.set).toHaveBeenCalledWith(
 			INVITE_COOKIE,
 			token,
@@ -139,7 +142,10 @@ describe('the page', () => {
 		});
 
 		for (const token of ['A'.repeat(43), 'short', used.token, cancelled.token, expired.token]) {
-			expect(await accept.load(event(token) as never)).toEqual({ valid: false });
+			expect(await accept.load(event(token) as never)).toEqual({
+				valid: false,
+				minPasswordLength: 12
+			});
 		}
 		expect(cookies.set).not.toHaveBeenCalled();
 	});
