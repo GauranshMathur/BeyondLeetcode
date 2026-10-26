@@ -52,7 +52,7 @@ async function perform(request: Request) {
 	}
 	// The digest is async and a page that is unloading cannot wait for it, so it is computed as the
 	// request goes out and kept in the session for a flush to use.
-	if ('files' in request) {
+	if ('files' in request && !request.keepalive) {
 		const files = request.files;
 		void filesDigest(files).then((digest) => dispatch({ type: 'digest', of: files, digest }));
 	}
