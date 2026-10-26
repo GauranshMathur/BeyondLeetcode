@@ -267,6 +267,9 @@ describe('Sandbox runner: start-up sweep', () => {
 
 			await vi.advanceTimersByTimeAsync(engineCallTimeoutMs - 1 + sandboxConfig.containerTimeoutMs);
 			await pending;
+			expect(killedAtMs).toBe(
+				createdMs + engineCallTimeoutMs - 1 + sandboxConfig.containerTimeoutMs
+			);
 			removed.length = 0;
 
 			// The kill time is the hard stop. Sweeping up to the margin after it must still leave the
