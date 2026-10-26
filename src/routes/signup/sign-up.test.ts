@@ -72,13 +72,13 @@ describe('the page', () => {
 	it('is open while the Registration Mode is open', async () => {
 		const { signUp, locals } = harness({ registration: 'open' });
 
-		expect(await signUp.load({ locals } as never)).toEqual({ open: true });
+		expect(await signUp.load({ locals } as never)).toEqual({ open: true, minPasswordLength: 12 });
 	});
 
 	it('shows the closed state while the Registration Mode is invite-only', async () => {
 		const { signUp, locals } = harness({ registration: 'invite' });
 
-		expect(await signUp.load({ locals } as never)).toEqual({ open: false });
+		expect(await signUp.load({ locals } as never)).toEqual({ open: false, minPasswordLength: 12 });
 	});
 
 	it('sends someone who is already signed in to the Map', async () => {

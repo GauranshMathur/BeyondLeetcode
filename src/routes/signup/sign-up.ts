@@ -9,6 +9,7 @@ import {
 	MIN_PASSWORD_LENGTH
 } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
+import { clientAddress } from '$lib/server/identity/client-address';
 import type { Throttle } from '$lib/server/identity/throttle';
 
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
@@ -70,15 +71,6 @@ function known(error: unknown): { status: 400 | 403; field?: Field; message: str
 	}
 }
 
-/** The caller's address, or '' when the server cannot tell: the throttle keeps those in one shared bucket. */
-function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
-	try {
-		return event.getClientAddress();
-	} catch {
-		return '';
-	}
-}
-
 /**
  * The Sign up page: whether the form is offered, and the action that creates an Account.
  *
@@ -95,7 +87,10 @@ export function createSignUp(throttle: Throttle) {
 		load({ locals }: Pick<RequestEvent, 'locals'>) {
 			// Someone who is signed in has nothing to do here.
 			if (locals.identity) redirect(303, '/');
-			return { open: locals.instance.registrationMode() === 'open' };
+			return {
+				open: locals.instance.registrationMode() === 'open',
+				minPasswordLength: MIN_PASSWORD_LENGTH
+			};
 		},
 
 		async action(event: SignUpEvent) {

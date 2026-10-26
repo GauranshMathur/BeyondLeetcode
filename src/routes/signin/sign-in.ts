@@ -3,6 +3,7 @@ import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { enabledProviders, SOCIAL_PROVIDER_NAMES } from '$lib/server/identity/auth';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
+import { clientAddress } from '$lib/server/identity/client-address';
 import { safeNext } from '$lib/server/identity/gate';
 import {
 	createProviderStarts,
@@ -82,15 +83,6 @@ export function landing(next: string | null): string {
 	}
 	const page = pathname.length > 1 ? pathname.replace(/\/+$/, '').toLowerCase() : pathname;
 	return AUTH_PAGES.has(page) ? '/' : encoded;
-}
-
-/** The caller's address, or '' when the server cannot tell: the throttle keeps those in one shared bucket. */
-function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
-	try {
-		return event.getClientAddress();
-	} catch {
-		return '';
-	}
 }
 
 /**

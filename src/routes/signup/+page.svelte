@@ -81,7 +81,7 @@ const keeps = [
 					{#if fieldError('password')}
 						<span id="password-error" class="hint" role="alert">{fieldError('password')}</span>
 					{:else}
-						<span id="password-hint" class="hint">At least 12 characters.</span>
+						<span id="password-hint" class="hint">At least {data.minPasswordLength} characters.</span>
 					{/if}
 				</div>
 				{#if formError}
