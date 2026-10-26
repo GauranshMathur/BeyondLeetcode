@@ -15,6 +15,9 @@ const MESSAGES = {
 	short: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
 	long: `Use at most ${MAX_PASSWORD_LENGTH} characters.`,
 	mismatch: 'The two new passwords do not match.',
+	// Said plainly: the caller is signed in as this Account, so it tells them nothing they may not know.
+	noPassword:
+		'Your Account has no password: you sign in with GitHub or Google. There is nothing to change here.',
 	same: 'Choose a password different from your current one.',
 	failed:
 		'Changing your password failed, and it may have changed. You are signed out of every session. Sign in with your new password, or your old one if that fails.',
@@ -26,6 +29,19 @@ const MESSAGES = {
 type Field = 'current' | 'new' | 'confirm';
 
 type ChangeEvent = Pick<RequestEvent, 'request' | 'locals' | 'cookies' | 'getClientAddress'>;
+
+/**
+ * Whether the Account has a password to change: the password Account Better Auth's change reads (the same
+ * selection as `passwordGeneration` in `auth.ts`). One that signs in only with GitHub or Google has none, until
+ * an admin's reset gives it one.
+ */
+export async function hasPassword(
+	auth: NonNullable<RequestEvent['locals']['auth']>,
+	userId: string
+) {
+	const { internalAdapter } = await auth.$context;
+	return Boolean((await internalAdapter.findCredentialAccount(userId))?.password);
+}
 
 /** What the form gets back from a refusal: always the same keys, never a password. */
 const refused = (status: 400 | 500 | 503, field: Field | null, message: string) =>
@@ -106,6 +122,9 @@ export function createChangePassword(throttle: Throttle) {
 		async action(event: ChangeEvent) {
 			const { request, cookies } = event;
 			const { auth, userId, forced } = await who(event);
+
+			// Before anything is counted: an Account with no password has no current password to guess.
+			if (!(await hasPassword(auth, userId))) return refused(400, null, MESSAGES.noPassword);
 
 			const data = await request.formData();
 			const current = text(data, 'current');

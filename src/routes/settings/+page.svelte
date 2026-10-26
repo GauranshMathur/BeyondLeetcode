@@ -106,8 +106,8 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		</div>
 	</section>
 
-	<!-- Passwords belong to Accounts, so the row is for a Multi-user Instance only. -->
-	{#if data.multiUser}
+	<!-- Passwords belong to Accounts, so the row is for a Multi-user Instance only, and for an Account that has one. -->
+	{#if data.multiUser && data.hasPassword}
 		<section class="group">
 			<div class="label">
 				<h2>Password</h2>

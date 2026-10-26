@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
 import { createAuth } from '$lib/server/identity/auth';
@@ -56,7 +57,32 @@ async function setup() {
 	}
 	const sessionOf = async (cookie: string) =>
 		(await auth.api.getSession({ headers: new Headers({ cookie }) }))?.user ?? null;
-	return { auth, account, signIn, sessionOf };
+	/** An Account that signs in only with GitHub: no password Account, and a session as a callback makes it. */
+	async function providerOnly() {
+		await db.learner.create({ data: { id: 'oz-learner' } });
+		await db.user.create({
+			data: { id: 'oz', name: 'Oz', email: 'oz@example.com', learnerId: 'oz-learner' }
+		});
+		await db.account.create({
+			data: { id: 'oz-gh', accountId: '99', providerId: 'github', userId: 'oz' }
+		});
+		const token = 'oz-github-session-token';
+		await db.session.create({
+			data: {
+				id: 'oz-s',
+				token,
+				userId: 'oz',
+				expiresAt: new Date(Date.now() + 1e9),
+				credentialGeneration: ''
+			}
+		});
+		const signature = createHmac('sha256', secret).update(token).digest('base64');
+		return {
+			id: 'oz',
+			cookie: `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`
+		};
+	}
+	return { auth, db, account, providerOnly, signIn, sessionOf };
 }
 
 const throttleFor = () => createThrottle();
@@ -99,6 +125,40 @@ async function run(
 		return { thrown: thrown as { status: number; location?: string } };
 	}
 }
+
+describe('an Account with no password', () => {
+	it('is told so, and no throttle attempt is counted', async () => {
+		const { auth, providerOnly } = await setup();
+		const throttle = createThrottle();
+		const attempt = vi.spyOn(throttle, 'attempt');
+		const { action } = createChangePassword(throttle);
+		const me = await providerOnly();
+
+		const { result } = await run(
+			action,
+			event(auth, me.cookie, form('anything at all', newPassword)).ev
+		);
+
+		expect(result).toMatchObject({
+			status: 400,
+			data: { field: null, message: expect.stringMatching(/has no password/) }
+		});
+		expect(attempt).not.toHaveBeenCalled();
+	});
+
+	it('keeps its budget: 25 tries leave the throttle unspent for a later password', async () => {
+		const { auth, providerOnly } = await setup();
+		const throttle = createThrottle();
+		const { action } = createChangePassword(throttle);
+		const me = await providerOnly();
+
+		for (let i = 0; i < 25; i++) {
+			await run(action, event(auth, me.cookie, form('anything at all', newPassword)).ev);
+		}
+
+		expect(throttle.attempt({ address: '10.0.0.1', accountId: me.id }).allowed).toBe(true);
+	});
+});
 
 describe('changing a password', () => {
 	it('sets the new password, ends every other session, clears the flag and goes on', async () => {

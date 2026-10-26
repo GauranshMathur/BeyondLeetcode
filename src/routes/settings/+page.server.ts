@@ -1,15 +1,33 @@
-import { error, fail, redirect } from '@sveltejs/kit';
+import { error, fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import { isAPIError } from 'better-auth/api';
 import { forwardSetCookies } from '$lib/server/identity/auth-handler';
 import { parseTheme, THEME_COOKIE } from '$lib/theme';
+import { hasPassword } from '../account/password/change-password';
 import type { Actions, PageServerLoad } from './$types';
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
 
-export const load: PageServerLoad = ({ cookies, url, locals }) => ({
+/**
+ * Whether the signed-in Account has a password, so Settings offers "Change password" only to one that does
+ * (a GitHub/Google-only Account has none). Unknown counts as yes: the page then shows the row, and the
+ * change-password action itself answers truthfully.
+ */
+async function accountHasPassword({ locals, request }: Pick<RequestEvent, 'locals' | 'request'>) {
+	const { auth } = locals;
+	if (!auth || !request) return true;
+	try {
+		const session = await auth.api.getSession({ headers: request.headers });
+		return session ? await hasPassword(auth, session.user.id) : true;
+	} catch {
+		return true;
+	}
+}
+
+export const load: PageServerLoad = async ({ cookies, url, locals, request }) => ({
 	theme: parseTheme(cookies.get(THEME_COOKIE)),
 	// Only a Multi-user Instance has sessions to end, so only it shows Sign out.
 	multiUser: locals.instance.mode() === 'multi',
+	hasPassword: await accountHasPassword({ locals, request }),
 	// "Reset progress" is a plain GET that opens the confirm, so it works without JavaScript.
 	confirmingReset: url.searchParams.get('reset') === 'confirm'
 });
