@@ -30,6 +30,8 @@ jobs:
       - run: bun run lint
       - name: Test the published-tag check
         run: .github/published.test.sh
+      - name: Test the release gate's wait for ci
+        run: .github/ci-gate.test.sh
 
   unit:
     runs-on: ubuntu-24.04
