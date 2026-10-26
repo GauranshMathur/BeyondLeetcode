@@ -40,7 +40,7 @@ while :; do
     if [ -n "$verdicts" ]; then
       # Pure bash, no grep: a tool error must not read as "nothing failed". Only a line for every
       # wanted job, each ending in success, passes.
-      bad= pending= ok=0 want=0
+      bad='' pending='' ok=0 want=0
       for _ in $JOBS; do want=$((want + 1)); done
       while IFS= read -r line; do
         case "$line" in
