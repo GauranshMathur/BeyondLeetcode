@@ -6,7 +6,7 @@ import { type Client, createClient } from '@libsql/client';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { onTestFinished } from 'vitest';
 import { PrismaClient } from '../../../prisma/generated/client';
-import type { Db } from './db';
+import { BUSY_TIMEOUT_MS, type Db } from './db';
 
 // Replays the migration SQL directly (no _prisma_migrations table); db.test.ts
 // covers the real `prisma migrate deploy` path on a file database.
@@ -55,14 +55,6 @@ export async function createTestDb(): Promise<Db> {
 	return db;
 }
 
-/**
- * How long a connection waits for another connection's lock before SQLite fails with SQLITE_BUSY
- * (libSQL's default is 0, so a write that meets a lock fails at once). A timeout absorbs short waits
- * only: SQLite still refuses at once a read-to-write upgrade when another connection holds the write
- * lock, whatever the timeout (see multi-fixture.ts).
- */
-const BUSY_TIMEOUT_MS = 10_000;
-
 // Replaying 11 migrations into a fresh file costs more than most tests spend, so the schema is
 // applied once per worker, into a template file, and each database is a copy of that file. The
 // template lives in its own temp directory, removed when the worker exits.
@@ -86,7 +78,7 @@ function templateDatabase(): Promise<string> {
 	return template;
 }
 
-// Prisma's adapter opens one libSQL client per connect and hands each transaction its own connection.
+// Prisma's adapter opens one libSQL client per connect and one per in-flight transaction.
 // Keeping every client lets teardown close them all, so none can reopen the file once its directory
 // is gone (the SQLITE_CANTOPEN seen on CI).
 class PrismaLibSqlTracked extends PrismaLibSql {
@@ -106,7 +98,8 @@ class PrismaLibSqlTracked extends PrismaLibSql {
 /**
  * A fresh SQLite database in a temp file with every migration applied, deleted when the test
  * ends. For tests of concurrency: unlike the in-memory database above it gives each Prisma
- * transaction its own connection, as production does, so writers really contend for the lock.
+ * transaction its own connection, as production does. The adapter still runs one client's
+ * transactions one at a time, so SQLite's lock is contended only by another process or client.
  */
 export async function createFileTestDb(): Promise<Db> {
 	const source = await templateDatabase();
