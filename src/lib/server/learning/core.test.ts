@@ -369,6 +369,53 @@ describe('learner.problem() and learner.saveCode()', () => {
 		expect((await learner.problem('stacks-push')).files).toEqual({ 'main.py': 'tab one' });
 	});
 
+	it('answers a retried save one revision behind with the same files as saved, writing nothing', async () => {
+		const { learner } = await setup();
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'a', 'util.py': 'b' });
+		await learner.saveCode(ref('stacks-push', 1), { 'main.py': 'c', 'util.py': 'd' });
+		const before = await learner.problem('stacks-push');
+
+		// The reply to the save at revision 1 was lost; the tab sends it again, keys in another order.
+		await expect(
+			learner.saveCode(ref('stacks-push', 1), { 'util.py': 'd', 'main.py': 'c' })
+		).resolves.toEqual({ revision: 2 });
+		expect(await learner.problem('stacks-push')).toEqual(before);
+
+		// Also the very first save, retried at revision 0.
+		const other = await setup();
+		await other.learner.saveCode(ref('stacks-push', 0), { 'main.py': 'a' });
+		await expect(
+			other.learner.saveCode(ref('stacks-push', 0), { 'main.py': 'a' })
+		).resolves.toEqual({ revision: 1 });
+	});
+
+	it('still refuses one revision behind with different files, two behind with the same files, or a missing path', async () => {
+		const { learner } = await setup();
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'a' });
+		await learner.saveCode(ref('stacks-push', 1), { 'main.py': 'b' });
+		await learner.saveCode(ref('stacks-push', 2), { 'main.py': 'a' });
+
+		await expect(learner.saveCode(ref('stacks-push', 2), { 'main.py': 'b' })).rejects.toMatchObject(
+			{ code: 'RevisionConflict' }
+		);
+		// ABA: the same files as stored, but two behind.
+		await expect(learner.saveCode(ref('stacks-push', 1), { 'main.py': 'a' })).rejects.toMatchObject(
+			{ code: 'RevisionConflict' }
+		);
+		await expect(
+			learner.saveCode(ref('stacks-push', 2), { 'main.py': 'a', 'x.py': '' })
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+		expect((await learner.problem('stacks-push')).build.revision).toBe(3);
+	});
+
+	it('still validates the Build of a retried save', async () => {
+		const { learner } = await setup();
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'a' });
+		await expect(learner.saveCode(ref('stacks-push', 0), { '../x': 'a' })).rejects.toMatchObject({
+			code: 'InvalidBuild'
+		});
+	});
+
 	it('lets only one of two concurrent first saves win', async () => {
 		const { learner } = await setup();
 		const results = await Promise.allSettled([
@@ -1392,6 +1439,18 @@ describe('learner.startFromReferenceCode()', () => {
 		const core = createLearningCore({ catalogue, db, runner: createScriptedRunner({ tests }) });
 		return { catalogue, db, learner: core.forLearner('any-learner') };
 	}
+
+	it('answers a retried restart whose reply was lost as started, at the same revision', async () => {
+		const { learner, db } = await setup();
+		const broken = await learner.saveCode(ref('stacks-pop', 0), { 'main.py': 'broken' });
+		const first = await learner.startFromReferenceCode(ref('stacks-pop', broken.revision));
+		const before = await db.buildStep.findMany();
+
+		const retried = await learner.startFromReferenceCode(ref('stacks-pop', broken.revision));
+
+		expect(retried).toEqual(first);
+		expect(await db.buildStep.findMany()).toEqual(before);
+	});
 
 	it("replaces the Learner's Build with the Reference Code after the previous Problem", async () => {
 		const { learner, catalogue } = await setup();

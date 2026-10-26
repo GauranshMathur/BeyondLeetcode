@@ -131,7 +131,9 @@ test('Run shows a runtime error and a compile error block', async ({ page }) => 
 
 	await setCode(page, 'def (:\n');
 	await page.getByRole('button', { name: 'Run' }).click();
-	await expect(page.getByLabel('Compile error')).toContainText('SyntaxError', { timeout: 60_000 });
+	await expect(page.getByLabel('Compile error')).toContainText('SyntaxError', {
+		timeout: 60_000
+	});
 });
 
 test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code is Accepted and Solved', async ({
@@ -240,7 +242,9 @@ test('the Problem page stays one screen tall: the statement, the editor and the 
 	expect(await page.evaluate(() => window.scrollY)).toBe(0);
 	await expect(page.getByRole('navigation', { name: 'Problem sections' })).toBeInViewport();
 	for (const name of ['Run', 'Submit']) {
-		await expect(page.getByRole('button', { name })).toBeInViewport({ ratio: 1 });
+		await expect(page.getByRole('button', { name })).toBeInViewport({
+			ratio: 1
+		});
 	}
 
 	// The console never takes more than about half of the right pane.
@@ -388,6 +392,30 @@ test('Hints reveal one at a time, in order, link to the Chapter, and survive a r
 	await expect(page).toHaveURL('/chapters/stacks-undo-log');
 });
 
+// C70: a reveal that does not go through says so, and the button stays usable.
+test('Reveal hint says so when the session has ended', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?tab=hints&/revealHint', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({ type: 'redirect', status: 303, location: '/signin' })
+		})
+	);
+	await page.goto('/problems/stacks-pop?tab=hints');
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByRole('alert')).toContainText('You are signed out');
+	await expect(page.getByRole('link', { name: 'Sign in again' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Reveal hint 1' })).toBeEnabled();
+});
+
+test('Reveal hint says so when the request fails', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?tab=hints&/revealHint', (route) => route.abort());
+	await page.goto('/problems/stacks-pop?tab=hints');
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByRole('alert')).toContainText('The hint could not be revealed');
+	await expect(page.getByRole('button', { name: 'Reveal hint 1' })).toBeEnabled();
+});
+
 test('the browser receives only the Hints already revealed', async ({ page }) => {
 	const body = await (await page.request.get('/problems/stacks-peek?tab=hints')).text();
 	expect(body).not.toContain('First hint.');
@@ -417,7 +445,9 @@ test('the Solution tab shows the explanation and the Reference Code in each Lang
 	await expect(page.getByText('Placeholder fixture text')).toBeVisible();
 	await expect(page.getByText('reference code · read only')).toBeVisible();
 
-	const language = page.getByRole('navigation', { name: 'Reference code language' });
+	const language = page.getByRole('navigation', {
+		name: 'Reference code language'
+	});
 	const code = page.locator('.viewer .cm-content');
 	await expect(language.getByRole('button', { name: 'Python' })).toHaveAttribute(
 		'aria-current',
@@ -449,7 +479,9 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 	await expect(page.getByRole('status')).toHaveText('saved');
 
 	await page.getByRole('button', { name: 'Start from reference code' }).click();
-	const confirm = page.getByRole('group', { name: 'Start from reference code' });
+	const confirm = page.getByRole('group', {
+		name: 'Start from reference code'
+	});
 	await expect(confirm).toBeVisible();
 	await confirm.getByRole('button', { name: 'Cancel' }).click();
 	await expect(confirm).toHaveCount(0);
@@ -467,7 +499,7 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 
 	// The new Build is saved with a fresh revision: a Run goes straight through.
 	await page.getByRole('button', { name: 'Run' }).click();
-	await expect(page.locator('.status')).toHaveText('saved');
+	await expect(page.locator('.bar .status')).toHaveText('saved');
 });
 
 test.describe('on a phone', () => {
@@ -543,7 +575,9 @@ test.describe('on a phone', () => {
 
 		await setCode(page, correct);
 		await page.getByRole('button', { name: 'Submit' }).click();
-		await expect(page.getByLabel('Verdict')).toContainText('Accepted', { timeout: 60_000 });
+		await expect(page.getByLabel('Verdict')).toContainText('Accepted', {
+			timeout: 60_000
+		});
 		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByLabel('Accepted panel')).toBeVisible();
 		await expectNoPageScroll(page);
@@ -595,7 +629,10 @@ test.describe('on a phone', () => {
 
 // C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
 test.describe('solving a Problem on a phone, as a flow', () => {
-	test.use({ storageState: asLearner('e2e-problem-flow'), viewport: { width: 390, height: 844 } });
+	test.use({
+		storageState: asLearner('e2e-problem-flow'),
+		viewport: { width: 390, height: 844 }
+	});
 
 	test('type code, Run it, fix it, Submit and reach Accepted', { tag: '@mobile' }, async ({
 		page
@@ -621,10 +658,43 @@ test.describe('solving a Problem on a phone, as a flow', () => {
 		await tab('Code').tap();
 		await setCode(page, correct);
 		await page.getByRole('button', { name: 'Submit' }).tap();
-		await expect(page.getByLabel('Verdict')).toContainText('Accepted', { timeout: 60_000 });
+		await expect(page.getByLabel('Verdict')).toContainText('Accepted', {
+			timeout: 60_000
+		});
 		await expect(page.getByLabel('Accepted panel')).toBeVisible();
 
 		await page.goto('/topics/stacks');
 		await expect(page.getByRole('link', { name: /^1.1 Push and size/ })).toContainText('solved');
+	});
+});
+
+// C61: a refused Run says why on the Tests tab, where the Learner already is.
+test.describe('a refused Run on a phone', () => {
+	test.use({
+		storageState: asLearner('e2e-problem-refused'),
+		viewport: { width: 390, height: 844 }
+	});
+
+	test('says "edited elsewhere — reload" on the Tests tab without switching tabs', {
+		tag: '@mobile'
+	}, async ({ page, context }) => {
+		const tab = (p: Page, name: string) =>
+			p.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name });
+		await page.goto('/problems/stacks-pop');
+		const other = await context.newPage();
+		await other.goto('/problems/stacks-pop');
+		await tab(other, 'Code').tap();
+		await typeInEditor(other, '# saved elsewhere');
+		await expect(other.getByRole('status')).toHaveText('saved');
+
+		// This page still holds the old revision; its own edit is what the Run must send.
+		await tab(page, 'Code').tap();
+		await typeInEditor(page, '# mine');
+		await tab(page, 'Tests').tap();
+		await page.getByRole('button', { name: 'Run' }).tap();
+		await expect(page.locator('.tests-notice [role=status]')).toHaveText(
+			'edited elsewhere — reload'
+		);
+		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
 	});
 });

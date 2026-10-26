@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.1.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.0.2...v1.1.0) (2026-10-26)
+
+
+### Features
+
+* **beyondleetcode:** C68 retried save after a lost reply lands as saved ([#270](https://github.com/GauranshMathur/BeyondLeetcode/issues/270)) ([a93b794](https://github.com/GauranshMathur/BeyondLeetcode/commit/a93b79494c7dce5e0a16dcaf87373de71858b433))
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C63 Accept invite shows the bare header when signed out ([#281](https://github.com/GauranshMathur/BeyondLeetcode/issues/281)) ([0fc3631](https://github.com/GauranshMathur/BeyondLeetcode/commit/0fc3631ac33d1a0ef4848ba7f42c5cc782122db3))
+* **beyondleetcode:** C70 Reveal hint says when it fails or the learner is signed out ([#283](https://github.com/GauranshMathur/BeyondLeetcode/issues/283)) ([e6dc803](https://github.com/GauranshMathur/BeyondLeetcode/commit/e6dc8032721078daefb432a3fc2fc0660c24cd21))
+* **beyondleetcode:** C81 each Users action's error shows next to its own control ([#274](https://github.com/GauranshMathur/BeyondLeetcode/issues/274)) ([7ad3438](https://github.com/GauranshMathur/BeyondLeetcode/commit/7ad343889dcae36130d09b4544d423e9b3424665))
+
+## [1.0.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.0.1...v1.0.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C61 refused Run or Submit says why on the phone's Tests tab ([#280](https://github.com/GauranshMathur/BeyondLeetcode/issues/280)) ([de30c7d](https://github.com/GauranshMathur/BeyondLeetcode/commit/de30c7d33dd2b83e84e46b702b4bf730963e32d1))
+
+## [1.0.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.0.0...v1.0.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C65 busy timeout on the production DB client ([#273](https://github.com/GauranshMathur/BeyondLeetcode/issues/273)) ([3c36211](https://github.com/GauranshMathur/BeyondLeetcode/commit/3c362112b41313f1a85a8d72e792b0235dab0d25))
+
 ## [1.0.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v0.67.0...v1.0.0) (2026-10-25)
 
 

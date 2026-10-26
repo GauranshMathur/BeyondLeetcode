@@ -116,6 +116,27 @@ test('a link creates one learner Account, signed in, and then stops working', as
 	await visitor.close();
 });
 
+test('signed out, the page shows the wordmark alone at 1440 and 390 px', async ({
+	browser,
+	own
+}) => {
+	const invite = await newInvite(browser, own.url);
+	for (const width of [1440, 390]) {
+		const context = await browser.newContext({
+			baseURL: own.url,
+			viewport: { width, height: 844 }
+		});
+		const page = await context.newPage();
+		await page.goto(invite.path);
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText('You are invited.');
+		await expect(page.getByRole('link', { name: /Beyond Leetcode|BLC/ })).toBeVisible();
+		await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: 'Map' })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: /Settings/ })).toHaveCount(0);
+		await context.close();
+	}
+});
+
 test('an expired link and a cancelled link do not work, and no Account is made', async ({
 	browser,
 	own

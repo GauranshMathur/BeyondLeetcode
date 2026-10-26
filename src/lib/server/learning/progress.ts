@@ -72,8 +72,9 @@ export async function recordChapterRead(
 	const change = reachChapter(catalogue, current, chapterId); // NotFound / TopicLocked
 	if (current.readChapters.has(chapterId)) return change;
 	try {
-		// The insert comes first so the transaction takes SQLite's write lock before it reads
-		// anything: the read below then sees exactly the marks committed before this one.
+		// The insert comes first so the transaction writes before it reads anything: the read below
+		// then sees exactly the marks committed before this one. (The adapter runs one client's
+		// transactions one at a time, so a concurrent call waits in the adapter, not on SQLite.)
 		return await db.$transaction(async (tx) => {
 			await tx.chapterRead.create({ data: { learnerId, chapterId, readAt } });
 			const before = await loadProgress(catalogue, tx, learnerId, { chapterId });
@@ -95,9 +96,9 @@ export async function recordSubmission(
 	learnerId: string,
 	submission: SubmissionRecord
 ): Promise<{ submissionId: string; solved: boolean; accepted?: AcceptedView }> {
-	// The insert comes first so the transaction takes SQLite's write lock before it reads
-	// anything (the libSQL adapter opens transactions deferred): another submit then waits, and
-	// the reads below see exactly the Submissions committed before this one.
+	// The insert comes first so the transaction writes before it reads anything: the reads below
+	// see exactly the Submissions committed before this one. Another submit waits for its turn in
+	// the Prisma adapter, which runs one client's transactions one at a time.
 	return db.$transaction(async (tx) => {
 		const { id: submissionId } = await tx.submission.create({ data: submission });
 		const before = await loadProgress(catalogue, tx, learnerId, { submissionId });
