@@ -16,15 +16,18 @@ export const load: PageServerLoad = ({ cookies, url, locals }) => ({
 
 export const actions: Actions = {
 	/** "light" or "dark" is remembered in a cookie; "system" (follow the device) clears it. */
-	theme: async ({ request, cookies }) => {
+	theme: async ({ request, cookies, url }) => {
+		// `secure` is stated outright: SvelteKit would default it to true on any host but localhost, and the
+		// browser drops a Secure cookie over plain http (a LAN address, a Tailscale name), set or clear alike.
+		const secure = url.protocol === 'https:';
 		const choice = (await request.formData()).get('theme');
 		if (choice === 'system') {
-			cookies.delete(THEME_COOKIE, { path: '/' });
+			cookies.delete(THEME_COOKIE, { path: '/', secure });
 			return { theme: null };
 		}
 		const theme = parseTheme(typeof choice === 'string' ? choice : undefined);
 		if (!theme) return fail(400, { message: 'Choose light, dark or follow my device.' });
-		cookies.set(THEME_COOKIE, theme, { path: '/', maxAge: ONE_YEAR, sameSite: 'lax' });
+		cookies.set(THEME_COOKIE, theme, { path: '/', maxAge: ONE_YEAR, sameSite: 'lax', secure });
 		return { theme };
 	},
 	/**
