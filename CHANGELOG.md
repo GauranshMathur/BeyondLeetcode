@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.0.1...v1.0.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C61 refused Run or Submit says why on the phone's Tests tab ([#280](https://github.com/GauranshMathur/BeyondLeetcode/issues/280)) ([de30c7d](https://github.com/GauranshMathur/BeyondLeetcode/commit/de30c7d33dd2b83e84e46b702b4bf730963e32d1))
+
 ## [1.0.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.0.0...v1.0.1) (2026-10-26)
 
 
