@@ -523,7 +523,7 @@ describe('starting from reference code', () => {
 
 		const failed = play(edited(), { type: 'restart' }, respond(unreachable));
 		expect(failed.state).toMatchObject({
-			restarting: false,
+			restarting: true,
 			restartFailed: true,
 			files: { 'main.py': 'b' },
 			dirty: true,
@@ -674,20 +674,18 @@ describe('a request that got no reply (it may have committed)', () => {
 		});
 	});
 
-	it('a Run asked after a lost restart waits for the restart to be re-sent, then runs the restarted Build', () => {
+	it('keeps the editor locked after a lost restart, so no edit is overwritten by the re-sent restart', () => {
 		const { sent, state } = play(
 			fresh(),
 			{ type: 'restart' },
 			respond(unreachable),
+			{ type: 'edit', files: { 'main.py': 'typed' } },
 			{ type: 'run' },
-			respond(ok({ files: { 'main.py': 'ref' }, revision: 4 }))
+			{ type: 'switch', language: 'go' },
+			{ type: 'tick' }
 		);
-		expect(sent).toEqual([
-			{ kind: 'restart', build },
-			{ kind: 'restart', build },
-			{ kind: 'run', build: rev(4), files: { 'main.py': 'ref' } }
-		]);
-		expect(state).toMatchObject({ inFlight: 'run', restarts: 1 });
+		expect(state).toMatchObject({ restarting: true, files: { 'main.py': 'a' } });
+		expect(sent.map((r) => r.kind)).toEqual(['restart', 'restart']);
 	});
 
 	it('a restart asked after a lost save waits for that save to be re-sent, then restarts on its revision', () => {

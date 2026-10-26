@@ -202,7 +202,9 @@ export function transition(s: Session, event: Event): Step {
 			};
 
 		case 'tick':
-			if (s.inFlight || !s.dirty || halted(s) || s.switching || s.restarting) return { state: s };
+			if (s.inFlight || !s.dirty || halted(s) || s.switching) return { state: s };
+			// A restart that got no reply keeps the editor locked and is re-sent here, as a restart.
+			if (s.restarting) return s.unreplied ? resend(s, s.unreplied) : { state: s };
 			return sendBuild(s, 'save');
 
 		case 'run':
@@ -237,7 +239,7 @@ export function transition(s: Session, event: Event): Step {
 
 		case 'flush': {
 			const closed = s.closed || event.final;
-			if (s.inFlight || !s.dirty || halted(s)) {
+			if (s.inFlight || !s.dirty || halted(s) || s.restarting) {
 				return { state: { ...s, closed }, timer: 'cancel' };
 			}
 			return sendBuild({ ...s, closed }, 'save', true);
@@ -291,7 +293,7 @@ function answered(before: Session, kind: Request['kind'], reply: Reply): Step {
 		return sendBuild({ ...after, queued: undefined }, waiting);
 	};
 
-	/** What waited for a restart that got no reply (or was refused) cannot go on: it is dropped. */
+	/** What waited for a save whose re-send failed too gives up: Run and Submit show no result, a switch fails. */
 	const dropQueued = (after: Session): Session => {
 		const waiting = after.queued;
 		const switchWaiting = typeof waiting === 'object';
@@ -309,41 +311,41 @@ function answered(before: Session, kind: Request['kind'], reply: Reply): Step {
 	if (kind === 'restart') {
 		if (reply.ok) {
 			const { files, revision } = reply.data as ReplyData['startFromReferenceCode'];
-			const restarted: Session = {
-				...s,
-				files: { ...files },
-				build: { ...s.build, revision },
-				save: 'saved',
-				dirty: false,
-				outcome: s.queued === 'run' || s.queued === 'submit' ? s.outcome : undefined,
-				restarting: false,
-				restartFailed: false,
-				restarts: s.restarts + 1
+			return {
+				state: {
+					...s,
+					files: { ...files },
+					build: { ...s.build, revision },
+					save: 'saved',
+					dirty: false,
+					outcome: undefined,
+					restarting: false,
+					restartFailed: false,
+					restarts: s.restarts + 1
+				}
 			};
-			// A Run, Submit or switch asked while the restart was being re-sent goes on from the restarted Build.
-			return s.queued === undefined ? { state: restarted } : resume(restarted);
 		}
 		if (refused) {
 			return {
-				state: dropQueued({
+				state: {
 					...s,
 					save: refused.code === 'RevisionConflict' ? 'conflict' : s.save,
 					restarting: false,
 					restartFailed: true,
 					dirty: refused.code === 'RevisionConflict' ? s.dirty : true
-				})
+				}
 			};
 		}
-		// Network trouble or a 5xx: it may have committed, so the next try is a restart again, not a save of the old code.
+		// Network trouble or a 5xx: it may have committed, so the next try is a restart again, not a
+		// save of the old code. The editor stays locked meanwhile, so no edit is overwritten by the reply.
 		return follow(
-			dropQueued({
+			{
 				...s,
 				dirty: true,
 				save: 'failed',
-				restarting: false,
 				restartFailed: true,
 				unreplied: { kind: 'restart' }
-			}),
+			},
 			true
 		);
 	}
