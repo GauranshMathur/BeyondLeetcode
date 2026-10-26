@@ -1,4 +1,7 @@
+import { createHmac } from 'node:crypto';
+import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
+import { createChangePassword } from '../../../routes/account/password/change-password.ts';
 import { deleteLearner } from '../learning/progress.ts';
 import { createFileTestDb } from '../test-db.ts';
 import {
@@ -14,6 +17,7 @@ import {
 } from './accounts.ts';
 import { type Admission, type Auth, createAuth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
+import { createThrottle } from './throttle.ts';
 
 const secret = 'test-secret-test-secret-test-secret-0123';
 const password = 'correct horse battery staple';
@@ -266,6 +270,73 @@ describe('resetPassword', () => {
 		await expect(signIn(auth, 'lin@example.com', password)).rejects.toThrow();
 		const signedIn = await signIn(auth, 'lin@example.com', fresh);
 		expect(signedIn.user.email).toBe('lin@example.com');
+	});
+
+	it('gives an Account that signs in only with GitHub a working password, and its forced change clears the flag', async () => {
+		// Pins an internal branch of Better Auth 1.7.7 (setUserPassword creates a missing credential row,
+		// plugins/admin/routes.mjs), which resetPassword relies on: there is no code of ours for it.
+		const { auth, db, admin, requestOf } = await twoAccounts();
+		await db.learner.create({ data: { id: 'oz-learner' } });
+		await db.user.create({
+			data: { id: 'oz', name: 'Oz', email: 'oz@example.com', learnerId: 'oz-learner' }
+		});
+		await db.account.create({
+			data: { id: 'oz-gh', accountId: '99', providerId: 'github', userId: 'oz' }
+		});
+		expect(await db.account.count({ where: { userId: 'oz', providerId: 'credential' } })).toBe(0);
+
+		const { password: fresh } = await resetPassword(auth, {
+			...(await requestOf(admin.cookie)),
+			userId: 'oz'
+		});
+
+		expect(await db.account.count({ where: { userId: 'oz', providerId: 'credential' } })).toBe(1);
+		expect(await db.account.count({ where: { userId: 'oz', providerId: 'github' } })).toBe(1);
+		const signedIn = await signIn(auth, 'oz@example.com', fresh);
+		expect(signedIn.user.email).toBe('oz@example.com');
+		expect((await db.user.findUniqueOrThrow({ where: { id: 'oz' } })).mustChangePassword).toBe(
+			true
+		);
+
+		// The learner comes back through GitHub: a session with the flag set, then the forced change.
+		// (A callback session is bound to the current credential generation; the row is made directly.)
+		const credential = await db.account.findFirstOrThrow({
+			where: { userId: 'oz', providerId: 'credential' }
+		});
+		const token = 'oz-github-session-token';
+		await db.session.create({
+			data: {
+				id: 'oz-gh-session',
+				token,
+				userId: 'oz',
+				expiresAt: new Date(Date.now() + 1e9),
+				credentialGeneration: credential.credentialGeneration
+			}
+		});
+		const signature = createHmac('sha256', secret).update(token).digest('base64');
+		const cookie = `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`;
+		const { action } = createChangePassword(createThrottle());
+		const ev = {
+			request: new Request('http://localhost/account/password', {
+				method: 'POST',
+				headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+				body: new URLSearchParams({
+					current: fresh,
+					new: 'a brand new passphrase 42',
+					confirm: 'a brand new passphrase 42'
+				})
+			}),
+			locals: { auth },
+			cookies: { set: vi.fn() },
+			url: new URL('http://localhost/account/password'),
+			getClientAddress: () => '10.0.0.1'
+		} as unknown as RequestEvent;
+		await expect(action(ev)).rejects.toMatchObject({ status: 303, location: '/' });
+
+		expect((await db.user.findUniqueOrThrow({ where: { id: 'oz' } })).mustChangePassword).toBe(
+			false
+		);
+		await expect(signIn(auth, 'oz@example.com', 'a brand new passphrase 42')).resolves.toBeTruthy();
 	});
 
 	it('makes a long random password each time, within the password limits', async () => {
