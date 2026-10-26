@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.1...v1.4.2) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C78 one Build rule for the Learning core and the Runner ([#308](https://github.com/GauranshMathur/BeyondLeetcode/issues/308)) ([2f1e2be](https://github.com/GauranshMathur/BeyondLeetcode/commit/2f1e2be9a99c9c3493cd2ca0dd8e2a2b36f75e3d))
+
+## [1.4.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.0...v1.4.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C62 Problem phone layout starts at 767.98px ([#299](https://github.com/GauranshMathur/BeyondLeetcode/issues/299)) ([390ce37](https://github.com/GauranshMathur/BeyondLeetcode/commit/390ce3792602cf87f2e13df41fbe8efd80c13439))
+* **beyondleetcode:** C77 the throttle's address x Account map evicts ([#302](https://github.com/GauranshMathur/BeyondLeetcode/issues/302)) ([ac504fc](https://github.com/GauranshMathur/BeyondLeetcode/commit/ac504fcc4f9317a038217c8a490123adabf870f9))
+
 ## [1.4.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.3.0...v1.4.0) (2026-10-26)
 
 
