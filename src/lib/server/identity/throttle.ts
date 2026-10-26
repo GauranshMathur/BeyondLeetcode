@@ -147,9 +147,10 @@ interface Entry {
  * refuses, so a flood can only evict other pairs, addresses and made-up emails: no known Account's own counter
  * goes, and each of these maps still lets a fresh key in with a full budget.
  *
- * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out (more than
- * maxKeys other new keys inside one window, so more than maxKeys / 20 addresses, for each fresh set of
- * guesses) gets a fresh count for it. For a known Account that is at most 5 more tries from one address,
+ * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
+ * count for it. Each new key on a full map evicts the entry that ends earliest, so a key goes after as many
+ * new keys as there are entries ahead of it: at most maxKeys, so up to maxKeys / 20 addresses, for each
+ * fresh set of guesses, and fewer for a key that was among the first counted in the window. For a known Account that is at most 5 more tries from one address,
  * still counted against the address (20) and the Account (50), so the total guesses on an Account do not
  * grow. Timing residual of the same flood: an unknown email pushed out is counted afresh and runs the slow
  * password hash, while a known Account's try is refused fast once its Account counter is full, so an
