@@ -576,7 +576,10 @@ describe('Invites on the Users page', () => {
 		const { response } = await post(handle, admin, 'cancel', fields);
 
 		expect(response.status).toBe(404);
-		expect(JSON.stringify(await response.json())).toContain('no longer pending');
+		// Its own key, so the page shows it in the pending list and not under Registration.
+		expect((await response.json()).data).toEqual({
+			cancelMessage: 'That invite is no longer pending.'
+		});
 	});
 
 	it.each(['invite', 'cancel'] as const)(
@@ -707,7 +710,11 @@ describe('Reset password on the Users page', () => {
 		for (const fields of [{ id: 'nope' }, {} as Record<string, string>]) {
 			const { response } = await post(handle, admin, 'reset', fields);
 			expect(response.status).toBe(404);
-			expect(JSON.stringify(await response.json())).toContain('no longer exists');
+			// Its own key, with the user it was for, so the page shows it on that row.
+			expect((await response.json()).data).toEqual({
+				resetMessage: 'That user no longer exists.',
+				resetUserId: fields.id ?? ''
+			});
 		}
 		await auth.api.signInEmail({ body: { email: 'lin@example.com', password } });
 	});
@@ -719,6 +726,10 @@ describe('Reset password on the Users page', () => {
 		const { response } = await post(handle, admin, 'reset', { id: ada.id });
 
 		expect(response.status).toBe(400);
+		expect((await response.json()).data).toEqual({
+			resetMessage: 'You cannot reset your own password here.',
+			resetUserId: ada.id
+		});
 		expect(await auth.api.getSession({ headers: new Headers({ cookie: admin }) })).not.toBeNull();
 		await auth.api.signInEmail({ body: { email: 'ada@example.com', password } });
 	});
@@ -767,7 +778,13 @@ describe('Reset password on the Users page', () => {
 		const { response } = await post(handle, admin, 'reset', { id: linId });
 
 		expect(response.status).toBe(500);
-		const text = JSON.stringify(await response.json());
+		const body = await response.json();
+		expect(body.data).toEqual({
+			resetMessage: 'The password could not be reset. Try again.',
+			resetUserId: linId
+		});
+		// The user's id is echoed (it names the row); anything else long would be a password.
+		const text = JSON.stringify(body).replace(linId, '');
 		expect(text).not.toContain('/secret/path');
 		expect(text).not.toMatch(/[A-Za-z0-9]{20}/);
 		expect(JSON.stringify(quiet.mock.calls)).not.toContain('/secret/path');

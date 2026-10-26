@@ -52,6 +52,13 @@ async function copyPassword() {
 	}
 }
 
+// A reset that failed because its user is gone has no row to sit on: show it above the table instead.
+const resetOrphan = $derived(
+	form && 'resetMessage' in form && !data.accounts.some((a) => a.id === form.resetUserId)
+		? form.resetMessage
+		: undefined
+);
+
 const resetOne: SubmitFunction = () => {
 	resetDismissed = false;
 	passwordCopied = false;
@@ -111,7 +118,7 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 				<button type="submit">Save registration</button>
 			{/if}
 			<p class="lead" aria-live="polite">{explanation[data.registration]}</p>
-			{#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}
+			{#if form && 'message' in form}<p class="error" role="alert">{form.message}</p>{/if}
 		</form>
 	</section>
 
@@ -124,7 +131,7 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 			<form method="POST" action="?/invite" use:enhance={makeInvite}>
 				<button type="submit" class="outline">Invite a user</button>
 			</form>
-			
+			{#if form && 'inviteMessage' in form}<p class="error" role="alert">{form.inviteMessage}</p>{/if}
 			{#if invite}
 				<div class="detail" role="status">
 					<span class="eyebrow ink">Invite link ready</span>
@@ -159,6 +166,7 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		<h2 id="all-users">All users</h2>
 		{#if form && 'removed' in form}<p class="lead" role="status">The account was removed.</p>{/if}
 		{#if form && 'removeMessage' in form}<p class="error" role="alert">{form.removeMessage}</p>{/if}
+		{#if resetOrphan}<p class="error" role="alert">{resetOrphan}</p>{/if}
 		<div class="scroll">
 			<table aria-labelledby="all-users">
 				<thead>
@@ -205,6 +213,11 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 								{/if}
 							</td>
 						</tr>
+						{#if form && 'resetMessage' in form && form.resetUserId === account.id}
+							<tr class="detail-row">
+								<td colspan="5"><p class="error" role="alert">{form.resetMessage}</p></td>
+							</tr>
+						{/if}
 						{#if reset && reset.userId === account.id}
 							<tr class="detail-row">
 								<td colspan="5">
@@ -274,6 +287,11 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 							</td>
 						</tr>
 					{/each}
+					{#if form && 'cancelMessage' in form}
+						<tr class="detail-row">
+							<td colspan="5"><p class="error" role="alert">{form.cancelMessage}</p></td>
+						</tr>
+					{/if}
 				</tbody>
 			</table>
 		</div>
