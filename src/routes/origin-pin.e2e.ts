@@ -7,7 +7,7 @@ const target = '/settings?/theme';
 test('a form posted from another origin is refused, whatever private header the client adds', async ({
 	request
 }) => {
-	for (const headers of [
+	const attempts: Record<string, string>[] = [
 		{ origin: 'http://evil.example' },
 		{
 			origin: 'http://evil.example',
@@ -16,7 +16,8 @@ test('a form posted from another origin is refused, whatever private header the 
 		},
 		// The same host over https is another origin.
 		{ origin: 'https://localhost:4173' }
-	]) {
+	];
+	for (const headers of attempts) {
 		const response = await request.post(target, {
 			headers: { ...headers, 'content-type': 'application/x-www-form-urlencoded' },
 			data: 'theme=dark',
