@@ -68,12 +68,16 @@ const tokenHashOf = async (token: string) => {
 
 async function fillAndSubmit(
 	page: import('@playwright/test').Page,
-	who: { name: string; email: string; password?: string }
+	who: { name: string; email: string; password?: string },
+	// False in the tests without JavaScript, where no page hydrates.
+	javaScript = true
 ) {
 	await page.getByLabel('Name').fill(who.name);
 	await page.getByLabel('Email').fill(who.email);
 	await page.getByLabel('Password').fill(who.password ?? PASSWORD);
-	await submitHydrated(page.getByRole('button', { name: 'Create account →' }));
+	const submit = page.getByRole('button', { name: 'Create account →' });
+	if (javaScript) await submitHydrated(submit);
+	else await submit.click();
 }
 
 test('a link creates one learner Account, signed in, and then stops working', async ({
@@ -244,11 +248,11 @@ test.describe('without JavaScript', () => {
 		const refusedPost = page.waitForResponse(
 			(r) => r.request().method() === 'POST' && r.url().includes(invite.path)
 		);
-		await fillAndSubmit(page, {
-			name: 'No Script',
-			email: 'no.script@example.com',
-			password: 'short'
-		});
+		await fillAndSubmit(
+			page,
+			{ name: 'No Script', email: 'no.script@example.com', password: 'short' },
+			false
+		);
 		// The action and the page load run in one request: headers set once, so SvelteKit does not throw.
 		const refused = await refusedPost;
 		expect(refused.status()).toBe(400);
@@ -259,7 +263,7 @@ test.describe('without JavaScript', () => {
 		const acceptedPost = page.waitForResponse(
 			(r) => r.request().method() === 'POST' && r.url().includes(invite.path)
 		);
-		await fillAndSubmit(page, { name: 'No Script', email: 'no.script@example.com' });
+		await fillAndSubmit(page, { name: 'No Script', email: 'no.script@example.com' }, false);
 		expect((await acceptedPost).status()).toBe(303);
 		await expect(page).toHaveURL(`${own.url}/`);
 		await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText('No Script');
