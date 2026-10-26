@@ -187,9 +187,19 @@ describe('Run and Submit', () => {
 	});
 
 	it('still go out when the autosave they waited for failed (they save the Build themselves)', () => {
-		const run = play(edited(), { type: 'tick' }, { type: 'submit' }, respond(fail(500)));
-		expect(run.sent.map((r) => r.kind)).toEqual(['save', 'submit']);
-		expect(run.sent[1]).toMatchObject({ build, files: { 'main.py': 'b' } });
+		// The failed autosave may have committed, so it is re-sent first; the submit goes out on its answer.
+		const run = play(
+			edited(),
+			{ type: 'tick' },
+			{ type: 'submit' },
+			respond(fail(500)),
+			respond(ok({ revision: 4 }))
+		);
+		expect(run.sent.map((r) => r.kind)).toEqual(['save', 'save', 'submit']);
+		expect(run.sent[2]).toMatchObject({
+			build: { ...build, revision: 4 },
+			files: { 'main.py': 'b' }
+		});
 	});
 
 	it('are dropped when the autosave they waited for shows the Build is in conflict or rejected', () => {
@@ -513,7 +523,7 @@ describe('starting from reference code', () => {
 
 		const failed = play(edited(), { type: 'restart' }, respond(unreachable));
 		expect(failed.state).toMatchObject({
-			restarting: false,
+			restarting: true,
 			restartFailed: true,
 			files: { 'main.py': 'b' },
 			dirty: true,
@@ -549,5 +559,191 @@ describe('starting from reference code', () => {
 	it('is refused in conflict', () => {
 		const conflict = play(edited(), { type: 'tick' }, respond(refused('RevisionConflict'))).state;
 		expect(play(conflict, { type: 'restart' }).sent).toEqual([]);
+	});
+});
+
+describe('a request that got no reply (it may have committed)', () => {
+	const rev = (n: number) => ({ ...build, revision: n });
+
+	it('re-sends exactly the files that were sent, with the same base, then the newer edits on the new revision', () => {
+		const { sent, state } = play(
+			edited({ 'main.py': 'b' }),
+			{ type: 'tick' },
+			{ type: 'edit', files: { 'main.py': 'c' } },
+			respond(unreachable),
+			{ type: 'tick' }
+		);
+		expect(sent).toHaveLength(2);
+		expect(sent[1]).toEqual({ kind: 'save', build: rev(3), files: { 'main.py': 'b' } });
+		expect(state).toMatchObject({ inFlight: 'save', dirty: true });
+
+		const next = play(state, respond(ok({ revision: 4 })), { type: 'tick' });
+		expect(next.state).toMatchObject({ inFlight: 'save', build: rev(4) });
+		expect(next.sent).toEqual([{ kind: 'save', build: rev(4), files: { 'main.py': 'c' } }]);
+	});
+
+	it('keeps re-sending the same files while the retry gets no reply either', () => {
+		const { sent } = play(
+			edited({ 'main.py': 'b' }),
+			{ type: 'tick' },
+			{ type: 'edit', files: { 'main.py': 'c' } },
+			respond(unreachable),
+			{ type: 'tick' },
+			respond(fail(500)),
+			{ type: 'tick' }
+		);
+		expect(sent.map((r) => r.kind === 'save' && [r.build.revision, r.files['main.py']])).toEqual([
+			[3, 'b'],
+			[3, 'b'],
+			[3, 'b']
+		]);
+	});
+
+	it('is settled by a landed retry: no leftover, saved when nothing newer', () => {
+		const { state } = play(
+			edited(),
+			{ type: 'tick' },
+			respond(unreachable),
+			{ type: 'tick' },
+			respond(ok({ revision: 4 }))
+		);
+		expect(state).toMatchObject({ save: 'saved', dirty: false, build: rev(4) });
+		expect(play(state, { type: 'edit', files: { 'main.py': 'z' } }, { type: 'tick' }).sent).toEqual(
+			[{ kind: 'save', build: rev(4), files: { 'main.py': 'z' } }]
+		);
+	});
+
+	it('a refusal of the retry is a conflict as before', () => {
+		const { state } = play(
+			edited(),
+			{ type: 'tick' },
+			respond(unreachable),
+			{ type: 'tick' },
+			respond(fail(409))
+		);
+		expect(state.save).toBe('conflict');
+	});
+
+	it('Run and Submit wait for the re-sent save, then go out on the revision it reports', () => {
+		for (const act of ['run', 'submit'] as const) {
+			const { sent } = play(
+				edited({ 'main.py': 'b' }),
+				{ type: 'tick' },
+				{ type: 'edit', files: { 'main.py': 'c' } },
+				respond(unreachable),
+				{ type: act },
+				respond(ok({ revision: 4 }))
+			);
+			expect(sent).toEqual([
+				{ kind: 'save', build: rev(3), files: { 'main.py': 'b' } },
+				{ kind: 'save', build: rev(3), files: { 'main.py': 'b' } },
+				{ kind: act, build: rev(4), files: { 'main.py': 'c' } }
+			]);
+		}
+	});
+
+	it('a Run or Submit that got no reply is retried as a save, never as a Run or Submit', () => {
+		for (const act of ['run', 'submit'] as const) {
+			const lost = play(edited(), { type: act }, respond(unreachable), { type: 'tick' });
+			expect(lost.sent.map((r) => r.kind)).toEqual([act, 'save']);
+			expect(lost.sent[1]).toEqual({ kind: 'save', build: rev(3), files: { 'main.py': 'b' } });
+			const done = play(lost.state, respond(ok({ revision: 4 }))).state;
+			expect(done).toMatchObject({ save: 'saved', outcome: undefined });
+			expect(play(done, { type: 'tick' }).sent).toEqual([]);
+		}
+	});
+
+	it('a lost restart is retried as a restart, not as a save of the old code', () => {
+		const { sent, state } = play(edited(), { type: 'restart' }, respond(unreachable), {
+			type: 'tick'
+		});
+		expect(sent).toEqual([
+			{ kind: 'restart', build },
+			{ kind: 'restart', build }
+		]);
+		expect(state).toMatchObject({ restarting: true, inFlight: 'restart' });
+
+		const done = play(state, respond(ok({ files: { 'main.py': 'ref' }, revision: 4 }))).state;
+		expect(done).toMatchObject({
+			files: { 'main.py': 'ref' },
+			build: rev(4),
+			save: 'saved',
+			dirty: false,
+			restarting: false,
+			restarts: 1
+		});
+	});
+
+	it('keeps the editor locked after a lost restart, so no edit is overwritten by the re-sent restart', () => {
+		const { sent, state } = play(
+			fresh(),
+			{ type: 'restart' },
+			respond(unreachable),
+			{ type: 'edit', files: { 'main.py': 'typed' } },
+			{ type: 'run' },
+			{ type: 'switch', language: 'go' },
+			{ type: 'tick' }
+		);
+		expect(state).toMatchObject({ restarting: true, files: { 'main.py': 'a' } });
+		expect(sent.map((r) => r.kind)).toEqual(['restart', 'restart']);
+	});
+
+	it('a non-final flush leaves the retry timer of a lost restart running', () => {
+		const { step } = play(fresh(), { type: 'restart' }, respond(unreachable), {
+			type: 'flush',
+			final: false
+		});
+		expect(step.timer).toBeUndefined();
+		expect(step.send).toBeUndefined();
+	});
+
+	it('a restart asked after a lost save waits for that save to be re-sent, then restarts on its revision', () => {
+		const { sent } = play(
+			edited(),
+			{ type: 'tick' },
+			respond(unreachable),
+			{ type: 'restart' },
+			respond(ok({ revision: 4 }))
+		);
+		expect(sent).toEqual([
+			{ kind: 'save', build: rev(3), files: { 'main.py': 'b' } },
+			{ kind: 'save', build: rev(3), files: { 'main.py': 'b' } },
+			{ kind: 'restart', build: rev(4) }
+		]);
+	});
+
+	it('gives up what waited for a re-send that fails too, and retries the re-send on the timer', () => {
+		for (const waiting of [
+			{ type: 'run' },
+			{ type: 'restart' },
+			{ type: 'switch', language: 'go' }
+		] as const) {
+			const { step, sent } = play(
+				edited(),
+				{ type: 'tick' },
+				respond(unreachable),
+				waiting,
+				respond(unreachable)
+			);
+			expect(sent.map((r) => r.kind)).toEqual(['save', 'save']);
+			expect(step.state).toMatchObject({
+				save: 'failed',
+				queued: undefined,
+				outcome: undefined,
+				restarting: false
+			});
+			expect(step.timer).toEqual({ afterMs: RETRY_DELAY_MS });
+		}
+	});
+
+	it('a Language switch after a lost save re-sends it first', () => {
+		const { sent } = play(
+			edited(),
+			{ type: 'tick' },
+			respond(unreachable),
+			{ type: 'switch', language: 'go' },
+			respond(ok({ revision: 4 }))
+		);
+		expect(sent.map((r) => r.kind)).toEqual(['save', 'save', 'switch']);
 	});
 });

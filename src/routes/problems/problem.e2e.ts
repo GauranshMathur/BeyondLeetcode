@@ -392,6 +392,30 @@ test('Hints reveal one at a time, in order, link to the Chapter, and survive a r
 	await expect(page).toHaveURL('/chapters/stacks-undo-log');
 });
 
+// C70: a reveal that does not go through says so, and the button stays usable.
+test('Reveal hint says so when the session has ended', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?tab=hints&/revealHint', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({ type: 'redirect', status: 303, location: '/signin' })
+		})
+	);
+	await page.goto('/problems/stacks-pop?tab=hints');
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByRole('alert')).toContainText('You are signed out');
+	await expect(page.getByRole('link', { name: 'Sign in again' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Reveal hint 1' })).toBeEnabled();
+});
+
+test('Reveal hint says so when the request fails', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?tab=hints&/revealHint', (route) => route.abort());
+	await page.goto('/problems/stacks-pop?tab=hints');
+	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
+	await expect(page.getByRole('alert')).toContainText('The hint could not be revealed');
+	await expect(page.getByRole('button', { name: 'Reveal hint 1' })).toBeEnabled();
+});
+
 test('the browser receives only the Hints already revealed', async ({ page }) => {
 	const body = await (await page.request.get('/problems/stacks-peek?tab=hints')).text();
 	expect(body).not.toContain('First hint.');
