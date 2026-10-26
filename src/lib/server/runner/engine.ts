@@ -283,17 +283,6 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 					Labels: Record<string, string> | null;
 				}[]
 			).map((c) => ({ id: c.Id, created: c.Created, labels: c.Labels ?? {} }));
-		},
-
-		/** Ids of every container, running or not, that carries `label`. */
-		async listByLabel(label: string): Promise<string[]> {
-			const filters = encodeURIComponent(JSON.stringify({ label: [label] }));
-			const reply = await assertStatus(
-				await call('GET', `/containers/json?all=true&filters=${filters}`),
-				'list',
-				200
-			);
-			return (JSON.parse(reply.body) as { Id: string }[]).map((c) => c.Id);
 		}
 	};
 }
