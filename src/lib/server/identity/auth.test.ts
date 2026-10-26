@@ -2469,3 +2469,31 @@ describe('redactInvite with terminal escapes', () => {
 		expect(redactInvite('plain')).toBe('plain');
 	});
 });
+
+// Better Auth 1.7.8 aligned cookie attributes with RFC 6265bis (#11540). The session cookie on a plain-http Instance
+// that is not localhost (a LAN name) must stay one the browser keeps: no Secure, no __Secure- prefix.
+describe('the session cookie by scheme', () => {
+	const signedUpWith = async (origin: string) => {
+		const db = await createFileTestDb();
+		const auth = createAuth({ db, origin, secret, admitSignUp: () => ({}) });
+		const { headers } = await auth.api.signUpEmail({ body, returnHeaders: true });
+		return headers.getSetCookie().filter((c) => c.includes('session_token'));
+	};
+
+	it('is not Secure on a plain-http origin that is not localhost, and is HttpOnly with SameSite Lax', async () => {
+		const cookies = await signedUpWith('http://learn.lan:3000');
+
+		expect(cookies).toHaveLength(1);
+		expect(cookies[0]).toMatch(/^better-auth\.session_token=/);
+		expect(cookies[0]).not.toMatch(/;\s*Secure/i);
+		expect(cookies[0]).toMatch(/;\s*HttpOnly/i);
+		expect(cookies[0]).toMatch(/;\s*SameSite=Lax/i);
+	});
+
+	it('is Secure and prefixed on an https origin', async () => {
+		const cookies = await signedUpWith('https://learn.example.com');
+
+		expect(cookies[0]).toMatch(/^__Secure-better-auth\.session_token=/);
+		expect(cookies[0]).toMatch(/;\s*Secure/i);
+	});
+});
