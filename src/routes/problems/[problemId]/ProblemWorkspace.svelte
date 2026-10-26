@@ -216,6 +216,13 @@ const label: Record<SaveState, string> = {
 				{#key session.restarts}
 					<CodeEditor files={session.files} {onchange} readonly={session.save === 'conflict' || session.switching || session.restarting} />
 				{/key}
+				<!-- Phones only, on the Tests tab: the save status and sign-in notice that the hidden Code-tab bar would show. -->
+				<div class="tests-notice">
+					<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'} role="status">{label[session.save]}</span>
+					{#if session.save === 'signedOut'}
+						<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
+					{/if}
+				</div>
 				<ResultsPanel outcome={session.outcome} />
 			</div>
 		</div>
@@ -364,6 +371,9 @@ const label: Record<SaveState, string> = {
 	}
 	.signed-out a {
 		color: var(--ink);
+	}
+	.tests-notice {
+		display: none;
 	}
 	.reference {
 		display: flex;
@@ -514,9 +524,21 @@ const label: Record<SaveState, string> = {
 		.page[data-tab='problem'] .pane {
 			display: none;
 		}
-		.page[data-tab='tests'] .build > :global(:not(.console)),
+		.page[data-tab='tests'] .build > :global(:not(.console, .tests-notice)),
 		.page[data-tab='code'] .build > :global(.console) {
 			display: none;
+		}
+		.page[data-tab='tests'] .tests-notice {
+			display: block;
+			flex-shrink: 0;
+			border-bottom: 1px solid var(--ink);
+		}
+		.page[data-tab='tests'] .tests-notice .status {
+			display: block;
+			padding: 12px 20px;
+		}
+		.page[data-tab='tests'] .tests-notice .signed-out {
+			border-bottom: 0;
 		}
 		.page[data-tab='tests'] .build {
 			overflow: hidden;
