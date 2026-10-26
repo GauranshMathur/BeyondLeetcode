@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
+import { gotoHydrated, reloadHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -16,7 +17,7 @@ test('a fresh Instance shows Setup everywhere; Multi-user needs the admin form, 
 		'/api/auth/get-session',
 		'/no/such/page'
 	]) {
-		await page.goto(path);
+		await gotoHydrated(page, path);
 		await expect(page, path).toHaveURL('/setup');
 	}
 
@@ -27,20 +28,20 @@ test('a fresh Instance shows Setup everywhere; Multi-user needs the admin form, 
 	await page.getByLabel('Multi-user').check();
 	await expect(page.getByRole('button', { name: 'Continue →' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Start in Local mode →' })).toBeHidden();
-	await page.getByRole('button', { name: 'Continue →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Continue →' }));
 
 	// Step 2: nothing is set up yet.
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create the admin.');
-	await page.goto('/setup');
+	await gotoHydrated(page, '/setup');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Set up this instance.');
 	await page.getByLabel('Multi-user').check();
-	await page.getByRole('button', { name: 'Continue →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Continue →' }));
 
 	// A short password is refused on the form, keeping what was typed.
 	await page.getByLabel('Name').fill(E2E_ADMIN.name);
 	await page.getByLabel('Email').fill(E2E_ADMIN.email);
 	await page.getByLabel('Password').fill('short');
-	await page.getByRole('button', { name: 'Create admin account →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Create admin account →' }));
 	await expect(page.getByText('Use 12 to 128 characters.')).toBeVisible();
 	await expect(page.getByLabel('Name')).toHaveValue(E2E_ADMIN.name);
 	await expect(page.getByLabel('Email')).toHaveValue(E2E_ADMIN.email);
@@ -48,7 +49,7 @@ test('a fresh Instance shows Setup everywhere; Multi-user needs the admin form, 
 	await expect(page).toHaveURL(/\/setup/);
 
 	await page.getByLabel('Password').fill(E2E_ADMIN.password);
-	await page.getByRole('button', { name: 'Create admin account →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Create admin account →' }));
 
 	// Signed in as the admin: the Map, with their name in the nav.
 	await expect(page).toHaveURL('/');
@@ -58,22 +59,21 @@ test('a fresh Instance shows Setup everywhere; Multi-user needs the admin form, 
 	await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(E2E_ADMIN.name);
 
 	// Set up for good: Setup is gone, and the session survives a reload.
-	await page.goto('/setup');
+	await gotoHydrated(page, '/setup');
 	await expect(page).toHaveURL('/');
-	await page.reload();
+	await reloadHydrated(page);
 	await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(E2E_ADMIN.name);
 
 	// Sign out from the nav: back to Sign in, and the Map is out of reach until signing in again.
-	await page
-		.getByRole('navigation', { name: 'Primary' })
-		.getByRole('button', { name: 'Sign out' })
-		.click();
+	await submitHydrated(
+		page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Sign out' })
+	);
 	await expect(page).toHaveURL('/signin');
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await expect(page).toHaveURL('/signin?next=%2F');
 	await page.getByLabel('Email').fill(E2E_ADMIN.email);
 	await page.getByLabel('Password').fill(E2E_ADMIN.password);
-	await page.getByRole('button', { name: 'Sign in →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Sign in →' }));
 	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(E2E_ADMIN.name);
 });
@@ -88,7 +88,7 @@ test('once set up, a visitor without the admin session is sent to Sign in, test 
 	]);
 	const page = await context.newPage();
 
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 
 	await expect(page).toHaveURL(/\/signin\?next=%2Ftopics%2Fstacks$/);
 	await context.close();

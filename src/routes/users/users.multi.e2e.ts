@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
+import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 import { LEARNER_PASSWORD, openMultiUserDatabase, type Session } from './multi-fixture.ts';
 
 // The Users page on the Multi-user server (the "e2e-multi" project, after "setup-multi" made the admin).
@@ -47,7 +48,7 @@ test.afterAll(async () => {
 
 test('the admin finds Users in the nav and sees every Account on it', async ({ context, page }) => {
 	await context.addCookies(admin.cookies);
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
 	await expect(nav.getByRole('link')).toHaveText(['Map', 'Users', E2E_ADMIN.name]);
 	await expect(nav.getByRole('link', { name: 'Users' })).not.toHaveAttribute('aria-current', /.*/);
@@ -71,7 +72,7 @@ test('the admin finds Users in the nav and sees every Account on it', async ({ c
 	// now with what the page shows, until the two agree.
 	await expect(async () => {
 		const stored = await fixture.db.user.findMany({ orderBy: { createdAt: 'asc' } });
-		await page.reload();
+		await reloadHydrated(page);
 		const rows = table.locator('tbody tr');
 		await expect(rows).toHaveCount(stored.length, { timeout: 2_000 });
 		for (const [i, user] of stored.entries()) {
@@ -120,7 +121,7 @@ test('the admin resets a password: the one-time password is shown once with a co
 	const old = await fixture.signIn(RESET_ENHANCED.email, LEARNER_PASSWORD);
 	expect(old.cookies.length).toBeGreaterThan(0);
 	await context.addCookies(admin.cookies);
-	await page.goto('/users');
+	await gotoHydrated(page, '/users');
 	const row = page.getByRole('row', { name: new RegExp(RESET_ENHANCED.email) });
 
 	await row.getByRole('button', { name: 'Reset password' }).click();
@@ -138,7 +139,7 @@ test('the admin resets a password: the one-time password is shown once with a co
 	// "Done" hides it, and a reload cannot bring it back.
 	await page.getByRole('button', { name: 'Done' }).click();
 	await expect(field).toHaveCount(0);
-	await page.reload();
+	await reloadHydrated(page);
 	await expect(page.getByLabel('One-time password')).toHaveCount(0);
 	await expect(page.locator('body')).not.toContainText(shown);
 });
@@ -171,7 +172,7 @@ test('the admin removes a user: the confirm opens under the row, and the Account
 	const keptLearnerId = await giveProgress(LIN.email);
 	await fixture.signIn(REMOVE_ENHANCED.email, LEARNER_PASSWORD); // a live session
 	await context.addCookies(admin.cookies);
-	await page.goto('/users');
+	await gotoHydrated(page, '/users');
 	const row = page.getByRole('row', { name: new RegExp(REMOVE_ENHANCED.email) });
 
 	await row.getByRole('button', { name: 'Remove' }).click();
@@ -195,7 +196,7 @@ test('the admin removes a user: the confirm opens under the row, and the Account
 
 test('Cancel closes the confirm and removes nothing', async ({ context, page }) => {
 	await context.addCookies(admin.cookies);
-	await page.goto('/users');
+	await gotoHydrated(page, '/users');
 	await page
 		.getByRole('row', { name: new RegExp(REMOVE_CANCEL.email) })
 		.getByRole('button', { name: 'Remove' })
@@ -216,7 +217,7 @@ test('the admin has no Remove on their own row, and a hand-made address opens no
 	await context.addCookies(admin.cookies);
 	const { id } = await fixture.db.user.findUniqueOrThrow({ where: { email: E2E_ADMIN.email } });
 
-	await page.goto(`/users?remove=${id}`);
+	await gotoHydrated(page, `/users?remove=${id}`);
 
 	await expect(page.getByRole('group', { name: /^Remove / })).toHaveCount(0);
 	await expect(
@@ -244,7 +245,7 @@ test('Auth answers 404 over HTTP for every admin path and for change-password', 
 
 test('the admin has no Reset password on their own row', async ({ context, page }) => {
 	await context.addCookies(admin.cookies);
-	await page.goto('/users');
+	await gotoHydrated(page, '/users');
 
 	const own = page.getByRole('row', { name: new RegExp(E2E_ADMIN.email) });
 
@@ -254,7 +255,7 @@ test('the admin has no Reset password on their own row', async ({ context, page 
 test('a name with markup in it is shown as text, never run', async ({ context, page }) => {
 	await context.addCookies(admin.cookies);
 
-	await page.goto('/users');
+	await gotoHydrated(page, '/users');
 
 	await expect(page.getByRole('cell', { name: MARKUP.name })).toBeVisible();
 	await expect(page.locator('#users-xss')).toHaveCount(0);
@@ -266,7 +267,7 @@ test('a learner gets 403 on Users, sees nothing of it, and has no Users link', a
 	page
 }) => {
 	await context.addCookies(lin.cookies);
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
 	await expect(nav.getByRole('link')).toHaveText(['Map', LIN.name]);
 
@@ -282,7 +283,7 @@ test('a user whose stored role merely contains admin is a learner here too', asy
 	page
 }) => {
 	await context.addCookies(sam.cookies);
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
 	await expect(nav.getByRole('link')).toHaveText(['Map', SAM.name]);
 
@@ -293,7 +294,7 @@ test('a user whose stored role merely contains admin is a learner here too', asy
 });
 
 test('a visitor who is signed out is sent to Sign in, not shown the page', async ({ page }) => {
-	await page.goto('/users');
+	await gotoHydrated(page, '/users');
 
 	await expect(page).toHaveURL(/\/signin\?next=%2Fusers$/);
 	await expect(page.getByRole('table')).toHaveCount(0);

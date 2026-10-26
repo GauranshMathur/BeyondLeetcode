@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
+import { gotoHydrated } from '../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-page') });
 
 test('the Map shows Unlocked and Locked Topics from the fixture content', async ({ page }) => {
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText(
 		'Every topic, in the order it builds.'
 	);
@@ -29,7 +30,7 @@ test('the Map shows Unlocked and Locked Topics from the fixture content', async 
 });
 
 test('an Unlocked Topic can be reached with the keyboard', async ({ page }) => {
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	const stacks = page.getByRole('link', { name: /^Stacks, unlocked/ });
 	await stacks.focus();
 	await expect(stacks).toBeFocused();
@@ -41,7 +42,7 @@ test.describe('on a phone', () => {
 	test('the Map is one column of Topics in build order, each with its state and its prerequisites', async ({
 		page
 	}) => {
-		await page.goto('/');
+		await gotoHydrated(page, '/');
 		const topics = page.getByRole('list', { name: 'Topics in build order' }).getByRole('listitem');
 		await expect(topics).toHaveCount(3);
 
@@ -78,7 +79,7 @@ test.describe('on a phone', () => {
 	test('the Map does not scroll sideways and every link is at least 44 px tall', async ({
 		page
 	}) => {
-		await page.goto('/');
+		await gotoHydrated(page, '/');
 		const overflow = await page.evaluate(
 			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
 		);
@@ -95,7 +96,7 @@ test.describe('on a phone', () => {
 	test('the Local header is the 56 px bar: BLC to the Map and one Settings link, nothing sideways', async ({
 		page
 	}) => {
-		await page.goto('/');
+		await gotoHydrated(page, '/');
 		const header = page.locator('header');
 		expect((await header.boundingBox())?.height).toBe(56); // the 56 px bar, rule included
 
@@ -134,7 +135,7 @@ test.describe('the Map on a phone, as a flow', () => {
 	test.use({ storageState: asLearner('e2e-page-flow'), viewport: { width: 390, height: 844 } });
 
 	test('Map to an Unlocked Topic by tapping it', { tag: '@mobile' }, async ({ page }) => {
-		await page.goto('/');
+		await gotoHydrated(page, '/');
 		await page.getByRole('link', { name: /^Stacks 0\/2 solved/ }).tap();
 		await expect(page).toHaveURL('/topics/stacks');
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Stacks');

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { E2E_ADMIN } from '../lib/e2e-admin.ts';
+import { gotoHydrated } from '../lib/test/hydrated.ts';
 import { LEARNER_PASSWORD, openMultiUserDatabase, type Session } from './users/multi-fixture.ts';
 
 // The phone header (F.10f) on the Multi-user server: 390 x 844, a learner and the admin.
@@ -49,7 +50,7 @@ test('a learner sees BLC and their name, and the name is marked on Settings', as
 	page
 }) => {
 	await context.addCookies(lin.cookies);
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
 	await expect(page.getByRole('link', { name: 'BLC' })).toHaveAttribute('href', '/');
 	await expect(nav.getByRole('link')).toHaveText([LIN.name]);
@@ -68,7 +69,7 @@ test('the admin sees Users and their name, each marked on its own page', async (
 	page
 }) => {
 	await context.addCookies(admin.cookies);
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
 	await expect(nav.getByRole('link')).toHaveText(['Users', E2E_ADMIN.name]);
 	await expectBarFits(page);
@@ -96,7 +97,7 @@ test('a long name is cut with an ellipsis and the bar does not widen', async ({
 	page
 }) => {
 	await context.addCookies(long.cookies);
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await expectBarFits(page);
 	const link = page.getByRole('navigation', { name: 'Primary' }).getByRole('link');
 	await expect(link).toHaveText(LONG.name);

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
+import { gotoHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -10,17 +11,17 @@ test('a Local Learner with a read Chapter switches to Multi-user and the admin k
 	page
 }) => {
 	// Local through the real screen.
-	await page.goto('/setup');
-	await page.getByRole('button', { name: 'Start in Local mode →' }).click();
+	await gotoHydrated(page, '/setup');
+	await submitHydrated(page.getByRole('button', { name: 'Start in Local mode →' }));
 	await expect(page).toHaveURL('/');
 
 	// Read a Chapter as the Local Learner.
-	await page.goto('/chapters/stacks-undo-log');
+	await gotoHydrated(page, '/chapters/stacks-undo-log');
 	await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
 	await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
 
 	// Settings says plainly what this does, and opens the admin form.
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await expect(page.getByRole('heading', { level: 2, name: 'Multi-user' })).toBeVisible();
 	await expect(page.getByText(/anyone who can open this instance/i)).toBeVisible();
 	await expect(page.getByText('reset-admin-password')).toBeVisible();
@@ -32,19 +33,19 @@ test('a Local Learner with a read Chapter switches to Multi-user and the admin k
 	await page.getByLabel('Name').fill(E2E_ADMIN.name);
 	await page.getByLabel('Email').fill(E2E_ADMIN.email);
 	await page.getByLabel('Password').fill('short');
-	await page.getByRole('button', { name: 'Create admin account →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Create admin account →' }));
 	await expect(page.getByText('Use 12 to 128 characters.')).toBeVisible();
 	await expect(page.getByLabel('Name')).toHaveValue(E2E_ADMIN.name);
 
 	await page.getByLabel('Password').fill(E2E_ADMIN.password);
-	await page.getByRole('button', { name: 'Create admin account →' }).click();
+	await submitHydrated(page.getByRole('button', { name: 'Create admin account →' }));
 
 	// Signed in as the admin, on the Map.
 	await expect(page).toHaveURL('/');
 	await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(E2E_ADMIN.name);
 
 	// The Chapter is still read.
-	await page.goto('/topics/stacks');
+	await gotoHydrated(page, '/topics/stacks');
 	const chapterRow = page.locator('section.chapter', {
 		has: page.getByRole('link', { name: 'An undo log' })
 	});
@@ -52,16 +53,16 @@ test('a Local Learner with a read Chapter switches to Multi-user and the admin k
 	await expect(chapterRow).not.toContainText('not read');
 
 	// One-way: Setup is gone, and the Settings row with it.
-	await page.goto('/setup?convert');
+	await gotoHydrated(page, '/setup?convert');
 	await expect(page).toHaveURL('/');
-	await page.goto('/settings');
+	await gotoHydrated(page, '/settings');
 	await expect(page.getByRole('link', { name: 'Switch to Multi-user →' })).toHaveCount(0);
 });
 
 test('Sign in is now required: a signed-out visitor is sent to it', async ({ browser }) => {
 	const context = await browser.newContext({ baseURL: 'http://localhost:4175' });
 	const page = await context.newPage();
-	await page.goto('/');
+	await gotoHydrated(page, '/');
 	await expect(page).toHaveURL(/\/signin/);
 	await context.close();
 });

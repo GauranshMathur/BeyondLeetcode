@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import { gotoHydrated, reloadHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
 import { startFreshServer } from '../signin/fresh-server.ts';
 
 // Two kinds of server, because the Multi-user server on 4174 starts invite-only (as every new Instance does)
@@ -34,7 +35,7 @@ const test = base.extend<object, { open: OpenServer }>({
 
 test.describe('registration closed (the Multi-user server starts invite-only)', () => {
 	test('shows the closed state and no form', async ({ page }) => {
-		await page.goto('/signup');
+		await gotoHydrated(page, '/signup');
 
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Sign-up is closed.');
 		await expect(
@@ -74,13 +75,13 @@ test.describe('registration open', () => {
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-		await page.goto(`${open.url}/signup`);
+		await gotoHydrated(page, `${open.url}/signup`);
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('Start reading.');
 
 		await page.getByLabel('Name').fill(LEARNER.name);
 		await page.getByLabel('Email').fill(LEARNER.email);
 		await page.getByLabel('Password').fill(LEARNER.password);
-		await page.getByRole('button', { name: 'Create account →' }).click();
+		await submitHydrated(page.getByRole('button', { name: 'Create account →' }));
 
 		await expect(page).toHaveURL(`${open.url}/`);
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
@@ -95,9 +96,9 @@ test.describe('registration open', () => {
 		await expect(page.getByRole('link', { name: /complete/i })).toHaveCount(0);
 
 		// Signed in for good: the session survives a reload, and Sign up has nothing more to offer.
-		await page.reload();
+		await reloadHydrated(page);
 		await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(LEARNER.name);
-		await page.goto(`${open.url}/signup`);
+		await gotoHydrated(page, `${open.url}/signup`);
 		await expect(page).toHaveURL(`${open.url}/`);
 		await context.close();
 	});
@@ -108,13 +109,13 @@ test.describe('registration open', () => {
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-		await page.goto(`${open.url}/signup`);
+		await gotoHydrated(page, `${open.url}/signup`);
 		await expect(page.getByText('At least 12 characters.')).toBeVisible();
 
 		await page.getByLabel('Name').fill('Edsger Dijkstra');
 		await page.getByLabel('Email').fill('edsger@example.com');
 		await page.getByLabel('Password').fill('short');
-		await page.getByRole('button', { name: 'Create account →' }).click();
+		await submitHydrated(page.getByRole('button', { name: 'Create account →' }));
 
 		await expect(page.getByText('Use at least 12 characters.')).toBeVisible();
 		await expect(page.getByLabel('Password')).toHaveAttribute('aria-invalid', 'true');
@@ -131,13 +132,13 @@ test.describe('registration open', () => {
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-		await page.goto(`${open.url}/signup`);
+		await gotoHydrated(page, `${open.url}/signup`);
 		const tooLong = 'N'.repeat(101);
 
 		await page.getByLabel('Name').fill(tooLong);
 		await page.getByLabel('Email').fill('longname@example.com');
 		await page.getByLabel('Password').fill(LEARNER.password);
-		await page.getByRole('button', { name: 'Create account →' }).click();
+		await submitHydrated(page.getByRole('button', { name: 'Create account →' }));
 
 		await expect(page.getByText('Use at most 100 characters.')).toBeVisible();
 		await expect(page.getByLabel('Name')).toHaveAttribute('aria-invalid', 'true');
@@ -154,14 +155,14 @@ test.describe('registration open', () => {
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-		await page.goto(`${open.url}/signup`);
+		await gotoHydrated(page, `${open.url}/signup`);
 		// 100 characters, 200 UTF-16 units: the browser must not count them twice.
 		const hundred = '\u{1F600}'.repeat(100);
 
 		await page.getByLabel('Name').fill(hundred);
 		await page.getByLabel('Email').fill('hundred@example.com');
 		await page.getByLabel('Password').fill(LEARNER.password);
-		await page.getByRole('button', { name: 'Create account →' }).click();
+		await submitHydrated(page.getByRole('button', { name: 'Create account →' }));
 
 		await expect(page).toHaveURL(`${open.url}/`);
 		await expect(page.getByRole('navigation', { name: 'Primary' })).toContainText(hundred);
@@ -229,12 +230,12 @@ test.describe('registration open', () => {
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-		await page.goto(`${open.url}/signup`);
+		await gotoHydrated(page, `${open.url}/signup`);
 
 		await page.getByLabel('Name').fill('Someone Else');
 		await page.getByLabel('Email').fill(LEARNER.email.toUpperCase());
 		await page.getByLabel('Password').fill(LEARNER.password);
-		await page.getByRole('button', { name: 'Create account →' }).click();
+		await submitHydrated(page.getByRole('button', { name: 'Create account →' }));
 
 		await expect(page.getByText('This email cannot be used. Try a different one.')).toBeVisible();
 		await expect(page.getByLabel('Email')).toHaveAttribute('aria-invalid', 'true');
@@ -250,7 +251,7 @@ test.describe('registration open', () => {
 	}) => {
 		const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
 		const page = await context.newPage();
-		await page.goto(`${open.url}/signup`);
+		await gotoHydrated(page, `${open.url}/signup`);
 
 		await expect(page.getByRole('button', { name: 'Create account →' })).toBeVisible();
 		await expect(page.getByText('What an account keeps')).toBeHidden();
@@ -262,7 +263,7 @@ test.describe('registration open', () => {
 
 		const wide = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 		const desktop = await wide.newPage();
-		await desktop.goto(`${open.url}/signup`);
+		await gotoHydrated(desktop, `${open.url}/signup`);
 		await expect(desktop.getByText('What an account keeps')).toBeVisible();
 		await wide.close();
 	});

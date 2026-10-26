@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { E2E_ADMIN } from '../lib/e2e-admin.ts';
+import { gotoHydrated, submitHydrated } from '../lib/test/hydrated.ts';
 
 // Sprint 4 exit: an admin can set up, invite a user, and that user signs in and keeps their own progress.
 // Everything goes through the real forms and pages. The admin is the one "setup-multi" made through Setup;
@@ -23,10 +24,10 @@ test('an admin invites a user; the user reads a Chapter, signs out and in again 
 		const user = await userContext.newPage();
 
 		// The admin signs in through the form and makes an Invite on the Users page.
-		await admin.goto('/signin');
+		await gotoHydrated(admin, '/signin');
 		await admin.getByLabel('Email').fill(E2E_ADMIN.email);
 		await admin.getByLabel('Password').fill(E2E_ADMIN.password);
-		await admin.getByRole('button', { name: 'Sign in →' }).click();
+		await submitHydrated(admin.getByRole('button', { name: 'Sign in →' }));
 		await expect(admin).toHaveURL('/');
 		await admin.getByRole('navigation', { name: NAV }).getByRole('link', { name: 'Users' }).click();
 		await expect(admin).toHaveURL('/users');
@@ -37,16 +38,16 @@ test('an admin invites a user; the user reads a Chapter, signs out and in again 
 		const link = await field.inputValue();
 
 		// A second browser opens the link and creates the Account.
-		await user.goto(link);
+		await gotoHydrated(user, link);
 		await expect(user.getByRole('heading', { level: 1 })).toHaveText('You are invited.');
 		await user.getByLabel('Name').fill(PERSON.name);
 		await user.getByLabel('Email').fill(PERSON.email);
 		await user.getByLabel('Password').fill(PERSON.password);
-		await user.getByRole('button', { name: 'Create account →' }).click();
+		await submitHydrated(user.getByRole('button', { name: 'Create account →' }));
 		await expect(user.getByRole('navigation', { name: NAV })).toContainText(PERSON.name);
 
 		// The user reads a Chapter to its end.
-		await user.goto('/topics/stacks');
+		await gotoHydrated(user, '/topics/stacks');
 		const chapterRow = user.locator('section.chapter', {
 			has: user.getByRole('link', { name: 'An undo log' })
 		});
@@ -57,14 +58,13 @@ test('an admin invites a user; the user reads a Chapter, signs out and in again 
 		await expect(user.locator('aside').getByText('read', { exact: true })).toBeVisible();
 
 		// Signs out, signs in again with the same form.
-		await user
-			.getByRole('navigation', { name: NAV })
-			.getByRole('button', { name: 'Sign out' })
-			.click();
+		await submitHydrated(
+			user.getByRole('navigation', { name: NAV }).getByRole('button', { name: 'Sign out' })
+		);
 		await expect(user).toHaveURL('/signin');
 		await user.getByLabel('Email').fill(PERSON.email);
 		await user.getByLabel('Password').fill(PERSON.password);
-		await user.getByRole('button', { name: 'Sign in →' }).click();
+		await submitHydrated(user.getByRole('button', { name: 'Sign in →' }));
 		await expect(user).toHaveURL('/');
 
 		// From the Map to the Topic: the Chapter is still read.
@@ -75,7 +75,7 @@ test('an admin invites a user; the user reads a Chapter, signs out and in again 
 		await expect(user.getByLabel('Topic progress')).toContainText('1 of 2');
 
 		// The admin's own progress is untouched: the same Chapter is unread there.
-		await admin.goto('/');
+		await gotoHydrated(admin, '/');
 		await admin.getByRole('link', { name: /^Stacks, / }).click();
 		await expect(admin).toHaveURL('/topics/stacks');
 		const adminRow = admin.locator('section.chapter', {
