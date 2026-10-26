@@ -75,9 +75,12 @@ jobs:
         timeout-minutes: 10
         run: |
           for attempt in 1 2; do
-            if timeout 4m bunx playwright install --with-deps chromium; then exit 0; fi
+            if timeout -k 10s 4m bunx playwright install --with-deps chromium; then exit 0; fi
             echo "::warning::Playwright install attempt $attempt failed or timed out"
-            sudo pkill -x apt-get || true
+            # The stalled apt-get runs as root, out of timeout's reach: stop it so the retry gets the dpkg lock.
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -f /usr/lib/apt/methods/ || true
+            sleep 5
           done
           exit 1
       # Run goes through the real Runner (started by the Playwright config), which needs the Sandbox image.
@@ -217,9 +220,12 @@ jobs:
         timeout-minutes: 10
         run: |
           for attempt in 1 2; do
-            if timeout 4m bunx playwright install --with-deps chromium; then exit 0; fi
+            if timeout -k 10s 4m bunx playwright install --with-deps chromium; then exit 0; fi
             echo "::warning::Playwright install attempt $attempt failed or timed out"
-            sudo pkill -x apt-get || true
+            # The stalled apt-get runs as root, out of timeout's reach: stop it so the retry gets the dpkg lock.
+            sudo pkill -KILL -x apt-get || true
+            sudo pkill -KILL -f /usr/lib/apt/methods/ || true
+            sleep 5
           done
           exit 1
       # Web, runner and init + compose up, then the browser flow in three Languages. Shared with
