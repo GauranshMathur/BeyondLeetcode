@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.3.0...v1.4.0) (2026-10-26)
+
+
+### Features
+
+* **beyondleetcode:** C73 content guard for the hidden batch; a lighter autosave read ([#303](https://github.com/GauranshMathur/BeyondLeetcode/issues/303)) ([8180481](https://github.com/GauranshMathur/BeyondLeetcode/commit/8180481062119605040bc1248f2a0c7493da3693))
+
 ## [1.3.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.2.0...v1.3.0) (2026-10-26)
 
 

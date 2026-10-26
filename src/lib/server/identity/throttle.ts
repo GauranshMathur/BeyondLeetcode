@@ -138,20 +138,33 @@ interface Entry {
  *
  * The two kinds of key have separate maps, five in all (address; pair and Account for real ids; pair and
  * Account for unknown emails), because they differ in who chooses the key. A real Account id exists only
- * for a real Account, so its maps hold as many keys as there are Accounts and never fill in practice; they
- * never drop a live entry (a full one skips the new key), which is what holds an Account to 5 tries per
- * address and 50 overall however many addresses an attacker has. An unknown email is whatever the client
- * types, so its maps are the ones a flood of made-up emails fills. When one is full it evicts the entry
- * whose window ends earliest and never skips or refuses, so a flood can only evict other made-up emails:
- * a known Account's counters stay. Residual: to make one unknown email forget its count, an attacker must
- * push it out, which takes more than maxKeys other emails inside one window, so more than maxKeys / 20
- * addresses, for each fresh set of guesses. Timing residual of the same flood: once an unknown email has been
- * pushed out, its next try is counted afresh and runs the slow password hash, while a known Account's try
- * (its counters stay) is refused fast, so an attacker who spends more than maxKeys unknown emails from about
- * maxKeys / 20 addresses or /64s in one window can tell the two apart again by their response time, for as
- * long as the flood lasts. The cost scales with maxKeys; it is accepted. The address map evicts the same
- * way, with the same residual: an attacker with more addresses than maxKeys inside one window gets fresh
- * per-address budgets and is still held to the per-Account limit.
+ * for a real Account, so the Account map holds as many keys as there are Accounts and does not fill in
+ * practice; it never drops a live entry (a full one skips the new key), which is what holds an Account to 50
+ * tries overall however many addresses an attacker has. The other four maps can be filled by the client: the
+ * address by its addresses, the unknown-email maps by made-up emails, and the pair map by address x Account
+ * combinations (the pair key holds the address, so a few hundred addresses and a few hundred known emails
+ * reach maxKeys). When one of them is full it evicts the entry whose window ends earliest and never skips or
+ * refuses, so a flood can only evict other pairs, addresses and made-up emails: no known Account's own counter
+ * goes, and each of these maps still lets a fresh key in with a full budget.
+ *
+ * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
+ * count for it. Filling a map takes up to maxKeys admitted tries; after that each new key evicts the entry
+ * that ends earliest, so a key that is the oldest goes after one new key, and any other after the number of
+ * entries ahead of it plus one (at most maxKeys, or about maxKeys / 20 addresses). For a known
+ * Account a fresh pair count is at most 5 more tries from one address, still counted against the address
+ * (20) and the Account (50), so the total guesses on an Account do not grow.
+ *
+ * Timing residual, in two directions, both from a flood of more than maxKeys keys from about maxKeys / 20
+ * addresses or /64s in one window, for as long as the flood lasts. (1) Unknown email: the flood pushes its
+ * entry out of `emailPairs`; its next try is counted afresh and runs the slow password hash, while a known
+ * Account's try is refused fast once its pair counter (5) is full. (2) Known email: the attacker spends the
+ * target's 5 tries from one address, then floods `pairs` with other known Accounts from other addresses
+ * until that pair is evicted; if the email has an Account, its next tries are admitted again and run the
+ * hash, while an email with none sits in `emailPairs`, which that flood does not touch, and stays refused
+ * fast. The cost scales with maxKeys; it is accepted. An attacker with more addresses than maxKeys inside
+ * one window gets fresh per-address budgets and is still held to the per-Account limit. The Account map
+ * skips new keys once more than maxKeys Account entries are live in one window, so Accounts past that
+ * point have no 50 cap (card C85).
  *
  * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
  * their window is still the one it was counted in, so only wrong passwords spend budget. Callers that
@@ -174,13 +187,14 @@ export const createThrottle = ({
 }: ThrottleOptions = {}): Throttle => {
 	// Insertion order is window-start order, since windows are fixed, so the first entry ends first.
 	// `evicts`: a full map drops its earliest-ending entry for the new key; otherwise it skips the new key.
+	// Only the Account counter must skip: it is the one that holds an Account to 50 whatever else evicts.
 	const counter = (max: number, evicts: boolean) => ({
 		max,
 		evicts,
 		entries: new Map<string, Entry>()
 	});
 	const addresses = counter(addressLimit, true);
-	const pairs = counter(limit, false);
+	const pairs = counter(limit, true);
 	const accounts = counter(accountLimit, false);
 	const emailPairs = counter(limit, true);
 	const emailAccounts = counter(accountLimit, true);
@@ -252,7 +266,7 @@ export const createThrottle = ({
 					continue;
 				}
 				if (c.entries.size >= maxKeys) {
-					// Only maps for keys the client chooses may drop a live entry; the rest keep theirs and skip the new key.
+					// The Account map alone keeps its live entries and skips the new key.
 					if (!c.evicts) continue;
 					const earliest = c.entries.keys().next().value;
 					if (earliest !== undefined) c.entries.delete(earliest);
