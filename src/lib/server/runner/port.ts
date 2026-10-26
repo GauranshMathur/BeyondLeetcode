@@ -36,6 +36,7 @@ export function buildPathsIssue(paths: readonly string[]): string | undefined {
 	for (const path of paths) {
 		if (
 			path === '' ||
+			!path.isWellFormed() ||
 			encoder.encode(path).length > MAX_PATH_BYTES ||
 			path.startsWith('/') ||
 			path.includes('\\') ||

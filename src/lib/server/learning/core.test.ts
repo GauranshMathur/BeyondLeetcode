@@ -1595,10 +1595,11 @@ describe('the autosave read', () => {
 describe('one Build rule for the Learning core and the Runner (C78)', () => {
 	const tooMany = Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`f${i}.py`, '']));
 	const shapes = [
-		['a path over 94 bytes', { [`${'a'.repeat(95)}.py`]: 'x' }],
+		['a path over 94 bytes', { [`${'a'.repeat(92)}.py`]: 'x' }],
 		['a path containing a null byte', { 'main\0.py': 'x' }],
 		['more than 64 files', tooMany],
-		['a file under another file', { a: 'x', 'a/b': 'x' }]
+		['a file under another file', { a: 'x', 'a/b': 'x' }],
+		['lone surrogates in paths', { 'main.py': 'x', 'x\ud800': '1', 'x\udc00/y': '2' }]
 	] as const;
 
 	async function setup() {

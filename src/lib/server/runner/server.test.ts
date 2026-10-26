@@ -92,6 +92,10 @@ describe('Runner HTTP handler', () => {
 		['an unknown language', { ...valid, language: 'ruby' }],
 		['a file path that escapes the build', { ...valid, files: { '../evil': '' } }],
 		['an absolute file path', { ...valid, files: { '/etc/x': '' } }],
+		[
+			'lone surrogates in file paths',
+			{ ...valid, files: { 'main.py': 'x', 'x\ud800': '1', 'x\udc00/y': '2' } }
+		],
 		['a file path with a null byte', { ...valid, files: { 'a\0b.py': '' } }],
 		[
 			'more than 200 Tests',
