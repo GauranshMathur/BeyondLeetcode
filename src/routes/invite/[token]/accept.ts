@@ -115,7 +115,7 @@ function clientAddress(event: Pick<RequestEvent, 'getClientAddress'>): string {
  *
  * `load` only checks the Invite (`lookup`) and puts the token in an httpOnly cookie. `action` signs up
  * through Better Auth with that token as the invite cookie of the call; the registration gate checks it
- * and Better Auth's `user.create.after` hook spends it, atomically (`Invites.claim`). Nothing here spends it.
+ * and Better Auth's `user.create.before` hook claims it, atomically (`Invites.claim`). Nothing here spends it.
  */
 export function createAccept(throttle: Throttle) {
 	const secure = (event: Pick<RequestEvent, 'url'>) => event.url.protocol === 'https:';
