@@ -81,7 +81,7 @@ async function post(request: Request): Promise<Reply> {
 	}
 }
 
-// Below 768px the workspace shows one pane at a time. The current tab is view state only: every pane stays
+// Below 768px (767.98px and under) the workspace shows one pane at a time. The current tab is view state only: every pane stays
 // mounted (the editor is hidden by CSS, never destroyed), so unsaved code and the state machine are untouched.
 const TABS = [
 	{ id: 'problem', name: 'Problem' },
@@ -460,7 +460,7 @@ const label: Record<SaveState, string> = {
 			min-height: 0;
 		}
 	}
-	@media (min-width: 768px) and (max-width: 900px) {
+	@media (width > 767.98px) and (width <= 900px) {
 		.workspace-bar {
 			height: auto;
 			min-height: 64px;
@@ -473,7 +473,7 @@ const label: Record<SaveState, string> = {
 		}
 	}
 	/* Phones: one pane at a time between the 56px bar and the strip and tab bar; the document never scrolls. */
-	@media (max-width: 767px) {
+	@media (max-width: 767.98px) {
 		.page {
 			height: 100dvh;
 			min-height: 0;
