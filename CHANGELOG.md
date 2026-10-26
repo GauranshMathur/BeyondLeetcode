@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.0...v1.5.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C67 upgrade to SvelteKit 3 (closes advisories 1 and 2) ([#323](https://github.com/GauranshMathur/BeyondLeetcode/issues/323)) ([c93cf97](https://github.com/GauranshMathur/BeyondLeetcode/commit/c93cf976bd8c91e45e2177ae2483cc4eedc70f8f))
+
 ## [1.5.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.4.3...v1.5.0) (2026-10-26)
 
 
