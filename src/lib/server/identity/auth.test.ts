@@ -1804,6 +1804,11 @@ describe('a password sign-in racing a writer of the password', () => {
 		const lin = await signUp('Lin', 'lin@example.com');
 		const { internalAdapter } = await auth.$context;
 		const sessionsOf = (userId: string) => db.session.count({ where: { userId } });
+		const resolves = async (cookie: string) =>
+			(await auth.api.getSession({ headers: new Headers({ cookie }) })) !== null;
+		const generationOf = async (userId: string) =>
+			(await db.account.findFirstOrThrow({ where: { userId, providerId: 'credential' } }))
+				.credentialGeneration;
 
 		/** Holds the next session a sign-in is about to create until `release` is called: the password has been checked. */
 		function holdNextSession() {
@@ -1841,7 +1846,19 @@ describe('a password sign-in racing a writer of the password', () => {
 		onTestFinished(() => {
 			vi.restoreAllMocks();
 		});
-		return { db, auth, ada, lin, internalAdapter, sessionsOf, holdNextSession, signIn, who };
+		return {
+			db,
+			auth,
+			ada,
+			lin,
+			internalAdapter,
+			sessionsOf,
+			resolves,
+			generationOf,
+			holdNextSession,
+			signIn,
+			who
+		};
 	}
 
 	/** A refusal like a wrong password: 401, a fixed message, no cookie. */
@@ -2012,8 +2029,12 @@ describe('a password sign-in racing a writer of the password', () => {
 		expect(await w.sessionsOf(w.lin.id)).toBe(2); // the sign-up's and this one
 	});
 
-	it('ends a session that survived a password change whose two deletions both failed', async () => {
+	// Better Auth 1.7.8 (#11626) ends the other sessions before it writes the new hash, so a change whose revocation
+	// fails stops there: the password is not kept. (The Prisma adapter runs without a transaction, so this is the
+	// order of the steps, not a rollback.) The generation binding is for the writers that do keep the password.
+	it('keeps nothing of a password change whose two deletions both failed', async () => {
 		const w = await world();
+		const before = await w.generationOf(w.lin.id);
 		vi.spyOn(w.internalAdapter, 'deleteUserSessions').mockRejectedValue(new Error('disk'));
 		vi.spyOn(w.internalAdapter, 'deleteSessions').mockRejectedValue(new Error('disk'));
 
@@ -2024,12 +2045,27 @@ describe('a password sign-in racing a writer of the password', () => {
 			})
 		).rejects.toThrow();
 
-		// The password has changed, the old session row is still there, and it is not accepted.
+		// The password and its generation are as they were, so the session that is still there is still the right one.
+		expect(await w.generationOf(w.lin.id)).toBe(before);
 		expect(await w.sessionsOf(w.lin.id)).toBe(1);
-		const found = await w.auth.api.getSession({ headers: new Headers({ cookie: w.lin.cookie }) });
-		expect(found).toBeNull();
-		expect(await w.sessionsOf(w.lin.id)).toBe(0);
-		expect((await w.signIn('lin@example.com', newPassword)).ok).toBe(true);
+		expect(await w.resolves(w.lin.cookie)).toBe(true);
+		expect((await w.signIn('lin@example.com', newPassword)).ok).toBe(false);
+		expect((await w.signIn('lin@example.com', oldPassword)).ok).toBe(true);
+	});
+
+	it('refuses a session from before a password change that ended no session', async () => {
+		const w = await world();
+		const before = await w.generationOf(w.lin.id);
+		// Without `revokeOtherSessions` the change deletes nothing, as a change whose deletions all failed would
+		// have left things: the old row is there, and only its generation says it is from before the password.
+		await w.auth.api.changePassword({
+			headers: new Headers({ cookie: w.lin.cookie }),
+			body: { currentPassword: oldPassword, newPassword }
+		});
+
+		expect(await w.generationOf(w.lin.id)).not.toBe(before);
+		expect(await w.sessionsOf(w.lin.id)).toBe(1);
+		expect(await w.resolves(w.lin.cookie)).toBe(false);
 	});
 
 	it('does not touch a session made after the password was set', async () => {
@@ -2185,6 +2221,9 @@ describe('a session is bound to its credential generation', () => {
 		expect(await w.generationOf(w.lin.id)).toBe(before);
 	});
 
+	// A password change with every deletion failing is not here: it stops before the hash is written (above). The
+	// admin's reset keeps the password whatever the deletions do (`setUserPassword` ends nothing itself), so
+	// the binding is what refuses the old session.
 	it.each([
 		[
 			'the admin reset',
@@ -2192,17 +2231,6 @@ describe('a session is bound to its credential generation', () => {
 				await resetPassword(w.auth, { ...(await w.who()), userId: w.lin.id }).catch(
 					() => undefined
 				);
-			}
-		],
-		[
-			'a password change',
-			async (w: Awaited<ReturnType<typeof world>>) => {
-				await w.auth.api
-					.changePassword({
-						headers: new Headers({ cookie: w.lin.cookie }),
-						body: { currentPassword: oldPassword, newPassword, revokeOtherSessions: true }
-					})
-					.catch(() => undefined);
 			}
 		]
 	])(
