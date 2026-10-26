@@ -60,7 +60,7 @@ jobs:
           # the built-in token cannot, because workflows do not run on PRs it creates.
           GH_TOKEN: ${{ secrets.RELEASE_PAT || github.token }}
           RELEASE_PR_NUMBER: ${{ steps.find.outputs.number }}
-        run: gh pr merge "$RELEASE_PR_NUMBER" --squash --repo "$GITHUB_REPOSITORY"
+        run: gh pr merge "$RELEASE_PR_NUMBER" --squash --admin --repo "$GITHUB_REPOSITORY"
 
       # A merge made with GITHUB_TOKEN does not trigger this workflow again, so
       # run release-please once more to tag and publish what was just merged.
