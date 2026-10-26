@@ -1068,8 +1068,8 @@ export function createAuth({
 				// still clears it.
 				if (ctx.context.newSession) {
 					// The callback signed someone in: its start (the flood guard's count) is given back, by the
-					// `state` the provider sent back (a query on GET, the body on a POST bounce).
-					const state = ctx.query?.state ?? ctx.body?.state;
+					// `state` the provider sent back in the query.
+					const state = ctx.query?.state;
 					if (typeof state === 'string') providerStarts?.refund(state);
 					if (inviteToken) {
 						ctx.setCookie(INVITE_COOKIE, '', {

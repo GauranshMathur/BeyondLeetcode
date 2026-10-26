@@ -1,6 +1,5 @@
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDb } from '../../lib/server/db.ts';
@@ -8,6 +7,7 @@ import { createAuth } from '../../lib/server/identity/auth.ts';
 import { createRegistration } from '../../lib/server/identity/registration.ts';
 import { createFirstAdmin } from '../../lib/server/identity/setup.ts';
 import { createInstance } from '../../lib/server/instance.ts';
+import { freePort } from '../../lib/test/free-port.ts';
 import type { ServerTarget } from './multi-fixture.ts';
 
 // Test-only. A Multi-user server of its own, from the same build as the two Playwright servers, on a fresh
@@ -88,17 +88,6 @@ export async function startMultiUserServer(): Promise<MultiUserServer> {
 		throw error;
 	}
 	return { url: origin, origin, database, secret: SECRET, stop };
-}
-
-async function freePort(): Promise<number> {
-	return new Promise((resolve, reject) => {
-		const probe = createServer();
-		probe.once('error', reject);
-		probe.listen(0, '127.0.0.1', () => {
-			const { port } = probe.address() as { port: number };
-			probe.close(() => resolve(port));
-		});
-	});
 }
 
 async function ready(server: ChildProcess, url: string, output: () => string) {

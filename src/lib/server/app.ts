@@ -14,6 +14,7 @@ import {
 	repairLearners,
 	sweepStaleSessions
 } from './identity/multi-user.ts';
+import { parseOrigin } from './identity/origin.ts';
 import { createRegistration } from './identity/registration.ts';
 import {
 	createFirstAdmin,
@@ -220,7 +221,7 @@ function buildAuth(
 			message: `BETTER_AUTH_SECRET in your .env is shorter than ${MIN_SECRET_LENGTH} characters. Use 48 random hex characters (for example from \`openssl rand -hex 24\`), then restart.`
 		};
 	}
-	const origin = originOf(env.ORIGIN);
+	const origin = parseOrigin(env.ORIGIN);
 	if (!origin) {
 		return {
 			kind: 'missing',
@@ -264,15 +265,6 @@ function providerEnvironment(
 		out[name] = env[name] ?? process.env[name];
 	}
 	return out;
-}
-
-function originOf(value: string | undefined): string | null {
-	try {
-		const url = new URL(value ?? '');
-		return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : null;
-	} catch {
-		return null;
-	}
 }
 
 const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>) => ({

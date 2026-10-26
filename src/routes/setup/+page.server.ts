@@ -15,10 +15,6 @@ import type { Actions, PageServerLoad } from './$types';
 const unavailable = (choice: Exclude<MultiUserChoice, { kind: 'open' }>) =>
 	choice.kind === 'needs-env' ? choice.message : 'Multi-user is not available on this server.';
 
-/** The Instance module's refusal when someone set it up first (see instance.ts). */
-const isAlreadySetUp = (error: unknown) =>
-	error instanceof Error && error.message.includes('already set up');
-
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
 const FIELD_MESSAGES = {
 	name: 'Enter a name.',
@@ -64,7 +60,7 @@ export const actions: Actions = {
 		} catch (error) {
 			// A second choice that lost the race goes to the Map like the first; any other failure is real.
 			if (error instanceof AccountsExistError) return fail(409, { message: LOCAL_REFUSED });
-			if (!isAlreadySetUp(error)) throw error;
+			if (!(error instanceof InstanceAlreadySetUpError)) throw error;
 		}
 		redirect(303, '/');
 	},
