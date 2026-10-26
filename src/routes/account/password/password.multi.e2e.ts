@@ -46,6 +46,8 @@ const test = base.extend<object, { open: FreshServer }>({
 
 test.use({ javaScriptEnabled: false });
 
+// As with signin.multi.e2e.ts's signInWith, the click is not sure to wait for the answer: a caller that goes on
+// to another page waits for where Sign in lands first, so its page.goto cannot cancel the sign-in.
 async function signIn(page: import('@playwright/test').Page, email: string, password: string) {
 	await page.goto('/signin');
 	await page.getByLabel('Email').fill(email);
@@ -68,6 +70,7 @@ test('a user with a one-time password reaches no other page until they set a new
 	open
 }) => {
 	await signIn(page, people.forced.email, PASSWORD);
+	await expect(page).toHaveURL('/');
 	await mustChange(open, people.forced.email, true);
 
 	for (const path of ['/', '/settings', '/topics/stacks']) {
@@ -104,6 +107,7 @@ test('a user with a one-time password reaches no other page until they set a new
 
 test('a wrong current password is refused under its field', async ({ page }) => {
 	await signIn(page, people.typo.email, PASSWORD);
+	await expect(page).toHaveURL('/');
 	await page.goto('/account/password');
 	await page.getByLabel('Current password').fill('not the password');
 	await page.getByLabel('New password', { exact: true }).fill(NEXT);
@@ -115,6 +119,7 @@ test('a wrong current password is refused under its field', async ({ page }) => 
 
 test('any signed-in user reaches it from Settings and stays signed in after', async ({ page }) => {
 	await signIn(page, people.settings.email, PASSWORD);
+	await expect(page).toHaveURL('/');
 	await page.goto('/settings');
 	await page.getByRole('link', { name: 'Change password' }).click();
 	await expect(page).toHaveURL('/account/password');
