@@ -1,0 +1,8 @@
+spush 10 20
+sreverse 10
+sshow 10
+spush 10 22
+sreverse 10
+sshow 10
+sdel 10 22
+sdel 10 20

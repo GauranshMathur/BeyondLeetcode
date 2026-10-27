@@ -1,0 +1,22 @@
+init 10
+init 20
+init 30
+set 200 11
+set 205 22
+set 210 33
+add_tail 201 10
+add_tail 206 10
+add_tail 211 10
+add_tail 203 20
+add_tail 213 20
+add 208 30
+values 10 1
+values 20 3
+values 30 3
+set 205 5
+values 10 1
+del 206
+values 10 1
+values 30 3
+entry 208 3
+get 205

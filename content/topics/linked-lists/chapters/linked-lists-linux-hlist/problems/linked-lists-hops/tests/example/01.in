@@ -1,0 +1,8 @@
+spush 10 20
+spush 10 30
+spush 10 40
+sshow 10
+sdel 10 20
+sdel 10 99
+sdel 10 40
+sshow 10

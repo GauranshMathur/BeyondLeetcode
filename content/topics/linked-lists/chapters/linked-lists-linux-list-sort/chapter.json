@@ -1,0 +1,9 @@
+{
+	"title": "Linux: joining, reversing and sorting without allocating",
+	"problems": [
+		"linked-lists-splice",
+		"linked-lists-reverse",
+		"linked-lists-merge",
+		"linked-lists-sort"
+	]
+}

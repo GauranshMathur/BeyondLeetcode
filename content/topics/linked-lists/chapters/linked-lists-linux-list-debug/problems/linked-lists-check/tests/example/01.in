@@ -1,0 +1,12 @@
+init 10
+check 10
+add_tail 30 10
+add_tail 50 10
+check 10
+set 31 70
+check 10
+set 31 10
+set 50 0
+check 10
+set 50 30
+check 10

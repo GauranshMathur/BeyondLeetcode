@@ -1,0 +1,14 @@
+init 10
+add_tail 20 10
+add_tail 30 10
+add_tail 40 10
+del 30
+show 10
+show_rev 10
+get 30
+get 31
+del_init 20
+show 10
+get 20
+get 21
+empty 20

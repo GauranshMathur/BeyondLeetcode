@@ -1,0 +1,16 @@
+hadd 20 10
+hadd 30 10
+hadd 40 10
+hshow 10
+hdel 40
+hshow 10
+get 31
+hdel 20
+hshow 10
+get 31
+hdel 30
+hshow 10
+get 10
+hadd 40 10
+hshow 10
+get 41

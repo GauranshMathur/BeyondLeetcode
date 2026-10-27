@@ -1,0 +1,7 @@
+30 50
+corrupt add: next.prev
+corrupt add: prev.next
+corrupt add: prev-null
+corrupt add: next-null
+corrupt add: double-add
+30 50

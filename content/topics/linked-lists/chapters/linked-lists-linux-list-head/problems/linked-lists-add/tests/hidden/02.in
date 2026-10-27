@@ -1,0 +1,13 @@
+init 100
+add_tail 110 100
+show 100
+add 120 100
+add_tail 130 100
+add 140 100
+add_tail 150 100
+show 100
+init 200
+add 210 200
+show 200
+empty 200
+show 100

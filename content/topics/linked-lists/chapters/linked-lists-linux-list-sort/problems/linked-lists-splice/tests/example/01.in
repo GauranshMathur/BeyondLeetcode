@@ -1,0 +1,12 @@
+init 10
+init 20
+add_tail 30 10
+add_tail 40 10
+add_tail 50 20
+add_tail 60 20
+splice 20 10
+show 10
+empty 20
+splice_tail 20 10
+show 10
+show_rev 10

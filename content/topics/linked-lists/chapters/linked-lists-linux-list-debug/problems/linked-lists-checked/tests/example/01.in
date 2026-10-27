@@ -1,0 +1,11 @@
+init 10
+add 30 10
+add 30 10
+add_tail 50 10
+show 10
+del 30
+del 30
+show 10
+get 30
+get 31
+del 70

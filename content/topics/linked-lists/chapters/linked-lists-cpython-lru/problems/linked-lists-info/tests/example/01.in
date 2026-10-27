@@ -1,0 +1,13 @@
+cache 2
+call 1 10
+call 1 10
+call 2 20
+call 3 30
+info
+clear
+info
+order
+cache 0
+call 5 50
+call 5 50
+info

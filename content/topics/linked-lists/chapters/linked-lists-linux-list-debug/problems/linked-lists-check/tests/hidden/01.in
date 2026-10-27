@@ -1,0 +1,13 @@
+init 10
+add 30 10
+add 50 30
+check 10
+check 30
+set 51 10
+check 10
+set 51 30
+set 10 99
+check 10
+set 10 0
+check 10
+check 0
