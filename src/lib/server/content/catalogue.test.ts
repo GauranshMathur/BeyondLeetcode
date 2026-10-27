@@ -452,19 +452,33 @@ describe('malformed content', () => {
 			}
 		};
 
+		/**
+		 * How many hidden Tests stacks-push may gain with every fixture Problem still within the call
+		 * cap (later Problems run it with their own, so the busiest one decides).
+		 */
+		const headroom = async () => {
+			const catalogue = await loadCatalogue(fixtureDir);
+			const most = ['stacks-push', 'stacks-peek', 'stacks-pop'].map(
+				(id) => submitPlan(catalogue, id, sandboxConfig.hiddenBatchTests).hidden.flat().length
+			);
+			return (
+				(sandboxConfig.maxSubmitCalls - 1) * sandboxConfig.hiddenBatchTests - Math.max(...most)
+			);
+		};
+
 		it("keeps a hidden batch within the Runner's Test limit", () => {
 			expect(sandboxConfig.hiddenBatchTests).toBeGreaterThan(0);
 			expect(sandboxConfig.hiddenBatchTests).toBeLessThanOrEqual(sandboxConfig.maxTests);
 		});
 
-		it('accepts more hidden Tests than the Runner takes at once, as several containers', async () => {
+		it('cuts the hidden Tests into containers of at most hiddenBatchTests', async () => {
 			const dir = await mkdtemp(join(tmpdir(), 'content-'));
 			copies.push(dir);
 			await cp(fixtureDir, dir, { recursive: true });
-			await addHidden(dir, sandboxConfig.maxTests + 1, 0);
+			await addHidden(dir, await headroom(), 0);
 			const catalogue = await loadCatalogue(dir);
-			const plan = submitPlan(catalogue, 'stacks-peek', sandboxConfig.hiddenBatchTests);
-			expect(plan.hidden.flat().length).toBeGreaterThan(sandboxConfig.maxTests);
+			const plan = submitPlan(catalogue, 'stacks-pop', sandboxConfig.hiddenBatchTests);
+			expect(plan.hidden.length).toBeGreaterThan(1);
 			expect(plan.hidden.every((b) => b.length <= sandboxConfig.hiddenBatchTests)).toBe(true);
 		});
 
@@ -474,7 +488,7 @@ describe('malformed content', () => {
 			await cp(fixtureDir, dir, { recursive: true });
 			// One batch's worth at 90% of the room: together they would not fit one request.
 			const each = Math.floor((room * 0.9) / sandboxConfig.hiddenBatchTests);
-			await addHidden(dir, 2 * sandboxConfig.hiddenBatchTests, each);
+			await addHidden(dir, await headroom(), each);
 			await expect(loadCatalogue(dir)).resolves.toBeDefined();
 		});
 
@@ -486,6 +500,37 @@ describe('malformed content', () => {
 			expect(String(error)).toMatch(
 				/stacks-push: Submit's hidden batch is \d+ bytes as a Runner request, over the limit of 2097152/
 			);
+		});
+
+		it('refuses a Problem whose Submit would need more Runner calls than the ceiling allows', async () => {
+			// 1 visible call + hidden batches: enough hidden Tests for one batch past the cap.
+			const over = sandboxConfig.maxSubmitCalls * sandboxConfig.hiddenBatchTests + 1;
+			const error = await loadBroken((dir) => addHidden(dir, over, 0)).catch((e: unknown) => e);
+			expect(error).toBeInstanceOf(ContentError);
+			expect(String(error)).toMatch(
+				new RegExp(
+					`stacks-push: Submit would make \\d+ Runner calls, over the limit of ${sandboxConfig.maxSubmitCalls}`
+				)
+			);
+		});
+
+		it('derives the place ceiling from the call cap and the adapter timeout', () => {
+			expect(sandboxConfig.runPlaceCeilingMs).toBe(
+				sandboxConfig.maxSubmitCalls * sandboxConfig.adapterTimeoutMs + 10_000
+			);
+		});
+
+		it('accepts a Problem whose Submit makes exactly the most calls allowed', async () => {
+			const dir = await mkdtemp(join(tmpdir(), 'content-'));
+			copies.push(dir);
+			await cp(fixtureDir, dir, { recursive: true });
+			await addHidden(dir, await headroom(), 0);
+			const plan = submitPlan(
+				await loadCatalogue(dir),
+				'stacks-pop',
+				sandboxConfig.hiddenBatchTests
+			);
+			expect(1 + plan.hidden.length).toBe(sandboxConfig.maxSubmitCalls);
 		});
 
 		it('counts the earlier Core Problems that a later Problem runs with its own', async () => {
