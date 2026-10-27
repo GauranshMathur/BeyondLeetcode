@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.6.0...v1.7.0) (2026-10-27)
+
+
+### Features
+
+* **beyondleetcode:** C101 Two pointers Topic ([#344](https://github.com/GauranshMathur/BeyondLeetcode/issues/344)) ([b2db864](https://github.com/GauranshMathur/BeyondLeetcode/commit/b2db86475a2c928c2f835601402206e854326a0a))
+* **beyondleetcode:** C102 Binary search Topic ([#343](https://github.com/GauranshMathur/BeyondLeetcode/issues/343)) ([d644392](https://github.com/GauranshMathur/BeyondLeetcode/commit/d64439278a8de512f929859c792bb90e65d42d7c))
+
 ## [1.6.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.5...v1.6.0) (2026-10-27)
 
 
