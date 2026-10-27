@@ -42,21 +42,33 @@ export class NameConflictError extends Error {
  * than one `@`: Docker reads an empty tag as "pull every tag".
  */
 export function parseImageRef(image: string): { name: string; tag: string } {
+	const bad = (why: string) =>
+		new Error(`Malformed image reference ${JSON.stringify(image)}: ${why}`);
 	const parts = image.split('@');
-	if (parts.length > 2)
-		throw new Error(`Malformed image reference ${JSON.stringify(image)}: more than one @`);
+	if (parts.length > 2) throw bad('more than one @');
 	const [named, digest] = parts;
 	const colon = named.lastIndexOf(':');
 	const hasTag = colon > named.lastIndexOf('/');
 	const name = hasTag ? named.slice(0, colon) : named;
 	const written = hasTag ? named.slice(colon + 1) : undefined;
-	const tag = digest ?? (hasTag ? named.slice(colon + 1) : 'latest');
-	// Docker reads an empty tag as "pull every tag": never let one through.
-	if (!name || !tag || written === '' || (digest !== undefined && !/^[^:]+:.+$/.test(digest)))
-		throw new Error(
-			`Malformed image reference ${JSON.stringify(image)}: empty name, tag or digest`
-		);
-	return { name, tag };
+	// An allowlist per part (Docker's reference grammar), so nothing reaches the daemon that it
+	// would read as "every tag" or that makes the request itself fail.
+	if (!name || name.endsWith('/') || name.endsWith(':') || hasControlOrSpace(name))
+		throw bad('invalid name');
+	if (written !== undefined && !tagPattern.test(written)) throw bad('invalid tag');
+	if (digest !== undefined && !digestPattern.test(digest)) throw bad('invalid digest');
+	return { name, tag: digest ?? written ?? 'latest' };
+}
+
+const tagPattern = /^\w[\w.-]{0,127}$/;
+const digestPattern = /^[A-Za-z][A-Za-z0-9]*(?:[-_+.][A-Za-z][A-Za-z0-9]*)*:[0-9A-Za-z=_-]{32,}$/;
+
+function hasControlOrSpace(text: string): boolean {
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		if (code <= 0x20 || code === 0x7f) return true;
+	}
+	return false;
 }
 
 /** How much of the previous chunk is kept so `"error"` split across two chunks is still seen. */

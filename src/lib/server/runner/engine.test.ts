@@ -11,6 +11,8 @@ import {
 	parseImageRef
 } from './engine';
 
+const digest = 'a'.repeat(64);
+
 describe('Engine attach', () => {
 	const cleanup: (() => void)[] = [];
 	afterEach(() => {
@@ -246,10 +248,10 @@ describe('Engine attach', () => {
 				socket.end('HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n');
 			});
 
-			await createEngine(socketPath).pull('localhost:5000/team/img@sha256:abc');
+			await createEngine(socketPath).pull(`localhost:5000/team/img@sha256:${digest}`);
 
 			expect(heads).toEqual([
-				'/images/create?fromImage=localhost%3A5000%2Fteam%2Fimg&tag=sha256%3Aabc'
+				`/images/create?fromImage=localhost%3A5000%2Fteam%2Fimg&tag=sha256%3A${digest}`
 			]);
 		});
 	});
@@ -259,8 +261,14 @@ describe('Engine attach', () => {
 		expect(parseImageRef('python')).toEqual({ name: 'python', tag: 'latest' });
 		expect(parseImageRef('host:5000/a/b')).toEqual({ name: 'host:5000/a/b', tag: 'latest' });
 		expect(parseImageRef('host:5000/a/b:2')).toEqual({ name: 'host:5000/a/b', tag: '2' });
-		expect(parseImageRef('python@sha256:abc')).toEqual({ name: 'python', tag: 'sha256:abc' });
-		expect(parseImageRef('python:3@sha256:abc')).toEqual({ name: 'python', tag: 'sha256:abc' });
+		expect(parseImageRef(`python@sha256:${digest}`)).toEqual({
+			name: 'python',
+			tag: `sha256:${digest}`
+		});
+		expect(parseImageRef(`python:3@sha256:${digest}`)).toEqual({
+			name: 'python',
+			tag: `sha256:${digest}`
+		});
 	});
 
 	it.each([
@@ -273,7 +281,19 @@ describe('Engine attach', () => {
 		'@sha256:abc',
 		'a@sha256:x@evil',
 		'a@b@c',
-		'python:@sha256:abc'
+		'python:@sha256:abc',
+		'golang: ',
+		' python',
+		'python:3 ',
+		'\tpython',
+		'python\n',
+		'python:\u0000',
+		'host:5000/',
+		'a::b',
+		'a/b/',
+		`python@sha256:${'a'.repeat(40)}:`,
+		`python@sha256:${'a'.repeat(40)} `,
+		'python@sha256:abc'
 	])('rejects the malformed image reference %j', (image) => {
 		expect(() => parseImageRef(image)).toThrow(/image reference/i);
 	});
