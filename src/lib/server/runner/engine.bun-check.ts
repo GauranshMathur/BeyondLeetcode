@@ -38,13 +38,35 @@ const missing = createServer((socket) => {
 }).listen(missingSocketPath);
 await new Promise((resolve) => missing.once('listening', resolve));
 
+const progressSocketPath = join(dir, 'progress.sock');
+// A pull that never stops sending progress: only the absolute cap ends it (the idle clock keeps restarting).
+const progress = createServer((socket) => {
+	socket.once('data', () => {
+		socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n');
+		const line = '{"status":"Downloading"}\n';
+		const drip = setInterval(() => socket.write(`${line.length.toString(16)}\r\n${line}\r\n`), 30);
+		socket.once('close', () => clearInterval(drip));
+		socket.on('error', () => {});
+	});
+}).listen(progressSocketPath);
+await new Promise((resolve) => progress.once('listening', resolve));
+
 const engine = createEngine(socketPath, timeoutMs);
 const trickling = createEngine(trickleSocketPath, timeoutMs);
 const checks: [string, () => Promise<unknown>][] = [
 	['create', () => engine.create('python:3.13-slim', {})],
 	['wait', () => engine.wait('c1')],
 	['attach', () => engine.attach('c1', () => {}, timeoutMs)],
-	['create (reply trickles in)', () => trickling.create('python:3.13-slim', {})]
+	['create (reply trickles in)', () => trickling.create('python:3.13-slim', {})],
+	['create (named)', () => engine.create('python:3.13-slim', {}, 'bl-check-0123456789abcdef')],
+	['remove (by name)', () => engine.remove('bl-check-0123456789abcdef')],
+	[
+		'pull (progress never stops)',
+		() =>
+			createEngine(progressSocketPath, timeoutMs, { idleMs: 60_000, maxMs: timeoutMs }).pull(
+				'python:3.13-slim'
+			)
+	]
 ];
 
 let failed = false;
@@ -88,6 +110,7 @@ for (const [name, run] of checks) {
 }
 
 missing.close();
+progress.close();
 trickle.close();
 server.close();
 rmSync(dir, { recursive: true, force: true });

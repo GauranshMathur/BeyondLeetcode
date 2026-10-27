@@ -5,7 +5,12 @@
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
-import { type AttachedContainer, type Engine, ImageMissingError } from './engine';
+import {
+	type AttachedContainer,
+	type Engine,
+	ImageMissingError,
+	NameConflictError
+} from './engine';
 import { harnessScript } from './harness';
 import type { ExecuteRequest, ExecuteResult, Language, RunnerPort, TestResult } from './port';
 import { createTar } from './tar';
@@ -133,8 +138,8 @@ async function execute(
 			// The image vanished after its Language went ready. Fail this Run as a Runner error and
 			// hand the image back to the pull loop; nothing here pulls. A 404 made no container.
 			onImageMissing?.(request.language);
-		} else if (!/\(409\)/.test(String((error as Error)?.message))) {
-			// (A 409 means the name is taken by a container that is not ours to remove.)
+		} else if (!(error instanceof NameConflictError)) {
+			// (A name clash means the name is taken by a container that is not ours to remove.)
 			// A create that timed out (or failed after the daemon began it) may still have made
 			// the container, in the Created state, which AutoRemove never touches. Remove this Run's
 			// own name, never a prefix or a label; a 404 means nothing was made. Best effort.
@@ -254,33 +259,52 @@ async function removeContainer(engine: Engine, id: string): Promise<void> {
 const removeByNamePausesMs = [0, 50, 100, 250, 500, 1_000, 2_000];
 /** One last try, in the background, for a daemon that is still stuck in the create after all of those. */
 const removeByNameLateMs = 30_000;
-/** Longest one try at it may take. Only a 404 is retried, so the whole wait is at most this plus the pauses (about 8 s). */
+/** Longest one try at it may take. */
 const removeByNameAttemptMs = 4_000;
+/** Longest the whole cleanup may take, tries and pauses together: a 404 that takes 4 s is not retried for ever. */
+const removeByNameTotalMs = 8_000;
+/** Most late removes waiting at once, per Engine: a daemon that is down fails every Run fast, and each would leave a timer. */
+const maxPendingLateRemoves = 64;
+const pendingLateRemoves = new WeakMap<Engine, number>();
 
 /**
  * Removes the container a timed-out create may have made, by the name this Run gave it. The
  * daemon can still be finishing that create when we ask, and until it has registered the name a
  * remove answers 404 (measured on real Docker: the first remove 404s, one ~35 ms later finds it).
- * So a 404 is retried for a few seconds, which also bounds the wait when nothing was made; an error or a stalled daemon ends the tries at the first one.
- * Best effort: logs, never throws.
+ * So a 404 is retried, but all tries together stop after `removeByNameTotalMs`; an error or a
+ * stalled daemon ends the tries at the first one. Best effort: logs, never throws.
  */
 async function removeCreatedByName(engine: Engine, name: string): Promise<void> {
+	const started = Date.now();
 	for (const pause of removeByNamePausesMs) {
-		if (pause > 0) await new Promise((resolve) => setTimeout(resolve, pause));
+		let left = removeByNameTotalMs - (Date.now() - started);
+		if (pause > 0 && left > 0)
+			await new Promise((resolve) => setTimeout(resolve, Math.min(pause, left)));
+		left = removeByNameTotalMs - (Date.now() - started);
+		if (left <= 0) break;
 		try {
-			if ((await within(engine.remove(name), removeByNameAttemptMs)) !== false) return;
+			if ((await within(engine.remove(name), Math.min(removeByNameAttemptMs, left))) !== false)
+				return;
 		} catch (error) {
 			// A stalled or failing daemon (likely why the create timed out) will not answer a retry
-			// either: stop at once, so the Run's slot is held for one attempt, not seven. The
-			// background try below and the sweep are what is left.
+			// either: stop at once. The background try below and the sweep are what is left.
 			console.error(`Could not remove container ${name} after a failed create`, error);
 			break;
 		}
 	}
 	// Still nothing: the daemon may be stuck in the create. One more try later, off this Run, so it
-	// holds no Run slot; if that misses too, the next instance's sweep removes it by age.
+	// holds no Run slot; if that misses too, the next instance's sweep removes it by age. Capped, so
+	// a stream of failing Runs cannot pile up timers; past the cap the sweep is the only backstop.
+	const pending = pendingLateRemoves.get(engine) ?? 0;
+	if (pending >= maxPendingLateRemoves) return;
+	pendingLateRemoves.set(engine, pending + 1);
 	const late = setTimeout(() => {
-		within(engine.remove(name), removeAttemptTimeoutMs).catch(() => {});
+		// Counted until the engine's own remove settles (every engine call has a deadline), not
+		// until the timer fires or a `within` gives up on it: the request is still out until then.
+		engine
+			.remove(name)
+			.catch(() => {})
+			.finally(() => pendingLateRemoves.set(engine, (pendingLateRemoves.get(engine) ?? 1) - 1));
 	}, removeByNameLateMs);
 	late.unref?.();
 }
@@ -372,6 +396,9 @@ export function createImageKeeper(
 						console.log(`Pulling Sandbox image ${image}`);
 						await engine.pull(image);
 						console.log(`Pulled Sandbox image ${image}`);
+						// A pull that answered 200 is not proof: look again before saying ready.
+						if (!(await engine.hasImage(image)))
+							throw new Error(`Sandbox image ${image} is still missing after its pull`);
 					}
 					// Both happen in one tick: a `missing` call can never fall between them.
 					running.delete(language);
