@@ -119,7 +119,33 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 - **Each Topic:** every Chapter in its issue's outline, each a reading about one real system and the decision it made, cited inline to primary sources at a pinned version, then its Problems as one Build. The issue's candidate Problems are used where they fit the Build, with statements, examples and tests written fresh.
 - **Shared files:** each card adds its id to `content/content.json` and fills only its own section of `docs/research/human-review-queue.md`. Decided by the maintainer (2026-10-27): the cards run in parallel lanes. A worker resolves the one-line `content.json` conflict by keeping every id.
 
+- **Found during the sprint (2026-10-27), added to it when filed:** C106 runs CI's content check concurrently and gives the `sandbox` job 30 minutes, because C104's run hit the old 15-minute limit with seven Topics. C107 runs a Submission's hidden Tests in containers of at most 25. The Sandbox starts a fresh process per Test, about 0.2 s each in TypeScript, so late Problems in long Builds were nearing the 10 s container limit even for correct code (hash-tables-collisions: 44 hidden Tests, about 9 s).
+
 **Exit:** all Sprint 8 cards Done and CI green on `main`; CI's content check Accepts each new Topic's Reference Code in Python, TypeScript and Go; every link each Topic cites is listed in its section of the human review queue. Releases stay `1.x`.
+
+**Status (2026-10-27):** exit met. All eight Sprint 8 cards are Done and `ci` is green on `main` (01fc448). Its content check Accepts every Problem of all seven Topics in Python, TypeScript and Go, in 8:52 of the `sandbox` job's 30 minutes. Six Topics shipped, each Chapter a reading of one real system at a pinned version:
+
+| Topic | Card | Chapters | Problems | Links queued |
+|---|---|---|---|---|
+| Stacks | C103 (#342) | 4 | 9 | 53 |
+| Binary search | C102 (#343) | 4 | 7 | 31 |
+| Two pointers | C101 (#344) | 4 | 13 | 34 |
+| Hash tables | C100 (#346) | 4 | 9 | 66 |
+| Linked lists | C105 (#349) | 5 | 14 | 67 |
+| Sliding window | C104 (#350) | 4 | 10 | 33 |
+
+Every link each Topic cites, 284 in all, is listed in its section of the human review queue, unticked. No `[NEEDS SOURCE]` remains. Each PR lists the claims cut for want of a source and the Codex findings fixed in its Problems. Releases 1.6.0 to 1.10.1 shipped, all `1.x`.
+
+Decided along the way:
+- The four ready cards ran in parallel lanes after a scaffold PR created the review queue (maintainer).
+- Problems that need a map use each Language's built-in one, not the Hash tables Build.
+- Linked lists' fourth Chapter reads Linux's `lib/list_debug.c` and links to Two pointers' cycle Chapter instead of repeating it, which departs from the issue's outline (for the maintainer to confirm).
+- A Submission's hidden Tests run in containers of at most 25 (maintainer, C107), rather than capping Tests in content or raising the container limit.
+
+Not in the sprint:
+- The Hash tables issue's candidate Problems (Two Sum and others) did not fit its Build. They need a card, after a decision on whether they use the Build's table.
+- Linked lists' Reorder List is left for a later card.
+- C95 (a malformed image reference) and C108 (a Submission meeting a busy Runner between its batches) have no sprint.
 
 ## After each build sprint
 
