@@ -426,12 +426,12 @@ export function createEngine(
 		async remove(id: string): Promise<boolean> {
 			// Encoded: the argument is an id or a name, and never decides the path.
 			const ref = encodeURIComponent(id);
+			const deadline = Date.now() + callTimeoutMs;
 			const reply = await call('DELETE', `/containers/${ref}?force=true&v=true`);
 			if (reply.status === 409 && /already in progress/.test(reply.body)) {
 				// The daemon is already removing it (AutoRemove): wait until it is gone.
-				// One overall deadline (the call timeout), so a daemon that never finishes cannot hold
+				// One overall deadline from the start of the remove (the call timeout), so a daemon that never finishes cannot hold
 				// the caller, or a late-remove slot, for 50 polls of a full call timeout each.
-				const deadline = Date.now() + callTimeoutMs;
 				while (Date.now() < deadline) {
 					const left = deadline - Date.now();
 					try {
