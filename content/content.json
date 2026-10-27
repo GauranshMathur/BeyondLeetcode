@@ -5,6 +5,7 @@
 		"binary-search",
 		"two-pointers",
 		"hash-tables",
-		"linked-lists"
+		"linked-lists",
+		"sliding-window"
 	]
 }

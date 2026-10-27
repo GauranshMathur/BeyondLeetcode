@@ -1,0 +1,18 @@
+load
+approx 3 5
+load 10
+approx 1 9
+approx 1 10
+approx 4 0
+load 5 0 0 0 0 0
+approx 3 2
+approx 3 5
+approx 3 3
+load 0 0 5 5 0 0
+approx 3 7
+approx 3 4
+load 3 3 3 3 3 3
+approx 2 5
+approx 2 6
+approx 6 2
+approx 7 2

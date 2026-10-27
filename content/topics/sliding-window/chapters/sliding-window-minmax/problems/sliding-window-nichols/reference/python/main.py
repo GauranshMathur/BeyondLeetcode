@@ -1,0 +1,193 @@
+import sys
+
+values = []  # the sequence the commands work on
+commands = {}
+
+
+def load(args):
+    global values
+    values = [int(x) for x in args]
+
+
+def show(args):
+    print(" ".join(str(x) for x in values))
+
+
+commands["load"] = load
+commands["show"] = show
+
+
+def blocks(args):
+    k = int(args[0])
+    if not values:
+        print(0)
+        return
+    best = None
+    for start in range(0, len(values), k):
+        total = sum(values[start : start + k])
+        if best is None or total > best:
+            best = total
+    print(best)
+
+
+commands["blocks"] = blocks
+
+
+def peak(args):
+    k = int(args[0])
+    n = len(values)
+    if n == 0:
+        print(0)
+        return
+    k = min(k, n)
+    # Slide a window of k items: add the item that enters, subtract the one that leaves.
+    window = sum(values[:k])
+    best = window
+    for i in range(k, n):
+        window += values[i] - values[i - k]
+        best = max(best, window)
+    print(best)
+
+
+commands["peak"] = peak
+
+
+def approx(args):
+    k, limit = int(args[0]), int(args[1])
+    over = 0
+    prev = cur = 0  # total of the previous period, and of this one so far
+    for i, v in enumerate(values):
+        if i > 0 and i % k == 0:
+            prev, cur = cur, 0
+        cur += v
+        elapsed = i % k + 1
+        # estimate = prev * (k - elapsed) / k + cur, compared with limit after multiplying by k
+        if prev * (k - elapsed) + cur * k > limit * k:
+            over += 1
+    print(over)
+
+
+commands["approx"] = approx
+
+
+def flight(args):
+    cap = int(args[0])
+    lo = total = best = 0  # the window is values[lo..hi]
+    for hi, v in enumerate(values):
+        total += v  # the right edge moves out
+        while total > cap:
+            total -= values[lo]  # the left edge catches up
+            lo += 1
+        best = max(best, hi - lo + 1)
+    print(best)
+
+
+commands["flight"] = flight
+
+
+def shortest(args):
+    need = int(args[0])
+    lo = total = best = 0
+    for hi, v in enumerate(values):
+        total += v
+        # while the window is big enough, record it, then let the left edge shrink it
+        while total >= need:
+            if best == 0 or hi - lo + 1 < best:
+                best = hi - lo + 1
+            total -= values[lo]
+            lo += 1
+    print(best)
+
+
+commands["shortest"] = shortest
+
+
+def bans(args):
+    span, limit = int(args[0]), int(args[1])
+    counts = {}  # host -> failures among the last `span` items
+    banned = set()
+    order = []
+    for i, host in enumerate(values):
+        counts[host] = counts.get(host, 0) + 1  # enters the window
+        if i >= span:  # the item `span` places back leaves it
+            old = values[i - span]
+            counts[old] -= 1
+            if counts[old] == 0:
+                del counts[old]
+        if counts.get(host, 0) >= limit and host not in banned:
+            banned.add(host)
+            order.append(host)
+    print(" ".join(str(h) for h in order))
+
+
+commands["bans"] = bans
+
+
+def distinct(args):
+    last = {}  # value -> index of its latest occurrence
+    lo = best = 0  # the window is values[lo..i]
+    for i, v in enumerate(values):
+        if v in last and last[v] >= lo:
+            lo = last[v] + 1  # the left edge jumps past the earlier copy
+        last[v] = i
+        best = max(best, i - lo + 1)
+    print(best)
+
+
+commands["distinct"] = distinct
+
+
+def windowmax(args):
+    from collections import deque
+
+    k = min(int(args[0]), len(values))
+    result = []
+    # indices of the items that could still be a window's maximum, largest value first
+    candidates = deque()
+    for i, v in enumerate(values):
+        while candidates and values[candidates[-1]] <= v:
+            candidates.pop()  # v is newer and at least as big: the old item can never win
+        candidates.append(i)
+        if candidates[0] <= i - k:
+            candidates.popleft()  # the front has left the window
+        if i >= k - 1:
+            result.append(values[candidates[0]])
+    print(" ".join(str(x) for x in result))
+
+
+commands["windowmax"] = windowmax
+
+
+def nichols(args):
+    win = int(args[0])
+    s = [(0, 0), (0, 0), (0, 0)]  # best, 2nd best, 3rd best: (time, value)
+    result = []
+    for t, meas in enumerate(values):
+        val = (t, meas)
+        if meas >= s[0][1] or t - s[2][0] > win:  # a new max, or nothing left in the window
+            s = [val, val, val]
+        else:
+            if meas >= s[1][1]:
+                s[1] = s[2] = val
+            elif meas >= s[2][1]:
+                s[2] = val
+            dt = t - s[0][0]
+            if dt > win:  # the best has aged out: promote the others
+                s = [s[1], s[2], val]
+                if t - s[0][0] > win:
+                    s = [s[1], s[2], val]
+            elif s[1][0] == s[0][0] and dt > win // 4:
+                s[1] = s[2] = val
+            elif s[2][0] == s[1][0] and dt > win // 2:
+                s[2] = val
+        result.append(s[0][1])
+    print(" ".join(str(x) for x in result))
+
+
+commands["nichols"] = nichols
+
+
+for line in sys.stdin.read().splitlines():
+    parts = line.split()
+    if parts and parts[0] in commands:
+        commands[parts[0]](parts[1:])

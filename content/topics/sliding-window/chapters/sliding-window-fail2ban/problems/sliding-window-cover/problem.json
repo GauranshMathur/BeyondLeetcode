@@ -1,0 +1,5 @@
+{
+	"title": "A stretch that covers a list of hosts",
+	"kind": "extra",
+	"parent": "sliding-window-distinct"
+}

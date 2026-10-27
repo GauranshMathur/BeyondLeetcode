@@ -1,0 +1,11 @@
+{
+	"title": "Sliding window",
+	"summary": "Keep a window over a stream and move it one step at a time, and read how the Linux kernel, Cloudflare, TCP and fail2ban count, limit and filter inside one.",
+	"prerequisites": ["two-pointers", "hash-tables"],
+	"chapters": [
+		"sliding-window-ratelimit",
+		"sliding-window-tcp",
+		"sliding-window-fail2ban",
+		"sliding-window-minmax"
+	]
+}

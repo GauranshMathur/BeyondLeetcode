@@ -1,0 +1,17 @@
+load
+blocks 2
+load 6
+blocks 1
+blocks 4
+load 1 2 3 4 5 6
+blocks 3
+blocks 2
+blocks 6
+blocks 7
+blocks 1
+load 0 0 9 9 0 0
+blocks 3
+blocks 2
+blocks 4
+load 5 0 0 0 0 7
+blocks 5
