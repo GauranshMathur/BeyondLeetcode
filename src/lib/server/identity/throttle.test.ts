@@ -275,11 +275,11 @@ describe('throttle', () => {
 		});
 	});
 
-	it('succeed still gives the address its count back when a full Account map had no room for the Account', () => {
+	it('succeed still gives the address its count back when the Account is the third past a small maxKeys', () => {
 		const { throttle } = setup({ maxKeys: 2, addressLimit: 3 });
 		throttle.attempt(from('1.1.1.1', 'a'));
 		throttle.attempt(from('1.1.1.2', 'b'));
-		// The Account maps are full of live entries: this Account goes uncounted there.
+		// The Account map has no bound: this Account is counted like the others.
 		const mine = tokenOf(throttle.attempt(from('1.1.1.3', 'c')));
 		throttle.succeed(mine);
 		expect(throttle.attempt(from('1.1.1.4', 'd')).allowed).toBe(true);
@@ -297,7 +297,7 @@ describe('throttle', () => {
 		const { throttle } = setup({ maxKeys });
 		for (let i = 0; i < maxKeys * 4; i++) {
 			expect(throttle.attempt(from(`10.${i >> 8}.${i & 255}.1`, `acct${i}`)).allowed).toBe(true);
-			expect(throttle.size()).toBeLessThanOrEqual(3 * maxKeys);
+			expect(throttle.size()).toBeLessThanOrEqual(3 * maxKeys + i + 1);
 		}
 		expect(throttle.attempt(from('99.99.99.99', 'someone')).allowed).toBe(true);
 	});
@@ -313,14 +313,14 @@ describe('throttle', () => {
 		expect(throttle.attempt(from('99.99.99.99', 'victim')).allowed).toBe(false);
 	});
 
-	it('never drops a live Account entry when its map is full, and still applies the address limit', () => {
+	it('never drops a live Account entry past maxKeys Accounts, and still applies the address limit', () => {
 		const { throttle } = setup({ maxKeys: 3, addressLimit: 2 });
 		for (let i = 0; i < 3; i++) throttle.attempt(from(`1.1.1.${i}`, `a${i}`));
 		expect(throttle.attempt(from('2.2.2.2', 'new')).allowed).toBe(true);
 		// the original accounts are still counted
 		for (let i = 0; i < 4; i++) throttle.attempt(from(`3.3.3.${i}`, 'a0'));
 		expect(throttle.attempt(from('4.4.4.4', 'a0')).allowed).toBe(true);
-		expect(throttle.size()).toBeLessThanOrEqual(9);
+		expect(throttle.size()).toBeLessThanOrEqual(12);
 		throttle.attempt(from('5.5.5.5', 'new2'));
 		expect(throttle.attempt(from('5.5.5.5', 'new2')).allowed).toBe(true);
 		expect(throttle.attempt(from('5.5.5.5', 'new3')).allowed).toBe(false);
@@ -668,5 +668,60 @@ describe('refund and provider starts', () => {
 		starts.refund('a');
 		for (let i = 0; i < 19; i++) starts.throttle.attempt({ address: '1.1.1.1', accountId: null });
 		expect(starts.throttle.attempt({ address: '1.1.1.1', accountId: null }).allowed).toBe(false);
+	});
+});
+
+describe('the Account map past maxKeys Accounts', () => {
+	const maxKeys = 4;
+	const open = { maxKeys, addressLimit: 1_000_000, limit: 1_000_000 };
+	const fresh = (i: number) => `10.${i >> 8}.${i & 255}.1`;
+	/** Tries `id` from fresh addresses; returns how many were admitted. */
+	const admittedFor = (throttle: ReturnType<typeof createThrottle>, id: string, base: number) => {
+		let admitted = 0;
+		for (let i = 0; i < 200; i++) {
+			if (throttle.attempt(from(fresh(base + i), id)).allowed) admitted++;
+		}
+		return admitted;
+	};
+
+	it('holds an Account first tried after the map filled to 50 tries', () => {
+		const { throttle } = setup(open);
+		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `known${i}`));
+		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
+	});
+
+	it('holds every Account to 50 however many pass through, and evicts none', () => {
+		const { throttle } = setup(open);
+		for (let i = 0; i < maxKeys * 5; i++) throttle.attempt(from(fresh(i), `flood${i}`));
+		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
+		// An Account tried first, before the flood, is still at its count.
+		const early = setup(open).throttle;
+		for (let i = 0; i < 10; i++) early.attempt(from(fresh(i), 'victim'));
+		for (let i = 0; i < maxKeys * 10; i++) early.attempt(from(fresh(100 + i), `flood${i}`));
+		expect(admittedFor(early, 'victim', 2000)).toBe(40);
+	});
+
+	it('refuses an Account at 50 in its window, and lets it back when the window ends', () => {
+		const { throttle, advance } = setup(open);
+		for (let i = 0; i < 50; i++) throttle.attempt(from(fresh(i), 'spent'));
+		for (let i = 0; i < maxKeys * 3; i++) throttle.attempt(from(fresh(100 + i), `flood${i}`));
+		expect(throttle.attempt(from(fresh(900), 'spent')).allowed).toBe(false);
+		advance(10 * MIN);
+		expect(throttle.attempt(from(fresh(901), 'spent')).allowed).toBe(true);
+	});
+
+	it('still gives back to an Account that was tried after the map filled', () => {
+		const { throttle } = setup({ ...open, addressLimit: 2 });
+		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `known${i}`));
+		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'late')));
+		throttle.succeed(mine);
+		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
+	});
+
+	it('keeps the made-up email map bounded at maxKeys', () => {
+		const { throttle } = setup(open);
+		for (let i = 0; i < maxKeys * 10; i++)
+			throttle.attempt({ address: fresh(i), accountId: null, unknownEmail: `e${i}` });
+		expect(throttle.size()).toBeLessThanOrEqual(3 * maxKeys);
 	});
 });
