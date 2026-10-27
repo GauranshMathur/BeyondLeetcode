@@ -1,3 +1,10 @@
 {
-	"topics": ["dynamic-arrays", "stacks", "binary-search", "two-pointers", "hash-tables", "sliding-window"]
+	"topics": [
+		"dynamic-arrays",
+		"stacks",
+		"binary-search",
+		"two-pointers",
+		"hash-tables",
+		"sliding-window"
+	]
 }
