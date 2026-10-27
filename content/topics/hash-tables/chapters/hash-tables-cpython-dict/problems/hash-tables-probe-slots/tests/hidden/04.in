@@ -1,0 +1,10 @@
+table 8
+put 5 1
+put 5 2
+put 13 3
+put 13 4
+get 5
+get 13
+len
+dump
+cap

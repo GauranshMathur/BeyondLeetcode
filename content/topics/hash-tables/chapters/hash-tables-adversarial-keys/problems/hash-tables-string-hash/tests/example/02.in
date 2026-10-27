@@ -1,0 +1,12 @@
+impl java
+put apple 1
+put banana 2
+put 17 3
+put cherry 4
+dump
+bin apple
+bin cherry
+get banana
+get 17
+get fig
+probes cherry

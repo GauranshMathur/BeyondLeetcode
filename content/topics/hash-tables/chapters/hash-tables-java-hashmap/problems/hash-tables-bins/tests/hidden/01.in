@@ -1,0 +1,11 @@
+impl java
+table 2
+put 0 1
+put 1 2
+put 2 3
+put 3 4
+dump
+longest
+len
+bin 7
+bin 8

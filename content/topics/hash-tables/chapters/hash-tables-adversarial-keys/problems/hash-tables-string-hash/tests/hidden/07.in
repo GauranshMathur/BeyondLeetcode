@@ -1,0 +1,14 @@
+impl java
+table 16
+put Aa 1
+put BB 2
+put C3 3
+dump
+probes BB
+probes Aa
+bin Aa
+bin BB
+get BB
+put BB 5
+get BB
+len

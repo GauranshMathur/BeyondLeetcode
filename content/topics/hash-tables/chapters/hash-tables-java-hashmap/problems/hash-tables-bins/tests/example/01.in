@@ -1,0 +1,13 @@
+impl java
+put 1 10
+put 17 20
+put 33 30
+put 2 40
+dump
+probes 33
+get 17
+get 3
+probes 3
+bin 65536
+bin 65537
+cap

@@ -1,0 +1,9 @@
+table 2
+put 5 7
+get 5
+get 4
+probes 4
+probes 5
+dump
+len
+cap

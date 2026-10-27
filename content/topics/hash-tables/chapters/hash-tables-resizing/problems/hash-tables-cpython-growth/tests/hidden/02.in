@@ -1,0 +1,19 @@
+resize on
+table 8
+put 0 1
+put 1 1
+put 2 1
+put 3 1
+put 4 1
+del 0
+del 1
+del 2
+del 3
+del 4
+len
+cap
+put 20 1
+cap
+moved
+nentries
+dump

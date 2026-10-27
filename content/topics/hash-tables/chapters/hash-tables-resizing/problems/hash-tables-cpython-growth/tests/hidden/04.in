@@ -1,0 +1,14 @@
+table 8
+put 0 1
+put 1 1
+put 2 1
+put 3 1
+put 4 1
+put 5 1
+cap
+nentries
+resize on
+put 6 1
+cap
+nentries
+dump

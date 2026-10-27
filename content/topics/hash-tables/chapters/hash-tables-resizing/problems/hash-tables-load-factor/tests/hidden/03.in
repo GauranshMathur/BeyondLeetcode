@@ -1,0 +1,21 @@
+impl java
+table 8
+resize on
+put 8 1
+put 16 1
+put 24 1
+put 32 1
+put 40 1
+cap
+moved
+dump
+resize off
+put 48 1
+put 56 1
+cap
+moved
+resize on
+put 999 1
+cap
+moved
+dump

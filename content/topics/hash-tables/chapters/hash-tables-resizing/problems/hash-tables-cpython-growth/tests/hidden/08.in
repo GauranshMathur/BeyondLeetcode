@@ -1,0 +1,307 @@
+resize on
+table 16
+put 110 467
+probes 367
+put 372 31
+put 18 933
+del 372
+del 110
+del 225
+del 18
+probes 162
+put 28 340
+del 28
+get 198
+put 79 777
+del 79
+del 116
+put 40 32
+put 48 840
+put 395 489
+put 280 335
+del 40
+del 48
+get 328
+probes 245
+del 395
+del 280
+del 151
+del 333
+del 235
+get 159
+put 319 480
+get 117
+get 68
+del 319
+del 49
+put 5 251
+put 41 740
+put 398 384
+del 97
+put 131 583
+put 343 342
+probes 92
+del 343
+put 10 771
+put 272 473
+probes 348
+put 111 618
+put 27 253
+del 5
+put 11 344
+del 27
+get 332
+get 282
+put 243 760
+get 186
+del 210
+put 2 936
+put 26 419
+get 212
+del 148
+del 2
+del 398
+del 243
+probes 192
+del 243
+get 353
+get 218
+get 243
+del 354
+put 113 135
+del 111
+del 299
+del 10
+del 327
+del 113
+probes 10
+get 202
+put 336 126
+del 11
+put 318 284
+del 318
+del 89
+put 66 665
+put 34 336
+del 41
+del 336
+probes 314
+del 338
+put 190 615
+del 66
+del 26
+put 84 76
+del 360
+put 74 506
+put 232 339
+put 25 367
+get 105
+put 19 88
+put 193 105
+put 93 932
+del 25
+del 190
+del 172
+put 190 124
+del 84
+put 151 934
+del 11
+put 232 655
+del 292
+del 232
+put 139 600
+del 355
+del 19
+put 86 639
+put 78 929
+del 151
+probes 86
+probes 345
+put 30 239
+get 54
+put 197 458
+get 279
+put 176 514
+del 188
+get 70
+probes 241
+put 157 955
+probes 159
+del 294
+del 232
+put 162 894
+put 305 34
+probes 215
+put 155 753
+put 82 111
+probes 45
+put 155 762
+get 272
+get 94
+put 310 632
+put 391 784
+put 347 489
+put 76 771
+del 93
+put 6 613
+del 25
+put 325 626
+del 84
+get 98
+del 82
+del 280
+del 193
+put 215 56
+del 30
+put 251 517
+del 34
+del 169
+probes 227
+put 89 900
+del 193
+del 82
+probes 358
+put 286 622
+del 368
+del 329
+del 310
+del 286
+del 78
+probes 278
+get 159
+del 325
+get 137
+del 162
+del 6
+put 254 79
+get 102
+del 74
+del 27
+put 240 466
+put 270 904
+del 251
+get 372
+put 60 295
+del 347
+get 12
+probes 242
+del 169
+del 50
+put 0 802
+probes 246
+del 329
+put 276 585
+put 138 92
+put 318 133
+del 138
+del 374
+probes 37
+put 374 681
+del 197
+put 195 600
+del 110
+del 195
+del 0
+del 188
+put 305 288
+del 305
+put 278 787
+get 141
+del 66
+del 76
+get 93
+del 270
+put 178 999
+probes 190
+del 25
+del 240
+del 25
+put 176 522
+put 337 835
+del 139
+del 60
+del 178
+del 240
+del 176
+put 71 812
+probes 227
+del 361
+get 329
+del 348
+put 161 549
+del 66
+put 151 215
+get 58
+del 65
+del 374
+put 229 78
+del 391
+put 339 612
+get 68
+probes 226
+del 157
+put 238 83
+probes 258
+probes 389
+del 272
+del 319
+del 313
+put 132 866
+get 55
+put 79 431
+del 278
+put 128 480
+put 239 942
+get 344
+del 239
+put 105 617
+del 337
+probes 242
+del 229
+del 318
+del 238
+del 86
+del 128
+probes 109
+del 190
+del 155
+probes 166
+put 47 660
+put 122 971
+del 276
+put 113 360
+probes 90
+del 71
+del 305
+del 86
+put 45 114
+get 133
+put 250 321
+del 131
+put 272 22
+del 122
+get 318
+put 110 383
+put 204 457
+put 203 588
+del 81
+del 113
+del 110
+del 25
+put 246 587
+put 202 897
+del 301
+put 106 464
+del 215
+probes 9
+get 359
+del 203
+put 72 900
+put 311 599
+put 389 220
+put 53 913
+cap
+nentries
+len
+moved
+keys

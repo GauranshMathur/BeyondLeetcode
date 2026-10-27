@@ -1,0 +1,45 @@
+table 8
+probes 27
+get 27
+del 16
+get 19
+del 9
+del 17
+put 22 649
+del 22
+put 19 665
+del 22
+del 22
+del 19
+del 18
+put 16 239
+put 15 4
+put 14 670
+del 17
+put 26 85
+put 10 776
+del 14
+put 3 410
+del 26
+put 27 701
+del 15
+del 3
+get 2
+put 8 344
+del 10
+get 29
+del 16
+get 15
+get 6
+probes 3
+probes 0
+put 25 606
+del 28
+del 3
+put 20 590
+del 27
+del 24
+keys
+indices
+nentries
+len

@@ -1,0 +1,15 @@
+table 16
+put 9 9
+put 1 1
+put 7 7
+put 4 4
+put 3 3
+keys
+indices
+dump
+del 7
+del 9
+keys
+nentries
+len
+indices

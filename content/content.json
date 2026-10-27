@@ -1,3 +1,6 @@
 {
-	"topics": ["dynamic-arrays"]
+	"topics": [
+		"dynamic-arrays",
+		"hash-tables"
+	]
 }

@@ -1,0 +1,43 @@
+table 8
+del 27
+put 2 261
+del 2
+probes 3
+del 26
+get 19
+put 8 738
+put 18 967
+del 18
+del 8
+get 6
+probes 14
+put 11 236
+put 24 470
+put 29 22
+get 29
+del 24
+del 23
+put 16 958
+put 16 849
+put 6 310
+del 28
+get 16
+probes 25
+probes 11
+del 6
+put 16 860
+get 15
+probes 22
+put 5 514
+del 8
+get 27
+probes 27
+get 8
+get 27
+probes 6
+put 15 890
+del 17
+del 16
+put 13 354
+dump
+len

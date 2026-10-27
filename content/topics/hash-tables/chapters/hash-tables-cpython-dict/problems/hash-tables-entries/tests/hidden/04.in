@@ -1,0 +1,84 @@
+table 16
+probes 33
+del 0
+put 30 280
+put 29 707
+put 14 571
+del 14
+get 10
+del 30
+put 21 697
+get 5
+put 42 521
+del 21
+del 21
+get 39
+put 3 568
+del 29
+probes 30
+put 34 31
+put 5 990
+del 3
+del 44
+probes 7
+del 34
+put 48 512
+del 48
+get 33
+put 2 397
+del 2
+probes 4
+del 5
+put 46 53
+probes 13
+del 30
+put 30 245
+put 10 475
+put 23 186
+del 10
+put 17 937
+put 21 183
+del 21
+del 42
+put 32 158
+del 17
+put 17 654
+del 17
+probes 16
+put 10 459
+del 2
+del 32
+put 28 721
+put 46 291
+get 1
+put 8 571
+put 26 141
+del 32
+del 46
+put 16 778
+del 10
+put 12 594
+put 23 653
+put 36 164
+del 12
+del 42
+put 34 204
+put 24 811
+del 17
+del 44
+put 31 637
+put 13 547
+put 4 416
+del 5
+put 9 703
+del 16
+del 31
+del 9
+probes 42
+get 20
+del 28
+put 44 442
+keys
+indices
+nentries
+len

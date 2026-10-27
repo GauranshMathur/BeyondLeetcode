@@ -1,0 +1,7 @@
+{
+	"title": "Hash functions, and keys chosen against you",
+	"problems": [
+		"hash-tables-string-hash",
+		"hash-tables-collisions"
+	]
+}

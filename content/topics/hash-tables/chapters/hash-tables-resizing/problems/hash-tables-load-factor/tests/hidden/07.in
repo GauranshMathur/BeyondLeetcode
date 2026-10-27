@@ -1,0 +1,37 @@
+impl java
+table 32
+put 1 1
+put 2 1
+put 3 1
+put 4 1
+put 5 1
+put 6 1
+put 7 1
+put 8 1
+put 9 1
+put 10 1
+put 11 1
+put 12 1
+put 13 1
+put 14 1
+put 15 1
+put 16 1
+put 17 1
+put 18 1
+put 19 1
+put 20 1
+put 21 1
+put 22 1
+put 23 1
+put 24 1
+cap
+moved
+resize on
+put 100 1
+cap
+moved
+put 101 1
+cap
+moved
+put 100 7
+len

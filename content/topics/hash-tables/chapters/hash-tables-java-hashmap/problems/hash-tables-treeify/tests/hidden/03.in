@@ -1,0 +1,36 @@
+impl java
+table 2
+put 0 0
+put 2 1
+put 4 2
+put 6 3
+put 8 4
+put 10 5
+put 12 6
+put 14 7
+put 16 8
+put 18 9
+put 20 10
+put 22 11
+put 24 12
+put 26 13
+put 28 14
+put 30 15
+put 32 16
+put 34 17
+put 36 18
+put 38 19
+put 40 20
+put 42 21
+put 44 22
+put 46 23
+put 48 24
+put 50 25
+put 52 26
+put 54 27
+put 56 28
+put 58 29
+cap
+trees
+longest
+dump

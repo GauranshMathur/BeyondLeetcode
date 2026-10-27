@@ -1,0 +1,7 @@
+{
+	"title": "Resizing: when, how much, and what it costs",
+	"problems": [
+		"hash-tables-load-factor",
+		"hash-tables-cpython-growth"
+	]
+}

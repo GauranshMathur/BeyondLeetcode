@@ -1,0 +1,22 @@
+impl java
+resize on
+table 16
+put 3000 1
+put 3001 1
+put 3002 1
+put 3003 1
+put 3004 1
+put 3005 1
+put 3006 1
+put 3007 1
+put 3008 1
+put 3009 1
+put 3010 1
+put 3011 1
+cap
+moved
+put 3012 1
+cap
+moved
+dump
+probes 3011

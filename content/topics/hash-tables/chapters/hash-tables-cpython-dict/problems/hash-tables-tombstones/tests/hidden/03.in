@@ -1,0 +1,23 @@
+table 16
+put 0 1
+put 1 1
+put 2 1
+put 3 1
+put 4 1
+put 5 1
+put 6 1
+put 7 1
+del 0
+del 1
+del 2
+del 3
+del 4
+del 5
+del 6
+del 7
+dump
+len
+put 3 9
+dump
+probes 3
+probes 4

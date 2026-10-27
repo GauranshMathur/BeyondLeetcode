@@ -1,0 +1,18 @@
+resize on
+table 16
+put 16 1
+put 32 1
+put 48 1
+put 64 1
+put 80 1
+put 96 1
+put 112 1
+put 128 1
+put 144 1
+put 160 1
+put 176 1
+cap
+moved
+dump
+probes 176
+probes 16

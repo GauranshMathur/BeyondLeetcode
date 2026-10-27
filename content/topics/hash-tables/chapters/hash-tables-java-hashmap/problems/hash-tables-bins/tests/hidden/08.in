@@ -1,0 +1,10 @@
+impl java
+table 32
+put 100 1
+put 100 2
+put 132 3
+put 68 4
+dump
+len
+probes 68
+probes 164

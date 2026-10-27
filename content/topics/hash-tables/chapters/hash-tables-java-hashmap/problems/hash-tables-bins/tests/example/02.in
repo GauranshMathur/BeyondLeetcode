@@ -1,0 +1,12 @@
+impl java
+table 4
+put 1 1
+put 5 2
+put 9 3
+put 4 4
+put 5 9
+dump
+len
+longest
+get 5
+probes 9

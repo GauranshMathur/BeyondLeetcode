@@ -1,0 +1,9 @@
+table 8
+put 1 1
+del 2
+del 1
+del 1
+dump
+probes 1
+put 1 5
+dump

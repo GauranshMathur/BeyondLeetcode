@@ -1,0 +1,19 @@
+impl java
+table 64
+put 0 0
+put 64 1
+put 128 2
+put 192 3
+put 256 4
+put 320 5
+put 384 6
+put 448 7
+put 512 8
+cap
+dump
+trees
+get 512
+get 576
+put 256 77
+get 256
+len

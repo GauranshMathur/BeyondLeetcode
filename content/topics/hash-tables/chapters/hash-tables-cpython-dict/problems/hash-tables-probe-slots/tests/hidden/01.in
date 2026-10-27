@@ -1,0 +1,17 @@
+table 8
+put 10 20
+put 11 22
+put 12 24
+put 13 26
+put 14 28
+put 15 30
+put 16 32
+dump
+len
+probes 10
+probes 11
+probes 12
+probes 13
+probes 14
+probes 15
+probes 16
