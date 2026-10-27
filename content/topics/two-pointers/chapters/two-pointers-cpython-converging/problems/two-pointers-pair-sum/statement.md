@@ -29,4 +29,4 @@ Output:
 none
 ```
 
-The first Example Test is shown. `pairsum 10` finds 1 + 9 at positions 1 and 5; `pairsum 7` finds 1 + 6 at positions 1 and 4; no two items add up to 100. In the second Example Test every pair of the four 2s adds up to 4, and the rule picks positions 1 and 4.
+`pairsum 10` finds 1 + 9 at positions 1 and 5; `pairsum 7` finds 1 + 6 at positions 1 and 4; no two items add up to 100. If the sequence were `2 2 2 2`, every pair would add up to 4 and the rule would pick positions 1 and 4.

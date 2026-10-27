@@ -25,4 +25,4 @@ Output:
 yes
 ```
 
-Ignoring zeros, the first sequence is `1 2 2 1` and the second is `3 4 3`. Both read the same both ways, so both print `yes`. Only the first Example Test is shown here.
+Ignoring zeros, the items are `1 2 2 1`, which reads the same both ways, so the answer is `yes`.

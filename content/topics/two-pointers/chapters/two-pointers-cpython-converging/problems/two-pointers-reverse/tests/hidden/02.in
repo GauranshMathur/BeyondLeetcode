@@ -1,3 +1,15 @@
 load 42
 reverse
 show
+load -5 0 5 -10 10 3
+reverse
+show
+load 1 2 3
+reverse
+load 9 8
+reverse
+show
+load 4 5 6 7
+reverse
+reverse
+show

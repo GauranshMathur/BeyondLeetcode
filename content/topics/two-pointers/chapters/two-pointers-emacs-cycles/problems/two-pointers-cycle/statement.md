@@ -29,4 +29,4 @@ Output:
 0 3
 ```
 
-The links are 0 to 1, 1 to 2, 2 to 3, 3 to 1. From node 0 the walk goes 0, 1, 2, 3, 1, 2, 3, ... Node 0 is before the loop, and the loop holds nodes 1, 2, 3, so the answer is `1 3`. Starting at node 1 or node 3 is already inside the loop, so `m` is 0: `0 3`. Only the first Example Test is shown above.
+The links are 0 to 1, 1 to 2, 2 to 3, 3 to 1. From node 0 the walk goes 0, 1, 2, 3, 1, 2, 3, ... Node 0 is before the loop, and the loop holds nodes 1, 2, 3, so the answer is `1 3`. Starting at node 1 or node 3 is already inside the loop, so `m` is 0: `0 3`.

@@ -1,3 +1,11 @@
 load 0
 trim
 show
+load 0 9
+trim
+show
+load 0 -1 0 0 0 2 0
+trim
+show
+trim
+show

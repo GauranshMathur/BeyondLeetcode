@@ -36,4 +36,4 @@ Output:
 5
 ```
 
-From node 0 the hare goes 1, 2, 3, 1, 2. After step 1 it is on node 1, not on the tortoise (node 0). After step 2, `left` is 0: the window becomes 4 and the tortoise jumps to node 2. The hare goes to 3, then 1, then 2 on step 5, which is the tortoise's node: print 5. Only the first Example Test is shown above.
+From node 0 the hare goes 1, 2, 3, 1, 2. After step 1 it is on node 1, not on the tortoise (node 0). After step 2, `left` is 0: the window becomes 4 and the tortoise jumps to node 2. The hare goes to 3, then 1, then 2 on step 5, which is the tortoise's node: print 5.

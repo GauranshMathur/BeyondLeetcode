@@ -1,6 +1,0 @@
-load 1 4 7 2 4 6
-merge 3
-show
-load 1 2
-merge 1
-show

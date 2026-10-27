@@ -29,4 +29,4 @@ Output:
 4
 ```
 
-From node 0 the path is 0, 1, 2, 3, 4: five nodes, so position 2, which is node 2. From node 2 the path is 2, 3, 4: position 1, node 3. From node 4 the path is just node 4. With an even number of nodes the later of the two middle nodes is the answer: the second Example Test starts at node 2, whose path is 2, 0, 3, 1, and the answer is node 3. Only the first Example Test is shown above.
+From node 0 the path is 0, 1, 2, 3, 4: five nodes, so position 2, which is node 2. From node 2 the path is 2, 3, 4: position 1, node 3. From node 4 the path is just node 4. With an even number of nodes the later of the two middle nodes is the answer: in the table `3 -1 0 1`, the path from node 2 is 2, 0, 3, 1, and the answer is node 3.

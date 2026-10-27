@@ -1,5 +1,0 @@
-load -9 -4 -1 0 2 7
-pairsum -5
-pairsum 0
-pairsum 9
-pairsum -13
