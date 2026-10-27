@@ -1,0 +1,4 @@
+'(' was never closed
+too many nested parentheses
+ok
+closing parenthesis ')' does not match opening parenthesis '['

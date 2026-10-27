@@ -1,0 +1,14 @@
+push 5
+push 7
+push 5
+peek
+search 5
+search 7
+search 9
+size
+capacity
+pop
+pop
+pop
+pop
+empty

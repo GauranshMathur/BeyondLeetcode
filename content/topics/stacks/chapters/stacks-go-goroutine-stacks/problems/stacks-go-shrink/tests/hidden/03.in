@@ -1,0 +1,9 @@
+call 2047
+call 1
+call 1
+segment
+ret
+ret
+call 1000
+gc
+segment

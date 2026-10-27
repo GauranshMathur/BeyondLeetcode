@@ -1,0 +1,5 @@
+call 2048
+segment
+call 1
+segment
+moved

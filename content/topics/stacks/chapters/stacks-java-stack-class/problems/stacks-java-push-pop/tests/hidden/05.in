@@ -1,0 +1,11 @@
+push -3
+push 4
+push -3
+search -3
+pop
+search -3
+pop
+search -3
+pop
+search -3
+empty

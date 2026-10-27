@@ -1,0 +1,16 @@
+call 20000
+segment
+ret
+gc
+segment
+gc
+segment
+gc
+segment
+gc
+segment
+gc
+segment
+gc
+segment
+moved

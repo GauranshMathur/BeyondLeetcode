@@ -1,0 +1,12 @@
+call 1000
+call 1000
+call 1000
+segment
+ret
+call 24
+used
+gc
+segment
+ret
+gc
+segment
