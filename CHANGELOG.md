@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.8.0...v1.9.0) (2026-10-27)
+
+
+### Features
+
+* **beyondleetcode:** C105 Linked lists Topic ([#349](https://github.com/GauranshMathur/BeyondLeetcode/issues/349)) ([905d55e](https://github.com/GauranshMathur/BeyondLeetcode/commit/905d55eafac4d7f3ab0571c7dc16b63aa66e4fed))
+
 ## [1.8.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.7.0...v1.8.0) (2026-10-27)
 
 
