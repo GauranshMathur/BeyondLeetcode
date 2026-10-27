@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.0...v1.10.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C107 Submission runs hidden Tests in containers of at most 25 ([#353](https://github.com/GauranshMathur/BeyondLeetcode/issues/353)) ([01fc448](https://github.com/GauranshMathur/BeyondLeetcode/commit/01fc4487814bbd47e4d99f94e69fc4672eb28e51))
+
 ## [1.10.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.9.0...v1.10.0) (2026-10-27)
 
 
