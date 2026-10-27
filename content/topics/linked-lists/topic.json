@@ -1,0 +1,12 @@
+{
+	"title": "Linked lists",
+	"summary": "Build the lists inside the Linux kernel and CPython: nodes embedded in their objects, one-pointer heads, splicing and merging, corruption checks, and the list-plus-table behind functools.lru_cache.",
+	"prerequisites": ["hash-tables"],
+	"chapters": [
+		"linked-lists-linux-list-head",
+		"linked-lists-linux-hlist",
+		"linked-lists-linux-list-sort",
+		"linked-lists-linux-list-debug",
+		"linked-lists-cpython-lru"
+	]
+}

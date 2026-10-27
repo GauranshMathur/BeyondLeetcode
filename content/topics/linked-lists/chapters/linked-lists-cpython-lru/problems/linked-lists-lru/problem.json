@@ -1,0 +1,4 @@
+{
+	"title": "A cache that evicts the oldest call",
+	"kind": "core"
+}

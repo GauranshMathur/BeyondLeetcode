@@ -1,0 +1,10 @@
+miss
+hit 10
+miss
+miss evict 1
+hits=1 misses=3 maxsize=2 currsize=2
+hits=0 misses=0 maxsize=2 currsize=0
+-
+miss
+miss
+hits=0 misses=2 maxsize=0 currsize=0

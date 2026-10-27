@@ -1,0 +1,9 @@
+init 10
+add 20 10
+add 30 10
+add_tail 40 10
+show 10
+empty 10
+init 50
+empty 50
+show 50

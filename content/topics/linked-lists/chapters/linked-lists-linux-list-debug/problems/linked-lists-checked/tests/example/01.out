@@ -1,0 +1,7 @@
+corrupt add: double-add
+30 50
+corrupt del: poison1
+50
+256
+290
+corrupt del: next-null

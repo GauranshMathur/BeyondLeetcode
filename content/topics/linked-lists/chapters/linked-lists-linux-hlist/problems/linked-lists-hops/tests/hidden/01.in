@@ -1,0 +1,22 @@
+spush 10 20
+spush 10 22
+spush 10 24
+spush 10 26
+spush 10 28
+spush 10 30
+spush 10 32
+spush 10 34
+sshow 10
+sdel 10 26
+sshow 10
+sdel 10 20
+sdel 10 20
+sdel 10 34
+sshow 10
+sdel 10 32
+sdel 10 30
+sdel 10 28
+sdel 10 24
+sdel 10 22
+sshow 10
+sdel 10 22

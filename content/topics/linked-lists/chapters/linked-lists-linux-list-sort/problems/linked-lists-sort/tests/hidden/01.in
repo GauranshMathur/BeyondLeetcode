@@ -1,0 +1,7 @@
+ssort 10
+svalues 10
+spush 10 100
+set 101 4
+ssort 10
+svalues 10
+sshow 10

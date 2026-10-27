@@ -1,0 +1,16 @@
+miss
+hit 50
+miss evict 5
+6
+miss evict 6
+5
+-
+miss
+miss
+miss
+hit 1
+miss evict 2
+3 1 4
+miss evict 3
+miss evict 1
+4 2 3

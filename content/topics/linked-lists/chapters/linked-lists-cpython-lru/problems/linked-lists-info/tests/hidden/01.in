@@ -1,0 +1,18 @@
+cache 3
+info
+call 1 1
+call 2 2
+call 3 3
+call 4 4
+call 1 5
+call 3 6
+info
+order
+clear
+call 3 6
+info
+order
+cache 2
+info
+call 9 9
+info

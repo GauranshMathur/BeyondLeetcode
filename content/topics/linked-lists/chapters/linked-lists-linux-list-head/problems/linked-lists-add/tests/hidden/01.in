@@ -1,0 +1,11 @@
+init 10
+init 20
+add_tail 12 10
+add 14 20
+add_tail 16 10
+add 18 20
+add 22 10
+show 10
+show 20
+empty 10
+empty 20

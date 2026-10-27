@@ -1,0 +1,47 @@
+cache 4
+call 3 31
+call 4 40
+call 1 10
+call 3 30
+call 5 51
+call 1 10
+call 4 43
+order
+call 1 11
+call 1 13
+call 1 10
+call 2 20
+call 5 53
+call 1 11
+call 1 11
+order
+call 3 33
+call 2 20
+call 5 52
+call 5 51
+call 1 11
+call 3 30
+call 5 50
+order
+call 5 50
+call 5 51
+call 4 43
+call 7 72
+call 4 43
+call 3 32
+call 2 21
+order
+call 6 61
+call 1 12
+call 5 53
+call 3 33
+call 3 30
+call 1 13
+call 2 22
+order
+call 2 23
+call 4 40
+call 6 60
+call 7 72
+call 3 32
+order

@@ -1,0 +1,11 @@
+spush 10 20
+spush 10 30
+spush 10 40
+spush 10 50
+sshow 10
+sreverse 10
+sshow 10
+sreverse 10
+sshow 10
+sreverse 12
+sshow 12
