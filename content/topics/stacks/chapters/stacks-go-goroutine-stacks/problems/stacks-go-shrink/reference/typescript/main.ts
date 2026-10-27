@@ -32,13 +32,13 @@ function collect(): void {
 	if (half >= 2048 && used < Math.floor(segment / 4)) moveTo(half);
 }
 
-run: for (const text of readFileSync(0, 'utf8').split('\n')) {
+for (const text of readFileSync(0, 'utf8').split('\n')) {
 	const parts = text.trim().split(/\s+/);
 	const command = parts[0];
 	const args = parts.slice(1);
 	if (command === '') continue;
 	if (command === 'call') {
-		if (!call(Number(args[0]))) break run;
+		if (!call(Number(args[0]))) break;
 	} else if (command === 'ret') {
 		const size = frames.pop();
 		if (size === undefined) {

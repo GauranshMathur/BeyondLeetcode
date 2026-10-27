@@ -1,0 +1,4 @@
+{
+	"title": "CPython: matching brackets and evaluating bytecode",
+	"problems": ["stacks-bracket-scan", "stacks-rpn-eval"]
+}
