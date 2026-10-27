@@ -1,0 +1,24 @@
+load
+peak 1
+peak 5
+load 7
+peak 1
+peak 3
+load 5 5
+peak 2
+peak 1
+peak 9
+load 3 0 0 0 4
+peak 1
+peak 2
+peak 4
+peak 5
+peak 6
+load 0 0 0
+peak 2
+load -4 -1 -7 -2
+peak 2
+peak 3
+load 1 2 3 4 5 6
+peak 3
+peak 6

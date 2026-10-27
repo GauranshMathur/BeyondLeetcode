@@ -1,0 +1,19 @@
+load
+nichols 3
+load 6
+nichols 0
+nichols 5
+load 1 2 3 4 5 6
+nichols 2
+nichols 0
+load 6 5 4 3 2 1
+nichols 2
+nichols 3
+nichols 8
+load 5 0 0 0 0 0 0 0 0 0
+nichols 3
+nichols 4
+nichols 7
+load 3 3 3 3
+nichols 1
+nichols 2

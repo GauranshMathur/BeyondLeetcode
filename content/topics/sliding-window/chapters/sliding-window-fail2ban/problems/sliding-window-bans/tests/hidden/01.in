@@ -1,0 +1,28 @@
+load
+bans 3 2
+load 5
+bans 1 1
+bans 1 2
+load 5 5 5
+bans 1 1
+bans 2 2
+bans 3 3
+bans 3 4
+bans 10 3
+load 1 2 1 2 1 2
+bans 2 2
+bans 3 2
+bans 4 2
+bans 5 3
+bans 6 3
+load 4 4 9 9 4 4 9 9
+bans 2 2
+bans 3 2
+bans 4 3
+load 1 2 3 4 5
+bans 5 1
+bans 2 2
+load 8 -2 8 -2 0 0 0
+bans 4 2
+bans 3 3
+bans 7 2

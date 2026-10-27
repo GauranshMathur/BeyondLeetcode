@@ -1,0 +1,26 @@
+load
+shortest 1
+load 4
+shortest 4
+shortest 5
+shortest 1
+load 5 5 5
+shortest 5
+shortest 6
+shortest 10
+shortest 15
+shortest 16
+load 1 1 1 1
+shortest 1
+shortest 4
+shortest 5
+load 9 1 1 1 9 1 1
+shortest 9
+shortest 12
+shortest 13
+shortest 21
+shortest 22
+load 2 7 1 8 2 8
+shortest 8
+shortest 16
+shortest 28
