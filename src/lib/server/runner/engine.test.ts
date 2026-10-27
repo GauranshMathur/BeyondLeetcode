@@ -263,6 +263,20 @@ describe('Engine attach', () => {
 		expect(parseImageRef('python:3@sha256:abc')).toEqual({ name: 'python', tag: 'sha256:abc' });
 	});
 
+	it.each([
+		'',
+		'python:',
+		'python@',
+		'python:3@',
+		'python@sha256:',
+		':3',
+		'@sha256:abc',
+		'a@sha256:x@evil',
+		'a@b@c'
+	])('rejects the malformed image reference %j', (image) => {
+		expect(() => parseImageRef(image)).toThrow(/image reference/i);
+	});
+
 	it('throws a NameConflictError when the container name is taken (409)', async () => {
 		const socketPath = await daemon((socket) => {
 			socket.end('HTTP/1.1 409 Conflict\r\nContent-Length: 2\r\n\r\n{}');

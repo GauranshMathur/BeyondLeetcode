@@ -38,14 +38,24 @@ export class NameConflictError extends Error {
 /**
  * Splits an image reference into what the pull endpoint wants: `fromImage` and `tag`, where `tag`
  * may be a digest. Handles `name`, `name:tag`, `host:5000/name:tag`, `name@sha256:...` and
- * `name:tag@sha256:...` (the digest wins).
+ * `name:tag@sha256:...` (the digest wins). Throws on an empty name, tag or digest, or on more
+ * than one `@`: Docker reads an empty tag as "pull every tag".
  */
 export function parseImageRef(image: string): { name: string; tag: string } {
-	const [named, digest] = image.split('@');
+	const parts = image.split('@');
+	if (parts.length > 2)
+		throw new Error(`Malformed image reference ${JSON.stringify(image)}: more than one @`);
+	const [named, digest] = parts;
 	const colon = named.lastIndexOf(':');
 	const hasTag = colon > named.lastIndexOf('/');
 	const name = hasTag ? named.slice(0, colon) : named;
-	return { name, tag: digest ?? (hasTag ? named.slice(colon + 1) : 'latest') };
+	const tag = digest ?? (hasTag ? named.slice(colon + 1) : 'latest');
+	// Docker reads an empty tag as "pull every tag": never let one through.
+	if (!name || !tag || (digest !== undefined && !/^[^:]+:.+$/.test(digest)))
+		throw new Error(
+			`Malformed image reference ${JSON.stringify(image)}: empty name, tag or digest`
+		);
+	return { name, tag };
 }
 
 /** How much of the previous chunk is kept so `"error"` split across two chunks is still seen. */
