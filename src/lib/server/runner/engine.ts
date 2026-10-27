@@ -49,9 +49,10 @@ export function parseImageRef(image: string): { name: string; tag: string } {
 	const colon = named.lastIndexOf(':');
 	const hasTag = colon > named.lastIndexOf('/');
 	const name = hasTag ? named.slice(0, colon) : named;
+	const written = hasTag ? named.slice(colon + 1) : undefined;
 	const tag = digest ?? (hasTag ? named.slice(colon + 1) : 'latest');
 	// Docker reads an empty tag as "pull every tag": never let one through.
-	if (!name || !tag || (digest !== undefined && !/^[^:]+:.+$/.test(digest)))
+	if (!name || !tag || written === '' || (digest !== undefined && !/^[^:]+:.+$/.test(digest)))
 		throw new Error(
 			`Malformed image reference ${JSON.stringify(image)}: empty name, tag or digest`
 		);

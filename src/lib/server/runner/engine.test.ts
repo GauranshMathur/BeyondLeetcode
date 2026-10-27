@@ -272,7 +272,8 @@ describe('Engine attach', () => {
 		':3',
 		'@sha256:abc',
 		'a@sha256:x@evil',
-		'a@b@c'
+		'a@b@c',
+		'python:@sha256:abc'
 	])('rejects the malformed image reference %j', (image) => {
 		expect(() => parseImageRef(image)).toThrow(/image reference/i);
 	});
