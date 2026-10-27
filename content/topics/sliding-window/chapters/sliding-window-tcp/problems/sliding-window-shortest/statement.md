@@ -27,4 +27,4 @@ Output:
 3
 ```
 
-The run `9 2 6` has total 17 and three items. `5 9 2` has total 16 and three items. No run of two items reaches 15: the biggest pair, `9 2`, has total 11, and `2 6` has 8. The answer is 3.
+The run `9 2 6` has total 17 and three items. `5 9 2` has total 16 and three items. No run of two items reaches 15: the biggest pair, `5 9`, has total 14. The answer is 3.
