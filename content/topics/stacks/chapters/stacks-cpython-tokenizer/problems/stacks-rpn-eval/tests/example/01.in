@@ -1,0 +1,7 @@
+rpn 3 4 + 2 *
+rpn 1 2 3 4 + + +
+rpn -7 2 //
+rpn 5 0 //
+rpn +
+rpn 1 2
+rpn

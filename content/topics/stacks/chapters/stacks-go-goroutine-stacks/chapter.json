@@ -1,0 +1,4 @@
+{
+	"title": "Go: a call stack that moves",
+	"problems": ["stacks-frames-call-ret", "stacks-go-growth", "stacks-go-shrink"]
+}
