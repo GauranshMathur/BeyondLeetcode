@@ -675,7 +675,7 @@ describe('refund and provider starts', () => {
 
 describe('the Account map at maxKeys', () => {
 	const maxKeys = 4;
-	const open = { maxKeys, addressLimit: 1_000_000, limit: 1_000_000 };
+	const open = { maxKeys, addressLimit: 1_000_000, limit: 1_000_000, salt: 1 };
 	const fresh = (i: number) => `10.${i >> 8}.${i & 255}.1`;
 	/** Tries `id` from fresh addresses until refused; returns how many were admitted. */
 	const admittedFor = (throttle: ReturnType<typeof createThrottle>, id: string, base: number) => {
@@ -695,7 +695,10 @@ describe('the Account map at maxKeys', () => {
 	it('holds every Account of a flood to 50, however many pass through the map', () => {
 		const { throttle } = setup(open);
 		for (let i = 0; i < maxKeys * 5; i++) throttle.attempt(from(fresh(i), `flood${i}`));
-		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
+		// Never more than 50. A collision with an evicted Account in the small sketch can take a try or two off.
+		const admitted = admittedFor(throttle, 'late', 1000);
+		expect(admitted).toBeLessThanOrEqual(50);
+		expect(admitted).toBeGreaterThanOrEqual(45);
 		expect(throttle.size()).toBeLessThanOrEqual(5 * maxKeys);
 	});
 
@@ -718,12 +721,43 @@ describe('the Account map at maxKeys', () => {
 		expect(throttle.attempt(from('1.1.1.1', 'z')).allowed).toBe(false);
 	});
 
-	it('still evicts an Account with failures once every entry has as many, as the price of the flood', () => {
+	it('remembers the count of an evicted Account: evicting it does not hand back a fresh 50', () => {
 		const { throttle } = setup(open);
 		for (let r = 0; r < 3; r++)
 			for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(r * 10 + i), `a${i}`));
-		// All maxKeys entries have 3 counts: a new Account takes the earliest of them.
+		// All maxKeys entries have 3 counts: a new Account takes the earliest of them, a0.
 		expect(throttle.attempt(from(fresh(500), 'new')).allowed).toBe(true);
-		expect(admittedFor(throttle, 'a0', 600)).toBe(50);
+		expect(admittedFor(throttle, 'a0', 600)).toBe(47);
+	});
+
+	it('cannot be reset by alternating the target with a new Account once every entry holds 2 counts', () => {
+		const { throttle } = setup(open);
+		for (let r = 0; r < 2; r++)
+			for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(r * 10 + i), `a${i}`));
+		let admitted = 0;
+		for (let i = 0; i < 300; i++) {
+			if (throttle.attempt(from(fresh(1000 + i), 'target')).allowed) admitted++;
+			throttle.attempt(from(fresh(2000 + i), `junk${i}`));
+		}
+		expect(admitted).toBe(50);
+	});
+
+	it('refuses an evicted Account that had reached 50, and lets it back when its window ends', () => {
+		const { throttle, advance } = setup(open);
+		for (let i = 0; i < 50; i++) throttle.attempt(from(fresh(i), 'spent'));
+		for (let i = 0; i < maxKeys * 3; i++) throttle.attempt(from(fresh(100 + i), `flood${i}`));
+		expect(throttle.attempt(from(fresh(900), 'spent')).allowed).toBe(false);
+		advance(10 * MIN);
+		expect(throttle.attempt(from(fresh(901), 'spent')).allowed).toBe(true);
+	});
+
+	it('gives an evicted Account its give-back once it is counted again in the same window', () => {
+		const { throttle } = setup({ ...open, addressLimit: 1_000_000 });
+		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `a${i}`));
+		throttle.attempt(from(fresh(50), 'late')); // evicts a0
+		const again = tokenOf(throttle.attempt(from(fresh(51), 'a0')));
+		throttle.succeed(again);
+		// a0 had one count before it was evicted, and gets back the one this try took.
+		expect(admittedFor(throttle, 'a0', 600)).toBe(49);
 	});
 });
