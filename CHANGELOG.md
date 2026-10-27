@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.3...v1.5.4) (2026-10-27)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C85 hold every Account to its cap past maxKeys Accounts ([#332](https://github.com/GauranshMathur/BeyondLeetcode/issues/332)) ([0bd3f08](https://github.com/GauranshMathur/BeyondLeetcode/commit/0bd3f08050ec8611a4529c2b9bd970b41706b1d1))
+
 ## [1.5.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.2...v1.5.3) (2026-10-27)
 
 
