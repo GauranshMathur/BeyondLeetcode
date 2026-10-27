@@ -9,6 +9,6 @@ export default defineConfig({
 		expect: { requireAssertions: true },
 		fileParallelism: false,
 		// How many content-check cases run at once (each starts its own Sandbox containers).
-		maxConcurrency: Number(process.env.SANDBOX_CONCURRENCY ?? 2)
+		maxConcurrency: Number(process.env.SANDBOX_CONCURRENCY ?? 1)
 	}
 });
