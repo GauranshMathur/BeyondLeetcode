@@ -199,6 +199,14 @@ Known and accepted:
 Not in the sprint:
 - C111 (filed while checking C109's sources) should make one constant cap the Runner calls a Submission may make. The place ceiling, the README and the module map all assume three calls, and nothing enforces it today.
 
+## Sprint 11 · Hardening
+
+**Goal:** what a Submission may cost the Runner is set in one place and enforced on content.
+
+- **C111:** one config constant gives the most Runner calls a Submission may make. C108b's place ceiling is derived from it, and the loader refuses content whose Submission would need more calls, naming the Problem. Today's content needs at most 3, and the README's proxy note (C109) assumes 3. Sandbox review before merge.
+
+**Exit:** C111 Done and CI green on `main`. Releases stay `1.x`.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
