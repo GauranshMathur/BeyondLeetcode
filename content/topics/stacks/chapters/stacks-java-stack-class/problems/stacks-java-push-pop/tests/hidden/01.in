@@ -1,0 +1,23 @@
+empty
+size
+peek
+pop
+capacity
+copies
+search 1
+push -3
+push 4
+push -3
+search -3
+pop
+search -3
+pop
+search -3
+pop
+search -3
+empty
+push 1000000000
+push -1000000000
+peek
+search 1000000000
+search -1000000000
