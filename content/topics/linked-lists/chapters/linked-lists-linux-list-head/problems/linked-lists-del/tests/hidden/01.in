@@ -1,0 +1,10 @@
+init 10
+add 20 10
+del 20
+show 10
+empty 10
+show_rev 10
+add_tail 20 10
+show 10
+get 10
+get 11

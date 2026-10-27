@@ -1,0 +1,38 @@
+miss
+hit 43
+miss
+miss
+miss evict 4
+miss evict 2
+hit 13
+6 3 1
+miss evict 6
+miss evict 3
+hit 53
+hit 53
+hit 13
+miss evict 4
+hit 53
+1 2 5
+miss evict 1
+hit 42
+hit 53
+miss evict 2
+hit 42
+hit 62
+hit 42
+5 6 4
+hit 42
+hit 62
+miss evict 5
+miss evict 4
+6 3 5
+hits=13 misses=12 maxsize=3 currsize=3
+hits=0 misses=0 maxsize=3 currsize=0
+miss
+hits=0 misses=1 maxsize=3 currsize=1
+miss
+miss
+-
+hits=0 misses=2 maxsize=0 currsize=0
+hits=0 misses=0 maxsize=0 currsize=0

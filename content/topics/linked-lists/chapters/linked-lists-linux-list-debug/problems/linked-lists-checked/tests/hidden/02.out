@@ -1,0 +1,11 @@
+corrupt del: next.prev
+256
+290
+corrupt del: next-null
+corrupt del: prev-null
+corrupt del: poison2
+corrupt del: poison1
+-
+corrupt del: prev.next
+50
+50

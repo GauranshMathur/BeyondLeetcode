@@ -1,0 +1,17 @@
+spush 10 20
+spush 10 22
+spush 10 24
+spush 10 26
+spush 10 28
+spush 10 30
+snth 10 6
+sshow 10
+snth 10 5
+sshow 10
+snth 10 3
+sshow 10
+snth 10 3
+snth 10 2
+sshow 10
+snth 10 1
+sshow 10

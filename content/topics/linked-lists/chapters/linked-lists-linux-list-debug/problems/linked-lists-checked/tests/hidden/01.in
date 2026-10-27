@@ -1,0 +1,11 @@
+init 10
+add 30 10
+add 50 30
+show 10
+set 11 77
+add 70 50
+add_tail 90 10
+add 62 0
+add 64 66
+add 30 10
+show 10

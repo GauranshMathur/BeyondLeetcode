@@ -1,0 +1,22 @@
+spush 10 106
+spush 10 104
+spush 10 102
+spush 10 100
+set 101 2
+set 103 3
+set 105 3
+set 107 7
+spush 20 116
+spush 20 114
+spush 20 112
+spush 20 110
+spush 20 108
+set 109 1
+set 111 3
+set 113 8
+set 115 9
+set 117 9
+smerge 10 20
+sshow 10
+svalues 10
+svalues 20

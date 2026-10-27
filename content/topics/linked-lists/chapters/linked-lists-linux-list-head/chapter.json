@@ -1,0 +1,4 @@
+{
+	"title": "Linux: a list node that lives inside the object",
+	"problems": ["linked-lists-add", "linked-lists-del", "linked-lists-entry"]
+}

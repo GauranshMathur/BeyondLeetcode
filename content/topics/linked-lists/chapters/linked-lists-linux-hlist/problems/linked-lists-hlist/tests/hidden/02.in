@@ -1,0 +1,25 @@
+hadd 20 10
+hadd_before 30 20
+hshow 10
+get 31
+get 21
+hadd_before 40 20
+hadd_behind 50 20
+hshow 10
+get 51
+hdel 20
+hshow 10
+get 41
+get 51
+hadd_behind 60 50
+hadd_before 70 30
+hshow 10
+get 71
+get 31
+hdel 70
+hshow 10
+get 10
+hadd 80 12
+hadd_behind 82 80
+hshow 12
+get 83

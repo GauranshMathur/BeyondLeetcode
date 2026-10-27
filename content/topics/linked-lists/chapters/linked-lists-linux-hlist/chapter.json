@@ -1,0 +1,4 @@
+{
+	"title": "Linux: a list head with one pointer",
+	"problems": ["linked-lists-hops", "linked-lists-hlist", "linked-lists-nth-from-end"]
+}

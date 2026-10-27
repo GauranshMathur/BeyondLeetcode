@@ -1,0 +1,21 @@
+init 10
+add_tail 30 10
+add_tail 50 10
+set 51 99
+del 30
+get 30
+get 31
+del 70
+set 80 82
+del 80
+set 90 12
+set 91 290
+del 90
+init 20
+add_tail 40 20
+del 40
+del 40
+show 20
+del_init 50
+get 50
+get 51

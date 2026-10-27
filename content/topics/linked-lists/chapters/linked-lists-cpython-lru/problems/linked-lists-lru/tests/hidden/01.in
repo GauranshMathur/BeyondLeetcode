@@ -1,0 +1,18 @@
+cache 1
+call 5 50
+call 5 51
+call 6 60
+order
+call 5 52
+order
+cache 3
+order
+call 1 1
+call 2 2
+call 3 3
+call 1 4
+call 4 5
+order
+call 2 6
+call 3 7
+order

@@ -1,0 +1,4 @@
+{
+	"title": "CPython: the list and the table behind lru_cache",
+	"problems": ["linked-lists-lru", "linked-lists-info"]
+}
