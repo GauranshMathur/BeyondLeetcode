@@ -148,16 +148,17 @@ interface Entry {
  * entry whose window ends earliest and never skips or refuses, so a fresh key always gets in with a full
  * budget.
  *
- * The Account map is different: a real Account id exists only for a real Account (every caller passes
- * `null` or the id of a stored Account, never text the client typed), so it holds at most one entry per
- * Account tried in the window and client text cannot introduce arbitrary keys (open registration can still grow it through real Accounts). It has no maxKeys bound and never evicts or
- * skips, because dropping an Account's entry would give that Account a fresh 50 and skipping it would leave
- * it uncapped (card C85). Every Account is held to 50 per window however many Accounts the Instance has.
- * Its memory is bounded by the distinct real Account ids tried within the windows still kept ("Account
- * tried" below), not by maxKeys and not by the current number of Accounts: a removed Account's entry stays
- * until its window ends, and open registration lets anyone create more Accounts, so the map can grow with
- * sign-ups (Sign up has its own throttle). `emailAccounts` keys are the client's,
- * so it keeps the maxKeys bound and evicts the earliest window like the pair maps.
+ * The Account map is different: a real Account id exists only for a real Account (every caller passes `null`
+ * or the id of a stored Account, never text the client typed), so it holds at most one entry per Account
+ * tried in the window and client text cannot introduce arbitrary keys (open registration can still grow it
+ * through real Accounts). It has no maxKeys bound and never evicts or skips, because dropping an Account's
+ * entry would give that Account a fresh 50 and skipping it would leave it uncapped (card C85). Every Account
+ * is held to 50 per window however many Accounts the Instance has. Its memory is bounded by the distinct
+ * real Account ids tried within the windows still kept ("Account tried" below), not by maxKeys and not by
+ * the current number of Accounts: a removed Account's entry stays until its window ends, and open
+ * registration lets anyone create more Accounts, so the map can grow with sign-ups (Sign up has its own
+ * throttle). `emailAccounts` keys are the client's, so it keeps the maxKeys bound and evicts the earliest
+ * window like the pair maps.
  *
  * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
  * count for it. Filling a map takes up to maxKeys admitted tries; after that each new key evicts the entry
