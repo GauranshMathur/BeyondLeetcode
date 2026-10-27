@@ -48,8 +48,11 @@ describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () =
 	});
 
 	const ids = problems.map(({ id }) => id);
-	describe.concurrent('shared', () => cases(ids.filter((id) => testCount(id) <= heavyTests)));
-	describe('alone', () => cases(ids.filter((id) => testCount(id) > heavyTests)));
+	const light = ids.filter((id) => testCount(id) <= heavyTests);
+	const heavy = ids.filter((id) => testCount(id) > heavyTests);
+	// vitest fails a suite with no case in it, and the fixture has no heavy Problem.
+	if (light.length > 0) describe.concurrent('shared', () => cases(light));
+	if (heavy.length > 0) describe('alone', () => cases(heavy));
 });
 
 function cases(ids: string[]) {
