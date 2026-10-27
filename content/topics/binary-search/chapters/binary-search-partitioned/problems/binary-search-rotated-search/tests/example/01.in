@@ -1,0 +1,4 @@
+array 40 50 60 10 20 30
+rsearch 10
+rsearch 60
+rsearch 35

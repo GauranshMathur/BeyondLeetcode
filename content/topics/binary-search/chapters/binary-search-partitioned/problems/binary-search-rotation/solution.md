@@ -1,0 +1,5 @@
+Ask of each item: "is it at least as large as the first item?" On a rotation, the answer is true for the first part (before the cut) and false for the rest, so it flips once, which is what makes it searchable. The smallest item is the first one for which the answer is false. If every answer is true, there was no cut and the smallest is at index 0.
+
+Search the half-open range `[1, n)`: index 0 is always true, so it needs no test. Keep `low = 1`, `high = n`. While `low < high`: take `m = mid(low, high)`; if `items[m] >= items[0]` then `low = m + 1`, else `high = m`. When it ends, `low` is the first index whose item is below `items[0]`, or `n` if none is; report `0` for `n`. An array with one item gives `low == high == 1 == n`, so it also reports `0`; an empty array is handled before the search.
+
+This is the `partition_point` idea from the Chapter, with a predicate that looks at the first item. It takes `O(log n)` steps in the **worst case**. It needs the values to be distinct: for `2 2 0 1 2` the answers true, true, false, false, true are not partitioned, and the search can end in the wrong place.
