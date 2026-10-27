@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.7.0...v1.8.0) (2026-10-27)
+
+
+### Features
+
+* **beyondleetcode:** C100 Hash tables Topic ([#346](https://github.com/GauranshMathur/BeyondLeetcode/issues/346)) ([fe2956d](https://github.com/GauranshMathur/BeyondLeetcode/commit/fe2956d799614e67217f1843bdcc51b63b6022ef))
+
 ## [1.7.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.6.0...v1.7.0) (2026-10-27)
 
 
