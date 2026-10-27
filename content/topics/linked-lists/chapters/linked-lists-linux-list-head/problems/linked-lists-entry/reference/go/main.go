@@ -51,7 +51,6 @@ func addBetween(node, prev, next int) {
 	wr(prev, node)
 }
 
-
 func forward(head int) []int {
 	var nodes []int
 	for p := rd(head); p != head; p = rd(p) {
@@ -79,7 +78,6 @@ func delEntry(e int) {
 	wr(next+1, prev)
 	wr(prev, next)
 }
-
 
 func init() {
 	commands["del"] = func(a []int) {

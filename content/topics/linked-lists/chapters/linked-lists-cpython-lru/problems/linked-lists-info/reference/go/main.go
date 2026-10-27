@@ -64,7 +64,6 @@ func addBetween(node, prev, next int) {
 	}
 }
 
-
 func forward(head int) []int {
 	var nodes []int
 	for p := rd(head); p != head; p = rd(p) {
@@ -107,7 +106,6 @@ func delEntry(e int) {
 		wr(prev, next)
 	}
 }
-
 
 func init() {
 	commands["del"] = func(a []int) {
@@ -298,7 +296,6 @@ func init() {
 	}
 }
 
-
 func init() {
 	commands["check"] = func(a []int) {
 		head := a[0]
@@ -336,7 +333,6 @@ func cacheNew(a []int) {
 	initHead(root)
 }
 
-
 func cacheCall(a []int) {
 	key, result := a[0], a[1]
 	if node, ok := cache.index[key]; ok {
@@ -367,7 +363,6 @@ func cacheCall(a []int) {
 	cache.index[key] = node
 	addBetween(node, rd(root+1), root)
 }
-
 
 func init() {
 	commands["cache"] = cacheNew

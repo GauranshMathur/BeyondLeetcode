@@ -51,7 +51,6 @@ func addBetween(node, prev, next int) {
 	wr(prev, node)
 }
 
-
 func forward(head int) []int {
 	var nodes []int
 	for p := rd(head); p != head; p = rd(p) {
