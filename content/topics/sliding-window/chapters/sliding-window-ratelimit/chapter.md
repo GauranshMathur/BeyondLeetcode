@@ -6,7 +6,7 @@ A window is the Two pointers idea with both pointers moving the same way: a righ
 
 ## The simplest counter: reset it every period
 
-The kernel limits how often it may print a message with `___ratelimit`. Its comment states the rule: "This enforces a rate limit: not more than @rs->burst callbacks in every @rs->interval". ([lib/ratelimit.c, lines 15 to 26](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/lib/ratelimit.c#L15-L26)) The code that does it keeps a start time and a count:
+The kernel limits how often a callback may run with `___ratelimit`. Its comment states the rule: "This enforces a rate limit: not more than @rs->burst callbacks in every @rs->interval". ([lib/ratelimit.c, lines 15 to 26](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/lib/ratelimit.c#L15-L26)) The code that does it keeps a start time and a count:
 
 ```c
 if (!rs->begin)

@@ -1,6 +1,6 @@
 # Count per period, then reset
 
-The Linux kernel limits how often it prints a message with one counter that it resets when a period has passed. You start the Build that holds the windows of this Topic.
+The Linux kernel limits how often a callback may run with one counter that it resets when a period has passed. You start the Build that holds the windows of this Topic.
 
 The Build reads commands from standard input, one per line, and works on one **sequence** of integers. Blank lines are ignored. The sequence starts empty. Commands that print, print one line. In this Topic the sequence is a stream: item `i`, counting from 0, is what happened in second `i`, such as the number of requests that arrived.
 
