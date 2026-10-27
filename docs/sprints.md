@@ -207,6 +207,17 @@ Not in the sprint:
 
 **Exit:** C111 Done and CI green on `main`. Releases stay `1.x`.
 
+**Status (2026-10-27):** exit met. C111 is Done, `ci` is green on `main` (13716f6), and release 1.10.6 shipped.
+
+- **C111 (#371):** `maxSubmitCalls = 3` in runner/config.ts is now the one place that sets how many Runner calls a Submission may make.
+  - C108b's per-Learner ceiling is derived from it: `maxSubmitCalls × adapterTimeoutMs + 10 s` = 100 s, unchanged.
+  - The `queueWaitMs` and `maxRunsPerLearner` comments refer to it.
+  - A note next to it says the README's reverse-proxy timeout (C109) assumes the same number.
+  - The loader refuses content whose Submission would need more calls, naming the Problem. So over-limit content stops the server at start-up.
+- **Verified:** today's 69 Problems load, 43 at 2 calls and 26 at 3. The sandbox review checked the boundary: with 47 added Tests a Problem loads at 3 calls, and with 48 it is refused at 4.
+
+For content authors: hash-tables-collisions already uses 44 of the 50 hidden Tests one Submit can carry (two batches of 25). Adding 7 or more hidden Tests to an earlier Core Problem in that Topic would be refused when the server starts.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
