@@ -36,9 +36,52 @@ export function createRunnerHandler(options: {
 	maxConcurrent: number;
 	/** Languages whose Sandbox image is present; the rest are still being pulled. */
 	readyLanguages: () => readonly string[];
+	/** How long a request waits for a free slot before 503 "busy". */
+	queueWaitMs?: number;
+	/** Most requests waiting for a slot; one more gets 503 "busy" at once. */
+	maxQueued?: number;
 }) {
+	const queueWaitMs = options.queueWaitMs ?? sandboxConfig.queueWaitMs;
+	const maxQueued = options.maxQueued ?? sandboxConfig.maxQueued;
 	const expected = digest(`Bearer ${options.token}`);
 	let running = 0;
+	/** Requests waiting for a slot, oldest first. A slot freed with someone waiting passes straight to them. */
+	const waiting: (() => void)[] = [];
+
+	/** True once the caller holds a slot; false when none freed in time, the queue was full or the caller left. */
+	function acquire(signal: AbortSignal): Promise<boolean> {
+		if (running < options.maxConcurrent) {
+			running++;
+			return Promise.resolve(true);
+		}
+		if (waiting.length >= maxQueued || signal.aborted) return Promise.resolve(false);
+		return new Promise((resolve) => {
+			const leave = () => {
+				clearTimeout(timer);
+				signal.removeEventListener('abort', onAbort);
+				const at = waiting.indexOf(grant);
+				if (at !== -1) waiting.splice(at, 1);
+			};
+			const grant = () => {
+				leave();
+				resolve(true); // the slot's `running` count passes to this request
+			};
+			const giveUp = () => {
+				leave();
+				resolve(false);
+			};
+			const onAbort = giveUp;
+			const timer = setTimeout(giveUp, queueWaitMs);
+			signal.addEventListener('abort', onAbort, { once: true });
+			waiting.push(grant);
+		});
+	}
+
+	function release(): void {
+		const next = waiting.shift();
+		if (next) next();
+		else running--;
+	}
 
 	return async function handle(req: Request): Promise<Response> {
 		const given = digest(req.headers.get('authorization') ?? '');
@@ -54,6 +97,10 @@ export function createRunnerHandler(options: {
 		if (pathname !== '/execute') return json(404, { error: 'Not found' });
 		if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
+		// Slots and queue both full: refuse before reading a body that could be megabytes.
+		if (running >= options.maxConcurrent && waiting.length >= maxQueued)
+			return json(503, { error: 'Runner is busy' });
+
 		let body: unknown;
 		try {
 			body = await req.json();
@@ -65,16 +112,24 @@ export function createRunnerHandler(options: {
 		if (!options.readyLanguages().includes(parsed.data.language))
 			return json(503, { error: 'Runner is not ready' });
 
-		// No queue: a full Runner says so at once and the caller reports it as unavailable.
-		if (running >= options.maxConcurrent) return json(503, { error: 'Runner is busy' });
-		running++;
+		// A full Runner holds the request for a bounded wait (`queueWaitMs`, `maxQueued`), then says so.
+		if (!(await acquire(req.signal))) return json(503, { error: 'Runner is busy' });
+		// The wait can be long: the caller may have left, or the Language's image gone, meanwhile.
+		if (req.signal.aborted) {
+			release();
+			return json(503, { error: 'Runner is busy' });
+		}
+		if (!options.readyLanguages().includes(parsed.data.language)) {
+			release();
+			return json(503, { error: 'Runner is not ready' });
+		}
 		try {
 			return json(200, await options.runner.execute(parsed.data));
 		} catch (error) {
 			console.error('Runner failed to execute a request', error);
 			return json(500, { error: 'Runner failed to execute the request' });
 		} finally {
-			running--;
+			release();
 		}
 	};
 }
