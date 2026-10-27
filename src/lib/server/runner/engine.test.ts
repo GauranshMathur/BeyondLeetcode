@@ -218,10 +218,10 @@ describe('Engine attach', () => {
 			const socketPath = await daemon((socket) => {
 				socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n');
 				socket.write('7\r\n{"statu\r\n');
-				socket.write('2\r\n":\r\n');
-				socket.write('c\r\n{"err":"x"}\n\r\n');
-				setTimeout(() => socket.write('4\r\n"err\r\n'), 10);
-				setTimeout(() => socket.write('8\r\nor": 1}\n\r\n'), 20);
+				// '"error"' arrives in three tiny pieces: '"er', 'ro', 'r":1'.
+				setTimeout(() => socket.write('3\r\n"er\r\n'), 10);
+				setTimeout(() => socket.write('2\r\nro\r\n'), 20);
+				setTimeout(() => socket.write('4\r\nr":1\r\n'), 30);
 			});
 
 			await expect(createEngine(socketPath, 100).pull('img:1')).rejects.toThrow(/failed/);

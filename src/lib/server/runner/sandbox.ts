@@ -277,8 +277,10 @@ const pendingLateRemoves = new WeakMap<Engine, number>();
 async function removeCreatedByName(engine: Engine, name: string): Promise<void> {
 	const started = Date.now();
 	for (const pause of removeByNamePausesMs) {
-		if (pause > 0) await new Promise((resolve) => setTimeout(resolve, pause));
-		const left = removeByNameTotalMs - (Date.now() - started);
+		let left = removeByNameTotalMs - (Date.now() - started);
+		if (pause > 0 && left > 0)
+			await new Promise((resolve) => setTimeout(resolve, Math.min(pause, left)));
+		left = removeByNameTotalMs - (Date.now() - started);
 		if (left <= 0) break;
 		try {
 			if ((await within(engine.remove(name), Math.min(removeByNameAttemptMs, left))) !== false)
@@ -297,8 +299,10 @@ async function removeCreatedByName(engine: Engine, name: string): Promise<void> 
 	if (pending >= maxPendingLateRemoves) return;
 	pendingLateRemoves.set(engine, pending + 1);
 	const late = setTimeout(() => {
-		pendingLateRemoves.set(engine, (pendingLateRemoves.get(engine) ?? 1) - 1);
-		within(engine.remove(name), removeAttemptTimeoutMs).catch(() => {});
+		// Counted until the remove settles (or its own timeout), not only until the timer fires.
+		within(engine.remove(name), removeAttemptTimeoutMs)
+			.catch(() => {})
+			.finally(() => pendingLateRemoves.set(engine, (pendingLateRemoves.get(engine) ?? 1) - 1));
 	}, removeByNameLateMs);
 	late.unref?.();
 }

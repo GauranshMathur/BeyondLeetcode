@@ -199,9 +199,9 @@ export function createEngine(
 						errorBody = (errorBody + text).slice(0, 500);
 						return;
 					}
-					if (/"error"\s*:/.test(tail + text))
-						return finish(new Error(`Docker pull ${image} failed`));
-					tail = text.slice(-pullScanTail);
+					const seen = tail + text;
+					if (/"error"\s*:/.test(seen)) return finish(new Error(`Docker pull ${image} failed`));
+					tail = seen.slice(-pullScanTail);
 				});
 				res.on('end', () =>
 					finish(

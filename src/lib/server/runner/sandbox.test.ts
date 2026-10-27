@@ -792,6 +792,61 @@ describe('Sandbox runner: bounds on the create-failure cleanup', () => {
 	});
 });
 
+describe('Sandbox runner: cleanup pauses and late-remove slots', () => {
+	it('never lets a pause carry the cleanup past the overall 8 s deadline', async () => {
+		const engine = {
+			create: async () => {
+				throw new Error('create timed out');
+			},
+			remove: vi.fn(() => new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 900)))
+		} as unknown as Engine;
+		vi.useFakeTimers();
+		const started = Date.now();
+		let settledAt = 0;
+
+		const pending = createSandboxRunner(engine, 'inst-1')
+			.execute(request)
+			.catch(() => {
+				settledAt = Date.now() - started;
+			});
+		await vi.advanceTimersByTimeAsync(60_000);
+		await pending;
+
+		expect(settledAt).toBeLessThanOrEqual(8_000);
+		vi.useRealTimers();
+	});
+
+	it('counts a late remove against the cap until it has settled', async () => {
+		const engine = {
+			create: async () => {
+				throw new Error('daemon down');
+			},
+			// Fails the first try fast; the late try then hangs.
+			remove: vi.fn(() => new Promise<boolean>(() => {}))
+		} as unknown as Engine;
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.useFakeTimers();
+		const run = () =>
+			createSandboxRunner(engine, 'inst-1')
+				.execute(request)
+				.catch(() => {});
+
+		const first = Array.from({ length: 64 }, run);
+		await vi.advanceTimersByTimeAsync(5_000);
+		await Promise.all(first);
+		await vi.advanceTimersByTimeAsync(31_000);
+		const afterFirst = (engine.remove as ReturnType<typeof vi.fn>).mock.calls.length;
+		// 64 late removes are in flight (hanging, still counted); 64 more Runs make only their own try, no late one.
+		const second = Array.from({ length: 64 }, run);
+		await vi.advanceTimersByTimeAsync(5_000);
+		await Promise.all(second);
+		await vi.advanceTimersByTimeAsync(31_000);
+		expect((engine.remove as ReturnType<typeof vi.fn>).mock.calls.length - afterFirst).toBe(64);
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+});
+
 describe('Sandbox runner: a pull the daemon answers 200 but did not complete', () => {
 	it('is not ready until a second look finds the image, then the keeper retries', async () => {
 		let looks = 0;
