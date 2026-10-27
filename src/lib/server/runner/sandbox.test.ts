@@ -875,23 +875,23 @@ describe('Sandbox runner: cleanup pauses and late-remove slots', () => {
 			createSandboxRunner(engine, 'inst-1')
 				.execute(request)
 				.catch(() => {});
-		const batch = async () => {
+		const batch = async (count: number) => {
 			late = false;
-			const runs = Array.from({ length: 64 }, run);
+			const runs = Array.from({ length: count }, run);
 			await vi.advanceTimersByTimeAsync(5_000);
 			await Promise.all(runs);
 			late = true;
 			await vi.advanceTimersByTimeAsync(31_000);
 		};
 
-		await batch();
+		await batch(64);
 		// 31 s on, the 64 stuck removes are past their 15 s deadline: all slots are free again.
 		await vi.advanceTimersByTimeAsync(15_000);
 		const before = (engine.remove as ReturnType<typeof vi.fn>).mock.calls.length;
-		await batch();
+		// More Runs than slots: a double free would let more than 64 late removes through.
+		await batch(70);
 		await vi.advanceTimersByTimeAsync(15_000);
-		// Exactly 64 more Run removes and 64 late ones: a double free would let more through.
-		expect((engine.remove as ReturnType<typeof vi.fn>).mock.calls.length - before).toBe(128);
+		expect((engine.remove as ReturnType<typeof vi.fn>).mock.calls.length - before).toBe(70 + 64);
 		vi.useRealTimers();
 		vi.restoreAllMocks();
 	});

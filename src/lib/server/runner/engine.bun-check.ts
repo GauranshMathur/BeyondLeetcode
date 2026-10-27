@@ -51,6 +51,18 @@ const progress = createServer((socket) => {
 }).listen(progressSocketPath);
 await new Promise((resolve) => progress.once('listening', resolve));
 
+const stuckSocketPath = join(dir, 'stuck.sock');
+// A removal the daemon says is already in progress, then a poll (GET) it never answers.
+const stuck = createServer((socket) => {
+	socket.on('error', () => {});
+	socket.on('data', (chunk) => {
+		if (!chunk.toString('latin1').startsWith('DELETE')) return;
+		const body = '{"message":"removal of container x is already in progress"}';
+		socket.write(`HTTP/1.1 409 Conflict\r\nContent-Length: ${body.length}\r\n\r\n${body}`);
+	});
+}).listen(stuckSocketPath);
+await new Promise((resolve) => stuck.once('listening', resolve));
+
 const engine = createEngine(socketPath, timeoutMs);
 const trickling = createEngine(trickleSocketPath, timeoutMs);
 const checks: [string, () => Promise<unknown>][] = [
@@ -60,6 +72,10 @@ const checks: [string, () => Promise<unknown>][] = [
 	['create (reply trickles in)', () => trickling.create('python:3.13-slim', {})],
 	['create (named)', () => engine.create('python:3.13-slim', {}, 'bl-check-0123456789abcdef')],
 	['remove (by name)', () => engine.remove('bl-check-0123456789abcdef')],
+	[
+		'remove (in progress, poll never answers)',
+		() => createEngine(stuckSocketPath, timeoutMs).remove('x')
+	],
 	[
 		'pull (progress never stops)',
 		() =>
@@ -76,7 +92,7 @@ for (const [name, run] of checks) {
 		run().then(
 			() => 'resolved',
 			(error: unknown) =>
-				/timed out/.test(String((error as Error)?.message))
+				/timed out|still in progress/.test(String((error as Error)?.message))
 					? 'rejected'
 					: `rejected for another reason: ${error}`
 		),

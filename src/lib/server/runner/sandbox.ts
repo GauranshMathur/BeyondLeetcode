@@ -276,12 +276,12 @@ const pendingLateRemoves = new WeakMap<Engine, number>();
  * stalled daemon ends the tries at the first one. Best effort: logs, never throws.
  */
 async function removeCreatedByName(engine: Engine, name: string): Promise<void> {
-	const started = Date.now();
+	const started = performance.now(); // monotonic: a stepped host clock must not move the deadline
 	for (const pause of removeByNamePausesMs) {
-		let left = removeByNameTotalMs - (Date.now() - started);
+		let left = removeByNameTotalMs - (performance.now() - started);
 		if (pause > 0 && left > 0)
 			await new Promise((resolve) => setTimeout(resolve, Math.min(pause, left)));
-		left = removeByNameTotalMs - (Date.now() - started);
+		left = removeByNameTotalMs - (performance.now() - started);
 		if (left <= 0) break;
 		try {
 			if ((await within(engine.remove(name), Math.min(removeByNameAttemptMs, left))) !== false)
