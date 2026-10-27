@@ -2,4 +2,4 @@ Keep two indexes, `low` and `high`, both **inclusive**, and the invariant that t
 
 When the loop ends the range is empty. Every item before `low` is below the key and every item from `low` on is above it, so `low` is the insertion point, and `-(low + 1)` is the answer the statement asks for. For an empty array the loop never runs and the answer is `-1`.
 
-The range shrinks to at most half its size on each pass, so a search makes at most `floor(log2 n) + 1` passes in the **worst case** (the key is absent, or is found on the last pass), and uses constant extra space. The tests include a 5,000-item array with 3,000 searches, which a search that went item by item makes slow.
+The range shrinks to at most half its size on each pass, so a search of `n >= 1` items makes at most `floor(log2 n) + 1` passes (an empty array makes none) in the **worst case** (the key is absent, or is found on the last pass), and uses constant extra space. The tests include a 5,000-item array with 3,000 searches, which a search that went item by item makes slow.

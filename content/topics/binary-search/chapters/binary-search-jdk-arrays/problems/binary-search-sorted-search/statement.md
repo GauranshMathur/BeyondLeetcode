@@ -5,7 +5,7 @@ Your program now holds one array of integers, empty at the start.
 | Command | What it does | Prints |
 |---|---|---|
 | `array V1 V2 ... Vn` | Replaces the array with the given values, in the order given. With no values, the array becomes empty. | nothing |
-| `search X` | Looks for `X` in the array. | the index of `X`, counting from 0; or, when `X` is absent, `-(p) - 1` where `p` is the index at which `X` would have to be inserted to keep the array in order: the index of the first item greater than `X`, or the length of the array when no item is. |
+| `search X` | Looks for `X` in the array, where `X` is between -1,000,000,000 and 1,000,000,000. | the index of `X`, counting from 0; or, when `X` is absent, `-(p) - 1` where `p` is the index at which `X` would have to be inserted to keep the array in order: the index of the first item greater than `X`, or the length of the array when no item is. |
 
 For this Problem, every `array` command lists values in strictly increasing order, so no value appears twice. The array has at most 5,000 values, and every value is between -1,000,000,000 and 1,000,000,000. `search` does not change the array. Your `search` must take about log2 of the array's length steps, not a pass over every item.
 

@@ -65,6 +65,6 @@ It keeps a start and a **length** instead of two ends, so the midpoint is "start
 
 ## What to take into the Build
 
-Three loops, three ways to hold the range, and one idea: find where a yes/no test changes from false to true. Your Build uses Go's half-open form with the invariant written down. On `lower`, every item before `low` is less than the key and every item from `high` on is not. On `upper`, replace "less than" with "less than or equal to". Each pass sets `high` to `mid` or `low` to `mid + 1`, and either way the range `[low, high)` of size `s` shrinks to at most `s / 2` (rounded down). So a search over `n` items makes at most `floor(log2 n) + 1` passes in the **worst case**.
+Three loops, three ways to hold the range, and one idea: find where a yes/no test changes from false to true. Your Build uses Go's half-open form with the invariant written down. On `lower`, every item before `low` is less than the key and every item from `high` on is not. On `upper`, replace "less than" with "less than or equal to". Each pass sets `high` to `mid` or `low` to `mid + 1`, and either way the range `[low, high)` of size `s` shrinks to at most `s / 2` (rounded down). So a search over `n >= 1` items makes at most `floor(log2 n) + 1` passes in the **worst case** (an empty array makes none).
 
 With duplicates, `lower` and `upper` are well defined where Java's "any match" is not: the first copy, and the position after the last copy.
