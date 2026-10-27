@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { containerLabel, engineCallTimeoutMs, sandboxConfig, sweepMinAgeMs } from './config';
-import type { Engine } from './engine';
+import { type Engine, ImageMissingError } from './engine';
 import {
 	containerSpec,
+	createImageKeeper,
 	createSandboxRunner,
 	ensureImages,
 	removeStaleContainers,
 	scheduleDelayedSweep,
 	secondSweepDelayMs
 } from './sandbox';
+import { createRunnerHandler } from './server';
 
 const request = {
 	language: 'python' as const,
@@ -365,6 +367,173 @@ describe('Sandbox runner: ensureImages', () => {
 		await done;
 		expect(ready.sort()).toEqual(['go', 'python', 'typescript']);
 		vi.restoreAllMocks();
+	});
+});
+
+describe('Sandbox runner: an image that vanished after its Language went ready', () => {
+	it('fails the Run as a Runner error and reports the Language as missing', async () => {
+		const engine = {
+			create: async (image: string) => {
+				throw new ImageMissingError(image);
+			},
+			pull: vi.fn()
+		} as unknown as Engine;
+		const missing: string[] = [];
+
+		await expect(
+			createSandboxRunner(engine, 'test-instance', {
+				onImageMissing: (language) => missing.push(language)
+			}).execute(request)
+		).rejects.toThrow(/image .* is missing/);
+
+		expect(missing).toEqual(['python']);
+		expect(engine.pull).not.toHaveBeenCalled();
+	});
+
+	it('does not report the Language missing when create fails for another reason', async () => {
+		const engine = {
+			create: async () => {
+				throw new Error('daemon down');
+			}
+		} as unknown as Engine;
+		const missing: string[] = [];
+
+		await expect(
+			createSandboxRunner(engine, 'test-instance', {
+				onImageMissing: (language) => missing.push(language)
+			}).execute(request)
+		).rejects.toThrow(/daemon down/);
+
+		expect(missing).toEqual([]);
+	});
+
+	function keeperEngine() {
+		const present = new Set<string>();
+		const pulls: string[] = [];
+		let release: () => void = () => {};
+		let gate: Promise<void> = Promise.resolve();
+		const engine = {
+			hasImage: async (image: string) => present.has(image),
+			pull: async (image: string) => {
+				pulls.push(image);
+				await gate;
+				present.add(image);
+			}
+		} as unknown as Engine;
+		return {
+			engine,
+			present,
+			pulls,
+			holdPulls() {
+				gate = new Promise<void>((resolve) => (release = resolve));
+			},
+			releasePulls: () => release()
+		};
+	}
+
+	it('takes the Language out of the ready set and pulls again until it is ready once more', async () => {
+		const { engine, present, pulls, holdPulls, releasePulls } = keeperEngine();
+		present.add('py:1');
+		const ready = new Set<string>();
+		const keeper = createImageKeeper(
+			engine,
+			{ python: 'py:1' },
+			{ onReady: (l) => ready.add(l), onLost: (l) => ready.delete(l) }
+		);
+		await keeper.start();
+		expect([...ready]).toEqual(['python']);
+
+		present.delete('py:1');
+		holdPulls();
+		keeper.missing('python');
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect([...ready]).toEqual([]);
+		expect(pulls).toEqual(['py:1']);
+		releasePulls();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect([...ready]).toEqual(['python']);
+	});
+
+	it('starts one pull however many Runs find the same image missing', async () => {
+		const { engine, pulls, holdPulls, releasePulls } = keeperEngine();
+		const keeper = createImageKeeper(engine, { python: 'py:1', go: 'go:1' });
+		holdPulls();
+
+		keeper.missing('python');
+		keeper.missing('python');
+		keeper.missing('python');
+		keeper.missing('go');
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		expect(pulls.sort()).toEqual(['go:1', 'py:1']);
+		releasePulls();
+	});
+
+	it('can be re-armed again after a later disappearance', async () => {
+		const { engine, present, pulls } = keeperEngine();
+		const keeper = createImageKeeper(engine, { python: 'py:1' });
+
+		for (let round = 0; round < 2; round++) {
+			present.delete('py:1');
+			keeper.missing('python');
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+
+		expect(pulls).toEqual(['py:1', 'py:1']);
+	});
+
+	it('behind the HTTP handler: the Run answers 500, /health stops listing the Language, then it returns', async () => {
+		const { engine: pullEngine, present, holdPulls, releasePulls } = keeperEngine();
+		present.add('py:1');
+		const engine = {
+			...pullEngine,
+			hasImage: pullEngine.hasImage,
+			pull: pullEngine.pull,
+			create: async (image: string) => {
+				if (!present.has(image)) throw new ImageMissingError(image);
+				return 'c1';
+			}
+		} as unknown as Engine;
+		const ready = new Set<string>();
+		const keeper = createImageKeeper(
+			engine,
+			{ python: 'py:1' },
+			{ onReady: (l) => ready.add(l), onLost: (l) => ready.delete(l) }
+		);
+		await keeper.start();
+		const handle = createRunnerHandler({
+			token: 't',
+			runner: createSandboxRunner(engine, 'test-instance', { onImageMissing: keeper.missing }),
+			maxConcurrent: 1,
+			readyLanguages: () => [...ready]
+		});
+		const call = (path: string, init?: RequestInit) =>
+			handle(
+				new Request(`http://runner${path}`, {
+					...init,
+					headers: { Authorization: 'Bearer t' }
+				})
+			);
+		const run = () => call('/execute', { method: 'POST', body: JSON.stringify(request) });
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		present.delete('py:1');
+		holdPulls();
+		expect((await run()).status).toBe(500);
+		expect((await call('/health')).status).toBe(503);
+		expect((await run()).status).toBe(503);
+
+		releasePulls();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect((await call('/health')).status).toBe(200);
+		vi.restoreAllMocks();
+	});
+
+	it('ignores a Language it has no image for', () => {
+		const { engine, pulls } = keeperEngine();
+		createImageKeeper(engine, { python: 'py:1' }).missing('cobol');
+		expect(pulls).toEqual([]);
 	});
 });
 

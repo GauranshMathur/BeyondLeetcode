@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createEngine, engineCallTimeoutMs } from './engine';
+import { createEngine, engineCallTimeoutMs, ImageMissingError } from './engine';
 
 describe('Engine attach', () => {
 	const cleanup: (() => void)[] = [];
@@ -95,6 +95,34 @@ describe('Engine attach', () => {
 		const started = Date.now();
 		await expect(createEngine(socketPath, 200).create('img', {})).rejects.toThrow(/timed out/);
 		expect(Date.now() - started).toBeLessThan(300);
+	});
+
+	it('fails a create whose image is missing at once, without asking the daemon to pull', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'engine-'));
+		const socketPath = join(dir, 'docker.sock');
+		const requests: string[] = [];
+		const body = '{"message":"No such image: img"}';
+		const server = createServer((socket) => {
+			socket.on('data', (chunk) => {
+				requests.push(chunk.toString('utf8').split(' ').slice(0, 2).join(' '));
+				socket.write(
+					`HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\n\r\n${body}`
+				);
+			});
+		}).listen(socketPath);
+		cleanup.push(() => {
+			server.close();
+			rmSync(dir, { recursive: true, force: true });
+		});
+		await new Promise((resolve) => server.once('listening', resolve));
+
+		const started = Date.now();
+		await expect(createEngine(socketPath, 200).create('img:1', {})).rejects.toBeInstanceOf(
+			ImageMissingError
+		);
+
+		expect(requests).toEqual(['POST /containers/create']);
+		expect(Date.now() - started).toBeLessThan(200);
 	});
 
 	it('fails a lifecycle call after 15 s by default', () => {

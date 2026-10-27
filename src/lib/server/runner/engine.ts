@@ -26,6 +26,14 @@ export const pullIdleTimeoutMs = 60_000;
 
 type Reply = { status: number; body: string };
 
+/** The daemon does not hold the image a create asked for (404). The Runner never pulls inside a Run. */
+export class ImageMissingError extends Error {
+	constructor(readonly image: string) {
+		super(`Sandbox image ${image} is missing`);
+		this.name = 'ImageMissingError';
+	}
+}
+
 /**
  * A deadline that rejects on its own. `req.setTimeout(..., () => req.destroy(err))` is not enough:
  * on Bun 1.2.19, the production runtime, `destroy(err)` closes the socket without emitting 'error',
@@ -153,19 +161,16 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 			return reply.status === 200;
 		},
 
-		/** Creates a container from `spec`, pulling the image once if the engine does not have it. */
+		/**
+		 * Creates a container from `spec`. A missing image (404) throws `ImageMissingError` at once:
+		 * a pull has no upper bound, so it never runs inside a Run. The image loop pulls it.
+		 */
 		async create(image: string, spec: ContainerSpec): Promise<string> {
-			let reply = await call('POST', '/containers/create', {
+			const reply = await call('POST', '/containers/create', {
 				Image: image,
 				...spec
 			});
-			if (reply.status === 404) {
-				await pull(image);
-				reply = await call('POST', '/containers/create', {
-					Image: image,
-					...spec
-				});
-			}
+			if (reply.status === 404) throw new ImageMissingError(image);
 			await assertStatus(reply, 'create', 201);
 			return (JSON.parse(reply.body) as { Id: string }).Id;
 		},
