@@ -53,17 +53,29 @@ function upper(key: number): number {
 const out: string[] = [];
 for (const line of readFileSync(0, 'utf8').split('\n')) {
 	const parts = line.trim().split(/\s+/);
-	const command = parts[0];
-	if (command === '') continue;
-	if (false) {
-		// keeps the chain below uniform
+	const arg = (i: number): number => Number(parts[i]);
+	switch (parts[0]) {
+		case 'naive':
+			out.push(String(naiveMid(arg(1), arg(2))));
+			break;
+		case 'mid':
+			out.push(String(mid(arg(1), arg(2))));
+			break;
+		case 'array':
+			items = parts.slice(1).map(Number);
+			break;
+		case 'search':
+			out.push(String(search(arg(1))));
+			break;
+		case 'lower':
+			out.push(String(lower(arg(1))));
+			break;
+		case 'upper':
+			out.push(String(upper(arg(1))));
+			break;
+		case 'count':
+			out.push(String(upper(arg(1)) - lower(arg(1))));
+			break;
 	}
-	else if (command === 'naive') out.push(String(naiveMid(Number(parts[1]), Number(parts[2]))));
-	else if (command === 'mid') out.push(String(mid(Number(parts[1]), Number(parts[2]))));
-	else if (command === 'array') items = parts.slice(1).map(Number);
-	else if (command === 'search') out.push(String(search(Number(parts[1]))));
-	else if (command === 'lower') out.push(String(lower(Number(parts[1]))));
-	else if (command === 'upper') out.push(String(upper(Number(parts[1]))));
-	else if (command === 'count') out.push(String(upper(Number(parts[1])) - lower(Number(parts[1]))));
 }
 if (out.length > 0) console.log(out.join('\n'));

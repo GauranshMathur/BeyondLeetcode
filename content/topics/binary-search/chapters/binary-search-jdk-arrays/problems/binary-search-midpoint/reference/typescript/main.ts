@@ -14,12 +14,14 @@ function mid(low: number, high: number): number {
 const out: string[] = [];
 for (const line of readFileSync(0, 'utf8').split('\n')) {
 	const parts = line.trim().split(/\s+/);
-	const command = parts[0];
-	if (command === '') continue;
-	if (false) {
-		// keeps the chain below uniform
+	const arg = (i: number): number => Number(parts[i]);
+	switch (parts[0]) {
+		case 'naive':
+			out.push(String(naiveMid(arg(1), arg(2))));
+			break;
+		case 'mid':
+			out.push(String(mid(arg(1), arg(2))));
+			break;
 	}
-	else if (command === 'naive') out.push(String(naiveMid(Number(parts[1]), Number(parts[2]))));
-	else if (command === 'mid') out.push(String(mid(Number(parts[1]), Number(parts[2]))));
 }
 if (out.length > 0) console.log(out.join('\n'));

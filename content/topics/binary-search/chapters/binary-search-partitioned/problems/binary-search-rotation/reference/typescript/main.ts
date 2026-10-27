@@ -58,7 +58,8 @@ function bisect(commits: number, firstBad: number): [number, number] {
 	while (low < high) {
 		const m = (low + high) >>> 1;
 		tests++;
-		if (m >= firstBad) high = m; // the test of commit m says "bad"
+		if (m >= firstBad)
+			high = m; // the test of commit m says "bad"
 		else low = m + 1;
 	}
 	return [low, tests];
@@ -98,23 +99,40 @@ function rotation(): number {
 const out: string[] = [];
 for (const line of readFileSync(0, 'utf8').split('\n')) {
 	const parts = line.trim().split(/\s+/);
-	const command = parts[0];
-	if (command === '') continue;
-	if (false) {
-		// keeps the chain below uniform
+	const arg = (i: number): number => Number(parts[i]);
+	switch (parts[0]) {
+		case 'naive':
+			out.push(String(naiveMid(arg(1), arg(2))));
+			break;
+		case 'mid':
+			out.push(String(mid(arg(1), arg(2))));
+			break;
+		case 'array':
+			items = parts.slice(1).map(Number);
+			break;
+		case 'search':
+			out.push(String(search(arg(1))));
+			break;
+		case 'lower':
+			out.push(String(lower(arg(1))));
+			break;
+		case 'upper':
+			out.push(String(upper(arg(1))));
+			break;
+		case 'count':
+			out.push(String(upper(arg(1)) - lower(arg(1))));
+			break;
+		case 'bisect': {
+			const [found, tests] = bisect(arg(1), arg(2));
+			out.push(`${found} ${tests}`);
+			break;
+		}
+		case 'rate':
+			out.push(String(slowestRate(arg(1))));
+			break;
+		case 'rotation':
+			out.push(String(rotation()));
+			break;
 	}
-	else if (command === 'naive') out.push(String(naiveMid(Number(parts[1]), Number(parts[2]))));
-	else if (command === 'mid') out.push(String(mid(Number(parts[1]), Number(parts[2]))));
-	else if (command === 'array') items = parts.slice(1).map(Number);
-	else if (command === 'search') out.push(String(search(Number(parts[1]))));
-	else if (command === 'lower') out.push(String(lower(Number(parts[1]))));
-	else if (command === 'upper') out.push(String(upper(Number(parts[1]))));
-	else if (command === 'count') out.push(String(upper(Number(parts[1])) - lower(Number(parts[1]))));
-	else if (command === 'bisect') {
-		const [found, tests] = bisect(Number(parts[1]), Number(parts[2]));
-		out.push(`${found} ${tests}`);
-	}
-	else if (command === 'rate') out.push(String(slowestRate(Number(parts[1]))));
-	else if (command === 'rotation') out.push(String(rotation()));
 }
 if (out.length > 0) console.log(out.join('\n'));
