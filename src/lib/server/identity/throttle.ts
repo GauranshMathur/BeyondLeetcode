@@ -137,15 +137,26 @@ interface Entry {
  * faster, six tries and a stopwatch would tell an attacker which emails have an Account.
  *
  * The two kinds of key have separate maps, five in all (address; pair and Account for real ids; pair and
- * Account for unknown emails), because they differ in who chooses the key. A real Account id exists only
- * for a real Account, so the Account map holds as many keys as there are Accounts and does not fill in
- * practice; it never drops a live entry (a full one skips the new key), which is what holds an Account to 50
- * tries overall however many addresses an attacker has. The other four maps can be filled by the client: the
- * address by its addresses, the unknown-email maps by made-up emails, and the pair map by address x Account
- * combinations (the pair key holds the address, so a few hundred addresses and a few hundred known emails
- * reach maxKeys). When one of them is full it evicts the entry whose window ends earliest and never skips or
- * refuses, so a flood can only evict other pairs, addresses and made-up emails: no known Account's own counter
- * goes, and each of these maps still lets a fresh key in with a full budget.
+ * Account for unknown emails), because they differ in who chooses the key. The address, pair and
+ * unknown-email maps can be filled by the client: the address by its addresses, the unknown-email maps by
+ * made-up emails, and the pair map by address x Account combinations (the pair key holds the address, so a
+ * few hundred addresses and a few hundred known emails reach maxKeys). When one of them is full it evicts the
+ * entry whose window ends earliest and never skips or refuses, so a fresh key always gets in with a full
+ * budget.
+ *
+ * The Account map holds one entry per real Account tried in the window, so it fills only on an Instance
+ * with more than maxKeys Accounts tried in 10 minutes, but a client who knows that many ids can fill it.
+ * Evicting an Account's entry hands that Account a fresh 50, so a full map evicts the entry with the
+ * fewest counts (the earliest of those), not the earliest window, and never skips the new Account: every
+ * Account is counted and held to 50. What an eviction gives back is the evicted entry's count, so a flood
+ * of Accounts tried once or twice each only ever evicts entries holding one or two counts. To evict an
+ * Account holding c counts, the map must hold maxKeys entries of at least c counts each, which costs
+ * about c * maxKeys admitted tries, each also counted against its address (20) and pair. The Account at
+ * the front of a window with one count can go after the entries with one count ahead of it, so it gets
+ * one more try per such flood of up to maxKeys new Accounts. Every Account still sits behind the address
+ * limit (20 per address) and its pair limit (5), so a flood's guesses land mostly on Accounts that
+ * were never at risk. `emailAccounts` was never a skipping map (it evicts the earliest window, as the
+ * pair maps do); made-up emails have no Account behind them, so only the timing residual below applies.
  *
  * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
  * count for it. Filling a map takes up to maxKeys admitted tries; after that each new key evicts the entry
@@ -162,9 +173,7 @@ interface Entry {
  * until that pair is evicted; if the email has an Account, its next tries are admitted again and run the
  * hash, while an email with none sits in `emailPairs`, which that flood does not touch, and stays refused
  * fast. The cost scales with maxKeys; it is accepted. An attacker with more addresses than maxKeys inside
- * one window gets fresh per-address budgets and is still held to the per-Account limit. The Account map
- * skips new keys once more than maxKeys Account entries are live in one window, so Accounts past that
- * point have no 50 cap (card C85).
+ * one window gets fresh per-address budgets and is still held to the per-Account limit.
  *
  * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
  * their window is still the one it was counted in, so only wrong passwords spend budget. Callers that
@@ -174,8 +183,8 @@ interface Entry {
  * or the Account limit tells an attacker whether an email has an Account. The Account limit also lets
  * someone lock a known Account out for a window; that is accepted.
  *
- * Each map is capped at maxKeys, expired entries dropped first, and a full map never refuses an attempt.
- * Worst case: 5 * maxKeys entries.
+ * Each map is capped at maxKeys, expired entries dropped first, and a full map never refuses an attempt
+ * or skips a key. Worst case: 5 * maxKeys entries.
  */
 export const createThrottle = ({
 	limit = 5,
@@ -186,18 +195,19 @@ export const createThrottle = ({
 	now = Date.now
 }: ThrottleOptions = {}): Throttle => {
 	// Insertion order is window-start order, since windows are fixed, so the first entry ends first.
-	// `evicts`: a full map drops its earliest-ending entry for the new key; otherwise it skips the new key.
-	// Only the Account counter must skip: it is the one that holds an Account to 50 whatever else evicts.
-	const counter = (max: number, evicts: boolean) => ({
+	// `evicts`: which entry a full map drops for the new key. 'earliest' drops the entry whose window ends
+	// first. 'fewest' drops the entry with the fewest counts (the earliest of those), because an evicted
+	// entry's counts are what its owner gets back: the Account counter must make that as little as it can.
+	const counter = (max: number, evicts: 'earliest' | 'fewest') => ({
 		max,
 		evicts,
 		entries: new Map<string, Entry>()
 	});
-	const addresses = counter(addressLimit, true);
-	const pairs = counter(limit, true);
-	const accounts = counter(accountLimit, false);
-	const emailPairs = counter(limit, true);
-	const emailAccounts = counter(accountLimit, true);
+	const addresses = counter(addressLimit, 'earliest');
+	const pairs = counter(limit, 'earliest');
+	const accounts = counter(accountLimit, 'fewest');
+	const emailPairs = counter(limit, 'earliest');
+	const emailAccounts = counter(accountLimit, 'earliest');
 	const everyCounter = [addresses, pairs, accounts, emailPairs, emailAccounts];
 	type Counter = ReturnType<typeof counter>;
 
@@ -238,6 +248,21 @@ export const createThrottle = ({
 		else entry.count -= 1;
 	};
 
+	/** The key to drop from a full map: the first entry, or the first one with the fewest counts. */
+	const victimOf = ({ entries, evicts }: Counter): string | undefined => {
+		if (evicts === 'earliest') return entries.keys().next().value;
+		let victim: string | undefined;
+		let fewest = Number.POSITIVE_INFINITY;
+		for (const [id, entry] of entries) {
+			if (entry.count >= fewest) continue;
+			victim = id;
+			fewest = entry.count;
+			// Counts are at least 1, and ties go to the earliest, so nothing later can beat this.
+			if (fewest <= 1) break;
+		}
+		return victim;
+	};
+
 	const sweep = ({ entries }: Counter, at: number) => {
 		for (const [id, entry] of entries) {
 			if (entry.resetAt > at) return;
@@ -266,15 +291,13 @@ export const createThrottle = ({
 					continue;
 				}
 				if (c.entries.size >= maxKeys) {
-					// The Account map alone keeps its live entries and skips the new key.
-					if (!c.evicts) continue;
-					const earliest = c.entries.keys().next().value;
-					if (earliest !== undefined) c.entries.delete(earliest);
+					const victim = victimOf(c);
+					if (victim !== undefined) c.entries.delete(victim);
 				}
 				c.entries.set(id, { count: 1, resetAt: at + windowMs });
 				counted[slot] = { key: id, resetAt: at + windowMs };
 			}
-			// The address slot is always counted: the address map evicts instead of skipping.
+			// Every slot is counted: a full map evicts to make room and never skips the new key.
 			const { address, pair, account } = counted;
 			return {
 				allowed: true,

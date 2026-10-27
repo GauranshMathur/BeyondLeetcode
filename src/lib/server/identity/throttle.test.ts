@@ -279,7 +279,7 @@ describe('throttle', () => {
 		const { throttle } = setup({ maxKeys: 2, addressLimit: 3 });
 		throttle.attempt(from('1.1.1.1', 'a'));
 		throttle.attempt(from('1.1.1.2', 'b'));
-		// The Account maps are full of live entries: this Account goes uncounted there.
+		// The Account maps are full: this Account takes the place of the entry with the fewest counts.
 		const mine = tokenOf(throttle.attempt(from('1.1.1.3', 'c')));
 		throttle.succeed(mine);
 		expect(throttle.attempt(from('1.1.1.4', 'd')).allowed).toBe(true);
@@ -313,13 +313,14 @@ describe('throttle', () => {
 		expect(throttle.attempt(from('99.99.99.99', 'victim')).allowed).toBe(false);
 	});
 
-	it('never drops a live Account entry when its map is full, and still applies the address limit', () => {
+	it('keeps the Account with the most failures when its full map takes a new Account, and still applies the address limit', () => {
 		const { throttle } = setup({ maxKeys: 3, addressLimit: 2 });
-		for (let i = 0; i < 3; i++) throttle.attempt(from(`1.1.1.${i}`, `a${i}`));
+		throttle.attempt(from('1.1.1.1', 'a0'));
+		throttle.attempt(from('1.1.1.2', 'a0'));
+		throttle.attempt(from('1.1.1.3', 'a1'));
+		throttle.attempt(from('1.1.1.4', 'a2'));
+		// a1 has the fewest counts and ends earliest of those: it goes, a0 (2 counts) stays.
 		expect(throttle.attempt(from('2.2.2.2', 'new')).allowed).toBe(true);
-		// the original accounts are still counted
-		for (let i = 0; i < 4; i++) throttle.attempt(from(`3.3.3.${i}`, 'a0'));
-		expect(throttle.attempt(from('4.4.4.4', 'a0')).allowed).toBe(true);
 		expect(throttle.size()).toBeLessThanOrEqual(9);
 		throttle.attempt(from('5.5.5.5', 'new2'));
 		expect(throttle.attempt(from('5.5.5.5', 'new2')).allowed).toBe(true);
@@ -397,15 +398,16 @@ describe('the address x Account map at maxKeys', () => {
 		expect(throttle.size()).toBeLessThanOrEqual(maxKeys * 2 + 4);
 	});
 
-	it('gives nothing back to a pair that was evicted, but still the address and the Account', () => {
+	it('gives nothing back to a pair that was evicted, but still the address', () => {
 		const { throttle } = setup({ maxKeys: 4, addressLimit: 1_000_000 });
 		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'victim')));
 		// Three more pairs fill the map; the fourth pushes the first one out.
 		for (const id of ['o1', 'o2', 'o3', 'o4']) throttle.attempt(from('2.2.2.2', id));
 		const before = throttle.size();
 		throttle.succeed(mine);
-		// The address entry and the Account entry were back to zero and went; no pair entry was touched.
-		expect(throttle.size()).toBe(before - 2);
+		// Only the address entry went back to zero. The Account entry was evicted by o4 (the fourth Account in
+		// a map of four, all with one count: the earliest goes), so it gave nothing back; no pair was touched.
+		expect(throttle.size()).toBe(before - 1);
 		// The pairs that stayed keep their counts: o4 had one try, so four more fit and the fifth does not.
 		for (let i = 0; i < 4; i++) expect(throttle.attempt(from('2.2.2.2', 'o4')).allowed).toBe(true);
 		expect(throttle.attempt(from('2.2.2.2', 'o4')).allowed).toBe(false);
@@ -668,5 +670,60 @@ describe('refund and provider starts', () => {
 		starts.refund('a');
 		for (let i = 0; i < 19; i++) starts.throttle.attempt({ address: '1.1.1.1', accountId: null });
 		expect(starts.throttle.attempt({ address: '1.1.1.1', accountId: null }).allowed).toBe(false);
+	});
+});
+
+describe('the Account map at maxKeys', () => {
+	const maxKeys = 4;
+	const open = { maxKeys, addressLimit: 1_000_000, limit: 1_000_000 };
+	const fresh = (i: number) => `10.${i >> 8}.${i & 255}.1`;
+	/** Tries `id` from fresh addresses until refused; returns how many were admitted. */
+	const admittedFor = (throttle: ReturnType<typeof createThrottle>, id: string, base: number) => {
+		let admitted = 0;
+		for (let i = 0; i < 200; i++) {
+			if (throttle.attempt(from(fresh(base + i), id)).allowed) admitted++;
+		}
+		return admitted;
+	};
+
+	it('holds an Account first tried after the map filled to 50 tries', () => {
+		const { throttle } = setup(open);
+		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `known${i}`));
+		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
+	});
+
+	it('holds every Account of a flood to 50, however many pass through the map', () => {
+		const { throttle } = setup(open);
+		for (let i = 0; i < maxKeys * 5; i++) throttle.attempt(from(fresh(i), `flood${i}`));
+		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
+		expect(throttle.size()).toBeLessThanOrEqual(5 * maxKeys);
+	});
+
+	it('does not let a flood of new Accounts evict an Account with failures', () => {
+		const { throttle } = setup(open);
+		for (let i = 0; i < 10; i++) throttle.attempt(from(fresh(i), 'victim'));
+		// Far more new Accounts than the map holds, each tried once.
+		for (let i = 0; i < maxKeys * 10; i++) throttle.attempt(from(fresh(100 + i), `flood${i}`));
+		expect(admittedFor(throttle, 'victim', 2000)).toBe(40);
+	});
+
+	it('gives nothing back to an Account entry that was evicted, but still the address', () => {
+		const { throttle } = setup({ ...open, addressLimit: 2 });
+		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'first')));
+		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `flood${i}`));
+		throttle.succeed(mine);
+		// The address got its count back (2 admitted again), and no entry for 'first' was touched.
+		expect(throttle.attempt(from('1.1.1.1', 'x')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'y')).allowed).toBe(true);
+		expect(throttle.attempt(from('1.1.1.1', 'z')).allowed).toBe(false);
+	});
+
+	it('still evicts an Account with failures once every entry has as many, as the price of the flood', () => {
+		const { throttle } = setup(open);
+		for (let r = 0; r < 3; r++)
+			for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(r * 10 + i), `a${i}`));
+		// All maxKeys entries have 3 counts: a new Account takes the earliest of them.
+		expect(throttle.attempt(from(fresh(500), 'new')).allowed).toBe(true);
+		expect(admittedFor(throttle, 'a0', 600)).toBe(50);
 	});
 });
