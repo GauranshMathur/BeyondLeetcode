@@ -65,7 +65,7 @@ execute({ language, files, tests: { id, input }[], limits })
 
 Expected outputs never go to the Runner: learner code cannot read what is not in its container. The core compares outputs.
 
-**Per-Learner cap.** The Learning core lets one Learner have at most `sandboxConfig.maxRunsPerLearner` (2) Runs and Submits running at once, counted together across every view of that Learner. One past it is refused as `RunnerUnavailable` after the save, so the saved code stays and the error carries its revision; nothing is recorded. The place frees in a `finally` on every path.
+**Per-Learner cap.** The Learning core lets one Learner have at most `sandboxConfig.maxRunsPerLearner` (2) Runs and Submits running at once, counted together across every view of that Learner. One past it is refused as `RunnerUnavailable` after the save, so the saved code stays and the error carries its revision; nothing is recorded. The place frees in a `finally` on every path, and at the latest after `runPlaceCeilingMs` (100 s) if the work never settles. The count is in memory, per web process: a restart resets it, and with more than one web process it would be per process (ADR 0006 runs one per data volume).
 
 **Slots.** The Runner runs at most `RUNNER_MAX_CONCURRENT` containers at once. A request that finds them taken waits in a FIFO queue for at most `sandboxConfig.queueWaitMs` (8 s) and the queue holds at most `maxQueued` (8) requests; past either it answers 503 "busy", which the Learning core reports as `RunnerUnavailable`. The wait is what lets a Submission's later batches get a slot after the earlier ones freed theirs. A caller that hangs up leaves the queue.
 

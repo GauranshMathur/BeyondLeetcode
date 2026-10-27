@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { filesDigest } from '../../problem-wire.ts';
 import { type Language, loadCatalogue } from '../content/catalogue.ts';
+import { sandboxConfig } from '../runner/config.ts';
 import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
 import type { ExecuteResult } from '../runner/port.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
@@ -2014,6 +2015,110 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 		expect(runner.inFlight()).toBe(1);
 		runner.finishOne();
 		await ok;
+	});
+
+	it('frees the place at the ceiling when the work never settles, once, and accepts the next Run', async () => {
+		vi.useFakeTimers();
+		try {
+			const calls: (() => void)[] = [];
+			const core = createLearningCore({
+				catalogue: await loadCatalogue(fixtureDir),
+				db: await createTestDb(),
+				runner: {
+					execute: (request: { tests: readonly { id: string }[] }) =>
+						new Promise<ExecuteResult>((resolve) => {
+							calls.push(() =>
+								resolve({
+									results: request.tests.map(({ id }) => ({
+										id,
+										status: 'ok' as const,
+										stdout: '',
+										stderr: ''
+									}))
+								})
+							);
+						})
+				},
+				maxRunsPerLearner: 1
+			});
+			const a = core.forLearner('ann');
+			const stuck = a.run(ref('stacks-push', 0), { 'main.py': '1' });
+			const stuckResult = stuck.then(
+				() => 'ok',
+				(e) => e.code
+			);
+			await vi.advanceTimersByTimeAsync(0);
+			await expect(a.run(ref('stacks-push', 1), { 'main.py': '2' })).rejects.toMatchObject({
+				code: 'RunnerUnavailable'
+			});
+
+			await vi.advanceTimersByTimeAsync(sandboxConfig.runPlaceCeilingMs);
+			expect(await stuckResult).toBe('RunnerUnavailable');
+
+			const next = a.run(ref('stacks-push', 2), { 'main.py': '3' });
+			await vi.advanceTimersByTimeAsync(0);
+			calls[1]?.();
+			expect((await next).revision).toBe(3);
+			// the first work settling late must not free a second place
+			calls[0]?.();
+			await vi.advanceTimersByTimeAsync(0);
+			const b = a.run(ref('stacks-push', 3), { 'main.py': '4' });
+			await vi.advanceTimersByTimeAsync(0);
+			const refused = a.run(ref('stacks-push', 4), { 'main.py': '5' });
+			await expect(refused).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+			calls[2]?.();
+			await b;
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('frees the place when recording the Submission fails, and accepts the next Run', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const correct: NonNullable<RunnerScript['tests']> = {};
+		for (const t of [
+			...(catalogue.problem('stacks-push')?.exampleTests ?? []),
+			...(catalogue.hiddenTests('stacks-push') ?? [])
+		])
+			correct[t.id] = { status: 'ok', stdout: t.expected };
+		const db = await createTestDb();
+		// The Submission is recorded in a transaction: make that write reject.
+		const failing = new Proxy(db, {
+			get(target, prop, receiver) {
+				if (prop === '$transaction') return () => Promise.reject(new Error('disk full'));
+				return Reflect.get(target, prop, receiver);
+			}
+		});
+		const a = createLearningCore({
+			catalogue,
+			db: failing,
+			runner: createScriptedRunner({ tests: correct }),
+			maxRunsPerLearner: 1
+		}).forLearner('ann');
+
+		await expect(a.submit(ref('stacks-push', 0), { 'main.py': '1' })).rejects.toThrow();
+
+		expect(await a.run(ref('stacks-push', 1), { 'main.py': '2' })).toBeDefined();
+	});
+
+	it('Promise.all of three Runs on different Problems with a cap of 2 refuses exactly one', async () => {
+		const { runner, core } = await setup(2);
+		const a = core.forLearner('ann');
+		const settled = Promise.allSettled([
+			a.run(ref('stacks-push', 0), { 'main.py': '1' }),
+			a.run(ref('stacks-pop', 0), { 'main.py': '1' }),
+			a.run(ref('stacks-peek', 0), { 'main.py': '1' })
+		]);
+		await tick();
+		runner.finishOne();
+		runner.finishOne();
+		const results = await settled;
+
+		const refused = results.filter(
+			(r) => r.status === 'rejected' && (r.reason as { code?: string }).code === 'RunnerUnavailable'
+		);
+		expect(refused).toHaveLength(1);
+		expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(2);
 	});
 
 	it('frees the cap when the Runner is missing', async () => {

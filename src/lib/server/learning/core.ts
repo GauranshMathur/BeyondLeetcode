@@ -201,12 +201,27 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				const held = running.get(learnerId) ?? 0;
 				if (held >= maxRunsPerLearner) throw new LearningError('RunnerUnavailable');
 				running.set(learnerId, held + 1);
-				try {
-					return await work();
-				} finally {
+				let freed = false;
+				const free = () => {
+					if (freed) return; // once: a late settle after the ceiling must not free a second place
+					freed = true;
 					const left = (running.get(learnerId) ?? 1) - 1;
 					if (left > 0) running.set(learnerId, left);
 					else running.delete(learnerId);
+				};
+				let ceiling: ReturnType<typeof setTimeout> | undefined;
+				try {
+					// A hard ceiling, in case the work never settles (a stalled reply the adapter's timeout misses).
+					const stuck = new Promise<never>((_, reject) => {
+						ceiling = setTimeout(() => {
+							free();
+							reject(new LearningError('RunnerUnavailable'));
+						}, sandboxConfig.runPlaceCeilingMs);
+					});
+					return await Promise.race([work(), stuck]);
+				} finally {
+					clearTimeout(ceiling);
+					free();
 				}
 			};
 			/**

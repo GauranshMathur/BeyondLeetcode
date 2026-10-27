@@ -73,13 +73,21 @@ export const sandboxConfig = {
 	/** Most requests waiting for a slot; one past this gets 503 "busy" at once. */
 	maxQueued: 8,
 	/**
-	 * Most Runs and Submits one Learner has running at once, counted together (Learning core). A Run is
-	 * one container; a Submit is up to three in a row, so at most one Runner slot or queue place each at
-	 * a time. Two covers a Run beside a Submit, or a second tab; the Runner has `availableParallelism()`
-	 * slots (2 on the small VPS) and `maxQueued` places, so one Learner never holds more than 2 of the 2 + 8
-	 * and cannot fill the queue alone, while a normal Learner (one at a time) never meets it.
+	 * Most Runs and Submits one Learner has running at once, counted together (Learning core). Each
+	 * holds one Runner slot or queue place at a time (a Submit's up to three calls run in a row). On a
+	 * 2-CPU box 2 places is every Runner slot, so the cap does not keep a Learner out of the slots: the
+	 * Runner's FIFO queue hand-off (runner/server.ts) is what stops starvation of others, and the cap
+	 * only keeps one Learner from also filling the queue's `maxQueued` places. The workspace already
+	 * keeps one request per tab on the wire, so 2 is not for a double-click: it is for two tabs on
+	 * different Problems, a no-JS double POST, and a retry while the first call still runs.
 	 */
-	maxRunsPerLearner: 2
+	maxRunsPerLearner: 2,
+	/**
+	 * Longest a Run or Submit keeps one of a Learner's places, even if its work never settles: a Submit
+	 * is up to three calls of `adapterTimeoutMs`, plus a margin for the save and the record. Past it
+	 * the place frees and the call fails as RunnerUnavailable.
+	 */
+	runPlaceCeilingMs: 3 * 30_000 + 10_000
 } as const;
 
 /** Shortest bearer token the Runner starts with. */
