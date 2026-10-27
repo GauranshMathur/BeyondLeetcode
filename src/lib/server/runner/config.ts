@@ -18,7 +18,7 @@ const adapterTimeoutMs = 30_000;
 /**
  * Most Runner calls one Submission may make: 1 for the visible batch plus one per hidden batch. The
  * content loader refuses a Problem that needs more. The README's reverse-proxy note (C109, "up to
- * three Runner calls ... 90 s") and docs/module-map.md state the same number, so changing it here
+ * three Runner calls ... 90 s") and docs/module-map.md rest on the same number, so changing it here
  * must change them too.
  */
 const maxSubmitCalls = 3;
