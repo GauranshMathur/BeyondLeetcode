@@ -10,6 +10,7 @@ import {
 	type LearningCoreDeps,
 	LearningError
 } from './core.ts';
+import { submitPlan } from './rules.ts';
 
 /**
  * The Learning core, with every Learner a test names given its row first: the database refuses
@@ -845,6 +846,113 @@ describe('learner.submit()', () => {
 			}
 			expect(runner.calls).toHaveLength(2);
 		}
+	});
+
+	describe('hidden Tests in containers of at most hiddenBatchTests', () => {
+		/** A core whose hidden containers hold one Test, so the fixture splits. */
+		async function setupSplit(script: RunnerScript = {}) {
+			const base = await setup(script);
+			const core = createLearningCore({
+				catalogue: base.catalogue,
+				db: base.db,
+				runner: base.runner,
+				hiddenBatchTests: 1
+			});
+			return { ...base, learner: core.forLearner('any-learner') };
+		}
+		const idsOf = (calls: { tests: { id: string }[] }[]) =>
+			calls.map((c) => c.tests.map((t) => t.id));
+
+		it('runs the visible Tests first, then the hidden ones in order, one per call', async () => {
+			const { learner, runner, catalogue } = await setupSplit();
+			const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+			expect(view.verdict).toBe('Accepted');
+			const plan = submitPlan(catalogue, 'stacks-pop', 1);
+			expect(plan.hidden.length).toBeGreaterThan(1);
+			expect(idsOf(runner.calls)).toEqual([
+				plan.visible.map((t) => t.id),
+				...plan.hidden.map((b) => b.map((t) => t.id))
+			]);
+			expect(plan.hidden.every((b) => b.length <= 1)).toBe(true);
+		});
+
+		it('keeps every hidden call apart from the visible Tests', async () => {
+			const { learner, runner, catalogue } = await setupSplit();
+			await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+			const visible = catalogue.problem('stacks-pop')?.exampleTests.map((t) => t.id) ?? [];
+			for (const call of runner.calls.slice(1)) {
+				expect(call.tests.some((t) => visible.includes(t.id))).toBe(false);
+			}
+		});
+
+		it('reports the same first failing Test as one big container: a later batch failing', async () => {
+			const { learner } = await setupSplit({ tests: { 'stacks-pop/hidden/01': wrong } });
+			const split = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+			const whole = await (
+				await setup({ tests: { 'stacks-pop/hidden/01': wrong } })
+			).learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+			expect(split.verdict).toBe(whole.verdict);
+			expect(split.failure).toEqual(whole.failure);
+		});
+
+		it('picks the earliest Test of the winning outcome across batches', async () => {
+			const tests = { [pushHidden]: wrong, [popHidden]: { status: 'timeout' as const } };
+			const split = await (await setupSplit({ tests })).learner.submit(ref('stacks-pop', 0), {
+				'main.py': 'x'
+			});
+			const whole = await (await setup({ tests })).learner.submit(ref('stacks-pop', 0), {
+				'main.py': 'x'
+			});
+			expect(split.verdict).toBe('Time Limit Exceeded');
+			expect({ ...split, submissionId: '' }).toEqual({ ...whole, submissionId: '' });
+		});
+
+		it('stops after the batch holding a Time Limit Exceeded: nothing later can change the Verdict', async () => {
+			const { learner, runner, catalogue } = await setupSplit({
+				tests: { [pushHidden]: { status: 'timeout' } }
+			});
+			const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+			expect(view.verdict).toBe('Time Limit Exceeded');
+			const plan = submitPlan(catalogue, 'stacks-pop', 1);
+			const at = plan.hidden.findIndex((b) => b.some((t) => t.id === pushHidden));
+			expect(runner.calls).toHaveLength(1 + at + 1);
+			expect(runner.calls.length).toBeLessThan(1 + plan.hidden.length);
+		});
+
+		it('runs every batch when a failure is not a timeout, since a later timeout would outrank it', async () => {
+			const { learner, runner, catalogue } = await setupSplit({
+				tests: { [pushHidden]: wrong }
+			});
+			await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+			expect(runner.calls).toHaveLength(1 + submitPlan(catalogue, 'stacks-pop', 1).hidden.length);
+		});
+
+		it('a compile error in a later hidden batch is RunnerUnavailable, nothing recorded', async () => {
+			const { db, catalogue } = await setup();
+			let calls = 0;
+			const core = createLearningCore({
+				catalogue,
+				db,
+				hiddenBatchTests: 1,
+				runner: {
+					execute: async (request) =>
+						++calls === 3
+							? { compileError: 'PRIVATE', results: [] }
+							: {
+									results: request.tests.map(({ id }) => ({
+										id,
+										status: 'ok' as const,
+										stdout: '',
+										stderr: ''
+									}))
+								}
+				}
+			});
+			await expect(
+				core.forLearner('y').submit(ref('stacks-pop', 0), { 'main.py': 'x' })
+			).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+			expect(await db.submission.count()).toBe(0);
+		});
 	});
 
 	it('a Compile Error from the first call is the Verdict and the second call is skipped', async () => {

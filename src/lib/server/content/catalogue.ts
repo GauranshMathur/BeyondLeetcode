@@ -310,7 +310,9 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	// Only a complete catalogue has Submit batches worth measuring.
 	if (issues.length === 0) {
 		for (const [problemId, problemDir] of problemDirs) {
-			for (const message of checkSubmitBatches(submitPlan(catalogue, problemId))) {
+			for (const message of checkSubmitBatches(
+				submitPlan(catalogue, problemId, sandboxConfig.hiddenBatchTests)
+			)) {
 				report(problemDir, message);
 			}
 		}
@@ -333,25 +335,25 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 const FILE_JSON_OVERHEAD = 8;
 
 /**
- * Submit sends each batch to the Runner as one request, and the Runner refuses one past its Test or
- * body limit, so a Topic whose batch is over would answer RunnerUnavailable on every Submit. The
+ * Submit sends each batch to the Runner as one request, and the Runner refuses one past its body
+ * limit, so a Topic whose batch is over would answer RunnerUnavailable on every Submit. Hidden
+ * Tests are cut into batches of `hiddenBatchTests`, which is below the Runner's Test limit
+ * (`maxTests`, pinned in a test), so only the body size can be over. The
  * content check runs the Sandbox directly and would not see it. The body is measured as the
  * adapter sends it (the JSON of the request, `files` empty), plus room for the largest Build a
  * Learner may save at its worst JSON escaping (a control character becomes 6 bytes, `\u00XX`) and
  * the per-file JSON syntax, so the answer holds for any code.
  */
-function checkSubmitBatches(plan: { visible: readonly Test[]; hidden: readonly Test[] }): string[] {
+function checkSubmitBatches(plan: {
+	visible: readonly Test[];
+	hidden: readonly (readonly Test[])[];
+}): string[] {
 	const messages: string[] = [];
-	const { maxTests, requestBodyMaxBytes, testTimeoutMs, memoryMb } = sandboxConfig;
+	const { requestBodyMaxBytes, testTimeoutMs, memoryMb } = sandboxConfig;
 	for (const [name, batch] of [
-		['visible', plan.visible],
-		['hidden', plan.hidden]
-	] as const) {
-		if (batch.length > maxTests) {
-			messages.push(
-				`Submit's ${name} batch has ${batch.length} Tests, over the Runner's limit of ${maxTests}`
-			);
-		}
+		['visible', plan.visible] as const,
+		...plan.hidden.map((tests) => ['hidden', tests] as const)
+	]) {
 		const body = JSON.stringify({
 			language: 'typescript', // the longest Language id
 			files: {},

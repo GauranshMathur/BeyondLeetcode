@@ -452,28 +452,29 @@ describe('malformed content', () => {
 			}
 		};
 
-		it('refuses a Problem whose hidden batch has more Tests than the Runner takes', async () => {
-			const error = await loadBroken((dir) => addHidden(dir, sandboxConfig.maxTests, 0)).catch(
-				(e: unknown) => e
-			);
-			expect(error).toBeInstanceOf(ContentError);
-			expect(String(error)).toMatch(
-				/stacks-push: Submit's hidden batch has \d+ Tests, over the Runner's limit of 200/
-			);
+		it("keeps a hidden batch within the Runner's Test limit", () => {
+			expect(sandboxConfig.hiddenBatchTests).toBeGreaterThan(0);
+			expect(sandboxConfig.hiddenBatchTests).toBeLessThanOrEqual(sandboxConfig.maxTests);
 		});
 
-		it('accepts a hidden batch of exactly the Runner limit', async () => {
+		it('accepts more hidden Tests than the Runner takes at once, as several containers', async () => {
 			const dir = await mkdtemp(join(tmpdir(), 'content-'));
 			copies.push(dir);
 			await cp(fixtureDir, dir, { recursive: true });
-			const base = await loadCatalogue(dir);
-			const largest = Math.max(
-				...['stacks-push', 'stacks-peek', 'stacks-pop'].map(
-					(id) => submitPlan(base, id).hidden.length
-				)
-			);
-			// Every later Problem on the Main Line runs these too, so the largest batch lands on the limit.
-			await addHidden(dir, sandboxConfig.maxTests - largest, 0);
+			await addHidden(dir, sandboxConfig.maxTests + 1, 0);
+			const catalogue = await loadCatalogue(dir);
+			const plan = submitPlan(catalogue, 'stacks-peek', sandboxConfig.hiddenBatchTests);
+			expect(plan.hidden.flat().length).toBeGreaterThan(sandboxConfig.maxTests);
+			expect(plan.hidden.every((b) => b.length <= sandboxConfig.hiddenBatchTests)).toBe(true);
+		});
+
+		it('measures the request body per batch, so Tests that fit as several batches load', async () => {
+			const dir = await mkdtemp(join(tmpdir(), 'content-'));
+			copies.push(dir);
+			await cp(fixtureDir, dir, { recursive: true });
+			// One batch's worth at 90% of the room: together they would not fit one request.
+			const each = Math.floor((room * 0.9) / sandboxConfig.hiddenBatchTests);
+			await addHidden(dir, 2 * sandboxConfig.hiddenBatchTests, each);
 			await expect(loadCatalogue(dir)).resolves.toBeDefined();
 		});
 
