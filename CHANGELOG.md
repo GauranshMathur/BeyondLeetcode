@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.2...v1.10.3) (2026-10-27)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C95 malformed image reference throws instead of pulling every tag ([#358](https://github.com/GauranshMathur/BeyondLeetcode/issues/358)) ([040ebeb](https://github.com/GauranshMathur/BeyondLeetcode/commit/040ebeb6aa651e4aa0814a5383bcb8e1bfa442c4))
+
 ## [1.10.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.1...v1.10.2) (2026-10-27)
 
 
