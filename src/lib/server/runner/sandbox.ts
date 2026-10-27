@@ -2,6 +2,7 @@
  * The Runner's engine room: one fresh, hardened container per request (ADR 0002), removed
  * afterwards whatever happened. Python, TypeScript and Go.
  */
+import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
 import { type AttachedContainer, type Engine, ImageMissingError } from './engine';
@@ -116,16 +117,29 @@ async function execute(
 	let received = 0;
 	let overflow = false;
 
+	// Named on our side: if the create call times out while the daemon completes it, the reply is
+	// lost but the name is not, and this Run can remove exactly that container. Random, so it
+	// clashes with no other Run's.
+	const name = `bl-${instanceId}-${randomBytes(8).toString('hex')}`;
 	let id: string;
 	try {
 		id = await engine.create(
 			image,
-			containerSpec(request.language, instanceId, request.tests.length, testTimeoutMs, memoryMb)
+			containerSpec(request.language, instanceId, request.tests.length, testTimeoutMs, memoryMb),
+			name
 		);
 	} catch (error) {
-		// The image vanished after its Language went ready. Fail this Run as a Runner error and hand
-		// the image back to the pull loop; nothing here pulls.
-		if (error instanceof ImageMissingError) onImageMissing?.(request.language);
+		if (error instanceof ImageMissingError) {
+			// The image vanished after its Language went ready. Fail this Run as a Runner error and
+			// hand the image back to the pull loop; nothing here pulls. A 404 made no container.
+			onImageMissing?.(request.language);
+		} else if (!/\(409\)/.test(String((error as Error)?.message))) {
+			// (A 409 means the name is taken by a container that is not ours to remove.)
+			// A create that timed out (or failed after the daemon began it) may still have made
+			// the container, in the Created state, which AutoRemove never touches. Remove this Run's
+			// own name, never a prefix or a label; a 404 means nothing was made. Best effort.
+			await removeCreatedByName(engine, name);
+		}
 		throw error;
 	}
 	let timedOut = false;
@@ -234,6 +248,41 @@ async function removeContainer(engine: Engine, id: string): Promise<void> {
 				await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
 		}
 	}
+}
+
+/** Pauses before each try at removing a container by the name it was created under. */
+const removeByNamePausesMs = [0, 50, 100, 250, 500, 1_000, 2_000];
+/** One last try, in the background, for a daemon that is still stuck in the create after all of those. */
+const removeByNameLateMs = 30_000;
+/** Longest one try at it may take. Only a 404 is retried, so the whole wait is at most this plus the pauses (about 8 s). */
+const removeByNameAttemptMs = 4_000;
+
+/**
+ * Removes the container a timed-out create may have made, by the name this Run gave it. The
+ * daemon can still be finishing that create when we ask, and until it has registered the name a
+ * remove answers 404 (measured on real Docker: the first remove 404s, one ~35 ms later finds it).
+ * So a 404 is retried for a few seconds, which also bounds the wait when nothing was made; an error or a stalled daemon ends the tries at the first one.
+ * Best effort: logs, never throws.
+ */
+async function removeCreatedByName(engine: Engine, name: string): Promise<void> {
+	for (const pause of removeByNamePausesMs) {
+		if (pause > 0) await new Promise((resolve) => setTimeout(resolve, pause));
+		try {
+			if ((await within(engine.remove(name), removeByNameAttemptMs)) !== false) return;
+		} catch (error) {
+			// A stalled or failing daemon (likely why the create timed out) will not answer a retry
+			// either: stop at once, so the Run's slot is held for one attempt, not seven. The
+			// background try below and the sweep are what is left.
+			console.error(`Could not remove container ${name} after a failed create`, error);
+			break;
+		}
+	}
+	// Still nothing: the daemon may be stuck in the create. One more try later, off this Run, so it
+	// holds no Run slot; if that misses too, the next instance's sweep removes it by age.
+	const late = setTimeout(() => {
+		within(engine.remove(name), removeAttemptTimeoutMs).catch(() => {});
+	}, removeByNameLateMs);
+	late.unref?.();
 }
 
 /**
@@ -345,7 +394,7 @@ export function createImageKeeper(
 		},
 		/** A Run found this Language's image gone. Unknown Languages are ignored. */
 		missing(language: string): void {
-			if (!(language in images)) return;
+			if (!Object.hasOwn(images, language)) return;
 			onLost?.(language);
 			void loop(language);
 		}
