@@ -78,7 +78,7 @@ export const sandboxConfig = {
 	maxSubmitCalls,
 	/**
 	 * How long a request waits for a free slot when all are taken, before the Runner answers 503
-	 * "busy". A Submission makes up to three calls and frees a slot between them; this wait lets a later
+	 * "busy". A Submission makes up to `maxSubmitCalls` calls and frees a slot between them; this wait lets a later
 	 * call get one instead of failing after the earlier containers already ran. Normally a call is
 	 * 8 s of queue plus about 12 s of container, inside `adapterTimeoutMs`; with a slow daemon (create
 	 * up to 15 s) it can pass 30 s, and the adapter then gives up on that call: no guarantee.
@@ -88,7 +88,7 @@ export const sandboxConfig = {
 	maxQueued: 8,
 	/**
 	 * Most Runs and Submits one Learner has running at once, counted together (Learning core). Each
-	 * holds one Runner slot or queue place at a time (a Submit's up to three calls run in a row). On a
+	 * holds one Runner slot or queue place at a time (a Submit's up to `maxSubmitCalls` calls run in a row). On a
 	 * 2-CPU box 2 places is every Runner slot, so the cap does not keep a Learner out of the slots: the
 	 * Runner's FIFO queue hand-off (runner/server.ts) is what stops starvation of others, and the cap
 	 * only keeps one Learner from also filling the queue's `maxQueued` places. The workspace already

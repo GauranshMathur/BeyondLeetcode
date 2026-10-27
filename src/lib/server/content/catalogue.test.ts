@@ -488,7 +488,10 @@ describe('malformed content', () => {
 			await cp(fixtureDir, dir, { recursive: true });
 			// One batch's worth at 90% of the room: together they would not fit one request.
 			const each = Math.floor((room * 0.9) / sandboxConfig.hiddenBatchTests);
-			await addHidden(dir, await headroom(), each);
+			const count = await headroom();
+			// The premise: all of it in one request would be over the limit, so only batching fits.
+			expect(count * each).toBeGreaterThan(room);
+			await addHidden(dir, count, each);
 			await expect(loadCatalogue(dir)).resolves.toBeDefined();
 		});
 
@@ -503,13 +506,14 @@ describe('malformed content', () => {
 		});
 
 		it('refuses a Problem whose Submit would need more Runner calls than the ceiling allows', async () => {
-			// 1 visible call + hidden batches: enough hidden Tests for one batch past the cap.
-			const over = sandboxConfig.maxSubmitCalls * sandboxConfig.hiddenBatchTests + 1;
-			const error = await loadBroken((dir) => addHidden(dir, over, 0)).catch((e: unknown) => e);
+			// One Test past the headroom puts the busiest Problem (stacks-pop) at exactly one call over.
+			const error = await loadBroken(async (dir) =>
+				addHidden(dir, (await headroom()) + 1, 0)
+			).catch((e: unknown) => e);
 			expect(error).toBeInstanceOf(ContentError);
 			expect(String(error)).toMatch(
 				new RegExp(
-					`stacks-push: Submit would make \\d+ Runner calls, over the limit of ${sandboxConfig.maxSubmitCalls}`
+					`stacks-pop: Submit would make ${sandboxConfig.maxSubmitCalls + 1} Runner calls, over the limit of ${sandboxConfig.maxSubmitCalls}`
 				)
 			);
 		});
