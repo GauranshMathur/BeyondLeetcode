@@ -8,6 +8,15 @@ on:
 permissions:
   contents: read
 
+env:
+  # The browser jobs (e2e, docker) run their Playwright step in this image, which ships Chromium and its system
+  # libraries, so CI never calls apt (its Azure mirror ran at 25 kB/s on 2026-10-26; C91). Multi-arch index digest
+  # of mcr.microsoft.com/playwright:v1.64.1-noble. Keep the version equal to @playwright/test in bun.lock: the
+  # "Check the Playwright image" step fails with the line to change when they differ.
+  # To bump: `docker buildx imagetools inspect mcr.microsoft.com/playwright:v<version>-noble`, copy its top-level
+  # "Digest:" (the index, not a per-platform manifest), and change the tag and digest here with the bun bump.
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+
 jobs:
   typecheck:
     runs-on: ubuntu-24.04
@@ -75,29 +84,31 @@ jobs:
           # (see the build job); keep equal to the Dockerfile's BUILD_BUN_VERSION.
           bun-version: 1.4.3
       - run: bun install --frozen-lockfile
-      # The apt half of this step (the Azure mirror) stalled at 25 kB/s on 2026-10-26 (12 minutes for
-      # 19 MB; twice it never finished), while the browser download takes seconds, so caching the browsers
-      # would not help. Each attempt gets 4 minutes (normally under one), the step 10, and one retry.
-      - name: Install Playwright's Chromium
-        timeout-minutes: 10
+      - name: Check the Playwright image
         run: |
-          for attempt in 1 2; do
-            if timeout -k 10s 4m bunx playwright install --with-deps chromium; then exit 0; fi
-            echo "::warning::Playwright install attempt $attempt failed or timed out"
-            # The stalled apt-get runs as root, out of timeout's reach: stop it so the retry gets the dpkg lock.
-            sudo pkill -KILL -x apt-get || true
-            sudo pkill -KILL -f /usr/lib/apt/methods/ || true
-            sleep 5
-          done
-          exit 1
+          version="$(bun -e 'console.log(JSON.parse(require("fs").readFileSync("node_modules/@playwright/test/package.json", "utf8")).version)')"
+          case "$PLAYWRIGHT_IMAGE" in
+            *":v$version-"*) echo "Playwright $version matches $PLAYWRIGHT_IMAGE" ;;
+            *)
+              echo "::error::@playwright/test is $version (bun.lock) but PLAYWRIGHT_IMAGE in .github/workflows/ci.yml is $PLAYWRIGHT_IMAGE. Set it to mcr.microsoft.com/playwright:v$version-noble@sha256:<index digest from 'docker buildx imagetools inspect mcr.microsoft.com/playwright:v$version-noble'>."
+              exit 1 ;;
+          esac
       # Run goes through the real Runner (started by the Playwright config), which needs the Sandbox image.
       - run: docker pull python:3.13-slim
       # Built here under the exact name:tag config.ts uses, so the Runner finds it locally and never waits
       # on a pull of a tag that is only published once this change reaches main.
       - name: Build the Sandbox images
         run: .github/build-sandbox-images.sh
-      # The Playwright webServer builds the app, serves it under Bun and starts the Runner.
-      - run: bun run test:e2e
+      # The Playwright webServer builds the app, serves it under Bun and starts the Runner. Only this step runs in the
+      # Playwright image; the job stays on the runner, which has Docker for the steps above. The workspace and the
+      # runner's Bun (mounted as bun and bunx) go in, the servers bind the host network, so the e2e ports are the same.
+      - name: Run the e2e tests in the Playwright image
+        run: |
+          docker run --rm --init --ipc=host --network host -e CI \
+            -v "$PWD:$PWD" -w "$PWD" \
+            -v "$(readlink -f "$(command -v bun)"):/usr/local/bin/bun:ro" \
+            -v "$(readlink -f "$(command -v bun)"):/usr/local/bin/bunx:ro" \
+            "$PLAYWRIGHT_IMAGE" bun run test:e2e
 
   sandbox:
     runs-on: ubuntu-24.04
@@ -220,25 +231,39 @@ jobs:
         with:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
-      # The apt half of this step (the Azure mirror) stalled at 25 kB/s on 2026-10-26 (12 minutes for
-      # 19 MB; twice it never finished), while the browser download takes seconds, so caching the browsers
-      # would not help. Each attempt gets 4 minutes (normally under one), the step 10, and one retry.
-      - name: Install Playwright's Chromium
-        timeout-minutes: 10
+      - name: Check the Playwright image
         run: |
-          for attempt in 1 2; do
-            if timeout -k 10s 4m bunx playwright install --with-deps chromium; then exit 0; fi
-            echo "::warning::Playwright install attempt $attempt failed or timed out"
-            # The stalled apt-get runs as root, out of timeout's reach: stop it so the retry gets the dpkg lock.
-            sudo pkill -KILL -x apt-get || true
-            sudo pkill -KILL -f /usr/lib/apt/methods/ || true
-            sleep 5
-          done
-          exit 1
+          version="$(bun -e 'console.log(JSON.parse(require("fs").readFileSync("node_modules/@playwright/test/package.json", "utf8")).version)')"
+          case "$PLAYWRIGHT_IMAGE" in
+            *":v$version-"*) echo "Playwright $version matches $PLAYWRIGHT_IMAGE" ;;
+            *)
+              echo "::error::@playwright/test is $version (bun.lock) but PLAYWRIGHT_IMAGE in .github/workflows/ci.yml is $PLAYWRIGHT_IMAGE. Set it to mcr.microsoft.com/playwright:v$version-noble@sha256:<index digest from 'docker buildx imagetools inspect mcr.microsoft.com/playwright:v$version-noble'>."
+              exit 1 ;;
+          esac
       # Web, runner and init + compose up, then the browser flow in three Languages. Shared with
       # release.yml, so the image published there passes the very same test.
+      # smoke.sh ends with `bun run test:smoke` on the host. The shim below sends exactly that command into the
+      # Playwright image (host network, so localhost:3000 is the composed stack) and passes every other bun call
+      # through, so smoke.sh, shared with release.yml, stays as it is.
       - name: Smoke test
-        run: .github/smoke.sh beyondleetcode:ci
+        env:
+          SMOKE_BASE_URL: http://localhost:3000
+        run: |
+          shim="$RUNNER_TEMP/bun-shim"
+          mkdir -p "$shim"
+          export REAL_BUN="$(readlink -f "$(command -v bun)")"
+          cat > "$shim/bun" <<'SHIM'
+          #!/usr/bin/env bash
+          if [ "$*" = "run test:smoke" ]; then
+            exec docker run --rm --init --ipc=host --network host -e CI -e SMOKE_BASE_URL \
+              -v "$PWD:$PWD" -w "$PWD" \
+              -v "$REAL_BUN:/usr/local/bin/bun:ro" \
+              "$PLAYWRIGHT_IMAGE" bun run test:smoke
+          fi
+          exec "$REAL_BUN" "$@"
+          SHIM
+          chmod +x "$shim/bun"
+          PATH="$shim:$PATH" .github/smoke.sh beyondleetcode:ci
 
   # Publishes the app image as `edge` (a moving tag, overwritten by design) for amd64 and arm64.
   # Only after every test job, the smoke test included, passed on this commit.
