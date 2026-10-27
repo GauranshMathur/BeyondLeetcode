@@ -1,0 +1,19 @@
+load 7
+partition 7
+show
+partition 8
+show
+load 6 7 8
+partition 1
+show
+load -3 5 -1 0 4 -8 2
+partition 0
+show
+load 3 -14 6 -9 -8 -6 -5 -1 -8 19 -16 -3 13 12 -4 13 -17 -20 -3 18 8 16 20 5 -11 13 -11 -10 19 -16 2 8 -12 -14 -8 4 2 -1 -8 8 20 -16 -8 17 -7 -18 13 9 7 3 2 9 11 -12 -20 13 19 -7 15 -9
+partition 0
+show
+load 2 9 4 7
+partition 5
+show
+partition 5
+show

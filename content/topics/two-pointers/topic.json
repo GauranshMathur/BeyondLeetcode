@@ -1,0 +1,11 @@
+{
+	"title": "Two pointers",
+	"summary": "Walk a sequence with two indices, from both ends, at two speeds, or one reading while one writes, and read where CPython, LevelDB, Go and Emacs do it.",
+	"prerequisites": ["dynamic-arrays"],
+	"chapters": [
+		"two-pointers-cpython-converging",
+		"two-pointers-leveldb-merge",
+		"two-pointers-go-compact",
+		"two-pointers-emacs-cycles"
+	]
+}

@@ -1,0 +1,12 @@
+{
+	"title": "CPython: two ends, moving in",
+	"problems": [
+		"two-pointers-reverse",
+		"two-pointers-trim",
+		"two-pointers-palindrome",
+		"two-pointers-pair-sum",
+		"two-pointers-triples",
+		"two-pointers-container",
+		"two-pointers-rain"
+	]
+}
