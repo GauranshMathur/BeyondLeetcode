@@ -1,0 +1,4 @@
+{
+	"title": "git bisect: searching for the answer",
+	"problems": ["binary-search-bisect", "binary-search-rate"]
+}

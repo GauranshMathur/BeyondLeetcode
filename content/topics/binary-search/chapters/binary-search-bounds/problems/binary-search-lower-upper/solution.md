@@ -1,0 +1,5 @@
+Use a **half-open** range `[low, high)` that starts as `[0, length)`, with this invariant for `lower`: every item before `low` is less than `X`, and every item from `high` on is at least `X`. While `low < high`, take `m = mid(low, high)`. If the item at `m` is less than `X`, then it and everything before it are too small, so `low = m + 1`. Otherwise `high = m`. When the loop ends `low == high`, and that is the answer. If every item is below `X`, nothing ever moves `high`, so the answer is the length.
+
+`upper` is the same loop with `<` replaced by `<=` in the comparison: the invariant becomes "every item before `low` is at most `X`, every item from `high` on is greater than `X`". That one change is all that separates the two functions in libstdc++, too. `count` is `upper(X) - lower(X)`, two searches.
+
+Each pass makes the range at most half as large, so each search is `O(log n)` in the **worst case** with constant extra space. An easy slip is to write `high = m - 1` here: with a half-open range `high` is one past the last candidate, so `m` itself must stay possible, and `high = m` is right.
