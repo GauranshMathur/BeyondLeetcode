@@ -6,7 +6,10 @@ const typescriptImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-node:1';
 /** Built from Dockerfile.sandbox-go: bump the tag number by hand whenever that file changes. */
 const goImage = 'ghcr.io/gauranshmathur/beyondleetcode-sandbox-go:1';
 
-/** Longest a lifecycle call (create, start, kill, remove, wait) may wait for the daemon. */
+/**
+ * Longest a lifecycle call (create, start, kill, remove, wait) may wait for the daemon. An image
+ * pull is not one of them: it has only an idle timeout and never runs inside a Run.
+ */
 export const engineCallTimeoutMs = 15_000;
 
 /** Every Sandbox limit lives here (ADR 0002). A request's `limits` may lower them, never raise them. */

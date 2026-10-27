@@ -201,10 +201,11 @@ test.describe('reading a Chapter on a phone, as a flow', () => {
 		});
 		await expect(chapterRow).toContainText('not read');
 
+		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved. The Chapter is
+		// short, so its end is in view on load and the post goes out during the load: register the wait first.
+		const marked = page.waitForResponse(/\?\/reachEnd/);
 		await page.getByRole('link', { name: 'An undo log' }).tap();
 		await expect(page).toHaveURL('/chapters/stacks-undo-log');
-		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved.
-		const marked = page.waitForResponse(/\?\/reachEnd/);
 		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
 		expect((await marked).ok()).toBe(true);
 

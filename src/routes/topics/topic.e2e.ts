@@ -48,9 +48,10 @@ test.describe('mobile layout', () => {
 
 	test('shows progress, read state, Problem rows and no sideways scroll', async ({ page }) => {
 		// Read the first Chapter to its end, so the Topic shows one read and one unread Chapter.
-		await gotoHydrated(page, '/chapters/stacks-undo-log');
-		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved.
+		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved. The Chapter is
+		// short, so its end is in view on load and the post goes out during the load: register the wait first.
 		const marked = page.waitForResponse(/\?\/reachEnd/);
+		await gotoHydrated(page, '/chapters/stacks-undo-log');
 		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
 		await marked;
 		await gotoHydrated(page, '/topics/stacks');

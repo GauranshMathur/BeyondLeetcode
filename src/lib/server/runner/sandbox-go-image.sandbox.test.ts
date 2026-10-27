@@ -9,6 +9,8 @@ const engine = createEngine(process.env.DOCKER_SOCKET ?? '/var/run/docker.sock')
 const image = sandboxConfig.images.go;
 
 async function runInImage(cmd: string[]): Promise<{ out: string; status: number }> {
+	// create no longer pulls a missing image (C86).
+	if (!(await engine.hasImage(image))) await engine.pull(image);
 	const id = await engine.create(image, {
 		...containerSpec('go', 'test-instance', 1, 2000, 256),
 		Cmd: cmd

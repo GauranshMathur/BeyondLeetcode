@@ -7,8 +7,8 @@ import { availableParallelism } from 'node:os';
 import { readRunnerEnv, sandboxConfig } from './config';
 import { createEngine } from './engine';
 import {
+	createImageKeeper,
 	createSandboxRunner,
-	ensureImages,
 	removeStaleContainers,
 	scheduleDelayedSweep
 } from './sandbox';
@@ -33,16 +33,26 @@ try {
 
 const engine = createEngine(env.dockerSocket);
 const instanceId = randomBytes(8).toString('hex');
-const readyLanguages: string[] = [];
+const readyLanguages = new Set<string>();
+const images = createImageKeeper(engine, sandboxConfig.images, {
+	onReady: (language) => {
+		readyLanguages.add(language);
+		console.log(`Runner ready for ${language}`);
+	},
+	onLost: (language) => {
+		readyLanguages.delete(language);
+		console.warn(`Runner lost the ${language} image, pulling it again`);
+	}
+});
 const server = Bun.serve({
 	port: env.port,
 	hostname: env.host,
 	maxRequestBodySize: sandboxConfig.requestBodyMaxBytes,
 	fetch: createRunnerHandler({
 		token: env.token,
-		runner: createSandboxRunner(engine, instanceId),
+		runner: createSandboxRunner(engine, instanceId, { onImageMissing: images.missing }),
 		maxConcurrent: env.maxConcurrent,
-		readyLanguages: () => readyLanguages
+		readyLanguages: () => [...readyLanguages]
 	})
 });
 console.log(
@@ -53,9 +63,4 @@ console.log(
 await removeStaleContainers(engine, instanceId);
 // Containers it skipped as too young are checked once more after the grace period.
 void scheduleDelayedSweep(engine, instanceId);
-await ensureImages(engine, sandboxConfig.images, {
-	onReady: (language) => {
-		readyLanguages.push(language);
-		console.log(`Runner ready for ${language}`);
-	}
-});
+await images.start();

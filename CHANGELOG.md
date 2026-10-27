@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.1...v1.5.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C86 a missing image fails the Run instead of pulling inside it ([#331](https://github.com/GauranshMathur/BeyondLeetcode/issues/331)) ([61139f0](https://github.com/GauranshMathur/BeyondLeetcode/commit/61139f0645a553f96fde7af5503a684f64c0026c))
+
 ## [1.5.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.0...v1.5.1) (2026-10-26)
 
 

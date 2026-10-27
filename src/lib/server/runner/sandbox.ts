@@ -4,7 +4,7 @@
  */
 import { z } from 'zod';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
-import type { AttachedContainer, Engine } from './engine';
+import { type AttachedContainer, type Engine, ImageMissingError } from './engine';
 import { harnessScript } from './harness';
 import type { ExecuteRequest, ExecuteResult, Language, RunnerPort, TestResult } from './port';
 import { createTar } from './tar';
@@ -87,7 +87,8 @@ export function containerSpec(
 async function execute(
 	engine: Engine,
 	instanceId: string,
-	request: ExecuteRequest
+	request: ExecuteRequest,
+	onImageMissing?: (language: Language) => void
 ): Promise<ExecuteResult> {
 	const image = imageFor(request.language);
 	if (!image) {
@@ -115,10 +116,18 @@ async function execute(
 	let received = 0;
 	let overflow = false;
 
-	const id = await engine.create(
-		image,
-		containerSpec(request.language, instanceId, request.tests.length, testTimeoutMs, memoryMb)
-	);
+	let id: string;
+	try {
+		id = await engine.create(
+			image,
+			containerSpec(request.language, instanceId, request.tests.length, testTimeoutMs, memoryMb)
+		);
+	} catch (error) {
+		// The image vanished after its Language went ready. Fail this Run as a Runner error and hand
+		// the image back to the pull loop; nothing here pulls.
+		if (error instanceof ImageMissingError) onImageMissing?.(request.language);
+		throw error;
+	}
 	let timedOut = false;
 	let attached: AttachedContainer | undefined;
 	// The wall clock covers attach and start-up too: it starts as soon as the container exists.
@@ -278,10 +287,74 @@ const pullRetryMinMs = 1_000;
 const pullRetryMaxMs = 30_000;
 
 /**
- * Makes sure the engine holds every image, pulling those it lacks. Each image has its own loop, so
- * one slow or failing pull never holds up another. A failed pull is logged and retried with a
- * growing pause, forever. `onReady(language)` fires as soon as that Language's image is present;
- * the promise resolves once all are.
+ * Keeps every Sandbox image present, one pull loop per Language that needs one. Each Language has
+ * its own loop, so one slow or failing pull never holds up another. A failed pull is logged and
+ * retried with a growing pause, forever. `onReady(language)` fires as soon as that Language's image
+ * is present. The loop ends when it has the image, and `missing(language)` starts it again (re-arm,
+ * not a loop that runs for good): a Language whose image is there costs nothing, and a Run that
+ * finds the image gone only has to say so. At most one loop runs per Language, so any number of
+ * Runs reporting the same image missing start one pull. The pull never holds a Run slot.
+ */
+export function createImageKeeper(
+	engine: Engine,
+	images: Readonly<Record<string, string>>,
+	options: {
+		onReady?: (language: string) => void;
+		/** The Language's image is gone: it is no longer ready until the loop has it again. */
+		onLost?: (language: string) => void;
+		sleep?: (ms: number) => Promise<void>;
+	} = {}
+) {
+	const {
+		onReady,
+		onLost,
+		sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+	} = options;
+	const running = new Map<string, Promise<void>>();
+
+	function loop(language: string): Promise<void> {
+		const existing = running.get(language);
+		if (existing) return existing;
+		const image = images[language];
+		const done = (async () => {
+			for (let pause = pullRetryMinMs; ; pause = Math.min(pause * 2, pullRetryMaxMs)) {
+				try {
+					if (!(await engine.hasImage(image))) {
+						console.log(`Pulling Sandbox image ${image}`);
+						await engine.pull(image);
+						console.log(`Pulled Sandbox image ${image}`);
+					}
+					// Both happen in one tick: a `missing` call can never fall between them.
+					running.delete(language);
+					onReady?.(language);
+					return;
+				} catch (error) {
+					console.error(`Could not pull Sandbox image ${image}, retrying in ${pause} ms`, error);
+					await sleep(pause);
+				}
+			}
+		})();
+		running.set(language, done);
+		return done;
+	}
+
+	return {
+		/** Starts a loop for every Language; resolves once all of them have their image. */
+		async start(): Promise<void> {
+			await Promise.all(Object.keys(images).map(loop));
+		},
+		/** A Run found this Language's image gone. Unknown Languages are ignored. */
+		missing(language: string): void {
+			if (!(language in images)) return;
+			onLost?.(language);
+			void loop(language);
+		}
+	};
+}
+
+/**
+ * Makes sure the engine holds every image, pulling those it lacks; resolves once all are present.
+ * See `createImageKeeper` for the loop's rules.
  */
 export async function ensureImages(
 	engine: Engine,
@@ -291,26 +364,7 @@ export async function ensureImages(
 		sleep?: (ms: number) => Promise<void>;
 	} = {}
 ): Promise<void> {
-	const { onReady, sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)) } =
-		options;
-	await Promise.all(
-		Object.entries(images).map(async ([language, image]) => {
-			for (let pause = pullRetryMinMs; ; pause = Math.min(pause * 2, pullRetryMaxMs)) {
-				try {
-					if (!(await engine.hasImage(image))) {
-						console.log(`Pulling Sandbox image ${image}`);
-						await engine.pull(image);
-						console.log(`Pulled Sandbox image ${image}`);
-					}
-					onReady?.(language);
-					return;
-				} catch (error) {
-					console.error(`Could not pull Sandbox image ${image}, retrying in ${pause} ms`, error);
-					await sleep(pause);
-				}
-			}
-		})
-	);
+	await createImageKeeper(engine, images, options).start();
 }
 
 function safeJson(text: string): unknown {
@@ -321,6 +375,10 @@ function safeJson(text: string): unknown {
 	}
 }
 
-export function createSandboxRunner(engine: Engine, instanceId: string): RunnerPort {
-	return { execute: (request) => execute(engine, instanceId, request) };
+export function createSandboxRunner(
+	engine: Engine,
+	instanceId: string,
+	hooks: { onImageMissing?: (language: Language) => void } = {}
+): RunnerPort {
+	return { execute: (request) => execute(engine, instanceId, request, hooks.onImageMissing) };
 }
