@@ -6,7 +6,7 @@ A worker drains piles of items. A pile is processed in whole hours: in one hour 
 |---|---|---|
 | `rate H` | Finds the smallest whole rate `R >= 1` at which all the piles together take at most `H` hours. | `R` |
 
-For this command, the array holds between 1 and 20,000 pile sizes in any order (not sorted), and each pile size is between 1 and 1,000,000,000. `H` is at least the number of piles (a pile takes at least one hour) and at most 100,000,000,000,000. The answer is never more than the biggest pile, because at that rate every pile takes one hour.
+For this command, the array holds between 1 and 5,000 pile sizes in any order (not sorted), and each pile size is between 1 and 1,000,000,000. `H` is at least the number of piles (a pile takes at least one hour) and at most 100,000,000,000,000. The answer is never more than the biggest pile, because at that rate every pile takes one hour.
 
 ## Example
 

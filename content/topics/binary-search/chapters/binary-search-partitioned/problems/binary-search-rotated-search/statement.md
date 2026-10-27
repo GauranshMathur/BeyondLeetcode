@@ -4,7 +4,7 @@ Use the cut to search a rotated array for a value. Keep every earlier command wo
 |---|---|---|
 | `rsearch X` | Looks for `X` in the array loaded by the last `array` command. | the index of `X` in that array, or `-1` if `X` is not there or the array is empty |
 
-For this command, the array is a rotation of a strictly increasing sequence, as in the last Problem: at most 20,000 values, none repeated, each between -1,000,000,000 and 1,000,000,000. The index printed is the index in the array as given, not in the sorted order. Do not scan every item. Note the answer for a miss is `-1`, not Java's `-(insertion point) - 1`.
+For this command, the array is a rotation of a strictly increasing sequence, as in the last Problem: at most 5,000 values, none repeated, each between -1,000,000,000 and 1,000,000,000. The index printed is the index in the array as given, not in the sorted order. Do not scan every item. Note the answer for a miss is `-1`, not Java's `-(insertion point) - 1`.
 
 ## Example
 

@@ -1,4 +1,12 @@
-array 4 -4 -3 -2 -1 0 1 2 3
+array 11 14 17 20 23 26 29 32 35 38 2 5 8
 rotation
-array -3 -2 -1 0 1 2 3 4 -4
+array 14 17 20 23 26 29 32 35 38 2 5 8 11
+rotation
+array 17 20 23 26 29 32 35 38 2 5 8 11 14
+rotation
+array 20 23 26 29 32 35 38 2 5 8 11 14 17
+rotation
+array 23 26 29 32 35 38 2 5 8 11 14 17 20
+rotation
+array 26 29 32 35 38 2 5 8 11 14 17 20 23
 rotation

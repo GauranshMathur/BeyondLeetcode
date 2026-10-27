@@ -6,7 +6,7 @@ An array is **rotated** when it started as a strictly increasing sequence and it
 |---|---|---|
 | `rotation` | Looks at the array loaded by the last `array` command and finds its smallest item. | the index of the smallest item, or `-1` if the array is empty |
 
-For this command, the array is always a rotation of a strictly increasing sequence (so no value appears twice), it has at most 20,000 values, and every value is between -1,000,000,000 and 1,000,000,000. Do not read every item: use a binary search, and compare against the first item.
+For this command, the array is always a rotation of a strictly increasing sequence (so no value appears twice), it has at most 5,000 values, and every value is between -1,000,000,000 and 1,000,000,000. Do not read every item: use a binary search, and compare against the first item.
 
 ## Example
 

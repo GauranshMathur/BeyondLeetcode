@@ -1,3 +1,8 @@
 array 4
 rsearch 4
 rsearch 5
+array 2 1
+rsearch 1
+rsearch 2
+rsearch 3
+rsearch 0

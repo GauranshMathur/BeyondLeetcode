@@ -1,18 +1,6 @@
-array 6 -6 -5 -4 -3 -2 -1 0 1 2 3 4 5
-rsearch -8
-rsearch -7
-rsearch -6
-rsearch -5
-rsearch -4
-rsearch -3
-rsearch -2
-rsearch -1
+array -1000000000 0 1000000000
+rsearch 1000000000
+rsearch -1000000000
+array 1000000000 -1000000000 0
 rsearch 0
-rsearch 1
-rsearch 2
-rsearch 3
-rsearch 4
-rsearch 5
-rsearch 6
-rsearch 7
-rsearch 8
+rsearch 1000000000

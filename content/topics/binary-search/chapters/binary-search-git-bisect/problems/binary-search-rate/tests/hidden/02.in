@@ -1,4 +1,9 @@
-array 1000000000
-rate 1
-rate 2
-rate 1000000000
+array 1000000000 1000000000 1000000000
+rate 3
+rate 4
+rate 3000000000
+array 7 1 1 1 1
+rate 5
+rate 6
+rate 7
+rate 11
