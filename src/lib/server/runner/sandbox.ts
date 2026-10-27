@@ -299,8 +299,10 @@ async function removeCreatedByName(engine: Engine, name: string): Promise<void> 
 	if (pending >= maxPendingLateRemoves) return;
 	pendingLateRemoves.set(engine, pending + 1);
 	const late = setTimeout(() => {
-		// Counted until the remove settles (or its own timeout), not only until the timer fires.
-		within(engine.remove(name), removeAttemptTimeoutMs)
+		// Counted until the engine's own remove settles (every engine call has a deadline), not
+		// until the timer fires or a `within` gives up on it: the request is still out until then.
+		engine
+			.remove(name)
 			.catch(() => {})
 			.finally(() => pendingLateRemoves.set(engine, (pendingLateRemoves.get(engine) ?? 1) - 1));
 	}, removeByNameLateMs);
