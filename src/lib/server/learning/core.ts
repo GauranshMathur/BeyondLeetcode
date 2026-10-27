@@ -63,6 +63,8 @@ export interface LearningCoreDeps {
 	runner?: RunnerPort;
 	/** Most hidden Tests in one container; defaults to the configured limit. A test knob. */
 	hiddenBatchTests?: number;
+	/** Most Runs and Submits one Learner has running at once; defaults to the configured limit. A test knob. */
+	maxRunsPerLearner?: number;
 	clock?: () => Date;
 }
 
@@ -168,6 +170,9 @@ export interface LearningCore {
  */
 export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 	const now = () => (deps.clock ?? (() => new Date()))();
+	const maxRunsPerLearner = deps.maxRunsPerLearner ?? sandboxConfig.maxRunsPerLearner;
+	/** Runs and Submits in flight per Learner id, across every `forLearner` view. */
+	const running = new Map<string, number>();
 	return {
 		forLearner: (learnerId) => {
 			/** Sends code and Test inputs (never expected outputs) to the Runner; any failure is RunnerUnavailable. */
@@ -186,6 +191,22 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					});
 				} catch {
 					throw new LearningError('RunnerUnavailable');
+				}
+			};
+			/**
+			 * Holds one of the Learner's Run/Submit places while `work` runs and frees it on every path.
+			 * A Learner at the cap is refused as RunnerUnavailable (the saved code stays, as for any outage).
+			 */
+			const withRunPlace = async <T>(work: () => Promise<T>): Promise<T> => {
+				const held = running.get(learnerId) ?? 0;
+				if (held >= maxRunsPerLearner) throw new LearningError('RunnerUnavailable');
+				running.set(learnerId, held + 1);
+				try {
+					return await work();
+				} finally {
+					const left = (running.get(learnerId) ?? 1) - 1;
+					if (left > 0) running.set(learnerId, left);
+					else running.delete(learnerId);
 				}
 			};
 			/**
@@ -310,10 +331,12 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					return { files, ...(await learner.saveCode(build, files)) };
 				},
 				run: (build, files) =>
-					saveThen(build, files, async ({ problemId, language }, revision) => {
-						const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
-						return runView(tests, await execute(language, files, tests), revision);
-					}),
+					saveThen(build, files, ({ problemId, language }, revision) =>
+						withRunPlace(async () => {
+							const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
+							return runView(tests, await execute(language, files, tests), revision);
+						})
+					),
 				switchLanguage: async (problemId, language) => {
 					const topicId = deps.catalogue.problem(problemId)?.topicId;
 					if (topicId === undefined) throw new LearningError('NotFound');
@@ -367,40 +390,42 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					return learner.hints(problemId);
 				},
 				submit: (build, files) =>
-					saveThen(build, files, async ({ problemId, language }, revision) => {
-						// Visible Tests in one container, then the hidden ones in containers of at most
-						// `hiddenBatchTests`: nothing a Hidden Test runs shares one with a Test whose output is shown.
-						const plan = submitPlan(
-							deps.catalogue,
-							problemId,
-							deps.hiddenBatchTests ?? sandboxConfig.hiddenBatchTests
-						);
-						const batches = await runSubmission(plan, (tests) => execute(language, files, tests));
-						const { verdict, failure, failingProblemId } = judge(
-							batches,
-							problemId,
-							(id) => deps.catalogue.problem(id)?.title ?? id
-						);
-						const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-						const { submissionId, solved, accepted } = await recordSubmission(deps, learnerId, {
-							learnerId,
-							problemId,
-							topicId,
-							language,
-							files,
-							verdict,
-							failingProblemId: failingProblemId ?? null,
-							createdAt: now()
-						});
-						return {
-							submissionId,
-							verdict,
-							...(failure && { failure }),
-							revision,
-							status: solved ? 'Solved' : 'Attempted',
-							...(accepted && { accepted })
-						};
-					})
+					saveThen(build, files, ({ problemId, language }, revision) =>
+						withRunPlace(async () => {
+							// Visible Tests in one container, then the hidden ones in containers of at most
+							// `hiddenBatchTests`: nothing a Hidden Test runs shares one with a Test whose output is shown.
+							const plan = submitPlan(
+								deps.catalogue,
+								problemId,
+								deps.hiddenBatchTests ?? sandboxConfig.hiddenBatchTests
+							);
+							const batches = await runSubmission(plan, (tests) => execute(language, files, tests));
+							const { verdict, failure, failingProblemId } = judge(
+								batches,
+								problemId,
+								(id) => deps.catalogue.problem(id)?.title ?? id
+							);
+							const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
+							const { submissionId, solved, accepted } = await recordSubmission(deps, learnerId, {
+								learnerId,
+								problemId,
+								topicId,
+								language,
+								files,
+								verdict,
+								failingProblemId: failingProblemId ?? null,
+								createdAt: now()
+							});
+							return {
+								submissionId,
+								verdict,
+								...(failure && { failure }),
+								revision,
+								status: solved ? 'Solved' : 'Attempted',
+								...(accepted && { accepted })
+							};
+						})
+					)
 			};
 			return learner;
 		}

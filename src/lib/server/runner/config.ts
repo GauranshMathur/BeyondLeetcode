@@ -71,7 +71,15 @@ export const sandboxConfig = {
 	 */
 	queueWaitMs: 8_000,
 	/** Most requests waiting for a slot; one past this gets 503 "busy" at once. */
-	maxQueued: 8
+	maxQueued: 8,
+	/**
+	 * Most Runs and Submits one Learner has running at once, counted together (Learning core). A Run is
+	 * one container; a Submit is up to three in a row, so at most one Runner slot or queue place each at
+	 * a time. Two covers a Run beside a Submit, or a second tab; the Runner has `availableParallelism()`
+	 * slots (2 on the small VPS) and `maxQueued` places, so one Learner never holds more than 2 of the 2 + 8
+	 * and cannot fill the queue alone, while a normal Learner (one at a time) never meets it.
+	 */
+	maxRunsPerLearner: 2
 } as const;
 
 /** Shortest bearer token the Runner starts with. */

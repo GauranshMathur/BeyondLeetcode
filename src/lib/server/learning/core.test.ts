@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { filesDigest } from '../../problem-wire.ts';
 import { type Language, loadCatalogue } from '../content/catalogue.ts';
 import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
+import type { ExecuteResult } from '../runner/port.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
 import {
 	type BuildRef,
@@ -1842,5 +1843,189 @@ describe('a keepalive save on top of the tab own unconfirmed save (C69)', () => 
 
 		expect(await learner.saveCode(ref('stacks-push', 1), A)).toEqual({ revision: 2 });
 		expect((await learner.problem('stacks-push')).build.revision).toBe(2);
+	});
+});
+
+describe('one Learner has at most maxRunsPerLearner Runs and Submits running', () => {
+	/** A Runner whose calls each wait for `finishOne`, so a test decides when a Run or Submit ends. */
+	function gatedRunner(failWith?: Error) {
+		const pending: { resolve: () => void; reject: (e: Error) => void }[] = [];
+		return {
+			execute: (request: { tests: readonly { id: string }[] }) =>
+				new Promise<ExecuteResult>((resolve, reject) => {
+					pending.push({
+						resolve: () =>
+							resolve({
+								results: request.tests.map(({ id }) => ({
+									id,
+									status: 'ok' as const,
+									stdout: '',
+									stderr: ''
+								}))
+							}),
+						reject
+					});
+				}),
+			inFlight: () => pending.length,
+			finishOne: () => pending.shift()?.resolve(),
+			failOne: (e = failWith ?? new Error('down')) => pending.shift()?.reject(e)
+		};
+	}
+	async function setup(cap = 2) {
+		const runner = gatedRunner();
+		const db = await createTestDb();
+		const core = createLearningCore({
+			catalogue: await loadCatalogue(fixtureDir),
+			db,
+			runner,
+			maxRunsPerLearner: cap
+		});
+		return { runner, db, core };
+	}
+	const tick = () => new Promise((r) => setTimeout(r, 20));
+
+	it('refuses one past the cap as RunnerUnavailable, counting Runs and Submits together, saving but recording nothing', async () => {
+		const { runner, db, core } = await setup(2);
+		const a = core.forLearner('ann');
+		const run = a.run(ref('stacks-push', 0), { 'main.py': '1' });
+		await tick();
+		const submit = a.submit(ref('stacks-push', 1), { 'main.py': '2' });
+		await tick();
+
+		await expect(a.run(ref('stacks-push', 2), { 'main.py': '3' })).rejects.toMatchObject({
+			code: 'RunnerUnavailable',
+			revision: 3
+		});
+		await expect(a.submit(ref('stacks-push', 3), { 'main.py': '4' })).rejects.toMatchObject({
+			code: 'RunnerUnavailable',
+			revision: 4
+		});
+		expect(runner.inFlight()).toBe(2);
+		expect(await db.submission.count()).toBe(0);
+		// a Submit makes several Runner calls in a row: keep answering until both end
+		for (let i = 0; i < 6; i++) {
+			runner.finishOne();
+			await tick();
+		}
+		await Promise.allSettled([run, submit]);
+	});
+
+	it('counts each Learner on their own, across every forLearner view', async () => {
+		const { runner, core } = await setup(1);
+		const first = core.forLearner('ann').run(ref('stacks-push', 0), { 'main.py': '1' });
+		await tick();
+
+		const other = core.forLearner('bob').run(ref('stacks-push', 0), { 'main.py': '1' });
+		await expect(
+			core.forLearner('ann').run(ref('stacks-push', 1), { 'main.py': '2' })
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+		await tick();
+		expect(runner.inFlight()).toBe(2);
+		runner.finishOne();
+		runner.finishOne();
+		await Promise.all([first, other]);
+	});
+
+	it('frees the cap when a Run finishes', async () => {
+		const { runner, core } = await setup(1);
+		const a = core.forLearner('ann');
+		const first = a.run(ref('stacks-push', 0), { 'main.py': '1' });
+		await tick();
+		runner.finishOne();
+		await first;
+
+		const second = a.run(ref('stacks-push', 1), { 'main.py': '2' });
+		await tick();
+		expect(runner.inFlight()).toBe(1);
+		runner.finishOne();
+		await second;
+	});
+
+	it('frees the cap when a Submit finishes with a Verdict', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const correct: NonNullable<RunnerScript['tests']> = {};
+		for (const t of [
+			...(catalogue.problem('stacks-push')?.exampleTests ?? []),
+			...(catalogue.hiddenTests('stacks-push') ?? [])
+		])
+			correct[t.id] = { status: 'ok', stdout: t.expected };
+		const a = createLearningCore({
+			catalogue,
+			db: await createTestDb(),
+			runner: createScriptedRunner({ tests: correct }),
+			maxRunsPerLearner: 1
+		}).forLearner('ann');
+
+		expect(await a.submit(ref('stacks-push', 0), { 'main.py': '1' })).toMatchObject({
+			verdict: 'Accepted'
+		});
+		expect(await a.submit(ref('stacks-push', 1), { 'main.py': '2' })).toMatchObject({
+			verdict: 'Accepted'
+		});
+	});
+
+	it('frees the cap when the Runner fails mid-Run or mid-Submit', async () => {
+		const { runner, core } = await setup(1);
+		const a = core.forLearner('ann');
+		const run = a.run(ref('stacks-push', 0), { 'main.py': '1' });
+		await tick();
+		runner.failOne();
+		await expect(run).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+
+		const submit = a.submit(ref('stacks-push', 1), { 'main.py': '2' });
+		await tick();
+		runner.failOne();
+		await expect(submit).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+
+		const after = a.run(ref('stacks-push', 2), { 'main.py': '3' });
+		await tick();
+		expect(runner.inFlight()).toBe(1);
+		runner.finishOne();
+		await after;
+	});
+
+	it('frees the cap when the Run or Submit throws something that is not a Runner error', async () => {
+		const { runner, core } = await setup(1);
+		const a = core.forLearner('ann');
+		const run = a.run(ref('stacks-push', 0), { 'main.py': '1' });
+		await tick();
+		runner.failOne(new TypeError('boom'));
+		await expect(run).rejects.toBeDefined();
+
+		const after = a.run(ref('stacks-push', 1), { 'main.py': '2' });
+		await tick();
+		expect(runner.inFlight()).toBe(1);
+		runner.finishOne();
+		await after;
+	});
+
+	it('does not hold the cap for a save conflict or a refusal before the Runner', async () => {
+		const { runner, core } = await setup(1);
+		const a = core.forLearner('ann');
+		await expect(a.run(ref('stacks-push', 5), { 'main.py': '1' })).rejects.toMatchObject({
+			code: 'RevisionConflict'
+		});
+		await expect(a.submit(ref('queues-enqueue', 0), { 'main.py': '1' })).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+
+		const ok = a.run(ref('stacks-push', 0), { 'main.py': '1' });
+		await tick();
+		expect(runner.inFlight()).toBe(1);
+		runner.finishOne();
+		await ok;
+	});
+
+	it('frees the cap when the Runner is missing', async () => {
+		const core = createLearningCore({
+			catalogue: await loadCatalogue(fixtureDir),
+			db: await createTestDb(),
+			maxRunsPerLearner: 1
+		});
+		const a = core.forLearner('ann');
+		for (const revision of [0, 1, 2])
+			await expect(a.run(ref('stacks-push', revision), { 'main.py': 'x' })).rejects.toMatchObject({
+				code: 'RunnerUnavailable'
+			});
 	});
 });
