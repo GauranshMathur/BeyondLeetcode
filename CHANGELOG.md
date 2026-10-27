@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.9.0...v1.10.0) (2026-10-27)
+
+
+### Features
+
+* **beyondleetcode:** C104 Sliding window Topic ([#350](https://github.com/GauranshMathur/BeyondLeetcode/issues/350)) ([10cc751](https://github.com/GauranshMathur/BeyondLeetcode/commit/10cc751360a91c64728af14d48d2236ad2e9a062))
+
 ## [1.9.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.8.0...v1.9.0) (2026-10-27)
 
 

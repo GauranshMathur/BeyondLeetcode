@@ -1,0 +1,25 @@
+load
+flight 5
+load 4
+flight 4
+flight 3
+load 5 5 5
+flight 0
+flight 4
+flight 5
+flight 10
+flight 15
+flight 100
+load 1 1 1 1
+flight 1
+flight 3
+flight 4
+load 9 1 1 1 9 1 1
+flight 3
+flight 4
+flight 8
+load 2 7 1 8 2 8
+flight 1
+flight 9
+flight 10
+flight 17

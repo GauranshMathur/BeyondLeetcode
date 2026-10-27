@@ -1,0 +1,5 @@
+Keep `prev` and `cur`, both 0. For each index `i`: if `i` is a positive multiple of `K`, set `prev` to `cur` and `cur` to 0. Add `values[i]` to `cur`. Let `elapsed = i % K + 1`. If `prev * (K - elapsed) + cur * K > B * K`, add one to the answer.
+
+Multiplying both sides by `K` is what keeps the arithmetic in integers: `estimate > B` is the same as `K * estimate > K * B`. Each item is read once, so time is O(n) in the worst case, and extra space is O(1): two totals and a count. No window of items is ever stored.
+
+**Where the estimate is wrong.** It treats the previous period as if its events were spread evenly. Take `load 0 0 6 6 0 0 1` with `K = 3`. At second 3, `prev = 6`, `elapsed = 1` and `cur = 6`, so the estimate is 6 × 2/3 + 6 = 10. The true total of the last three seconds (seconds 1 to 3) is 12, which is what `peak` sees, because the 6 in the previous period all arrived at its end. This is the error the Chapter quotes Cloudflare as accepting, and it is closer than a counter that resets at the boundary, which at second 3 has counted only the new period's 6.

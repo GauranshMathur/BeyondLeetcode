@@ -1,0 +1,19 @@
+load
+cover 1
+load 4
+cover 4
+cover 5
+cover 4 4
+load 1 2 1 1 2
+cover 1 1 2
+cover 1 1 1
+cover 2 2
+cover 1 1 1 1
+load 3 9 3 8 8 3
+cover 3 8
+cover 9 8 3
+cover 3 3 3
+cover 7
+load -1 0 -1 0 5
+cover 0 -1
+cover 5 -1 -1

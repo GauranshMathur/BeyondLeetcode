@@ -1,0 +1,4 @@
+{
+	"title": "fail2ban: counting failures per host",
+	"problems": ["sliding-window-bans", "sliding-window-distinct", "sliding-window-cover"]
+}
