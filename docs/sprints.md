@@ -147,6 +147,16 @@ Not in the sprint:
 - Linked lists' Reorder List is left for a later card.
 - C95 (a malformed image reference) and C108 (a Submission meeting a busy Runner between its batches) have no sprint.
 
+## Sprint 9 · Hardening
+
+**Goal:** the two Runner follow-ups from Sprint 8's reviews are closed.
+
+- **C95:** a malformed image reference in the Sandbox config fails at start-up instead of pulling every tag (from C93's sandbox review, #337).
+- **C108:** a Submission survives a busy Runner between its batches, and one learner can't have more than a set number of Submits running at once (from C107's sandbox review, #353).
+- **Lanes:** the two cards edit different files, so they run in parallel. Each gets `sandbox-security-reviewer` before merge.
+
+**Exit:** both cards Done and CI green on `main`. Releases stay `1.x`.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
