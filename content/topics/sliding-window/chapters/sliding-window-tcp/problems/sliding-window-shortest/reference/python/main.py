@@ -17,6 +17,22 @@ commands["load"] = load
 commands["show"] = show
 
 
+def blocks(args):
+    k = int(args[0])
+    if not values:
+        print(0)
+        return
+    best = None
+    for start in range(0, len(values), k):
+        total = sum(values[start : start + k])
+        if best is None or total > best:
+            best = total
+    print(best)
+
+
+commands["blocks"] = blocks
+
+
 def peak(args):
     k = int(args[0])
     n = len(values)
@@ -34,22 +50,6 @@ def peak(args):
 
 
 commands["peak"] = peak
-
-
-def blocks(args):
-    k = int(args[0])
-    if not values:
-        print(0)
-        return
-    best = None
-    for start in range(0, len(values), k):
-        total = sum(values[start : start + k])
-        if best is None or total > best:
-            best = total
-    print(best)
-
-
-commands["blocks"] = blocks
 
 
 def approx(args):

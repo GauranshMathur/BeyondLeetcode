@@ -12,6 +12,21 @@ commands.show = () => {
 	out.push(values.join(' '));
 };
 
+commands.blocks = (args) => {
+	const k = Number(args[0]);
+	if (values.length === 0) {
+		out.push('0');
+		return;
+	}
+	let best = Number.NEGATIVE_INFINITY;
+	for (let start = 0; start < values.length; start += k) {
+		let total = 0;
+		for (let i = start; i < Math.min(start + k, values.length); i++) total += values[i];
+		best = Math.max(best, total);
+	}
+	out.push(String(best));
+};
+
 commands.peak = (args) => {
 	const n = values.length;
 	if (n === 0) {

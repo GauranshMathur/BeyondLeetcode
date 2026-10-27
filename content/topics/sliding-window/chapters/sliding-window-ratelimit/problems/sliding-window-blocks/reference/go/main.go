@@ -28,28 +28,6 @@ func init() {
 }
 
 func init() {
-	commands["peak"] = func(args []int) {
-		n := len(values)
-		if n == 0 {
-			fmt.Fprintln(out, 0)
-			return
-		}
-		k := min(args[0], n)
-		// Slide a window of k items: add the item that enters, subtract the one that leaves.
-		window := 0
-		for i := 0; i < k; i++ {
-			window += values[i]
-		}
-		best := window
-		for i := k; i < n; i++ {
-			window += values[i] - values[i-k]
-			best = max(best, window)
-		}
-		fmt.Fprintln(out, best)
-	}
-}
-
-func init() {
 	commands["blocks"] = func(args []int) {
 		k := args[0]
 		if len(values) == 0 {

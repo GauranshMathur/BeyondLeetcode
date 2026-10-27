@@ -28,6 +28,27 @@ func init() {
 }
 
 func init() {
+	commands["blocks"] = func(args []int) {
+		k := args[0]
+		if len(values) == 0 {
+			fmt.Fprintln(out, 0)
+			return
+		}
+		best, first := 0, true
+		for start := 0; start < len(values); start += k {
+			total := 0
+			for i := start; i < min(start+k, len(values)); i++ {
+				total += values[i]
+			}
+			if first || total > best {
+				best, first = total, false
+			}
+		}
+		fmt.Fprintln(out, best)
+	}
+}
+
+func init() {
 	commands["peak"] = func(args []int) {
 		n := len(values)
 		if n == 0 {
@@ -44,27 +65,6 @@ func init() {
 		for i := k; i < n; i++ {
 			window += values[i] - values[i-k]
 			best = max(best, window)
-		}
-		fmt.Fprintln(out, best)
-	}
-}
-
-func init() {
-	commands["blocks"] = func(args []int) {
-		k := args[0]
-		if len(values) == 0 {
-			fmt.Fprintln(out, 0)
-			return
-		}
-		best, first := 0, true
-		for start := 0; start < len(values); start += k {
-			total := 0
-			for i := start; i < min(start+k, len(values)); i++ {
-				total += values[i]
-			}
-			if first || total > best {
-				best, first = total, false
-			}
 		}
 		fmt.Fprintln(out, best)
 	}

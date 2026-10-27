@@ -12,24 +12,6 @@ commands.show = () => {
 	out.push(values.join(' '));
 };
 
-commands.peak = (args) => {
-	const n = values.length;
-	if (n === 0) {
-		out.push('0');
-		return;
-	}
-	const k = Math.min(Number(args[0]), n);
-	// Slide a window of k items: add the item that enters, subtract the one that leaves.
-	let window = 0;
-	for (let i = 0; i < k; i++) window += values[i];
-	let best = window;
-	for (let i = k; i < n; i++) {
-		window += values[i] - values[i - k];
-		best = Math.max(best, window);
-	}
-	out.push(String(best));
-};
-
 commands.blocks = (args) => {
 	const k = Number(args[0]);
 	if (values.length === 0) {

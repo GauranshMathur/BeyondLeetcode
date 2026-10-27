@@ -1,0 +1,5 @@
+{
+	"title": "The kernel's three-sample filter",
+	"kind": "extra",
+	"parent": "sliding-window-windowmax"
+}

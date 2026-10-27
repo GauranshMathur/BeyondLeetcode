@@ -17,25 +17,6 @@ commands["load"] = load
 commands["show"] = show
 
 
-def peak(args):
-    k = int(args[0])
-    n = len(values)
-    if n == 0:
-        print(0)
-        return
-    k = min(k, n)
-    # Slide a window of k items: add the item that enters, subtract the one that leaves.
-    window = sum(values[:k])
-    best = window
-    for i in range(k, n):
-        window += values[i] - values[i - k]
-        best = max(best, window)
-    print(best)
-
-
-commands["peak"] = peak
-
-
 def blocks(args):
     k = int(args[0])
     if not values:
