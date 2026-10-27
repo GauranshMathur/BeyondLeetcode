@@ -13,6 +13,14 @@ import { createSandboxRunner, ensureImages } from './sandbox.ts';
  * validates the content folder first. Point it at real content with CONTENT_DIR; it defaults to the
  * fixture. The pure rules the Learning core uses (`submitPlan`, `judge`) pick the Tests and the
  * Verdict, so nothing is re-implemented here.
+ *
+ * The cases run concurrently, at most `maxConcurrency` at once (vitest.sandbox.config.ts): a later
+ * Problem submits many Tests, so one after another the check outgrows the CI job's timeout as
+ * Topics are added. Every case's message names its Problem and Language, whatever order they finish.
+ * A Problem that submits more than `heavyTests` Tests runs alone, after the rest: its hidden batch
+ * comes within a few seconds of the container's time limit (`containerTimeoutMs`, a Test costs
+ * about 0.2 s in TypeScript), so sibling containers competing for the runner's CPUs would tip it
+ * into Time Limit Exceeded.
  */
 
 const contentDir = resolve(process.env.CONTENT_DIR ?? 'src/lib/server/content/fixture');
@@ -24,6 +32,12 @@ const problems = catalogue
 	.topicMap()
 	.flatMap(({ id }) => catalogue.topic(id)?.chapters ?? [])
 	.flatMap((chapter) => chapter.problems);
+/** Most Tests a Problem may submit and still share the runner with other cases. */
+const heavyTests = 30;
+const testCount = (problemId: string): number => {
+	const plan = submitPlan(catalogue, problemId);
+	return plan.visible.length + plan.hidden.length;
+};
 const languages = Object.keys(sandboxConfig.images) as Language[];
 
 describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () => {
@@ -33,7 +47,16 @@ describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () =
 		expect(problems.length).toBeGreaterThan(0);
 	});
 
-	for (const { id: problemId } of problems) {
+	const ids = problems.map(({ id }) => id);
+	const light = ids.filter((id) => testCount(id) <= heavyTests);
+	const heavy = ids.filter((id) => testCount(id) > heavyTests);
+	// vitest fails a suite with no case in it, and the fixture has no heavy Problem.
+	if (light.length > 0) describe.concurrent('shared', () => cases(light));
+	if (heavy.length > 0) describe('alone', () => cases(heavy));
+});
+
+function cases(ids: string[]) {
+	for (const problemId of ids) {
 		for (const language of languages) {
 			it(`${problemId} / ${language}`, async () => {
 				const files = catalogue.problem(problemId)?.referenceCode[language];
@@ -64,4 +87,4 @@ describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () =
 			});
 		}
 	}
-});
+}

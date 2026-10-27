@@ -7,6 +7,8 @@ export default defineConfig({
 		environment: 'node',
 		include: ['src/**/*.sandbox.test.ts'],
 		expect: { requireAssertions: true },
-		fileParallelism: false
+		fileParallelism: false,
+		// How many content-check cases run at once (each starts its own Sandbox containers).
+		maxConcurrency: Number(process.env.SANDBOX_CONCURRENCY ?? 4)
 	}
 });
