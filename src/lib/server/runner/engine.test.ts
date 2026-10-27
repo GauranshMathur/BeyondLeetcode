@@ -319,4 +319,27 @@ describe('Engine attach', () => {
 
 		expect(heads[0]).toBe('/containers/..%2Fimages%2Fx%3Fy?force=true&v=true');
 	});
+
+	it('gives up on a removal the daemon reports as in progress for ever, within one deadline', async () => {
+		let requests = 0;
+		const socketPath = await daemon((socket, head) => {
+			requests++;
+			if (head.startsWith('DELETE')) {
+				const body = '{"message":"removal of container x is already in progress"}';
+				socket.end(
+					`HTTP/1.1 409 Conflict\r\nConnection: close\r\nContent-Length: ${body.length}\r\n\r\n${body}`
+				);
+			} else {
+				socket.end('HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\n{}');
+			}
+		});
+		const started = Date.now();
+
+		await expect(createEngine(socketPath, 400).remove('x')).rejects.toThrow(/still in progress/);
+
+		expect(Date.now() - started).toBeLessThan(1_500);
+		const seen = requests;
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(requests).toBe(seen);
+	});
 });

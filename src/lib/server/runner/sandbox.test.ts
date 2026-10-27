@@ -853,6 +853,48 @@ describe('Sandbox runner: cleanup pauses and late-remove slots', () => {
 		vi.useRealTimers();
 		vi.restoreAllMocks();
 	});
+
+	it('frees a late remove slot once, when the engine gives up on a removal stuck in progress', async () => {
+		// The engine's in-progress poll ends at its own 15 s deadline by rejecting.
+		let late = false;
+		const engine = {
+			create: async () => {
+				throw new Error('daemon down');
+			},
+			remove: vi.fn(() =>
+				late
+					? new Promise<boolean>((_, reject) =>
+							setTimeout(() => reject(new Error('removal is still in progress')), 15_000)
+						)
+					: Promise.reject(new Error('fail fast'))
+			)
+		} as unknown as Engine;
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.useFakeTimers();
+		const run = () =>
+			createSandboxRunner(engine, 'inst-1')
+				.execute(request)
+				.catch(() => {});
+		const batch = async () => {
+			late = false;
+			const runs = Array.from({ length: 64 }, run);
+			await vi.advanceTimersByTimeAsync(5_000);
+			await Promise.all(runs);
+			late = true;
+			await vi.advanceTimersByTimeAsync(31_000);
+		};
+
+		await batch();
+		// 31 s on, the 64 stuck removes are past their 15 s deadline: all slots are free again.
+		await vi.advanceTimersByTimeAsync(15_000);
+		const before = (engine.remove as ReturnType<typeof vi.fn>).mock.calls.length;
+		await batch();
+		await vi.advanceTimersByTimeAsync(15_000);
+		// Exactly 64 more Run removes and 64 late ones: a double free would let more through.
+		expect((engine.remove as ReturnType<typeof vi.fn>).mock.calls.length - before).toBe(128);
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
 });
 
 describe('Sandbox runner: a pull the daemon answers 200 but did not complete', () => {

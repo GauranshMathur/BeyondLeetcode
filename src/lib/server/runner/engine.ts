@@ -429,9 +429,20 @@ export function createEngine(
 			const reply = await call('DELETE', `/containers/${ref}?force=true&v=true`);
 			if (reply.status === 409 && /already in progress/.test(reply.body)) {
 				// The daemon is already removing it (AutoRemove): wait until it is gone.
-				for (let poll = 0; poll < 50; poll++) {
-					if ((await call('GET', `/containers/${ref}/json`)).status === 404) return true;
-					await new Promise((resolve) => setTimeout(resolve, 100));
+				// One overall deadline (the call timeout), so a daemon that never finishes cannot hold
+				// the caller, or a late-remove slot, for 50 polls of a full call timeout each.
+				const deadline = Date.now() + callTimeoutMs;
+				while (Date.now() < deadline) {
+					const left = deadline - Date.now();
+					try {
+						if ((await call('GET', `/containers/${ref}/json`, undefined, left)).status === 404)
+							return true;
+					} catch (error) {
+						// A poll cut short by the deadline is the deadline; any other failure stands.
+						if (Date.now() < deadline) throw error;
+						break;
+					}
+					await new Promise((resolve) => setTimeout(resolve, Math.min(100, left)));
 				}
 				throw new Error(`Docker remove of ${id} is still in progress`);
 			}
