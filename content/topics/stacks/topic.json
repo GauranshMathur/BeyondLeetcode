@@ -1,0 +1,11 @@
+{
+	"title": "Stacks",
+	"summary": "Build the stack behind Go's goroutine stacks, Java's Stack class, CPython's sort and CPython's parser, and see how each one decides when to grow, shrink, merge or refuse.",
+	"prerequisites": ["dynamic-arrays"],
+	"chapters": [
+		"stacks-go-goroutine-stacks",
+		"stacks-java-stack-class",
+		"stacks-timsort-pending",
+		"stacks-cpython-tokenizer"
+	]
+}

@@ -1,0 +1,12 @@
+call 2000
+call 2000
+ret
+ret
+call 500
+segment
+moved
+gc
+segment
+moved
+gc
+segment
