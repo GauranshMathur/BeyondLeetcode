@@ -275,11 +275,11 @@ describe('throttle', () => {
 		});
 	});
 
-	it('succeed still gives the address its count back when a full Account map had no room for the Account', () => {
+	it('succeed still gives the address its count back when the Account is the third past a small maxKeys', () => {
 		const { throttle } = setup({ maxKeys: 2, addressLimit: 3 });
 		throttle.attempt(from('1.1.1.1', 'a'));
 		throttle.attempt(from('1.1.1.2', 'b'));
-		// The Account maps are full of live entries: this Account goes uncounted there.
+		// The Account map has no bound: this Account is counted like the others.
 		const mine = tokenOf(throttle.attempt(from('1.1.1.3', 'c')));
 		throttle.succeed(mine);
 		expect(throttle.attempt(from('1.1.1.4', 'd')).allowed).toBe(true);

@@ -3,7 +3,11 @@ import { isIP } from 'node:net';
 export interface ThrottleInput {
 	/** The client address as the server saw it; any spelling of one address shares a counter. */
 	address: string;
-	/** The id of the Account the sign-in names, or null when it names none. */
+	/**
+	 * The id of the Account the sign-in names, or null when it names none. It must be the id of a stored
+	 * Account, never text the client typed: the Account counter has no size bound, so a client-chosen key
+	 * here would let the client grow it. Client-chosen keys go in `unknownEmail`.
+	 */
 	accountId: string | null;
 	/**
 	 * Set when `accountId` is null and the sign-in typed an email: a digest that stands for that email (the
@@ -149,7 +153,10 @@ interface Entry {
  * Account tried in the window and the client cannot grow it. It has no maxKeys bound and never evicts or
  * skips, because dropping an Account's entry would give that Account a fresh 50 and skipping it would leave
  * it uncapped (card C85). Every Account is held to 50 per window however many Accounts the Instance has.
- * Its memory is bounded by the number of Accounts, not by maxKeys. `emailAccounts` keys are the client's,
+ * Its memory is bounded by the distinct real Account ids tried within the windows still kept ("Account
+ * tried" below), not by maxKeys and not by the current number of Accounts: a removed Account's entry stays
+ * until its window ends, and open registration lets anyone create more Accounts, so the map can grow with
+ * sign-ups (Sign up has its own throttle). `emailAccounts` keys are the client's,
  * so it keeps the maxKeys bound and evicts the earliest window like the pair maps.
  *
  * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
@@ -166,7 +173,11 @@ interface Entry {
  * target's 5 tries from one address, then floods `pairs` with other known Accounts from other addresses
  * until that pair is evicted; if the email has an Account, its next tries are admitted again and run the
  * hash, while an email with none sits in `emailPairs`, which that flood does not touch, and stays refused
- * fast. The cost scales with maxKeys; it is accepted. An attacker with more addresses than maxKeys inside
+ * fast. (3) A late Account and an unknown email each spend their 50 tries; a flood of more than maxKeys keys
+ * then evicts the unknown email's counters (`emailPairs` and `emailAccounts`) while the Account map keeps
+ * the known Account's: the Account is still refused fast, skipping the hash, and the unknown email is
+ * admitted and runs it. The attacker needs the flood (more than maxKeys keys from about maxKeys / 20
+ * addresses, as above) plus 50 tries per target. The cost scales with maxKeys; it is accepted. An attacker with more addresses than maxKeys inside
  * one window gets fresh per-address budgets and is still held to the per-Account limit.
  *
  * A right password takes its own attempt back from the address and the Account counters (`succeed`), if
@@ -178,7 +189,8 @@ interface Entry {
  * someone lock a known Account out for a window; that is accepted.
  *
  * Each map but the Account map is capped at maxKeys, expired entries dropped first, and a full map never
- * refuses an attempt. Worst case: 4 * maxKeys entries plus one per Account tried in the window.
+ * refuses an attempt. Worst case: 4 * maxKeys entries plus one per Account tried in the window (a distinct real Account id
+ * with an entry whose window has not ended and been swept).
  */
 export const createThrottle = ({
 	limit = 5,
@@ -241,6 +253,9 @@ export const createThrottle = ({
 		else entry.count -= 1;
 	};
 
+	// Usually stops at the first live entry. After a large group of windows ends together, one attempt deletes
+	// all of them, up to the whole Account map: the cost is amortized (each entry is deleted once), and no
+	// single attempt has a fixed maxKeys bound.
 	const sweep = ({ entries }: Counter, at: number) => {
 		for (const [id, entry] of entries) {
 			if (entry.resetAt > at) return;
