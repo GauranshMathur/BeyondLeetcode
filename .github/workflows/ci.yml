@@ -112,7 +112,9 @@ jobs:
 
   sandbox:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # About 7 minutes with seven Topics, the content check being 3 of them (it runs its cases four at a
+    # time, vitest.sandbox.config.ts). 30 leaves room for the Topics still to come.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -127,7 +129,7 @@ jobs:
       - run: bun run test:sandbox
       # The content check again, on the content the image ships (the run above checks the fixture).
       - name: Content check on content/
-        run: bunx vitest run --reporter=verbose --config vitest.sandbox.config.ts src/lib/server/runner/content-check.sandbox.test.ts
+        run: bunx vitest run --config vitest.sandbox.config.ts src/lib/server/runner/content-check.sandbox.test.ts
         env:
           CONTENT_DIR: content
 
