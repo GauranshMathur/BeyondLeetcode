@@ -17,6 +17,10 @@ import { createSandboxRunner, ensureImages } from './sandbox.ts';
  * The cases run concurrently, at most `maxConcurrency` at once (vitest.sandbox.config.ts): a later
  * Problem submits many Tests, so one after another the check outgrows the CI job's timeout as
  * Topics are added. Every case's message names its Problem and Language, whatever order they finish.
+ * A Problem that submits more than `heavyTests` Tests runs alone, after the rest: its hidden batch
+ * comes within a few seconds of the container's time limit (`containerTimeoutMs`, a Test costs
+ * about 0.2 s in TypeScript), so sibling containers competing for the runner's CPUs would tip it
+ * into Time Limit Exceeded.
  */
 
 const contentDir = resolve(process.env.CONTENT_DIR ?? 'src/lib/server/content/fixture');
@@ -28,16 +32,28 @@ const problems = catalogue
 	.topicMap()
 	.flatMap(({ id }) => catalogue.topic(id)?.chapters ?? [])
 	.flatMap((chapter) => chapter.problems);
+/** Most Tests a Problem may submit and still share the runner with other cases. */
+const heavyTests = 40;
+const testCount = (problemId: string): number => {
+	const plan = submitPlan(catalogue, problemId);
+	return plan.visible.length + plan.hidden.length;
+};
 const languages = Object.keys(sandboxConfig.images) as Language[];
 
-describe.concurrent('content check: Reference Code is Accepted', { timeout: 300_000 }, () => {
+describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () => {
 	beforeAll(() => ensureImages(engine, sandboxConfig.images), 300_000);
 
 	it('has Problems to check', () => {
 		expect(problems.length).toBeGreaterThan(0);
 	});
 
-	for (const { id: problemId } of problems) {
+	const ids = problems.map(({ id }) => id);
+	describe.concurrent('shared', () => cases(ids.filter((id) => testCount(id) <= heavyTests)));
+	describe('alone', () => cases(ids.filter((id) => testCount(id) > heavyTests)));
+});
+
+function cases(ids: string[]) {
+	for (const problemId of ids) {
 		for (const language of languages) {
 			it(`${problemId} / ${language}`, async () => {
 				const files = catalogue.problem(problemId)?.referenceCode[language];
@@ -68,4 +84,4 @@ describe.concurrent('content check: Reference Code is Accepted', { timeout: 300_
 			});
 		}
 	}
-});
+}
