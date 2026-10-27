@@ -349,11 +349,17 @@ function checkSubmitBatches(plan: {
 	hidden: readonly (readonly Test[])[];
 }): string[] {
 	const messages: string[] = [];
-	const { requestBodyMaxBytes, testTimeoutMs, memoryMb } = sandboxConfig;
+	const { maxTests, requestBodyMaxBytes, testTimeoutMs, memoryMb } = sandboxConfig;
 	for (const [name, batch] of [
 		['visible', plan.visible] as const,
 		...plan.hidden.map((tests) => ['hidden', tests] as const)
 	]) {
+		// Hidden batches are cut to `hiddenBatchTests` (pinned below `maxTests`); the visible one is not.
+		if (batch.length > maxTests) {
+			messages.push(
+				`Submit's ${name} batch has ${batch.length} Tests, over the Runner's limit of ${maxTests}`
+			);
+		}
 		const body = JSON.stringify({
 			language: 'typescript', // the longest Language id
 			files: {},
