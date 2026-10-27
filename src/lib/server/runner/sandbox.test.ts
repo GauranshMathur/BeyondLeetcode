@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { containerLabel, engineCallTimeoutMs, sandboxConfig, sweepMinAgeMs } from './config';
-import { type Engine, ImageMissingError } from './engine';
+import { type Engine, ImageMissingError, NameConflictError } from './engine';
 import {
 	containerSpec,
 	createImageKeeper,
@@ -703,10 +703,7 @@ describe('Sandbox runner: a create that fails or times out', () => {
 	});
 
 	it('leaves a name clash (409) alone: that container is not ours', async () => {
-		const { engine, removeCalls } = daemon(
-			new Error('Docker create failed (409): Conflict. The container name is in use'),
-			0
-		);
+		const { engine, removeCalls } = daemon(new NameConflictError('bl-x'), 0);
 
 		await expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(/409/);
 
@@ -725,6 +722,97 @@ describe('Sandbox runner: a create that fails or times out', () => {
 		await expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(/missing/);
 
 		expect(remove).not.toHaveBeenCalled();
+	});
+});
+
+describe('Sandbox runner: bounds on the create-failure cleanup', () => {
+	it('stops retrying 404s after one overall deadline of about 8 s', async () => {
+		// Every remove takes 4 s and finds nothing: each try is within its cap, so only the overall
+		// deadline ends the loop.
+		const engine = {
+			create: async () => {
+				throw new Error('create timed out');
+			},
+			remove: vi.fn(
+				() => new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3_900))
+			)
+		} as unknown as Engine;
+		vi.useFakeTimers();
+		const started = Date.now();
+		let settledAt = 0;
+
+		const pending = createSandboxRunner(engine, 'inst-1')
+			.execute(request)
+			.catch(() => {
+				settledAt = Date.now() - started;
+			});
+		await vi.advanceTimersByTimeAsync(60_000);
+		await pending;
+
+		expect(settledAt).toBeGreaterThanOrEqual(7_900);
+		expect(settledAt).toBeLessThanOrEqual(8_200);
+		// Three tries in the Run (the last one cut short by the deadline), one background try.
+		expect(engine.remove).toHaveBeenCalledTimes(4);
+		vi.useRealTimers();
+	});
+
+	it('keeps at most 64 late removes waiting at once', async () => {
+		const engine = {
+			create: async () => {
+				throw new Error('daemon down');
+			},
+			remove: vi.fn(async () => {
+				throw new Error('daemon down');
+			})
+		} as unknown as Engine;
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.useFakeTimers();
+
+		const runs = Array.from({ length: 100 }, () =>
+			createSandboxRunner(engine, 'inst-1')
+				.execute(request)
+				.catch(() => {})
+		);
+		await vi.advanceTimersByTimeAsync(1_000);
+		await Promise.all(runs);
+		// 100 tries inside the Runs, and no late try yet.
+		expect(engine.remove).toHaveBeenCalledTimes(100);
+		await vi.advanceTimersByTimeAsync(31_000);
+		expect(engine.remove).toHaveBeenCalledTimes(164);
+
+		// The slots are free again once the late removes have run.
+		const again = createSandboxRunner(engine, 'inst-1')
+			.execute(request)
+			.catch(() => {});
+		await vi.advanceTimersByTimeAsync(31_000);
+		await again;
+		expect(engine.remove).toHaveBeenCalledTimes(166);
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+});
+
+describe('Sandbox runner: a pull the daemon answers 200 but did not complete', () => {
+	it('is not ready until a second look finds the image, then the keeper retries', async () => {
+		let looks = 0;
+		const pulls: string[] = [];
+		const engine = {
+			hasImage: async () => looks++ >= 3,
+			pull: async (image: string) => void pulls.push(image)
+		} as unknown as Engine;
+		const ready: string[] = [];
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await createImageKeeper(
+			engine,
+			{ python: 'py:1' },
+			{ onReady: (l) => ready.push(l), sleep: async () => {} }
+		).start();
+
+		// look 1 (missing), pull, look 2 (still missing) -> retry; look 3 (missing), pull, look 4 (there).
+		expect(pulls).toHaveLength(2);
+		expect(ready).toEqual(['python']);
+		vi.restoreAllMocks();
 	});
 });
 

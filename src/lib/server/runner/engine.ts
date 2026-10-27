@@ -24,6 +24,33 @@ export { engineCallTimeoutMs };
 /** Longest an image pull may go without the daemon sending anything. */
 export const pullIdleTimeoutMs = 60_000;
 
+/** Longest one pull attempt may take in all, however much progress it keeps sending. */
+export const pullMaxMs = 30 * 60_000;
+
+/** The daemon refused a create because the container name is taken: not our container to remove. */
+export class NameConflictError extends Error {
+	constructor(readonly containerName: string | undefined) {
+		super(`Docker create failed (409): the container name ${containerName ?? ''} is in use`);
+		this.name = 'NameConflictError';
+	}
+}
+
+/**
+ * Splits an image reference into what the pull endpoint wants: `fromImage` and `tag`, where `tag`
+ * may be a digest. Handles `name`, `name:tag`, `host:5000/name:tag`, `name@sha256:...` and
+ * `name:tag@sha256:...` (the digest wins).
+ */
+export function parseImageRef(image: string): { name: string; tag: string } {
+	const [named, digest] = image.split('@');
+	const colon = named.lastIndexOf(':');
+	const hasTag = colon > named.lastIndexOf('/');
+	const name = hasTag ? named.slice(0, colon) : named;
+	return { name, tag: digest ?? (hasTag ? named.slice(colon + 1) : 'latest') };
+}
+
+/** How much of the previous chunk is kept so `"error"` split across two chunks is still seen. */
+const pullScanTail = 16;
+
 type Reply = { status: number; body: string };
 
 /** The daemon does not hold the image a create asked for (404). The Runner never pulls inside a Run. */
@@ -65,7 +92,12 @@ function guard(req: ClientRequest, ms: number, what: string, reject: (error: Err
 	};
 }
 
-export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeoutMs) {
+export function createEngine(
+	socketPath: string,
+	callTimeoutMs = engineCallTimeoutMs,
+	pullLimits: { idleMs?: number; maxMs?: number } = {}
+) {
+	const { idleMs = pullIdleTimeoutMs, maxMs = pullMaxMs } = pullLimits;
 	/**
 	 * `timeoutMs` is an absolute deadline for the whole reply; with `idle` it restarts whenever the
 	 * daemon sends a chunk (a pull streams progress).
@@ -132,18 +164,62 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 		return reply;
 	}
 
-	async function pull(image: string): Promise<void> {
-		const [name, tag = 'latest'] = image.split(':');
-		// The daemon streams progress, so this is an idle timeout: a slow pull is fine, a stalled one is not.
-		const reply = await call(
-			'POST',
-			`/images/create?fromImage=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`,
-			undefined,
-			pullIdleTimeoutMs,
-			true
-		);
-		await assertStatus(reply, `pull ${image}`, 200);
-		if (/"error"\s*:/.test(reply.body)) throw new Error(`Docker pull ${image} failed`);
+	/**
+	 * Pulls `image`. Two clocks: an idle timeout that restarts on every chunk, and an absolute cap
+	 * that never restarts, so a daemon that keeps sending progress cannot hold the pull forever. The
+	 * stream is scanned as it arrives, one chunk (plus a few bytes of the one before) at a time: a
+	 * stream that reports an error fails the pull at that chunk.
+	 */
+	function pull(image: string): Promise<void> {
+		const { name, tag } = parseImageRef(image);
+		const path = `/images/create?fromImage=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`;
+		return new Promise((resolve, reject) => {
+			let idle: ReturnType<typeof guard> | undefined;
+			let cap: ReturnType<typeof guard> | undefined;
+			let done = false;
+			const finish = (error?: Error) => {
+				if (done) return;
+				done = true;
+				idle?.clear();
+				cap?.clear();
+				if (error) {
+					req.destroy();
+					reject(error);
+				} else resolve();
+			};
+			const req = request({ socketPath, method: 'POST', path }, (res) => {
+				if (done || idle?.expired || cap?.expired) return void res.destroy();
+				const ok = res.statusCode === 200;
+				let tail = '';
+				let errorBody = '';
+				res.on('data', (chunk: Buffer) => {
+					idle?.arm();
+					const text = chunk.toString('utf8');
+					if (!ok) {
+						errorBody = (errorBody + text).slice(0, 500);
+						return;
+					}
+					if (/"error"\s*:/.test(tail + text))
+						return finish(new Error(`Docker pull ${image} failed`));
+					tail = text.slice(-pullScanTail);
+				});
+				res.on('end', () =>
+					finish(
+						ok
+							? undefined
+							: new Error(`Docker pull ${image} failed (${res.statusCode}): ${errorBody}`)
+					)
+				);
+				res.on('error', finish);
+			});
+			const fail = (error: Error) => finish(error);
+			idle = guard(req, idleMs, `Docker POST ${path} (idle)`, fail);
+			cap = guard(req, maxMs, `Docker POST ${path} (absolute cap)`, fail);
+			req.on('error', fail);
+			idle.arm();
+			cap.arm();
+			req.end();
+		});
 	}
 
 	return {
@@ -174,6 +250,7 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 				...spec
 			});
 			if (reply.status === 404) throw new ImageMissingError(image);
+			if (reply.status === 409) throw new NameConflictError(name);
 			await assertStatus(reply, 'create', 201);
 			return (JSON.parse(reply.body) as { Id: string }).Id;
 		},
@@ -324,11 +401,13 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 		 * there was one to remove, false if the daemon knows no such container (404).
 		 */
 		async remove(id: string): Promise<boolean> {
-			const reply = await call('DELETE', `/containers/${id}?force=true&v=true`);
+			// Encoded: the argument is an id or a name, and never decides the path.
+			const ref = encodeURIComponent(id);
+			const reply = await call('DELETE', `/containers/${ref}?force=true&v=true`);
 			if (reply.status === 409 && /already in progress/.test(reply.body)) {
 				// The daemon is already removing it (AutoRemove): wait until it is gone.
 				for (let poll = 0; poll < 50; poll++) {
-					if ((await call('GET', `/containers/${id}/json`)).status === 404) return true;
+					if ((await call('GET', `/containers/${ref}/json`)).status === 404) return true;
 					await new Promise((resolve) => setTimeout(resolve, 100));
 				}
 				throw new Error(`Docker remove of ${id} is still in progress`);
