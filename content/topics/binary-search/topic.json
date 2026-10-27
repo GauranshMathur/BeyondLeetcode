@@ -1,0 +1,11 @@
+{
+	"title": "Binary search",
+	"summary": "Build the search behind Java's Arrays.binarySearch, Go's sort.Search, C++'s lower_bound and git bisect, and learn why it needs a partitioned range, not just a sorted array.",
+	"prerequisites": ["dynamic-arrays"],
+	"chapters": [
+		"binary-search-jdk-arrays",
+		"binary-search-bounds",
+		"binary-search-git-bisect",
+		"binary-search-partitioned"
+	]
+}

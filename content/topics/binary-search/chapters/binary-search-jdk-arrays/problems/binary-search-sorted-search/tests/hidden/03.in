@@ -1,0 +1,7 @@
+array -1000000000 -3 0 7 1000000000
+search -1000000000
+search 1000000000
+search -4
+search -2
+search 8
+search 999999999
