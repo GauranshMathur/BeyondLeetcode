@@ -125,6 +125,28 @@ describe('Engine attach', () => {
 		expect(Date.now() - started).toBeLessThan(200);
 	});
 
+	it('names the container on our side when asked to', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'engine-'));
+		const socketPath = join(dir, 'docker.sock');
+		const requests: string[] = [];
+		const body = '{"Id":"abc"}';
+		const server = createServer((socket) => {
+			socket.on('data', (chunk) => {
+				requests.push(chunk.toString('utf8').split(' ')[1]);
+				socket.write(`HTTP/1.1 201 Created\r\nContent-Length: ${body.length}\r\n\r\n${body}`);
+			});
+		}).listen(socketPath);
+		cleanup.push(() => {
+			server.close();
+			rmSync(dir, { recursive: true, force: true });
+		});
+		await new Promise((resolve) => server.once('listening', resolve));
+
+		await createEngine(socketPath).create('img:1', {}, 'bl-i-1');
+
+		expect(requests).toEqual(['/containers/create?name=bl-i-1']);
+	});
+
 	it('fails a lifecycle call after 15 s by default', () => {
 		expect(engineCallTimeoutMs).toBe(15_000);
 	});
