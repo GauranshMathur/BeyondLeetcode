@@ -174,6 +174,16 @@ Not in the sprint:
 - C110: a deadline on a late remove's "in progress" poll.
 - Several Accounts per person on an open-registration Instance can still fill every slot and queue place. A web-wide cap or invite-only registration covers it.
 
+## Sprint 10 · Hardening
+
+**Goal:** the two follow-ups from Sprint 9's reviews are closed.
+
+- **C109:** the operator docs say a reverse proxy in front of the Instance needs a read timeout of at least about 100 s, since a Submit can take up to 90 s and nginx defaults to 60 s (from C108a's sandbox review, #359).
+- **C110:** a late remove whose "already in progress" poll outlasts one overall deadline gives up and frees its late-remove slot (from C93's and C95's sandbox reviews, #337 and #358).
+- **Lanes:** the two cards edit different files, so they run in parallel. C110 gets `sandbox-security-reviewer` before merge.
+
+**Exit:** both cards Done and CI green on `main`. Releases stay `1.x`.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
