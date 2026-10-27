@@ -1,0 +1,3 @@
+load -5 0 4 -7 -5 -1 4 9
+merge 3
+show

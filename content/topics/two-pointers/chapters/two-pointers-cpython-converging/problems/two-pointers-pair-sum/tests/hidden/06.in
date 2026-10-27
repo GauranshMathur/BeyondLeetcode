@@ -1,0 +1,4 @@
+load -3 -3 -3 6 6 6
+pairsum 3
+pairsum 12
+pairsum -6
