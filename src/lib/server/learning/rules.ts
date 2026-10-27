@@ -656,6 +656,13 @@ export function submitPlan(
 	problemId: string,
 	maxBatchTests: number
 ): SubmitPlan {
+	// A NaN or fractional size would slice every hidden Test away: an Accepted on the Examples alone.
+	if (!Number.isInteger(maxBatchTests) || maxBatchTests < 1) {
+		throw new RangeError(
+			`maxBatchTests must be a whole number of at least 1, got ${maxBatchTests}`
+		);
+	}
+	const size = maxBatchTests;
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
 	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
@@ -676,10 +683,14 @@ export function submitPlan(
 		...(id === problemId ? [] : testsOf(id, 'example')),
 		...testsOf(id, 'hidden')
 	]);
-	const size = Math.max(1, Math.floor(maxBatchTests));
 	const batches: SubmitTest[][] = [];
 	for (let i = 0; i < hidden.length; i += size) batches.push(hidden.slice(i, i + size));
 	return { visible: testsOf(problemId, 'example'), hidden: batches };
+}
+
+/** Whether one of the batch's own Tests timed out, matched by id as `judge` does. */
+function timedOut(tests: readonly SubmitTest[], result: ExecuteResult): boolean {
+	return tests.some((t) => result.results.find((r) => r.id === t.id)?.status === 'timeout');
 }
 
 /**
@@ -700,13 +711,13 @@ export async function runSubmission(
 		const result = await execute(plan.visible);
 		ran.push({ tests: plan.visible, result });
 		if (result.compileError !== undefined) return ran;
-		if (result.results.some((r) => r.status === 'timeout')) return ran;
+		if (timedOut(plan.visible, result)) return ran;
 	}
 	for (const tests of plan.hidden) {
 		const result = await execute(tests);
 		if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
 		ran.push({ tests, result });
-		if (result.results.some((r) => r.status === 'timeout')) break;
+		if (timedOut(tests, result)) break;
 	}
 	return ran;
 }

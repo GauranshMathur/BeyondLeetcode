@@ -783,6 +783,13 @@ describe('learner.submit()', () => {
 		expect((await db.submission.findFirstOrThrow()).verdict).toBe(verdict);
 	});
 
+	it('an Example Test timing out ends the Submission after the first call', async () => {
+		const { learner, runner } = await setup({ tests: { [pushExample]: { status: 'timeout' } } });
+		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
+		expect(view.verdict).toBe('Time Limit Exceeded');
+		expect(runner.calls).toHaveLength(1);
+	});
+
 	it('Compile Error is one message, recorded with no failing Problem', async () => {
 		const { learner, db } = await setup({ compileError: 'SyntaxError: bad' });
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
@@ -925,6 +932,30 @@ describe('learner.submit()', () => {
 			});
 			await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 			expect(runner.calls).toHaveLength(1 + submitPlan(catalogue, 'stacks-pop', 1).hidden.length);
+		});
+
+		it('ignores a timeout on an id that is not one of the batch Tests: later batches still run', async () => {
+			const { db, catalogue, runner } = await setup();
+			const core = createLearningCore({
+				catalogue,
+				db,
+				hiddenBatchTests: 1,
+				runner: {
+					execute: async (request) => {
+						const real = await runner.execute(request);
+						return {
+							results: [...real.results, { id: 'ghost', status: 'timeout', stdout: '', stderr: '' }]
+						};
+					}
+				}
+			});
+			await core.forLearner('y').submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+			expect(runner.calls).toHaveLength(1 + submitPlan(catalogue, 'stacks-pop', 1).hidden.length);
+		});
+
+		it.each([0, -1, 1.5, Number.NaN])('submitPlan refuses a batch size of %s', async (size) => {
+			const { catalogue } = await setup();
+			expect(() => submitPlan(catalogue, 'stacks-pop', size)).toThrow(RangeError);
 		});
 
 		it('a compile error in a later hidden batch is RunnerUnavailable, nothing recorded', async () => {
