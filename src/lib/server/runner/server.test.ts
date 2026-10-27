@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { sandboxConfig } from './config';
 import { createScriptedRunner } from './fake';
 import { MAX_BUILD_FILES } from './port';
@@ -277,6 +277,147 @@ describe('Runner HTTP handler', () => {
 			expect((await c).status).toBe(200);
 
 			expect(order).toEqual(['a', 'b', 'c']);
+		});
+
+		it('answers 503 before reading the body when slots and queue are both full', async () => {
+			const g = gated();
+			const handle = createRunnerHandler({
+				token,
+				runner: g.runner,
+				maxConcurrent: 1,
+				queueWaitMs: 5000,
+				maxQueued: 0,
+				readyLanguages: ready
+			});
+			const first = handle(post(idle));
+			await new Promise((r) => setTimeout(r, 10));
+			const refused = await handle(post('not json at all'));
+
+			expect(refused.status).toBe(503);
+			g.finishOne();
+			await first;
+		});
+
+		it('answers 503 not ready when the Language left the ready set while the request waited', async () => {
+			const g = gated();
+			let languages = ['python'];
+			const handle = createRunnerHandler({
+				token,
+				runner: g.runner,
+				maxConcurrent: 1,
+				queueWaitMs: 5000,
+				maxQueued: 4,
+				readyLanguages: () => languages
+			});
+			const first = handle(post(idle));
+			const queued = handle(post(idle));
+			await new Promise((r) => setTimeout(r, 10));
+			languages = [];
+			g.finishOne();
+			await first;
+			const res = await queued;
+
+			expect(res.status).toBe(503);
+			expect(await res.json()).toEqual({ error: 'Runner is not ready' });
+			expect(g.started()).toBe(0);
+			// the slot it held is back
+			languages = ['python'];
+			const next = handle(post(idle));
+			await new Promise((r) => setTimeout(r, 10));
+			expect(g.started()).toBe(1);
+			g.finishOne();
+			await next;
+		});
+
+		it('does not run a request whose caller left the moment it was granted a slot', async () => {
+			const g = gated();
+			const handle = createRunnerHandler({
+				token,
+				runner: g.runner,
+				maxConcurrent: 1,
+				queueWaitMs: 5000,
+				maxQueued: 4,
+				readyLanguages: ready
+			});
+			const gone = new AbortController();
+			const first = handle(post(idle));
+			const queued = handle(
+				new Request('http://runner/execute', {
+					method: 'POST',
+					headers: { Authorization: `Bearer ${token}` },
+					body: JSON.stringify(idle),
+					signal: gone.signal
+				})
+			);
+			await new Promise((r) => setTimeout(r, 10));
+			g.finishOne(); // grants the slot to `queued` ...
+			gone.abort(); // ... and the caller leaves before it resumes
+			await first;
+			const res = await queued;
+
+			expect(res.status).toBe(503);
+			expect(g.started()).toBe(0);
+			const next = handle(post(idle));
+			await new Promise((r) => setTimeout(r, 10));
+			expect(g.started()).toBe(1);
+			g.finishOne();
+			await next;
+		});
+
+		describe('on the exact tick the wait ends', () => {
+			function waitOf100() {
+				const g = gated();
+				const handle = createRunnerHandler({
+					token,
+					runner: g.runner,
+					maxConcurrent: 1,
+					queueWaitMs: 100,
+					maxQueued: 4,
+					readyLanguages: ready
+				});
+				return { g, handle };
+			}
+			it('a slot freed just before the timer fires goes to the waiter', async () => {
+				vi.useFakeTimers();
+				try {
+					const { g, handle } = waitOf100();
+					const first = handle(post(idle));
+					const queued = handle(post(idle));
+					await vi.advanceTimersByTimeAsync(99);
+					g.finishOne();
+					await vi.advanceTimersByTimeAsync(1);
+					expect(g.started()).toBe(1);
+					g.finishOne();
+
+					expect((await first).status).toBe(200);
+					expect((await queued).status).toBe(200);
+				} finally {
+					vi.useRealTimers();
+				}
+			});
+			it('a timeout just before the slot frees leaves the slot free, not double counted', async () => {
+				vi.useFakeTimers();
+				try {
+					const { g, handle } = waitOf100();
+					const first = handle(post(idle));
+					const queued = handle(post(idle));
+					await vi.advanceTimersByTimeAsync(100);
+					expect((await queued).status).toBe(503);
+					g.finishOne();
+					expect((await first).status).toBe(200);
+					const a = handle(post(idle));
+					const b = handle(post(idle));
+					await vi.advanceTimersByTimeAsync(0);
+					expect(g.started()).toBe(1); // one slot, not two
+					g.finishOne();
+					await a;
+					await vi.advanceTimersByTimeAsync(0);
+					g.finishOne();
+					expect((await b).status).toBe(200);
+				} finally {
+					vi.useRealTimers();
+				}
+			});
 		});
 
 		it('drops a queued request whose caller went away, without running it', async () => {

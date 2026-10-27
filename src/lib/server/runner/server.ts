@@ -97,6 +97,10 @@ export function createRunnerHandler(options: {
 		if (pathname !== '/execute') return json(404, { error: 'Not found' });
 		if (req.method !== 'POST') return json(405, { error: 'Method not allowed' });
 
+		// Slots and queue both full: refuse before reading a body that could be megabytes.
+		if (running >= options.maxConcurrent && waiting.length >= maxQueued)
+			return json(503, { error: 'Runner is busy' });
+
 		let body: unknown;
 		try {
 			body = await req.json();
@@ -110,6 +114,15 @@ export function createRunnerHandler(options: {
 
 		// A full Runner holds the request for a bounded wait (`queueWaitMs`, `maxQueued`), then says so.
 		if (!(await acquire(req.signal))) return json(503, { error: 'Runner is busy' });
+		// The wait can be long: the caller may have left, or the Language's image gone, meanwhile.
+		if (req.signal.aborted) {
+			release();
+			return json(503, { error: 'Runner is busy' });
+		}
+		if (!options.readyLanguages().includes(parsed.data.language)) {
+			release();
+			return json(503, { error: 'Runner is not ready' });
+		}
 		try {
 			return json(200, await options.runner.execute(parsed.data));
 		} catch (error) {
