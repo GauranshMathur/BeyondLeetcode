@@ -38,14 +38,37 @@ export class NameConflictError extends Error {
 /**
  * Splits an image reference into what the pull endpoint wants: `fromImage` and `tag`, where `tag`
  * may be a digest. Handles `name`, `name:tag`, `host:5000/name:tag`, `name@sha256:...` and
- * `name:tag@sha256:...` (the digest wins).
+ * `name:tag@sha256:...` (the digest wins). Throws on an empty name, tag or digest, or on more
+ * than one `@`: Docker reads an empty tag as "pull every tag".
  */
 export function parseImageRef(image: string): { name: string; tag: string } {
-	const [named, digest] = image.split('@');
+	const bad = (why: string) =>
+		new Error(`Malformed image reference ${JSON.stringify(image)}: ${why}`);
+	const parts = image.split('@');
+	if (parts.length > 2) throw bad('more than one @');
+	const [named, digest] = parts;
 	const colon = named.lastIndexOf(':');
 	const hasTag = colon > named.lastIndexOf('/');
 	const name = hasTag ? named.slice(0, colon) : named;
-	return { name, tag: digest ?? (hasTag ? named.slice(colon + 1) : 'latest') };
+	const written = hasTag ? named.slice(colon + 1) : undefined;
+	// An allowlist per part (Docker's reference grammar), so nothing reaches the daemon that it
+	// would read as "every tag" or that makes the request itself fail.
+	if (!name || name.endsWith('/') || name.endsWith(':') || hasControlOrSpace(name))
+		throw bad('invalid name');
+	if (written !== undefined && !tagPattern.test(written)) throw bad('invalid tag');
+	if (digest !== undefined && !digestPattern.test(digest)) throw bad('invalid digest');
+	return { name, tag: digest ?? written ?? 'latest' };
+}
+
+const tagPattern = /^\w[\w.-]{0,127}$/;
+const digestPattern = /^[A-Za-z][A-Za-z0-9]*(?:[-_+.][A-Za-z][A-Za-z0-9]*)*:[0-9A-Za-z=_-]{32,}$/;
+
+function hasControlOrSpace(text: string): boolean {
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		if (code <= 0x20 || code === 0x7f) return true;
+	}
+	return false;
 }
 
 /** How much of the previous chunk is kept so `"error"` split across two chunks is still seen. */
