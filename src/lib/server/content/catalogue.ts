@@ -349,6 +349,12 @@ function checkSubmitBatches(plan: {
 	hidden: readonly (readonly Test[])[];
 }): string[] {
 	const messages: string[] = [];
+	const calls = 1 + plan.hidden.length;
+	if (calls > sandboxConfig.maxSubmitCalls) {
+		messages.push(
+			`Submit would make ${calls} Runner calls, over the limit of ${sandboxConfig.maxSubmitCalls}`
+		);
+	}
 	const { maxTests, requestBodyMaxBytes, testTimeoutMs, memoryMb } = sandboxConfig;
 	for (const [name, batch] of [
 		['visible', plan.visible] as const,
