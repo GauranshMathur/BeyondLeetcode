@@ -394,15 +394,20 @@ describe('Sandbox runner: an image that vanished after its Language went ready',
 		const engine = {
 			create: async () => {
 				throw new Error('daemon down');
-			}
+			},
+			remove: async () => false
 		} as unknown as Engine;
 		const missing: string[] = [];
+		vi.useFakeTimers();
 
-		await expect(
+		const pending = expect(
 			createSandboxRunner(engine, 'test-instance', {
 				onImageMissing: (language) => missing.push(language)
 			}).execute(request)
 		).rejects.toThrow(/daemon down/);
+		await vi.advanceTimersByTimeAsync(5_000);
+		await pending;
+		vi.useRealTimers();
 
 		expect(missing).toEqual([]);
 	});
@@ -642,14 +647,15 @@ describe('Sandbox runner: a create that fails or times out', () => {
 		vi.useRealTimers();
 	});
 
-	it('keeps the create error when the best-effort remove fails too', async () => {
+	it('keeps the create error and stops after one try when the remove fails', async () => {
+		const remove = vi.fn(async () => {
+			throw new Error('daemon down');
+		});
 		const engine = {
 			create: async () => {
 				throw new Error('create timed out');
 			},
-			remove: async () => {
-				throw new Error('daemon down');
-			}
+			remove
 		} as unknown as Engine;
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 		vi.useFakeTimers();
@@ -657,9 +663,41 @@ describe('Sandbox runner: a create that fails or times out', () => {
 		const pending = expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(
 			/create timed out/
 		);
-		await vi.runAllTimersAsync();
+		await vi.advanceTimersByTimeAsync(5_000);
 		await pending;
 
+		expect(remove).toHaveBeenCalledTimes(1);
+		// The background try still comes later.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(remove).toHaveBeenCalledTimes(2);
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it('holds the Run for one try, not seven, when the daemon never answers the remove', async () => {
+		const remove = vi.fn(() => new Promise<boolean>(() => {}));
+		const engine = {
+			create: async () => {
+				throw new Error('create timed out');
+			},
+			remove
+		} as unknown as Engine;
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.useFakeTimers();
+		const started = Date.now();
+
+		let settledAt = 0;
+		const pending = createSandboxRunner(engine, 'inst-1')
+			.execute(request)
+			.catch(() => {
+				settledAt = Date.now() - started;
+			});
+		await vi.advanceTimersByTimeAsync(40_000);
+		await pending;
+
+		expect(settledAt).toBeGreaterThanOrEqual(4_000);
+		expect(settledAt).toBeLessThan(5_000);
+		expect(remove).toHaveBeenCalledTimes(2);
 		vi.useRealTimers();
 		vi.restoreAllMocks();
 	});

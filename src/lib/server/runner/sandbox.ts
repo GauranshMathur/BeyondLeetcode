@@ -254,21 +254,27 @@ async function removeContainer(engine: Engine, id: string): Promise<void> {
 const removeByNamePausesMs = [0, 50, 100, 250, 500, 1_000, 2_000];
 /** One last try, in the background, for a daemon that is still stuck in the create after all of those. */
 const removeByNameLateMs = 30_000;
+/** Longest one try at it may take. Only a 404 is retried, so the whole wait is at most this plus the pauses (about 8 s). */
+const removeByNameAttemptMs = 4_000;
 
 /**
  * Removes the container a timed-out create may have made, by the name this Run gave it. The
  * daemon can still be finishing that create when we ask, and until it has registered the name a
  * remove answers 404 (measured on real Docker: the first remove 404s, one ~35 ms later finds it).
- * So a 404 is retried for a few seconds, which also bounds the wait when nothing was made.
+ * So a 404 is retried for a few seconds, which also bounds the wait when nothing was made; an error or a stalled daemon ends the tries at the first one.
  * Best effort: logs, never throws.
  */
 async function removeCreatedByName(engine: Engine, name: string): Promise<void> {
 	for (const pause of removeByNamePausesMs) {
 		if (pause > 0) await new Promise((resolve) => setTimeout(resolve, pause));
 		try {
-			if ((await within(engine.remove(name), removeAttemptTimeoutMs)) !== false) return;
+			if ((await within(engine.remove(name), removeByNameAttemptMs)) !== false) return;
 		} catch (error) {
+			// A stalled or failing daemon (likely why the create timed out) will not answer a retry
+			// either: stop at once, so the Run's slot is held for one attempt, not seven. The
+			// background try below and the sweep are what is left.
 			console.error(`Could not remove container ${name} after a failed create`, error);
+			break;
 		}
 	}
 	// Still nothing: the daemon may be stuck in the create. One more try later, off this Run, so it
