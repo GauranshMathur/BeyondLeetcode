@@ -9,7 +9,8 @@ import {
 	type AttachedContainer,
 	type Engine,
 	ImageMissingError,
-	NameConflictError
+	NameConflictError,
+	parseImageRef
 } from './engine';
 import { harnessScript } from './harness';
 import type { ExecuteRequest, ExecuteResult, Language, RunnerPort, TestResult } from './port';
@@ -383,6 +384,15 @@ export function createImageKeeper(
 		onLost,
 		sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 	} = options;
+	// A malformed reference is a configuration error, not a pull failure: throw now, before any
+	// loop could retry it forever (or, with an empty tag, pull every tag).
+	for (const [language, image] of Object.entries(images)) {
+		try {
+			parseImageRef(image);
+		} catch (error) {
+			throw new Error(`Sandbox image for ${language} is malformed: ${(error as Error).message}`);
+		}
+	}
 	const running = new Map<string, Promise<void>>();
 
 	function loop(language: string): Promise<void> {

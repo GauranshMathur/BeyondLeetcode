@@ -460,6 +460,14 @@ describe('Sandbox runner: an image that vanished after its Language went ready',
 		expect([...ready]).toEqual(['python']);
 	});
 
+	it('throws at once for a malformed image, before any hasImage or pull call', () => {
+		const { engine, pulls } = keeperEngine();
+		const hasImage = vi.spyOn(engine, 'hasImage');
+		expect(() => createImageKeeper(engine, { python: 'py:1', go: 'go:' })).toThrow(/go.*go:/);
+		expect(hasImage).not.toHaveBeenCalled();
+		expect(pulls).toEqual([]);
+	});
+
 	it('starts one pull however many Runs find the same image missing', async () => {
 		const { engine, pulls, holdPulls, releasePulls } = keeperEngine();
 		const keeper = createImageKeeper(engine, { python: 'py:1', go: 'go:1' });
