@@ -61,7 +61,16 @@ export const sandboxConfig = {
 	/** Most bytes the Runner reads back from one container before it kills it. */
 	containerOutputMaxBytes: 32 * 1024 * 1024,
 	/** How long the HTTP adapter waits for the Runner. */
-	adapterTimeoutMs: 30_000
+	adapterTimeoutMs: 30_000,
+	/**
+	 * How long a request waits for a free slot when all are taken, before the Runner answers 503
+	 * "busy". A Submission makes up to three calls and frees a slot between them; this wait lets a later
+	 * call get one instead of failing after the earlier containers already ran. It sits inside
+	 * `adapterTimeoutMs`: 8 s of queue plus a container (10 s limit and its start and cleanup) stays under 30 s.
+	 */
+	queueWaitMs: 8_000,
+	/** Most requests waiting for a slot; one past this gets 503 "busy" at once. */
+	maxQueued: 8
 } as const;
 
 /** Shortest bearer token the Runner starts with. */

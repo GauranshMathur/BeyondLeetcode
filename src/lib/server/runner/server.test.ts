@@ -153,33 +153,162 @@ describe('Runner HTTP handler', () => {
 		expect(runner.calls).toHaveLength(1);
 	});
 
-	it('answers 503 at once when the runs in flight are at the limit, and recovers after', async () => {
-		let release: () => void = () => {};
-		const gate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		const runner = {
-			async execute() {
-				await gate;
-				return { results: [] };
-			}
-		};
-		const handle = createRunnerHandler({
-			token,
-			runner,
-			maxConcurrent: 2,
-			readyLanguages: () => ['python', 'typescript', 'go']
+	describe('when the runs in flight are at the limit', () => {
+		const ready = () => ['python', 'typescript', 'go'];
+		const idle = { ...valid, tests: [] };
+		/** A Runner whose runs each wait for `finishOne`, so a test decides when a slot frees. */
+		function gated() {
+			const pending: (() => void)[] = [];
+			return {
+				runner: {
+					execute: () =>
+						new Promise<{ results: never[] }>((resolve) => {
+							pending.push(() => resolve({ results: [] }));
+						})
+				},
+				finishOne: () => pending.shift()?.(),
+				started: () => pending.length
+			};
+		}
+
+		it('holds a request for a slot, and runs it once one frees', async () => {
+			const g = gated();
+			const handle = createRunnerHandler({
+				token,
+				runner: g.runner,
+				maxConcurrent: 1,
+				queueWaitMs: 1000,
+				maxQueued: 4,
+				readyLanguages: ready
+			});
+
+			const first = handle(post(idle));
+			const queued = handle(post(idle));
+			await new Promise((r) => setTimeout(r, 10));
+			expect(g.started()).toBe(1);
+			g.finishOne();
+			expect((await first).status).toBe(200);
+			await new Promise((r) => setTimeout(r, 10));
+			expect(g.started()).toBe(1);
+			g.finishOne();
+
+			expect((await queued).status).toBe(200);
 		});
 
-		const first = handle(post({ ...valid, tests: [] }));
-		const second = handle(post({ ...valid, tests: [] }));
-		const refused = await handle(post({ ...valid, tests: [] }));
-		release();
-		await Promise.all([first, second]);
-		const after = await handle(post({ ...valid, tests: [] }));
+		it('answers 503 busy when no slot frees within the wait, and runs nothing for it', async () => {
+			const g = gated();
+			const handle = createRunnerHandler({
+				token,
+				runner: g.runner,
+				maxConcurrent: 1,
+				queueWaitMs: 30,
+				maxQueued: 4,
+				readyLanguages: ready
+			});
 
-		expect(refused.status).toBe(503);
-		expect(after.status).toBe(200);
+			const first = handle(post(idle));
+			const refused = await handle(post(idle));
+
+			expect(refused.status).toBe(503);
+			expect(await refused.json()).toEqual({ error: 'Runner is busy' });
+			expect(g.started()).toBe(1);
+			g.finishOne();
+			await first;
+		});
+
+		it('answers 503 at once when the queue is full', async () => {
+			const g = gated();
+			const handle = createRunnerHandler({
+				token,
+				runner: g.runner,
+				maxConcurrent: 1,
+				queueWaitMs: 5000,
+				maxQueued: 1,
+				readyLanguages: ready
+			});
+
+			const first = handle(post(idle));
+			const queued = handle(post(idle));
+			const t = Date.now();
+			const refused = await handle(post(idle));
+
+			expect(refused.status).toBe(503);
+			expect(Date.now() - t).toBeLessThan(1000);
+			g.finishOne();
+			await first;
+			await new Promise((r) => setTimeout(r, 10));
+			g.finishOne();
+			expect((await queued).status).toBe(200);
+		});
+
+		it('serves the queue in arrival order, and frees the slot when a run throws', async () => {
+			const order: string[] = [];
+			const gates: (() => void)[] = [];
+			const handle = createRunnerHandler({
+				token,
+				runner: {
+					execute: (request) => {
+						order.push(request.tests[0]?.id ?? '');
+						return new Promise((resolve, reject) => {
+							gates.push(() =>
+								order.length === 1 ? reject(new Error('boom')) : resolve({ results: [] })
+							);
+						});
+					}
+				},
+				maxConcurrent: 1,
+				queueWaitMs: 1000,
+				maxQueued: 4,
+				readyLanguages: ready
+			});
+			const req = (id: string) => post({ ...valid, tests: [{ id, input: '' }] });
+
+			const a = handle(req('a'));
+			const b = handle(req('b'));
+			const c = handle(req('c'));
+			await new Promise((r) => setTimeout(r, 10));
+			gates.shift()?.();
+			expect((await a).status).toBe(500);
+			await new Promise((r) => setTimeout(r, 10));
+			gates.shift()?.();
+			expect((await b).status).toBe(200);
+			await new Promise((r) => setTimeout(r, 10));
+			gates.shift()?.();
+			expect((await c).status).toBe(200);
+
+			expect(order).toEqual(['a', 'b', 'c']);
+		});
+
+		it('drops a queued request whose caller went away, without running it', async () => {
+			const g = gated();
+			const handle = createRunnerHandler({
+				token,
+				runner: g.runner,
+				maxConcurrent: 1,
+				queueWaitMs: 5000,
+				maxQueued: 4,
+				readyLanguages: ready
+			});
+			const gone = new AbortController();
+
+			const first = handle(post(idle));
+			const abandoned = handle(
+				new Request('http://runner/execute', {
+					method: 'POST',
+					headers: { Authorization: `Bearer ${token}` },
+					body: JSON.stringify(idle),
+					signal: gone.signal
+				})
+			);
+			await new Promise((r) => setTimeout(r, 10));
+			gone.abort();
+			await abandoned;
+			g.finishOne();
+			await first;
+			await new Promise((r) => setTimeout(r, 10));
+
+			expect(g.started()).toBe(0);
+		});
 	});
 
 	it('answers 404 and 405 for unknown routes and methods', async () => {
