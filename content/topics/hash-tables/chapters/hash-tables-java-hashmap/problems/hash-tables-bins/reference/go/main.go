@@ -26,9 +26,7 @@ type node struct {
 }
 
 var (
-	impl     = "cpython"
-	resizeOn = false
-	moved    = 0
+	impl = "cpython"
 
 	// CPython-style table: slots holds empty, dummy or an index into entries.
 	slots   = filled(8)
@@ -36,8 +34,8 @@ var (
 	used    = 0
 
 	// Java-style table: one list of nodes per bin.
-	bins   = make([][]*node, 16)
-	isTree = make([]bool, 16)
+	bins  = make([][]*node, 16)
+	nodes = 0
 )
 
 func filled(n int) []int {
@@ -74,7 +72,7 @@ func binIndex(k key) int {
 }
 
 func makeTable(n int) {
-	moved = 0
+	nodes = 0
 	if impl == "cpython" {
 		slots = filled(n)
 		entries = nil
@@ -82,7 +80,6 @@ func makeTable(n int) {
 	}
 	if impl != "cpython" {
 		bins = make([][]*node, n)
-		isTree = make([]bool, n)
 	}
 }
 
@@ -145,14 +142,6 @@ func cpDel(k int) bool {
 // ---- Java-style chaining ----
 
 
-func total() int {
-	sum := 0
-	for _, c := range bins {
-		sum += len(c)
-	}
-	return sum
-}
-
 func jbPut(k key, value int) int {
 	index := binIndex(k)
 	for _, n := range bins[index] {
@@ -162,6 +151,7 @@ func jbPut(k key, value int) int {
 		}
 	}
 	bins[index] = append(bins[index], &node{k, value})
+	nodes++
 	return binIndex(k)
 }
 
@@ -230,7 +220,7 @@ func main() {
 				fmt.Fprintln(out, used)
 			}
 			if impl != "cpython" {
-				fmt.Fprintln(out, total())
+				fmt.Fprintln(out, nodes)
 			}
 		case "cap":
 			if impl == "cpython" {

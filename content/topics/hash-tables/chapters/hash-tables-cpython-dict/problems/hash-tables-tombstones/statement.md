@@ -15,6 +15,8 @@ The other commands keep their meaning, with these rules:
 
 The tests always leave at least one slot Unused. A Dummy slot is not Unused.
 
+This is the rule of the default build of CPython 3.13.0. A free-threaded build does not reuse Dummy slots, as the Chapter notes.
+
 ## Example
 
 Input:

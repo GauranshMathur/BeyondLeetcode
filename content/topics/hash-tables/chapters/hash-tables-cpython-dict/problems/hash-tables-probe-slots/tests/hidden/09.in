@@ -1,8 +1,0 @@
-table 4
-put 0 1
-put 4 2
-put 8 3
-dump
-probes 12
-probes 8
-get 12

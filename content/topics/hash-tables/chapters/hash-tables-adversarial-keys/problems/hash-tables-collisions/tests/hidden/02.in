@@ -1,4 +1,24 @@
+resize off
 impl java
+table 64
+put AaAaAaAaAaAaAaAaAaAa 0
+put AaAaAaAaAaAaAaAaAaBB 1
+put AaAaAaAaAaAaAaAaBBAa 2
+put AaAaAaAaAaAaAaAaBBBB 3
+put AaAaAaAaAaAaAaBBAaAa 4
+put AaAaAaAaAaAaAaBBAaBB 5
+put AaAaAaAaAaAaAaBBBBAa 6
+put AaAaAaAaAaAaAaBBBBBB 7
+trees
+dump
+put AaAaAaAaAaAaBBAaAaAa 8
+trees
+dump
+put AaAaAaAaAaAaAaAaAaAa 99
+get AaAaAaAaAaAaAaAaAaAa
+len
+impl java
+resize on
 put AaAaAaAaAaAaAaAaAaAa 0
 put AaAaAaAaAaAaAaAaAaBB 1
 put AaAaAaAaAaAaAaAaBBAa 2
@@ -29,21 +49,68 @@ put AaAaAaAaAaBBBBAaBBAa 26
 put AaAaAaAaAaBBBBAaBBBB 27
 put AaAaAaAaAaBBBBBBAaAa 28
 put AaAaAaAaAaBBBBBBAaBB 29
-put AaAaAaAaAaBBBBBBBBAa 30
-put AaAaAaAaAaBBBBBBBBBB 31
-put AaAaAaAaBBAaAaAaAaAa 32
-put AaAaAaAaBBAaAaAaAaBB 33
-put AaAaAaAaBBAaAaAaBBAa 34
-put AaAaAaAaBBAaAaAaBBBB 35
-put AaAaAaAaBBAaAaBBAaAa 36
-put AaAaAaAaBBAaAaBBAaBB 37
-put AaAaAaAaBBAaAaBBBBAa 38
-put AaAaAaAaBBAaAaBBBBBB 39
+put 100 1
+put 101 1
+put 102 1
+put 103 1
+put 104 1
+put 105 1
+put 106 1
+put 107 1
+put 108 1
+put 109 1
+put 110 1
+put 111 1
+put 112 1
+put 113 1
+put 114 1
+put 115 1
+put 116 1
+put 117 1
+put 118 1
+put 119 1
+put 120 1
+put 121 1
+put 122 1
+put 123 1
+put 124 1
+put 125 1
+put 126 1
+put 127 1
+put 128 1
+put 129 1
+put 130 1
+put 131 1
+put 132 1
+put 133 1
+put 134 1
+put 135 1
+put 136 1
+put 137 1
+put 138 1
+put 139 1
+put 140 1
+put 141 1
+put 142 1
+put 143 1
+put 144 1
+put 145 1
+put 146 1
+put 147 1
+put 148 1
+put 149 1
+put 150 1
+put 151 1
+put 152 1
+put 153 1
+put 154 1
+put 155 1
+put 156 1
+put 157 1
+put 158 1
+put 159 1
 cap
 trees
 longest
 len
-dump
-get AaAaAaAaAaAaAaBBBBBB
-get AaAaAaAaBBAaAaBBBBBB
-get AaAaAaAaBBAaBBAaAaAa
+moved

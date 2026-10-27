@@ -1,34 +1,18 @@
-table 32
-put 0 0
-put 32 1
-put 64 2
-put 96 3
-put 128 4
-put 160 5
-put 192 6
-put 224 7
-put 256 8
-put 288 9
-put 320 10
-put 352 11
-put 384 12
-put 416 13
-put 448 14
+table 16
+put 2147483647 1
+put 2147483631 2
+put 1073741824 3
+put 2147483000 4
 dump
-probes 0
-probes 32
-probes 64
-probes 96
-probes 128
-probes 160
-probes 192
-probes 224
-probes 256
-probes 288
-probes 320
-probes 352
-probes 384
-probes 416
-probes 448
-probes 480
-probes 1
+get 2147483631
+probes 2147483647
+probes 2147483630
+table 2
+put 5 7
+get 5
+get 4
+probes 4
+probes 5
+dump
+len
+cap

@@ -1,3 +1,5 @@
+impl cpython
+resize off
 collide 2
 collide 512
 collide 513
@@ -5,3 +7,53 @@ collide 682
 collide 341
 collide 1000
 collide 1022
+resize off
+impl java
+put AaAaAaAaAaAaAaAaAaAa 0
+put AaAaAaAaAaAaAaAaAaBB 1
+put AaAaAaAaAaAaAaAaBBAa 2
+put AaAaAaAaAaAaAaAaBBBB 3
+put AaAaAaAaAaAaAaBBAaAa 4
+put AaAaAaAaAaAaAaBBAaBB 5
+put AaAaAaAaAaAaAaBBBBAa 6
+put AaAaAaAaAaAaAaBBBBBB 7
+put AaAaAaAaAaAaBBAaAaAa 8
+put AaAaAaAaAaAaBBAaAaBB 9
+put AaAaAaAaAaAaBBAaBBAa 10
+put AaAaAaAaAaAaBBAaBBBB 11
+put AaAaAaAaAaAaBBBBAaAa 12
+put AaAaAaAaAaAaBBBBAaBB 13
+put AaAaAaAaAaAaBBBBBBAa 14
+put AaAaAaAaAaAaBBBBBBBB 15
+put AaAaAaAaAaBBAaAaAaAa 16
+put AaAaAaAaAaBBAaAaAaBB 17
+put AaAaAaAaAaBBAaAaBBAa 18
+put AaAaAaAaAaBBAaAaBBBB 19
+put AaAaAaAaAaBBAaBBAaAa 20
+put AaAaAaAaAaBBAaBBAaBB 21
+put AaAaAaAaAaBBAaBBBBAa 22
+put AaAaAaAaAaBBAaBBBBBB 23
+put AaAaAaAaAaBBBBAaAaAa 24
+put AaAaAaAaAaBBBBAaAaBB 25
+put AaAaAaAaAaBBBBAaBBAa 26
+put AaAaAaAaAaBBBBAaBBBB 27
+put AaAaAaAaAaBBBBBBAaAa 28
+put AaAaAaAaAaBBBBBBAaBB 29
+put AaAaAaAaAaBBBBBBBBAa 30
+put AaAaAaAaAaBBBBBBBBBB 31
+put AaAaAaAaBBAaAaAaAaAa 32
+put AaAaAaAaBBAaAaAaAaBB 33
+put AaAaAaAaBBAaAaAaBBAa 34
+put AaAaAaAaBBAaAaAaBBBB 35
+put AaAaAaAaBBAaAaBBAaAa 36
+put AaAaAaAaBBAaAaBBAaBB 37
+put AaAaAaAaBBAaAaBBBBAa 38
+put AaAaAaAaBBAaAaBBBBBB 39
+cap
+trees
+longest
+len
+dump
+get AaAaAaAaAaAaAaBBBBBB
+get AaAaAaAaBBAaAaBBBBBB
+get AaAaAaAaBBAaBBAaAaAa

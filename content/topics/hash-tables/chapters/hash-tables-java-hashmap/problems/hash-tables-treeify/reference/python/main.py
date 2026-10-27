@@ -5,8 +5,6 @@ DUMMY = -2
 MASK32 = 0xFFFFFFFF
 
 impl = "cpython"
-resize_on = False
-moved = 0
 
 # CPython-style table: `slots` holds EMPTY, DUMMY or an index into `entries`.
 slots = [EMPTY] * 8
@@ -15,6 +13,7 @@ used = 0
 
 # Java-style table: one list of [key, value] nodes per bin.
 bins = [[] for _ in range(16)]
+nodes = 0
 is_tree = [False] * 16
 
 
@@ -35,8 +34,10 @@ def bin_index(key):
 
 
 def make_table(n):
-    global slots, entries, used, bins, is_tree, moved
-    moved = 0
+    global slots, entries, used
+    global bins, nodes
+    nodes = 0
+    global is_tree
     if impl == "cpython":
         slots = [EMPTY] * n
         entries = []
@@ -101,7 +102,7 @@ def cp_del(key):
 # ---- Java-style chaining ----
 
 def jb_resize():
-    global bins, is_tree, moved
+    global bins, is_tree
     old_cap = len(bins)
     new_bins = [[] for _ in range(old_cap * 2)]
     new_tree = [False] * (old_cap * 2)
@@ -111,12 +112,12 @@ def jb_resize():
         for index, part in ((j, lo), (j + old_cap, hi)):
             new_bins[index] = part
             new_tree[index] = is_tree[j] and len(part) > 6
-        moved += len(chain)
     bins = new_bins
     is_tree = new_tree
 
 
 def jb_put(key, value):
+    global nodes
     index = bin_index(key)
     chain = bins[index]
     for node in chain:
@@ -124,6 +125,7 @@ def jb_put(key, value):
             node[1] = value
             return index
     chain.append([key, value])
+    nodes += 1
     if not is_tree[index] and len(chain) >= 9:
         if len(bins) < 64:
             jb_resize()
@@ -176,7 +178,7 @@ for line in sys.stdin.read().splitlines():
         if impl == "cpython":
             out.append(str(used))
         else:
-            out.append(str(sum(len(c) for c in bins)))
+            out.append(str(nodes))
     elif cmd == "cap":
         if impl == "cpython":
             out.append(str(len(slots)))

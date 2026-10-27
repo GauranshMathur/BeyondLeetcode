@@ -15,6 +15,7 @@ used = 0
 
 # Java-style table: one list of [key, value] nodes per bin.
 bins = [[] for _ in range(16)]
+nodes = 0
 is_tree = [False] * 16
 
 
@@ -35,7 +36,11 @@ def bin_index(key):
 
 
 def make_table(n):
-    global slots, entries, used, bins, is_tree, moved
+    global slots, entries, used
+    global bins, nodes
+    nodes = 0
+    global is_tree
+    global moved
     moved = 0
     if impl == "cpython":
         slots = [EMPTY] * n
@@ -101,7 +106,8 @@ def cp_del(key):
 # ---- Java-style chaining ----
 
 def jb_resize():
-    global bins, is_tree, moved
+    global bins, is_tree
+    global moved
     old_cap = len(bins)
     new_bins = [[] for _ in range(old_cap * 2)]
     new_tree = [False] * (old_cap * 2)
@@ -117,6 +123,7 @@ def jb_resize():
 
 
 def jb_put(key, value):
+    global nodes
     index = bin_index(key)
     chain = bins[index]
     for node in chain:
@@ -124,12 +131,13 @@ def jb_put(key, value):
             node[1] = value
             return index
     chain.append([key, value])
+    nodes += 1
     if not is_tree[index] and len(chain) >= 9:
         if len(bins) < 64:
             jb_resize()
         else:
             is_tree[index] = True
-    if resize_on and sum(len(c) for c in bins) > len(bins) * 3 // 4:
+    if resize_on and nodes > len(bins) * 3 // 4:
         jb_resize()
     return bin_index(key)
 
@@ -178,7 +186,7 @@ for line in sys.stdin.read().splitlines():
         if impl == "cpython":
             out.append(str(used))
         else:
-            out.append(str(sum(len(c) for c in bins)))
+            out.append(str(nodes))
     elif cmd == "cap":
         if impl == "cpython":
             out.append(str(len(slots)))

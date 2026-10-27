@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 const EMPTY = -1;
 const DUMMY = -2;
 
-type Key = number | string;
+type Key = number;
 type Node = { key: Key; value: number };
 
 let impl = 'cpython';
@@ -17,6 +17,7 @@ let used = 0;
 
 // Java-style table: one list of nodes per bin.
 let bins: Node[][] = Array.from({ length: 16 }, () => []);
+let nodes = 0;
 let isTree: boolean[] = new Array<boolean>(16).fill(false);
 
 function parseKey(token: string): Key {
@@ -38,12 +39,12 @@ function binIndex(key: Key): number {
 
 function makeTable(n: number): void {
 	moved = 0;
+	nodes = 0;
 	if (impl === 'cpython') {
 		slots = new Array<number>(n).fill(EMPTY);
 		entries = [];
 		used = 0;
-	}
-	else {
+	} else {
 		bins = Array.from({ length: n }, () => []);
 		isTree = new Array<boolean>(n).fill(false);
 	}
@@ -70,7 +71,6 @@ function cpFind(key: number): [number, number, number] {
 		examined++;
 	}
 }
-
 
 function cpPut(key: number, value: number): number {
 	const [i, ix] = cpFind(key);
@@ -128,11 +128,12 @@ function jbPut(key: Key, value: number): number {
 		}
 	}
 	chain.push({ key, value });
+	nodes++;
 	if (!isTree[index] && chain.length >= 9) {
 		if (bins.length < 64) jbResize();
 		else isTree[index] = true;
 	}
-	if (resizeOn && bins.reduce((sum, c) => sum + c.length, 0) > Math.floor((bins.length * 3) / 4)) {
+	if (resizeOn && nodes > Math.floor((bins.length * 3) / 4)) {
 		jbResize();
 	}
 	return binIndex(key);
@@ -146,7 +147,6 @@ function jbFind(key: Key): [Node | null, number] {
 	}
 	return [null, chain.length];
 }
-
 
 const out: string[] = [];
 for (const line of readFileSync(0, 'utf8').split('\n')) {
@@ -164,8 +164,7 @@ for (const line of readFileSync(0, 'utf8').split('\n')) {
 		if (impl === 'cpython') {
 			const [, ix] = cpFind(key as number);
 			out.push(ix >= 0 ? String((entries[ix] as Node).value) : 'error');
-		}
-		else {
+		} else {
 			const [node] = jbFind(key);
 			out.push(node ? String(node.value) : 'error');
 		}
@@ -175,7 +174,7 @@ for (const line of readFileSync(0, 'utf8').split('\n')) {
 		else out.push(String(jbFind(key)[1]));
 	} else if (cmd === 'len') {
 		if (impl === 'cpython') out.push(String(used));
-		else out.push(String(bins.reduce((sum, c) => sum + c.length, 0)));
+		else out.push(String(nodes));
 	} else if (cmd === 'cap') {
 		if (impl === 'cpython') out.push(String(slots.length));
 		else out.push(String(bins.length));
@@ -183,11 +182,12 @@ for (const line of readFileSync(0, 'utf8').split('\n')) {
 		if (impl === 'cpython') {
 			out.push(
 				slots
-					.map((ix) => (ix === EMPTY ? '.' : ix === DUMMY ? 'x' : String((entries[ix] as Node).key)))
+					.map((ix) =>
+						ix === EMPTY ? '.' : ix === DUMMY ? 'x' : String((entries[ix] as Node).key)
+					)
 					.join(' ')
 			);
-		}
-		else {
+		} else {
 			bins.forEach((chain, index) => {
 				if (chain.length === 0) return;
 				if (isTree[index]) {
@@ -197,11 +197,9 @@ for (const line of readFileSync(0, 'utf8').split('\n')) {
 				out.push(`${index}: ${chain.map((n) => String(n.key)).join(' ')}`);
 			});
 		}
-	}
-	else if (cmd === 'del') {
+	} else if (cmd === 'del') {
 		out.push(cpDel(parseKey(parts[1]) as number) ? 'ok' : 'error');
-	}
-	else if (cmd === 'indices') {
+	} else if (cmd === 'indices') {
 		out.push(slots.map((ix) => (ix === EMPTY ? '.' : ix === DUMMY ? 'x' : String(ix))).join(' '));
 	} else if (cmd === 'keys') {
 		out.push(
@@ -212,19 +210,16 @@ for (const line of readFileSync(0, 'utf8').split('\n')) {
 		);
 	} else if (cmd === 'nentries') {
 		out.push(String(entries.length));
-	}
-	else if (cmd === 'impl') {
+	} else if (cmd === 'impl') {
 		impl = parts[1];
 		makeTable(impl === 'cpython' ? 8 : 16);
 	} else if (cmd === 'bin') {
 		out.push(String(binIndex(parseKey(parts[1]))));
 	} else if (cmd === 'longest') {
 		out.push(String(Math.max(...bins.map((c) => c.length))));
-	}
-	else if (cmd === 'trees') {
+	} else if (cmd === 'trees') {
 		out.push(String(isTree.filter(Boolean).length));
-	}
-	else if (cmd === 'resize') {
+	} else if (cmd === 'resize') {
 		resizeOn = parts[1] === 'on';
 	} else if (cmd === 'moved') {
 		out.push(String(moved));

@@ -5,8 +5,6 @@ DUMMY = -2
 MASK32 = 0xFFFFFFFF
 
 impl = "cpython"
-resize_on = False
-moved = 0
 
 # CPython-style table: `slots` holds EMPTY, DUMMY or an index into `entries`.
 slots = [EMPTY] * 8
@@ -19,19 +17,12 @@ def parse_key(token):
     return int(token)
 
 
-def java_hash(key):
-    return key & MASK32
-
-
-def spread(h):
-    return h ^ (h >> 16)
 
 
 
 
 def make_table(n):
-    global slots, entries, used, bins, is_tree, moved
-    moved = 0
+    global slots, entries, used
     if impl == "cpython":
         slots = [EMPTY] * n
         entries = []

@@ -1,9 +1,7 @@
 {
 	"title": "Hash tables",
 	"summary": "Build the tables behind Python's dict and Java's HashMap: probing, chains that turn into trees, load factors, and what hostile keys do to them.",
-	"prerequisites": [
-		"dynamic-arrays"
-	],
+	"prerequisites": ["dynamic-arrays"],
 	"chapters": [
 		"hash-tables-cpython-dict",
 		"hash-tables-java-hashmap",

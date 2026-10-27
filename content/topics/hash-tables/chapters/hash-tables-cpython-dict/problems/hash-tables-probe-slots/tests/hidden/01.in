@@ -15,3 +15,21 @@ probes 13
 probes 14
 probes 15
 probes 16
+table 16
+put 0 1
+put 1 1
+put 2 1
+put 3 1
+put 4 1
+put 5 1
+put 6 1
+put 7 1
+put 8 1
+put 9 1
+put 10 1
+dump
+probes 0
+probes 5
+probes 10
+probes 11
+probes 16

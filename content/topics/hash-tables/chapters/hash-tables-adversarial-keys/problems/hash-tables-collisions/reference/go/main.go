@@ -28,7 +28,7 @@ type node struct {
 }
 
 var (
-	impl     = "cpython"
+	impl = "cpython"
 	resizeOn = false
 	moved    = 0
 
@@ -38,7 +38,8 @@ var (
 	used    = 0
 
 	// Java-style table: one list of nodes per bin.
-	bins   = make([][]*node, 16)
+	bins  = make([][]*node, 16)
+	nodes = 0
 	isTree = make([]bool, 16)
 )
 
@@ -87,6 +88,7 @@ func binIndex(k key) int {
 
 func makeTable(n int) {
 	moved = 0
+	nodes = 0
 	if impl == "cpython" {
 		slots = filled(n)
 		entries = nil
@@ -205,14 +207,6 @@ func jbResize() {
 }
 
 
-func total() int {
-	sum := 0
-	for _, c := range bins {
-		sum += len(c)
-	}
-	return sum
-}
-
 func jbPut(k key, value int) int {
 	index := binIndex(k)
 	for _, n := range bins[index] {
@@ -222,6 +216,7 @@ func jbPut(k key, value int) int {
 		}
 	}
 	bins[index] = append(bins[index], &node{k, value})
+	nodes++
 	if !isTree[index] && len(bins[index]) >= 9 {
 		if len(bins) < 64 {
 			jbResize()
@@ -229,7 +224,7 @@ func jbPut(k key, value int) int {
 			isTree[index] = true
 		}
 	}
-	if resizeOn && total() > len(bins)*3/4 {
+	if resizeOn && nodes > len(bins)*3/4 {
 		jbResize()
 	}
 	return binIndex(k)
@@ -300,7 +295,7 @@ func main() {
 				fmt.Fprintln(out, used)
 			}
 			if impl != "cpython" {
-				fmt.Fprintln(out, total())
+				fmt.Fprintln(out, nodes)
 			}
 		case "cap":
 			if impl == "cpython" {

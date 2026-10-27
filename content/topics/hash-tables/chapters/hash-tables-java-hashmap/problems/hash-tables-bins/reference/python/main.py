@@ -5,8 +5,6 @@ DUMMY = -2
 MASK32 = 0xFFFFFFFF
 
 impl = "cpython"
-resize_on = False
-moved = 0
 
 # CPython-style table: `slots` holds EMPTY, DUMMY or an index into `entries`.
 slots = [EMPTY] * 8
@@ -15,7 +13,7 @@ used = 0
 
 # Java-style table: one list of [key, value] nodes per bin.
 bins = [[] for _ in range(16)]
-is_tree = [False] * 16
+nodes = 0
 
 
 def parse_key(token):
@@ -35,15 +33,15 @@ def bin_index(key):
 
 
 def make_table(n):
-    global slots, entries, used, bins, is_tree, moved
-    moved = 0
+    global slots, entries, used
+    global bins, nodes
+    nodes = 0
     if impl == "cpython":
         slots = [EMPTY] * n
         entries = []
         used = 0
     else:
         bins = [[] for _ in range(n)]
-        is_tree = [False] * n
 
 
 # ---- CPython-style open addressing ----
@@ -103,6 +101,7 @@ def cp_del(key):
 
 
 def jb_put(key, value):
+    global nodes
     index = bin_index(key)
     chain = bins[index]
     for node in chain:
@@ -110,6 +109,7 @@ def jb_put(key, value):
             node[1] = value
             return index
     chain.append([key, value])
+    nodes += 1
     return bin_index(key)
 
 
@@ -157,7 +157,7 @@ for line in sys.stdin.read().splitlines():
         if impl == "cpython":
             out.append(str(used))
         else:
-            out.append(str(sum(len(c) for c in bins)))
+            out.append(str(nodes))
     elif cmd == "cap":
         if impl == "cpython":
             out.append(str(len(slots)))

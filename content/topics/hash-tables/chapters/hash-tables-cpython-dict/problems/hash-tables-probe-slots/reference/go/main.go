@@ -26,9 +26,7 @@ type node struct {
 }
 
 var (
-	impl     = "cpython"
-	resizeOn = false
-	moved    = 0
+	impl = "cpython"
 
 	// CPython-style table: slots holds empty, dummy or an index into entries.
 	slots   = filled(8)
@@ -61,7 +59,6 @@ func spread(h uint32) uint32 {
 
 
 func makeTable(n int) {
-	moved = 0
 	if impl == "cpython" {
 		slots = filled(n)
 		entries = nil

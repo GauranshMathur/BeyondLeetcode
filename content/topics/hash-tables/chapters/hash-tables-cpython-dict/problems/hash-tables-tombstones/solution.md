@@ -2,4 +2,4 @@ A delete is a search that ends on a hit: it finds the slot and writes the Dummy 
 
 `put` is two walks over the same path. The first is the ordinary search, and decides between replacing and inserting. If it inserts, the second walk starts again from the key's first slot and takes the first slot that is Unused or Dummy. This is the order the Chapter's source reads: look up first, then `find_empty_slot`, whose test is "holds a key".
 
-Each walk is O(1) expected and O(n) in the worst case. Dummy slots make searches longer without holding anything, which is why a table that is deleted from a lot is eventually rebuilt (a later Problem).
+Each walk is O(1) expected while the live keys and the Dummy slots together fill only a small share of the table, and O(N) in the worst case, for a table of `N` slots. Dummy slots make searches longer without holding anything, which is why a table that is deleted from a lot is eventually rebuilt (a later Problem).

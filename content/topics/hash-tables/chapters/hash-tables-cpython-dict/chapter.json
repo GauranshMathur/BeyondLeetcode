@@ -1,8 +1,4 @@
 {
 	"title": "CPython: a dict that probes",
-	"problems": [
-		"hash-tables-probe-slots",
-		"hash-tables-tombstones",
-		"hash-tables-entries"
-	]
+	"problems": ["hash-tables-probe-slots", "hash-tables-tombstones", "hash-tables-entries"]
 }

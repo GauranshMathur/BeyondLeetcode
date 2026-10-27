@@ -13,3 +13,14 @@ put 40 2
 dump
 probes 24
 len
+table 8
+put 1 1
+put 9 2
+put 17 3
+del 1
+put 9 7
+dump
+get 9
+put 25 4
+dump
+probes 17

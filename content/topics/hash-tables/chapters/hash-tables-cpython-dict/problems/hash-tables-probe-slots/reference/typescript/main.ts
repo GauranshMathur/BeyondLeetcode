@@ -3,35 +3,21 @@ import { readFileSync } from 'node:fs';
 const EMPTY = -1;
 const DUMMY = -2;
 
-type Key = number | string;
+type Key = number;
 type Node = { key: Key; value: number };
 
-let impl = 'cpython';
-let resizeOn = false;
-let moved = 0;
+const impl = 'cpython';
 
 // CPython-style table: `slots` holds EMPTY, DUMMY or an index into `entries`.
 let slots: number[] = new Array<number>(8).fill(EMPTY);
 let entries: (Node | null)[] = []; // in insertion order; null once deleted
 let used = 0;
 
-
 function parseKey(token: string): Key {
 	return Number(token);
 }
 
-/** The key's hash code as an unsigned 32-bit number. */
-function javaHash(key: Key): number {
-	return key >>> 0;
-}
-
-function spread(h: number): number {
-	return (h ^ (h >>> 16)) >>> 0;
-}
-
-
 function makeTable(n: number): void {
-	moved = 0;
 	if (impl === 'cpython') {
 		slots = new Array<number>(n).fill(EMPTY);
 		entries = [];
@@ -61,7 +47,6 @@ function cpFind(key: number): [number, number, number] {
 	}
 }
 
-
 function cpPut(key: number, value: number): number {
 	const [i, ix] = cpFind(key);
 	if (ix >= 0) {
@@ -76,9 +61,6 @@ function cpPut(key: number, value: number): number {
 	used++;
 	return j;
 }
-
-
-
 
 const out: string[] = [];
 for (const line of readFileSync(0, 'utf8').split('\n')) {
@@ -107,7 +89,9 @@ for (const line of readFileSync(0, 'utf8').split('\n')) {
 		if (impl === 'cpython') {
 			out.push(
 				slots
-					.map((ix) => (ix === EMPTY ? '.' : ix === DUMMY ? 'x' : String((entries[ix] as Node).key)))
+					.map((ix) =>
+						ix === EMPTY ? '.' : ix === DUMMY ? 'x' : String((entries[ix] as Node).key)
+					)
 					.join(' ')
 			);
 		}
