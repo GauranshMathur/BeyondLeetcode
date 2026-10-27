@@ -23,6 +23,12 @@ export const sandboxConfig = {
 	>,
 	/** Wall-clock limit for the whole container; unfinished Tests after it are `timeout`. */
 	containerTimeoutMs: 10_000,
+	/**
+	 * Most hidden Tests a Submission puts in one container. The harness starts a fresh process per
+	 * Test, about 0.2 s each in TypeScript whatever the code does, so 25 Tests take about 5 s of the
+	 * 10 s `containerTimeoutMs`, leaving half for slow learner code and the compile step.
+	 */
+	hiddenBatchTests: 25,
 	/** Per-Test run time. */
 	testTimeoutMs: 2_000,
 	memoryMb: 256,

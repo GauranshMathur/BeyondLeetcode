@@ -21,6 +21,7 @@ import {
 	problemView,
 	type RunView,
 	referenceStartOf,
+	runSubmission,
 	runView,
 	type SavedStep,
 	type SolutionView,
@@ -60,6 +61,8 @@ export interface LearningCoreDeps {
 	db: Db;
 	/** Needed by Run (and Submit); without it Run answers RunnerUnavailable. */
 	runner?: RunnerPort;
+	/** Most hidden Tests in one container; defaults to the configured limit. A test knob. */
+	hiddenBatchTests?: number;
 	clock?: () => Date;
 }
 
@@ -365,21 +368,14 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				},
 				submit: (build, files) =>
 					saveThen(build, files, async ({ problemId, language }, revision) => {
-						// Two containers: nothing a Hidden Test runs shares one with a Test whose output is shown.
-						const plan = submitPlan(deps.catalogue, problemId);
-						const batches = [];
-						if (plan.visible.length > 0) {
-							batches.push({
-								tests: plan.visible,
-								result: await execute(language, files, plan.visible)
-							});
-						}
-						if (!batches[0]?.result.compileError && plan.hidden.length > 0) {
-							const result = await execute(language, files, plan.hidden);
-							// The code compiled in call 1; a message here is not for the Learner (it ran with Hidden inputs).
-							if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
-							batches.push({ tests: plan.hidden, result });
-						}
+						// Visible Tests in one container, then the hidden ones in containers of at most
+						// `hiddenBatchTests`: nothing a Hidden Test runs shares one with a Test whose output is shown.
+						const plan = submitPlan(
+							deps.catalogue,
+							problemId,
+							deps.hiddenBatchTests ?? sandboxConfig.hiddenBatchTests
+						);
+						const batches = await runSubmission(plan, (tests) => execute(language, files, tests));
 						const { verdict, failure, failingProblemId } = judge(
 							batches,
 							problemId,

@@ -636,17 +636,33 @@ type SubmitCatalogue = Pick<Catalogue, 'topic' | 'problem' | 'hiddenTests'>;
 export interface SubmitPlan {
 	/** This Problem's Example Tests: the only Tests whose output is ever shown. Run in their own container. */
 	readonly visible: readonly SubmitTest[];
-	/** Every other Test, in a second container; only per-Test outcomes are read from it, never its output. */
-	readonly hidden: readonly SubmitTest[];
+	/**
+	 * Every other Test, in order, in containers of at most the batch size each; only per-Test
+	 * outcomes are read from them, never their output.
+	 */
+	readonly hidden: readonly (readonly SubmitTest[])[];
 }
 
 /**
  * The Tests a Submission runs. A Core Problem runs every earlier Core Problem's Tests then its
  * own; an Extra runs the Core Problems up to and including its parent, then its own. This
- * Problem's Example Tests go in `visible`, everything else in `hidden`, so no Hidden input ever
- * shares a container with a Test whose output is shown. Throws NotFound for an unknown Problem.
+ * Problem's Example Tests go in `visible`, everything else in `hidden`, cut in order into batches
+ * of at most `maxBatchTests`, so no Hidden input ever shares a container with a Test whose
+ * output is shown, and no container runs more Tests than fit its time limit. Throws NotFound for
+ * an unknown Problem.
  */
-export function submitPlan(catalogue: SubmitCatalogue, problemId: string): SubmitPlan {
+export function submitPlan(
+	catalogue: SubmitCatalogue,
+	problemId: string,
+	maxBatchTests: number
+): SubmitPlan {
+	// A NaN or fractional size would slice every hidden Test away: an Accepted on the Examples alone.
+	if (!Number.isInteger(maxBatchTests) || maxBatchTests < 1) {
+		throw new RangeError(
+			`maxBatchTests must be a whole number of at least 1, got ${maxBatchTests}`
+		);
+	}
+	const size = maxBatchTests;
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
 	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
@@ -663,13 +679,47 @@ export function submitPlan(catalogue: SubmitCatalogue, problemId: string): Submi
 			problemId: id,
 			kind
 		}));
-	return {
-		visible: testsOf(problemId, 'example'),
-		hidden: scope.flatMap((id) => [
-			...(id === problemId ? [] : testsOf(id, 'example')),
-			...testsOf(id, 'hidden')
-		])
-	};
+	const hidden = scope.flatMap((id) => [
+		...(id === problemId ? [] : testsOf(id, 'example')),
+		...testsOf(id, 'hidden')
+	]);
+	const batches: SubmitTest[][] = [];
+	for (let i = 0; i < hidden.length; i += size) batches.push(hidden.slice(i, i + size));
+	return { visible: testsOf(problemId, 'example'), hidden: batches };
+}
+
+/** Whether one of the batch's own Tests timed out, matched by id as `judge` does. */
+function timedOut(tests: readonly SubmitTest[], result: ExecuteResult): boolean {
+	return tests.some((t) => result.results.find((r) => r.id === t.id)?.status === 'timeout');
+}
+
+/**
+ * Runs a Submission's batches in order, the visible one first, and returns what `judge` takes.
+ * It stops after a batch in which a Test timed out: Time Limit Exceeded outranks every outcome a
+ * hidden batch can add (a Compile Error there is not a Verdict), and the first Test to time out
+ * is already in hand, so the Verdict and the failure shown are what one container would give.
+ * Any other failure runs on, since a later timeout would outrank it. A compile error in the
+ * visible batch is the Verdict and stops the run; in a hidden batch it came from running Hidden
+ * inputs, so it is not the Learner's to see: RunnerUnavailable.
+ */
+export async function runSubmission(
+	plan: SubmitPlan,
+	execute: (tests: readonly SubmitTest[]) => Promise<ExecuteResult>
+): Promise<{ tests: readonly SubmitTest[]; result: ExecuteResult }[]> {
+	const ran: { tests: readonly SubmitTest[]; result: ExecuteResult }[] = [];
+	if (plan.visible.length > 0) {
+		const result = await execute(plan.visible);
+		ran.push({ tests: plan.visible, result });
+		if (result.compileError !== undefined) return ran;
+		if (timedOut(plan.visible, result)) return ran;
+	}
+	for (const tests of plan.hidden) {
+		const result = await execute(tests);
+		if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
+		ran.push({ tests, result });
+		if (timedOut(tests, result)) break;
+	}
+	return ran;
 }
 
 /**
