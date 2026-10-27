@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.5](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.4...v1.5.5) (2026-10-27)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C93 a background pull has an absolute cap and fails on its first error ([#337](https://github.com/GauranshMathur/BeyondLeetcode/issues/337)) ([939e83e](https://github.com/GauranshMathur/BeyondLeetcode/commit/939e83e7e85611451bb94becada9728ec6683a0c))
+
 ## [1.5.4](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.3...v1.5.4) (2026-10-27)
 
 
