@@ -1,11 +1,23 @@
-sort 64
-run 8
-run 8
-run 8
-run 8
-run 8
-run 8
-run 8
-run 8
+sort 1080
+run 64
+run 64
+run 64
+run 64
+run 80
+run 32
+run 200
+run 16
+run 16
+run 48
+run 24
+run 24
+run 40
+run 64
+run 64
+run 64
+run 64
+run 32
+run 40
+run 16
 pending
 end

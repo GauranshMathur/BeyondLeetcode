@@ -1,6 +1,0 @@
-call 8000
-ret
-call 100
-gc
-segment
-moved

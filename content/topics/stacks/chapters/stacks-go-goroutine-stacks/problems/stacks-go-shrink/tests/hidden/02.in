@@ -1,6 +1,30 @@
 call 3000
 ret
+call 1024
 gc
 segment
+ret
+call 1023
+gc
+segment
+call 2047
+call 1
+call 1
+segment
+ret
+ret
+call 1000
+gc
+segment
+call 1000
+call 1000
+call 1000
+segment
+ret
+call 24
+used
+gc
+segment
+ret
 gc
 segment

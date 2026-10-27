@@ -4,6 +4,6 @@ The check against the limit comes after the doubling and before any copying. If 
 
 Copying costs `used` bytes, not the segment size. That is the part of the stack the runtime moves too.
 
-Complexity. A `call` that moves the stack is O(used) in the **worst case**. Across any run of calls the segment at least doubles on every move, so the total bytes moved are bounded by a small multiple of the final `used`: `call` is O(1) **amortised** per byte of frame. `ret`, `depth`, `used` and the readers are O(1).
+Complexity. A `call` that moves the stack is O(used) in the **worst case**. Across any run of calls the segment at least doubles on every move, so the total bytes moved are bounded by a small multiple of the largest `used` the stack ever reached (the stack may have shrunk by the end, since `ret` lowers `used`): `call` is O(1) **amortised** per byte of frame. `ret`, `depth`, `used` and the readers are O(1).
 
 Two details are easy to miss. The segment is always 2,048 times a power of two, so with the default limit the largest segment is 536,870,912, because the next one up is over 1,000,000,000. And a `call` that overflows leaves nothing half-done, because the program stops.

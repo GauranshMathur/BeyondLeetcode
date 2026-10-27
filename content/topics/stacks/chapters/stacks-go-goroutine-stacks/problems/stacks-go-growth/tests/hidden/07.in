@@ -1,5 +1,0 @@
-limit 4096
-call 4096
-segment
-call 1
-segment

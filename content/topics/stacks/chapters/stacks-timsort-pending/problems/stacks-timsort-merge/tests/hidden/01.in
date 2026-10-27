@@ -3,3 +3,14 @@ run 5
 pending
 end
 pending
+sort 64
+run 8
+run 8
+run 8
+run 8
+run 8
+run 8
+run 8
+run 8
+pending
+end

@@ -29,9 +29,10 @@ Output:
 3
 8
 3
+3
 5
 error
 error
 ```
 
-The smallest item is 3 while the 3 is on the stack. After the 3 is popped the smallest is 5.
+The first `min` prints 3. The first `pop` removes the 8 and the second `min` prints 3 again. The second `pop` removes the 3 and prints it, and the stack now holds only 5. The last `min` and `pop` find the stack empty.

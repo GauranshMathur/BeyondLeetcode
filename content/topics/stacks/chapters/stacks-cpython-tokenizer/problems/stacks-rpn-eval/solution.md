@@ -8,4 +8,4 @@ Floor division is the part that differs between languages. Python's `//` rounds 
 
 Errors are found left to right, and the first one ends the program: `rpn 1 0 // 2` is a division by zero, not a leftover value. The check for exactly one value runs at the very end.
 
-Complexity. O(n) time in the **worst case** for n tokens. The stack can hold up to about n/2 + 1 values, for a program with all its numbers first, so the space is O(n).
+Complexity. O(n) time in the **worst case** for n tokens. The stack can hold up to n values (a program of only numbers is an error, but it still fills the stack), and up to about n/2 + 1 for a program that evaluates to one value, so the space is O(n).

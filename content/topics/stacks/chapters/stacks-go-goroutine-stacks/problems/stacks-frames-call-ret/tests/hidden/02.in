@@ -1,3 +1,5 @@
+depth
+used
 call 1
 call 2
 call 3
@@ -8,4 +10,16 @@ used
 ret
 ret
 ret
+ret
+call 1000000
+call 1000000
+call 1000000
+used
+ret
+used
+
+call 8
+
+depth
+
 ret

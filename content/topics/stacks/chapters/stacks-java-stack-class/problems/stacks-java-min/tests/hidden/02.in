@@ -1,10 +1,171 @@
+push -50
+push -13
+push 24
+push -40
+push -3
+push 34
+push -30
+push 7
+push 44
+push -20
+push 17
+push -47
+push -10
+push 27
+push -37
+push 0
+push 37
+push -27
+push 10
+push 47
+push -17
+push 20
+push -44
+push -7
+push 30
+push -34
+push 3
+push 40
+push -24
+push 13
+push 50
+push -14
+push 23
+push -41
+push -4
+push 33
+push -31
+push 6
+push 43
+push -21
+push 16
+push -48
+push -11
+push 26
+push -38
+push -1
+push 36
+push -28
+push 9
+push 46
+push -18
+push 19
+push -45
+push -8
+push 29
+push -35
+push 2
+push 39
+push -25
+push 12
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+pop
+min
+size
+push 30
+push 29
+push 28
+push 27
+push 26
+push 25
+push 24
+push 23
+push 22
+push 21
+push 20
+push 19
+push 18
+push 17
+push 16
+push 15
+push 14
+push 13
+push 12
+push 11
+push 10
+push 9
+push 8
+push 7
+push 6
+push 5
+push 4
 push 3
 push 2
 push 1
 min
 pop
-min
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+pop
 pop
 min
-pop
-min
+size
+capacity
