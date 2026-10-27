@@ -34,16 +34,23 @@ try {
 const engine = createEngine(env.dockerSocket);
 const instanceId = randomBytes(8).toString('hex');
 const readyLanguages = new Set<string>();
-const images = createImageKeeper(engine, sandboxConfig.images, {
-	onReady: (language) => {
-		readyLanguages.add(language);
-		console.log(`Runner ready for ${language}`);
-	},
-	onLost: (language) => {
-		readyLanguages.delete(language);
-		console.warn(`Runner lost the ${language} image, pulling it again`);
-	}
-});
+let images: ReturnType<typeof createImageKeeper>;
+try {
+	images = createImageKeeper(engine, sandboxConfig.images, {
+		onReady: (language) => {
+			readyLanguages.add(language);
+			console.log(`Runner ready for ${language}`);
+		},
+		onLost: (language) => {
+			readyLanguages.delete(language);
+			console.warn(`Runner lost the ${language} image, pulling it again`);
+		}
+	});
+} catch (error) {
+	console.error(`Runner cannot start: ${(error as Error).message}`);
+	process.exit(1);
+}
+
 const server = Bun.serve({
 	port: env.port,
 	hostname: env.host,
