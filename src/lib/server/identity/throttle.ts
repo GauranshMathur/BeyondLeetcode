@@ -1,4 +1,3 @@
-import { randomInt } from 'node:crypto';
 import { isIP } from 'node:net';
 
 export interface ThrottleInput {
@@ -47,10 +46,8 @@ export interface ThrottleOptions {
 	/** Attempts per window for one Account across all addresses. */
 	accountLimit?: number;
 	windowMs?: number;
-	/** Cap on stored counters per map (five maps: see `createThrottle`). */
+	/** Cap on stored counters per map, except the Account map (five maps: see `createThrottle`). */
 	maxKeys?: number;
-	/** Seeds the hashes of the evicted-Account sketch; unpredictable by default. Tests fix it. */
-	salt?: number;
 	now?: () => number;
 }
 
@@ -147,21 +144,13 @@ interface Entry {
  * entry whose window ends earliest and never skips or refuses, so a fresh key always gets in with a full
  * budget.
  *
- * The Account map holds one entry per real Account tried in the window, so it fills only on an Instance
- * with more than maxKeys Accounts tried in 10 minutes, but a client who knows that many ids can fill it.
- * Evicting an Account's entry must not hand that Account a fresh 50, so a full map evicts the entry with the
- * fewest counts (the earliest of those) and never skips the new Account, and an evicted entry leaves its
- * count and window end in a fixed-size sketch (see `remember`). An Account tried again is counted from what
- * the sketch holds, so it never starts below the count it had. Alternating a target with new Accounts to
- * push it out each time therefore gains nothing: the target keeps its count. A sketch collision can only
- * raise an Account's count, so an Account may be refused a few tries early, never admitted past 50; to
- * push innocent Accounts to 50 through it, a flood must evict entries holding high counts in both rows of
- * their slots, which costs about 50 admitted tries per slot (and each counts against its address and pair).
- * A restored entry keeps the evicted one's window end, so a token counted before the eviction still matches it
- * and gives back its one count, which the restored count includes. Entries restored out of window order are
- * dropped when met (`held`), since `sweep` only trims the front.
- * `emailAccounts` never skipped (it evicts the earliest window like the pair maps); made-up emails have no
- * Account behind them, so only the timing residual below applies to it, and it has no sketch.
+ * The Account map is different: a real Account id exists only for a real Account (every caller passes
+ * `null` or the id of a stored Account, never text the client typed), so it holds at most one entry per
+ * Account tried in the window and the client cannot grow it. It has no maxKeys bound and never evicts or
+ * skips, because dropping an Account's entry would give that Account a fresh 50 and skipping it would leave
+ * it uncapped (card C85). Every Account is held to 50 per window however many Accounts the Instance has.
+ * Its memory is bounded by the number of Accounts, not by maxKeys. `emailAccounts` keys are the client's,
+ * so it keeps the maxKeys bound and evicts the earliest window like the pair maps.
  *
  * Residual, once these maps evict: an attacker who pushes one pair or one unknown email out gets a fresh
  * count for it. Filling a map takes up to maxKeys admitted tries; after that each new key evicts the entry
@@ -188,8 +177,8 @@ interface Entry {
  * or the Account limit tells an attacker whether an email has an Account. The Account limit also lets
  * someone lock a known Account out for a window; that is accepted.
  *
- * Each map is capped at maxKeys, expired entries dropped first, and a full map never refuses an attempt
- * or skips a key. Worst case: 5 * maxKeys entries, plus the sketch: 2 * 4 * maxKeys slots of 10 bytes.
+ * Each map but the Account map is capped at maxKeys, expired entries dropped first, and a full map never
+ * refuses an attempt. Worst case: 4 * maxKeys entries plus one per Account tried in the window.
  */
 export const createThrottle = ({
 	limit = 5,
@@ -197,23 +186,21 @@ export const createThrottle = ({
 	accountLimit = 50,
 	windowMs = 10 * 60_000,
 	maxKeys = 10_000,
-	salt = randomInt(2 ** 32),
 	now = Date.now
 }: ThrottleOptions = {}): Throttle => {
 	// Insertion order is window-start order, since windows are fixed, so the first entry ends first.
-	// `evicts`: which entry a full map drops for the new key. 'earliest' drops the entry whose window ends
-	// first. 'fewest' drops the entry with the fewest counts (the earliest of those), because an evicted
-	// entry's counts are what its owner gets back: the Account counter must make that as little as it can.
-	const counter = (max: number, evicts: 'earliest' | 'fewest') => ({
+	// `evicts`: a full map drops its earliest-ending entry for the new key. The Account counter alone never
+	// evicts and has no maxKeys bound: dropping an Account's entry hands that Account a fresh 50.
+	const counter = (max: number, evicts: boolean) => ({
 		max,
 		evicts,
 		entries: new Map<string, Entry>()
 	});
-	const addresses = counter(addressLimit, 'earliest');
-	const pairs = counter(limit, 'earliest');
-	const accounts = counter(accountLimit, 'fewest');
-	const emailPairs = counter(limit, 'earliest');
-	const emailAccounts = counter(accountLimit, 'earliest');
+	const addresses = counter(addressLimit, true);
+	const pairs = counter(limit, true);
+	const accounts = counter(accountLimit, false);
+	const emailPairs = counter(limit, true);
+	const emailAccounts = counter(accountLimit, true);
 	const everyCounter = [addresses, pairs, accounts, emailPairs, emailAccounts];
 	type Counter = ReturnType<typeof counter>;
 
@@ -254,73 +241,6 @@ export const createThrottle = ({
 		else entry.count -= 1;
 	};
 
-	/** The key to drop from a full map: the first entry, or the first one with the fewest counts. */
-	const victimOf = ({ entries, evicts }: Counter): string | undefined => {
-		if (evicts === 'earliest') return entries.keys().next().value;
-		let victim: string | undefined;
-		let fewest = Number.POSITIVE_INFINITY;
-		for (const [id, entry] of entries) {
-			if (entry.count >= fewest) continue;
-			victim = id;
-			fewest = entry.count;
-			// Counts are at least 1, and ties go to the earliest, so nothing later can beat this.
-			if (fewest <= 1) break;
-		}
-		return victim;
-	};
-
-	// What the Account map remembers of the Accounts it evicted, in a fixed size (a count-min sketch): SKETCH_ROWS
-	// rows of maxKeys * 4 slots, each holding the largest count and the latest window end of the evicted
-	// entries that hash to it. An Account that is tried again after its entry went is given the smallest slot
-	// count over its rows, so it never starts below what it had (the slot has seen at least that count); a
-	// collision can only raise it. A slot whose window has ended is dead. Only the Account map uses it.
-	const SKETCH_ROWS = 2;
-	const sketchWidth = maxKeys * 4;
-	const sketchCounts = new Uint16Array(SKETCH_ROWS * sketchWidth);
-	const sketchEnds = new Float64Array(SKETCH_ROWS * sketchWidth);
-	const slotOf = (row: number, key: string) => {
-		let h = (salt ^ Math.imul(row + 1, 0x9e3779b1)) >>> 0;
-		for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193) >>> 0;
-		h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
-		return row * sketchWidth + (h % sketchWidth);
-	};
-	const remember = (key: string, { count, resetAt }: Entry, at: number) => {
-		for (let row = 0; row < SKETCH_ROWS; row++) {
-			const slot = slotOf(row, key);
-			const live = sketchEnds[slot] > at;
-			sketchCounts[slot] = Math.max(live ? sketchCounts[slot] : 0, count);
-			sketchEnds[slot] = Math.max(live ? sketchEnds[slot] : 0, resetAt);
-		}
-	};
-	/** What the sketch holds for a key whose entry is gone: undefined, or a count and window end. */
-	const recall = (key: string, at: number): Entry | undefined => {
-		let count = Number.POSITIVE_INFINITY;
-		let resetAt = Number.POSITIVE_INFINITY;
-		for (let row = 0; row < SKETCH_ROWS; row++) {
-			const slot = slotOf(row, key);
-			if (sketchEnds[slot] <= at) return undefined;
-			count = Math.min(count, sketchCounts[slot]);
-			resetAt = Math.min(resetAt, sketchEnds[slot]);
-		}
-		return { count, resetAt };
-	};
-	/** The entry for a key: the map's, or for the Account map what the sketch holds of an evicted one. */
-	const lookup = (c: Counter, id: string, at: number): Entry | undefined =>
-		held(c, id, at) ?? (c === accounts ? recall(id, at) : undefined);
-	/**
-	 * The map's entry for a key, if its window has not ended. `sweep` stops at the first live entry, and an
-	 * Account restored from the sketch keeps its old window end behind newer entries, so an ended entry can
-	 * sit past that point: drop it when met.
-	 */
-	const held = (c: Counter, id: string, at: number): Entry | undefined => {
-		const entry = c.entries.get(id);
-		if (entry && entry.resetAt <= at) {
-			c.entries.delete(id);
-			return undefined;
-		}
-		return entry;
-	};
-
 	const sweep = ({ entries }: Counter, at: number) => {
 		for (const [id, entry] of entries) {
 			if (entry.resetAt > at) return;
@@ -335,32 +255,27 @@ export const createThrottle = ({
 			const slots = slotsFor(input);
 			let retryAfterMs = 0;
 			for (const [, c, id] of slots) {
-				const entry = lookup(c, id, at);
+				const entry = c.entries.get(id);
 				if (entry && entry.count >= c.max)
 					retryAfterMs = Math.max(retryAfterMs, entry.resetAt - at);
 			}
 			if (retryAfterMs > 0) return { allowed: false, retryAfterMs };
 			const counted: Partial<Record<Slot, CountedIn>> = {};
 			for (const [slot, c, id] of slots) {
-				const live = held(c, id, at);
-				if (live) {
-					live.count += 1;
-					counted[slot] = { key: id, resetAt: live.resetAt };
+				const entry = c.entries.get(id);
+				if (entry) {
+					entry.count += 1;
+					counted[slot] = { key: id, resetAt: entry.resetAt };
 					continue;
 				}
-				if (c.entries.size >= maxKeys) {
-					const victim = victimOf(c);
-					const gone = victim === undefined ? undefined : c.entries.get(victim);
-					if (victim !== undefined) c.entries.delete(victim);
-					if (c === accounts && victim !== undefined && gone) remember(victim, gone, at);
+				if (c.evicts && c.entries.size >= maxKeys) {
+					const earliest = c.entries.keys().next().value;
+					if (earliest !== undefined) c.entries.delete(earliest);
 				}
-				// An evicted Account comes back with the count and window it had, not a fresh 50.
-				const back = c === accounts ? recall(id, at) : undefined;
-				const resetAt = back ? back.resetAt : at + windowMs;
-				c.entries.set(id, { count: (back?.count ?? 0) + 1, resetAt });
-				counted[slot] = { key: id, resetAt };
+				c.entries.set(id, { count: 1, resetAt: at + windowMs });
+				counted[slot] = { key: id, resetAt: at + windowMs };
 			}
-			// Every slot is counted: a full map evicts to make room and never skips the new key.
+			// Every slot is counted: a full map evicts to make room, and the Account map has no bound to hit.
 			const { address, pair, account } = counted;
 			return {
 				allowed: true,

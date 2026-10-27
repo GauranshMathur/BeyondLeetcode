@@ -279,7 +279,7 @@ describe('throttle', () => {
 		const { throttle } = setup({ maxKeys: 2, addressLimit: 3 });
 		throttle.attempt(from('1.1.1.1', 'a'));
 		throttle.attempt(from('1.1.1.2', 'b'));
-		// The Account maps are full: this Account takes the place of the entry with the fewest counts.
+		// The Account maps are full of live entries: this Account goes uncounted there.
 		const mine = tokenOf(throttle.attempt(from('1.1.1.3', 'c')));
 		throttle.succeed(mine);
 		expect(throttle.attempt(from('1.1.1.4', 'd')).allowed).toBe(true);
@@ -297,7 +297,7 @@ describe('throttle', () => {
 		const { throttle } = setup({ maxKeys });
 		for (let i = 0; i < maxKeys * 4; i++) {
 			expect(throttle.attempt(from(`10.${i >> 8}.${i & 255}.1`, `acct${i}`)).allowed).toBe(true);
-			expect(throttle.size()).toBeLessThanOrEqual(3 * maxKeys);
+			expect(throttle.size()).toBeLessThanOrEqual(3 * maxKeys + i + 1);
 		}
 		expect(throttle.attempt(from('99.99.99.99', 'someone')).allowed).toBe(true);
 	});
@@ -313,15 +313,14 @@ describe('throttle', () => {
 		expect(throttle.attempt(from('99.99.99.99', 'victim')).allowed).toBe(false);
 	});
 
-	it('keeps the Account with the most failures when its full map takes a new Account, and still applies the address limit', () => {
+	it('never drops a live Account entry past maxKeys Accounts, and still applies the address limit', () => {
 		const { throttle } = setup({ maxKeys: 3, addressLimit: 2 });
-		throttle.attempt(from('1.1.1.1', 'a0'));
-		throttle.attempt(from('1.1.1.2', 'a0'));
-		throttle.attempt(from('1.1.1.3', 'a1'));
-		throttle.attempt(from('1.1.1.4', 'a2'));
-		// a1 has the fewest counts and ends earliest of those: it goes, a0 (2 counts) stays.
+		for (let i = 0; i < 3; i++) throttle.attempt(from(`1.1.1.${i}`, `a${i}`));
 		expect(throttle.attempt(from('2.2.2.2', 'new')).allowed).toBe(true);
-		expect(throttle.size()).toBeLessThanOrEqual(9);
+		// the original accounts are still counted
+		for (let i = 0; i < 4; i++) throttle.attempt(from(`3.3.3.${i}`, 'a0'));
+		expect(throttle.attempt(from('4.4.4.4', 'a0')).allowed).toBe(true);
+		expect(throttle.size()).toBeLessThanOrEqual(12);
 		throttle.attempt(from('5.5.5.5', 'new2'));
 		expect(throttle.attempt(from('5.5.5.5', 'new2')).allowed).toBe(true);
 		expect(throttle.attempt(from('5.5.5.5', 'new3')).allowed).toBe(false);
@@ -398,16 +397,15 @@ describe('the address x Account map at maxKeys', () => {
 		expect(throttle.size()).toBeLessThanOrEqual(maxKeys * 2 + 4);
 	});
 
-	it('gives nothing back to a pair that was evicted, but still the address', () => {
+	it('gives nothing back to a pair that was evicted, but still the address and the Account', () => {
 		const { throttle } = setup({ maxKeys: 4, addressLimit: 1_000_000 });
 		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'victim')));
 		// Three more pairs fill the map; the fourth pushes the first one out.
 		for (const id of ['o1', 'o2', 'o3', 'o4']) throttle.attempt(from('2.2.2.2', id));
 		const before = throttle.size();
 		throttle.succeed(mine);
-		// Only the address entry went back to zero. The Account entry was evicted by o4 (the fourth Account in
-		// a map of four, all with one count: the earliest goes), so it gave nothing back; no pair was touched.
-		expect(throttle.size()).toBe(before - 1);
+		// The address entry and the Account entry were back to zero and went; no pair entry was touched.
+		expect(throttle.size()).toBe(before - 2);
 		// The pairs that stayed keep their counts: o4 had one try, so four more fit and the fifth does not.
 		for (let i = 0; i < 4; i++) expect(throttle.attempt(from('2.2.2.2', 'o4')).allowed).toBe(true);
 		expect(throttle.attempt(from('2.2.2.2', 'o4')).allowed).toBe(false);
@@ -673,11 +671,11 @@ describe('refund and provider starts', () => {
 	});
 });
 
-describe('the Account map at maxKeys', () => {
+describe('the Account map past maxKeys Accounts', () => {
 	const maxKeys = 4;
-	const open = { maxKeys, addressLimit: 1_000_000, limit: 1_000_000, salt: 1 };
+	const open = { maxKeys, addressLimit: 1_000_000, limit: 1_000_000 };
 	const fresh = (i: number) => `10.${i >> 8}.${i & 255}.1`;
-	/** Tries `id` from fresh addresses until refused; returns how many were admitted. */
+	/** Tries `id` from fresh addresses; returns how many were admitted. */
 	const admittedFor = (throttle: ReturnType<typeof createThrottle>, id: string, base: number) => {
 		let admitted = 0;
 		for (let i = 0; i < 200; i++) {
@@ -692,57 +690,18 @@ describe('the Account map at maxKeys', () => {
 		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
 	});
 
-	it('holds every Account of a flood to 50, however many pass through the map', () => {
+	it('holds every Account to 50 however many pass through, and evicts none', () => {
 		const { throttle } = setup(open);
 		for (let i = 0; i < maxKeys * 5; i++) throttle.attempt(from(fresh(i), `flood${i}`));
-		// Never more than 50. A collision with an evicted Account in the small sketch can take a try or two off.
-		const admitted = admittedFor(throttle, 'late', 1000);
-		expect(admitted).toBeLessThanOrEqual(50);
-		expect(admitted).toBeGreaterThanOrEqual(45);
-		expect(throttle.size()).toBeLessThanOrEqual(5 * maxKeys);
+		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
+		// An Account tried first, before the flood, is still at its count.
+		const early = setup(open).throttle;
+		for (let i = 0; i < 10; i++) early.attempt(from(fresh(i), 'victim'));
+		for (let i = 0; i < maxKeys * 10; i++) early.attempt(from(fresh(100 + i), `flood${i}`));
+		expect(admittedFor(early, 'victim', 2000)).toBe(40);
 	});
 
-	it('does not let a flood of new Accounts evict an Account with failures', () => {
-		const { throttle } = setup(open);
-		for (let i = 0; i < 10; i++) throttle.attempt(from(fresh(i), 'victim'));
-		// Far more new Accounts than the map holds, each tried once.
-		for (let i = 0; i < maxKeys * 10; i++) throttle.attempt(from(fresh(100 + i), `flood${i}`));
-		expect(admittedFor(throttle, 'victim', 2000)).toBe(40);
-	});
-
-	it('gives nothing back to an Account entry that was evicted, but still the address', () => {
-		const { throttle } = setup({ ...open, addressLimit: 2 });
-		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'first')));
-		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `flood${i}`));
-		throttle.succeed(mine);
-		// The address got its count back (2 admitted again), and no entry for 'first' was touched.
-		expect(throttle.attempt(from('1.1.1.1', 'x')).allowed).toBe(true);
-		expect(throttle.attempt(from('1.1.1.1', 'y')).allowed).toBe(true);
-		expect(throttle.attempt(from('1.1.1.1', 'z')).allowed).toBe(false);
-	});
-
-	it('remembers the count of an evicted Account: evicting it does not hand back a fresh 50', () => {
-		const { throttle } = setup(open);
-		for (let r = 0; r < 3; r++)
-			for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(r * 10 + i), `a${i}`));
-		// All maxKeys entries have 3 counts: a new Account takes the earliest of them, a0.
-		expect(throttle.attempt(from(fresh(500), 'new')).allowed).toBe(true);
-		expect(admittedFor(throttle, 'a0', 600)).toBe(47);
-	});
-
-	it('cannot be reset by alternating the target with a new Account once every entry holds 2 counts', () => {
-		const { throttle } = setup(open);
-		for (let r = 0; r < 2; r++)
-			for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(r * 10 + i), `a${i}`));
-		let admitted = 0;
-		for (let i = 0; i < 300; i++) {
-			if (throttle.attempt(from(fresh(1000 + i), 'target')).allowed) admitted++;
-			throttle.attempt(from(fresh(2000 + i), `junk${i}`));
-		}
-		expect(admitted).toBe(50);
-	});
-
-	it('refuses an evicted Account that had reached 50, and lets it back when its window ends', () => {
+	it('refuses an Account at 50 in its window, and lets it back when the window ends', () => {
 		const { throttle, advance } = setup(open);
 		for (let i = 0; i < 50; i++) throttle.attempt(from(fresh(i), 'spent'));
 		for (let i = 0; i < maxKeys * 3; i++) throttle.attempt(from(fresh(100 + i), `flood${i}`));
@@ -751,27 +710,18 @@ describe('the Account map at maxKeys', () => {
 		expect(throttle.attempt(from(fresh(901), 'spent')).allowed).toBe(true);
 	});
 
-	it('gives an evicted Account its give-back once it is counted again in the same window', () => {
-		const { throttle } = setup({ ...open, addressLimit: 1_000_000 });
-		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `a${i}`));
-		throttle.attempt(from(fresh(50), 'late')); // evicts a0
-		const again = tokenOf(throttle.attempt(from(fresh(51), 'a0')));
-		throttle.succeed(again);
-		// a0 had one count before it was evicted, and gets back the one this try took.
-		expect(admittedFor(throttle, 'a0', 600)).toBe(49);
+	it('still gives back to an Account that was tried after the map filled', () => {
+		const { throttle } = setup({ ...open, addressLimit: 2 });
+		for (let i = 0; i < maxKeys; i++) throttle.attempt(from(fresh(i), `known${i}`));
+		const mine = tokenOf(throttle.attempt(from('1.1.1.1', 'late')));
+		throttle.succeed(mine);
+		expect(admittedFor(throttle, 'late', 1000)).toBe(50);
 	});
 
-	it('lets a restored Account go when its own window ends, though newer entries stand behind it', () => {
-		const { throttle, advance } = setup({ ...open, maxKeys: 3 });
-		throttle.attempt(from(fresh(0), 'a0'));
-		advance(MIN);
-		for (let i = 0; i < 3; i++) throttle.attempt(from(fresh(100 + i), `f${i}`));
-		advance(4 * MIN);
-		for (let i = 0; i < 3; i++) throttle.attempt(from(fresh(200 + i), `g${i}`));
-		// Restored behind the g entries, with the window it began in at t0 (it ends before theirs).
-		throttle.attempt(from(fresh(300), 'a0'));
-		advance(5 * MIN + 1);
-		// Its window is over, so it starts again at 50, however many entries with later windows stand ahead.
-		expect(admittedFor(throttle, 'a0', 400)).toBe(50);
+	it('keeps the made-up email map bounded at maxKeys', () => {
+		const { throttle } = setup(open);
+		for (let i = 0; i < maxKeys * 10; i++)
+			throttle.attempt({ address: fresh(i), accountId: null, unknownEmail: `e${i}` });
+		expect(throttle.size()).toBeLessThanOrEqual(3 * maxKeys);
 	});
 });
