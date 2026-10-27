@@ -13,6 +13,10 @@ import { createSandboxRunner, ensureImages } from './sandbox.ts';
  * validates the content folder first. Point it at real content with CONTENT_DIR; it defaults to the
  * fixture. The pure rules the Learning core uses (`submitPlan`, `judge`) pick the Tests and the
  * Verdict, so nothing is re-implemented here.
+ *
+ * The cases run concurrently, at most `maxConcurrency` at once (vitest.sandbox.config.ts): a later
+ * Problem submits many Tests, so one after another the check outgrows the CI job's timeout as
+ * Topics are added. Every case's message names its Problem and Language, whatever order they finish.
  */
 
 const contentDir = resolve(process.env.CONTENT_DIR ?? 'src/lib/server/content/fixture');
@@ -26,7 +30,7 @@ const problems = catalogue
 	.flatMap((chapter) => chapter.problems);
 const languages = Object.keys(sandboxConfig.images) as Language[];
 
-describe('content check: Reference Code is Accepted', { timeout: 300_000 }, () => {
+describe.concurrent('content check: Reference Code is Accepted', { timeout: 300_000 }, () => {
 	beforeAll(() => ensureImages(engine, sandboxConfig.images), 300_000);
 
 	it('has Problems to check', () => {
