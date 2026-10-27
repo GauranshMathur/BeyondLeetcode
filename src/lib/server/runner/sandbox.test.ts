@@ -150,7 +150,7 @@ describe('Sandbox runner: leaks and stalls', () => {
 		try {
 			vi.spyOn(console, 'error').mockImplementation(() => {});
 			const { engine } = fakeEngine({ output: okLine });
-			engine.remove = vi.fn(() => new Promise<void>(() => {}));
+			engine.remove = vi.fn(() => new Promise<boolean>(() => {}));
 			const started = Date.now();
 			const pending = createSandboxRunner(engine, 'test-instance').execute(request);
 			const outcome = pending.then(
