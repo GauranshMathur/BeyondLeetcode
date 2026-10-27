@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.6](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.5...v1.10.6) (2026-10-27)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C111 a Submission never needs more Runner calls than the ceiling allows ([#371](https://github.com/GauranshMathur/BeyondLeetcode/issues/371)) ([13716f6](https://github.com/GauranshMathur/BeyondLeetcode/commit/13716f63496edee610caa932fbe4e783124b9c5a))
+
 ## [1.10.5](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.4...v1.10.5) (2026-10-27)
 
 
