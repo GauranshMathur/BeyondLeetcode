@@ -152,10 +152,10 @@ Not in the sprint:
 **Goal:** the two Runner follow-ups from Sprint 8's reviews are closed.
 
 - **C95:** a malformed image reference in the Sandbox config fails at start-up instead of pulling every tag (from C93's sandbox review, #337).
-- **C108:** a Submission survives a busy Runner between its batches, and one learner can't have more than a set number of Submits running at once (from C107's sandbox review, #353).
-- **Lanes:** the two cards edit different files, so they run in parallel. Each gets `sandbox-security-reviewer` before merge.
+- **C108a:** a Submission survives a busy Runner between its batches. **C108b:** one learner can't have more than a set number of Submits running at once. Both come from C107's sandbox review (#353), split from C108 at Tidy.
+- **Lanes:** C95 runs alone. C108a and C108b share `learning/core.ts`, so they run in one lane, in that order. Every card gets `sandbox-security-reviewer` before merge.
 
-**Exit:** both cards Done and CI green on `main`. Releases stay `1.x`.
+**Exit:** all three cards Done and CI green on `main`. Releases stay `1.x`.
 
 ## After each build sprint
 
