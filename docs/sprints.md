@@ -157,6 +157,23 @@ Not in the sprint:
 
 **Exit:** all three cards Done and CI green on `main`. Releases stay `1.x`.
 
+**Status (2026-10-27):** exit met. All three Sprint 9 cards are Done and `ci` is green on `main` (48d5e4c). Releases 1.10.2 to 1.10.4 shipped, all `1.x`. Every card had a `sandbox-security-reviewer` pass and a short fix round before merge.
+
+Built:
+- **C95 (#358):** a malformed Sandbox image reference is checked against Docker's reference grammar and stops the Runner at start-up (exit 1), instead of pulling every tag or retrying forever. Every reference valid before parses to the same query; the review fuzzed 300,000 strings against the old parser.
+- **C108a (#359):** the Runner keeps a bounded first-in-first-out queue (8 waiters, 8 s each) in front of its slots, so a Submission's later batch waits for a slot instead of failing. A waiter whose caller has gone, or whose Language left the ready set, is released without running. The review stress-tested the handler with about 3,650 racing requests per run: no slot leaked or was granted twice.
+- **C108b (#361):** one Learner has at most 2 Runs and Submits running, counted together and refused as `RunnerUnavailable` after the save. A place always frees, at the latest after a 100 s ceiling, so a stalled reply can't lock a Learner out until a restart.
+
+Decided along the way:
+- C108 was split at Tidy into C108a and C108b. The orchestrator widened C108b's cap to count Runs as well as Submits, after C108a's review.
+- C95 also took `sandbox.ts` and `main.ts`, so that a bad image fails at start-up rather than in the pull loop.
+- The cap of 2 is every Runner slot on a 2-CPU box. C108a's first-in-first-out hand-off is what keeps one Learner from starving others.
+
+Not in the sprint:
+- C109: the operator docs should ask for a reverse-proxy read timeout of at least about 100 s, since a Submit can take up to 90 s and nginx defaults to 60 s.
+- C110: a deadline on a late remove's "in progress" poll.
+- Several Accounts per person on an open-registration Instance can still fill every slot and queue place. A web-wide cap or invite-only registration covers it.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
