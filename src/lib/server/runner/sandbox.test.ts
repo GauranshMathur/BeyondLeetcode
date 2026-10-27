@@ -606,10 +606,14 @@ describe('Sandbox runner: a create that fails or times out', () => {
 		const pending = expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(
 			/timed out/
 		);
-		await vi.runAllTimersAsync();
+		await vi.advanceTimersByTimeAsync(5_000);
 		await pending;
 
 		expect(removeCalls).toHaveLength(7);
+		expect(new Set(removeCalls).size).toBe(1);
+		// A last try is made later, in the background, for a daemon still stuck in the create.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(removeCalls).toHaveLength(8);
 		expect(new Set(removeCalls).size).toBe(1);
 		vi.useRealTimers();
 	});

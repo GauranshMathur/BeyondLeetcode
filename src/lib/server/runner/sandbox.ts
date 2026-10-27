@@ -252,6 +252,8 @@ async function removeContainer(engine: Engine, id: string): Promise<void> {
 
 /** Pauses before each try at removing a container by the name it was created under. */
 const removeByNamePausesMs = [0, 50, 100, 250, 500, 1_000, 2_000];
+/** One last try, in the background, for a daemon that is still stuck in the create after all of those. */
+const removeByNameLateMs = 30_000;
 
 /**
  * Removes the container a timed-out create may have made, by the name this Run gave it. The
@@ -269,6 +271,12 @@ async function removeCreatedByName(engine: Engine, name: string): Promise<void> 
 			console.error(`Could not remove container ${name} after a failed create`, error);
 		}
 	}
+	// Still nothing: the daemon may be stuck in the create. One more try later, off this Run, so it
+	// holds no Run slot; if that misses too, the next instance's sweep removes it by age.
+	const late = setTimeout(() => {
+		within(engine.remove(name), removeAttemptTimeoutMs).catch(() => {});
+	}, removeByNameLateMs);
+	late.unref?.();
 }
 
 /**
