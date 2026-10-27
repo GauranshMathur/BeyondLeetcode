@@ -1,0 +1,12 @@
+load -1
+middle 0
+load 2 -1 1
+middle 0
+load 1 2 3 4 5 6 7 -1
+middle 0
+middle 1
+middle 6
+load 16 6 13 9 10 -1 2 34 32 26 14 31 15 17 29 28 21 7 5 35 11 36 8 0 3 22 12 18 4 23 39 19 38 37 30 25 33 27 24 20
+middle 1
+middle 6
+middle 5

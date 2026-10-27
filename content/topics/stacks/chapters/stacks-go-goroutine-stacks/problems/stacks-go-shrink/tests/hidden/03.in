@@ -1,0 +1,18 @@
+limit 5000
+call 3000
+call 3000
+segment
+ret
+ret
+gc
+segment
+call 5000
+segment
+call 5000
+segment
+call 8000
+ret
+call 100
+gc
+segment
+moved

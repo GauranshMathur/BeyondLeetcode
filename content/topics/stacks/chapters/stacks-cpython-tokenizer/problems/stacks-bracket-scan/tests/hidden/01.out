@@ -1,0 +1,20 @@
+ok
+ok
+ok
+ok
+ok
+closing parenthesis ']' does not match opening parenthesis '('
+closing parenthesis ']' does not match opening parenthesis '(' on line 1
+closing parenthesis ']' does not match opening parenthesis '(' on line 1
+closing parenthesis ']' does not match opening parenthesis '(' on line 1
+ok
+closing parenthesis ')' does not match opening parenthesis '{' on line 1
+unmatched ']'
+closing parenthesis ']' does not match opening parenthesis '('
+closing parenthesis ']' does not match opening parenthesis '{'
+unmatched ')'
+unmatched '}'
+ok
+'(' was never closed
+'[' was never closed
+unmatched ')'

@@ -1,0 +1,4 @@
+load 1 2 3 1
+teleport 0
+teleport 1
+teleport 3

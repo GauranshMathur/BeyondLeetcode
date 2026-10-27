@@ -1,0 +1,157 @@
+import { readFileSync } from 'node:fs';
+
+/** Java's (low + high) / 2 in 32-bit signed arithmetic: the sum wraps, the division truncates toward zero. */
+function naiveMid(low: number, high: number): number {
+	const total = (low + high) | 0;
+	return Math.trunc(total / 2) + 0; // + 0 turns -0 into 0
+}
+
+/** The exact average, rounded down. `>>> 1` reads the sum as unsigned 32 bits, so it cannot go negative. */
+function mid(low: number, high: number): number {
+	return (low + high) >>> 1;
+}
+
+let items: number[] = []; // the sorted array that `array` loaded
+
+/** Java's contract: the index of key, or -(insertion point) - 1 when it is absent. */
+function search(key: number): number {
+	let low = 0;
+	let high = items.length - 1; // key, if present, lies in items[low..high]
+	while (low <= high) {
+		const m = (low + high) >>> 1;
+		if (items[m] < key) low = m + 1;
+		else if (items[m] > key) high = m - 1;
+		else return m;
+	}
+	return -(low + 1);
+}
+
+/** First index whose item is >= key (items.length if none). The answer lies in [low, high]. */
+function lower(key: number): number {
+	let low = 0;
+	let high = items.length;
+	while (low < high) {
+		const m = (low + high) >>> 1;
+		if (items[m] < key) low = m + 1;
+		else high = m;
+	}
+	return low;
+}
+
+/** First index whose item is > key (items.length if none). */
+function upper(key: number): number {
+	let low = 0;
+	let high = items.length;
+	while (low < high) {
+		const m = (low + high) >>> 1;
+		if (items[m] <= key) low = m + 1;
+		else high = m;
+	}
+	return low;
+}
+
+/** Commits 1..commits; commit `commits` is known bad. Returns the first bad commit and the tests run. */
+function bisect(commits: number, firstBad: number): [number, number] {
+	let low = 1;
+	let high = commits; // the first bad commit lies in [low, high]
+	let tests = 0;
+	while (low < high) {
+		const m = (low + high) >>> 1;
+		tests++;
+		if (m >= firstBad)
+			high = m; // the test of commit m says "bad"
+		else low = m + 1;
+	}
+	return [low, tests];
+}
+
+function hoursNeeded(rate: number): number {
+	let hours = 0;
+	for (const pile of items) hours += Math.ceil(pile / rate);
+	return hours;
+}
+
+/** Smallest rate in [1, max(items)] with hoursNeeded(rate) <= hours. */
+function slowestRate(hours: number): number {
+	let low = 1;
+	let high = Math.max(...items);
+	while (low < high) {
+		const m = (low + high) >>> 1;
+		if (hoursNeeded(m) <= hours) high = m;
+		else low = m + 1;
+	}
+	return low;
+}
+
+/** Index of the smallest item of a rotated, strictly ascending array; -1 if it is empty. */
+function rotation(): number {
+	if (items.length === 0) return -1;
+	let low = 1;
+	let high = items.length; // first index in [low, high] whose item is below items[0]
+	while (low < high) {
+		const m = (low + high) >>> 1;
+		if (items[m] >= items[0]) low = m + 1;
+		else high = m;
+	}
+	return low === items.length ? 0 : low;
+}
+
+function rotatedSearch(key: number): number {
+	const start = rotation();
+	if (start < 0) return -1;
+	const n = items.length;
+	let low = 0;
+	let high = n - 1; // key, if present, lies at rotated positions low..high
+	while (low <= high) {
+		const m = (low + high) >>> 1;
+		const real = (m + start) % n;
+		if (items[real] < key) low = m + 1;
+		else if (items[real] > key) high = m - 1;
+		else return real;
+	}
+	return -1;
+}
+
+const out: string[] = [];
+for (const line of readFileSync(0, 'utf8').split('\n')) {
+	const parts = line.trim().split(/\s+/);
+	const arg = (i: number): number => Number(parts[i]);
+	switch (parts[0]) {
+		case 'naive':
+			out.push(String(naiveMid(arg(1), arg(2))));
+			break;
+		case 'mid':
+			out.push(String(mid(arg(1), arg(2))));
+			break;
+		case 'array':
+			items = parts.slice(1).map(Number);
+			break;
+		case 'search':
+			out.push(String(search(arg(1))));
+			break;
+		case 'lower':
+			out.push(String(lower(arg(1))));
+			break;
+		case 'upper':
+			out.push(String(upper(arg(1))));
+			break;
+		case 'count':
+			out.push(String(upper(arg(1)) - lower(arg(1))));
+			break;
+		case 'bisect': {
+			const [found, tests] = bisect(arg(1), arg(2));
+			out.push(`${found} ${tests}`);
+			break;
+		}
+		case 'rate':
+			out.push(String(slowestRate(arg(1))));
+			break;
+		case 'rotation':
+			out.push(String(rotation()));
+			break;
+		case 'rsearch':
+			out.push(String(rotatedSearch(arg(1))));
+			break;
+	}
+}
+if (out.length > 0) console.log(out.join('\n'));

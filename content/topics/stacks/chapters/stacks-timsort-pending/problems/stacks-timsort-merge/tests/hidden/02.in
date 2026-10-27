@@ -1,0 +1,46 @@
+sort 9
+run 3
+run 3
+run 3
+end
+sort 40
+run 20
+run 10
+run 5
+run 3
+run 2
+pending
+end
+pending
+sort 40
+run 2
+run 3
+run 5
+run 10
+run 20
+pending
+end
+pending
+sort 33
+run 1
+run 32
+pending
+end
+sort 10
+run 5
+run 5
+sort 6
+run 2
+run 2
+run 2
+pending
+end
+sort 7
+run 2
+run 1
+run 1
+run 1
+run 1
+run 1
+pending
+end

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.5...v1.6.0) (2026-10-27)
+
+
+### Features
+
+* **beyondleetcode:** C103 Stacks Topic ([#342](https://github.com/GauranshMathur/BeyondLeetcode/issues/342)) ([f3d5057](https://github.com/GauranshMathur/BeyondLeetcode/commit/f3d5057db6a758ba9ea25d16e7fb4c200f17f8e5))
+
 ## [1.5.5](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.5.4...v1.5.5) (2026-10-27)
 
 

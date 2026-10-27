@@ -1,0 +1,4 @@
+{
+	"title": "Go: one pointer reads, one pointer writes",
+	"problems": ["two-pointers-compact", "two-pointers-partition"]
+}
