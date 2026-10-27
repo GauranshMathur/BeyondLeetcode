@@ -530,10 +530,159 @@ describe('Sandbox runner: an image that vanished after its Language went ready',
 		vi.restoreAllMocks();
 	});
 
+	it('ignores a Language it has no image for, including keys every object inherits', () => {
+		const { engine, pulls } = keeperEngine();
+		const onLost = vi.fn();
+		const keeper = createImageKeeper(engine, { python: 'py:1' }, { onLost });
+		keeper.missing('constructor');
+		keeper.missing('toString');
+		keeper.missing('__proto__');
+		expect(pulls).toEqual([]);
+		expect(onLost).not.toHaveBeenCalled();
+	});
+
 	it('ignores a Language it has no image for', () => {
 		const { engine, pulls } = keeperEngine();
 		createImageKeeper(engine, { python: 'py:1' }).missing('cobol');
 		expect(pulls).toEqual([]);
+	});
+});
+
+describe('Sandbox runner: a create that fails or times out', () => {
+	/** A daemon that holds containers by name, and an Engine whose create can time out on our side. */
+	function daemon(createError: Error | null, lateStatus = 201) {
+		const containers = new Map<string, string>();
+		const removeCalls: string[] = [];
+		const engine = {
+			create: async (_image: string, _spec: unknown, name?: string) => {
+				// The daemon completes the create (name -> container) whatever our side saw.
+				if (lateStatus === 201 && name) containers.set(name, 'late-id');
+				if (createError) throw createError;
+				return 'c1';
+			},
+			remove: async (idOrName: string) => {
+				removeCalls.push(idOrName);
+				return containers.delete(idOrName);
+			}
+		} as unknown as Engine;
+		return { engine, containers, removeCalls };
+	}
+
+	it('removes the container the daemon made after our create call timed out', async () => {
+		const { engine, containers } = daemon(new Error('Docker POST /containers/create timed out'));
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(
+			/timed out/
+		);
+
+		expect([...containers.keys()]).toEqual([]);
+		vi.restoreAllMocks();
+	});
+
+	it('names the container bl-<instanceId>-<random> and removes only that name', async () => {
+		const names: string[] = [];
+		const removed: string[] = [];
+		const engine = {
+			create: async (_i: string, _s: unknown, name?: string) => {
+				names.push(name ?? '');
+				throw new Error('timed out');
+			},
+			remove: async (id: string) => void removed.push(id)
+		} as unknown as Engine;
+
+		await expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow();
+		await expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow();
+
+		expect(names[0]).toMatch(/^bl-inst-1-[0-9a-f]{16}$/);
+		expect(names[0]).not.toBe(names[1]);
+		expect(removed).toEqual(names);
+	});
+
+	it('gives up after a few tries when the daemon made nothing, keeping the create error', async () => {
+		const { engine, removeCalls } = daemon(new Error('timed out'), 0);
+		vi.useFakeTimers();
+
+		const pending = expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(
+			/timed out/
+		);
+		await vi.runAllTimersAsync();
+		await pending;
+
+		expect(removeCalls).toHaveLength(7);
+		expect(new Set(removeCalls).size).toBe(1);
+		vi.useRealTimers();
+	});
+
+	it('retries a remove that 404s because the daemon is still finishing the create', async () => {
+		const containers = new Set<string>();
+		let createdName = '';
+		const engine = {
+			create: async (_i: string, _s: unknown, name?: string) => {
+				createdName = name ?? '';
+				// The daemon registers the container 120 ms after our call timed out.
+				setTimeout(() => containers.add(createdName), 120);
+				throw new Error('Docker POST /containers/create timed out');
+			},
+			remove: async (name: string) => containers.delete(name)
+		} as unknown as Engine;
+		vi.useFakeTimers();
+
+		const pending = expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(
+			/timed out/
+		);
+		await vi.advanceTimersByTimeAsync(1_000);
+		await pending;
+
+		expect(containers.size).toBe(0);
+		vi.useRealTimers();
+	});
+
+	it('keeps the create error when the best-effort remove fails too', async () => {
+		const engine = {
+			create: async () => {
+				throw new Error('create timed out');
+			},
+			remove: async () => {
+				throw new Error('daemon down');
+			}
+		} as unknown as Engine;
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.useFakeTimers();
+
+		const pending = expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(
+			/create timed out/
+		);
+		await vi.runAllTimersAsync();
+		await pending;
+
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it('leaves a name clash (409) alone: that container is not ours', async () => {
+		const { engine, removeCalls } = daemon(
+			new Error('Docker create failed (409): Conflict. The container name is in use'),
+			0
+		);
+
+		await expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(/409/);
+
+		expect(removeCalls).toEqual([]);
+	});
+
+	it('removes nothing when the image is missing: a 404 made no container', async () => {
+		const remove = vi.fn();
+		const engine = {
+			create: async (image: string) => {
+				throw new ImageMissingError(image);
+			},
+			remove
+		} as unknown as Engine;
+
+		await expect(createSandboxRunner(engine, 'inst-1').execute(request)).rejects.toThrow(/missing/);
+
+		expect(remove).not.toHaveBeenCalled();
 	});
 });
 

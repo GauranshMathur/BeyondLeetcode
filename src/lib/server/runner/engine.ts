@@ -164,9 +164,12 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 		/**
 		 * Creates a container from `spec`. A missing image (404) throws `ImageMissingError` at once:
 		 * a pull has no upper bound, so it never runs inside a Run. The image loop pulls it.
+		 * With `name` the container is named on our side, so a Run whose create call times out
+		 * can still remove it by that name even though the reply never reached it.
 		 */
-		async create(image: string, spec: ContainerSpec): Promise<string> {
-			const reply = await call('POST', '/containers/create', {
+		async create(image: string, spec: ContainerSpec, name?: string): Promise<string> {
+			const query = name ? `?name=${encodeURIComponent(name)}` : '';
+			const reply = await call('POST', `/containers/create${query}`, {
 				Image: image,
 				...spec
 			});
@@ -316,18 +319,22 @@ export function createEngine(socketPath: string, callTimeoutMs = engineCallTimeo
 			await assertStatus(await call('POST', `/containers/${id}/kill`), 'kill', 204, 404, 409);
 		},
 
-		/** Removes the container even if it is running, and its anonymous volumes. */
-		async remove(id: string): Promise<void> {
+		/**
+		 * Removes the container even if it is running, and its anonymous volumes. Resolves true if
+		 * there was one to remove, false if the daemon knows no such container (404).
+		 */
+		async remove(id: string): Promise<boolean> {
 			const reply = await call('DELETE', `/containers/${id}?force=true&v=true`);
 			if (reply.status === 409 && /already in progress/.test(reply.body)) {
 				// The daemon is already removing it (AutoRemove): wait until it is gone.
 				for (let poll = 0; poll < 50; poll++) {
-					if ((await call('GET', `/containers/${id}/json`)).status === 404) return;
+					if ((await call('GET', `/containers/${id}/json`)).status === 404) return true;
 					await new Promise((resolve) => setTimeout(resolve, 100));
 				}
 				throw new Error(`Docker remove of ${id} is still in progress`);
 			}
 			await assertStatus(reply, 'remove', 204, 404);
+			return reply.status === 204;
 		},
 
 		/** Every container, running or not, that carries the label key `label`, with its labels and creation time (Unix seconds). */
