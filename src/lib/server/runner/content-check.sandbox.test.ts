@@ -33,7 +33,7 @@ const problems = catalogue
 	.flatMap(({ id }) => catalogue.topic(id)?.chapters ?? [])
 	.flatMap((chapter) => chapter.problems);
 /** Most Tests a Problem may submit and still share the runner with other cases. */
-const heavyTests = 40;
+const heavyTests = 30;
 const testCount = (problemId: string): number => {
 	const plan = submitPlan(catalogue, problemId);
 	return plan.visible.length + plan.hidden.length;

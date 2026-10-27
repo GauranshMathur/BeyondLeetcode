@@ -129,7 +129,7 @@ jobs:
       - run: bun run test:sandbox
       # The content check again, on the content the image ships (the run above checks the fixture).
       - name: Content check on content/
-        run: bunx vitest run --config vitest.sandbox.config.ts src/lib/server/runner/content-check.sandbox.test.ts
+        run: bunx vitest run --reporter=verbose --config vitest.sandbox.config.ts src/lib/server/runner/content-check.sandbox.test.ts
         env:
           CONTENT_DIR: content
 
