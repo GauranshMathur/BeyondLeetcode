@@ -157,6 +157,9 @@ interface Entry {
  * raise an Account's count, so an Account may be refused a few tries early, never admitted past 50; to
  * push innocent Accounts to 50 through it, a flood must evict entries holding high counts in both rows of
  * their slots, which costs about 50 admitted tries per slot (and each counts against its address and pair).
+ * A restored entry keeps the evicted one's window end, so a token counted before the eviction still matches it
+ * and gives back its one count, which the restored count includes. Entries restored out of window order are
+ * dropped when met (`held`), since `sweep` only trims the front.
  * `emailAccounts` never skipped (it evicts the earliest window like the pair maps); made-up emails have no
  * Account behind them, so only the timing residual below applies to it, and it has no sketch.
  *
@@ -303,7 +306,20 @@ export const createThrottle = ({
 	};
 	/** The entry for a key: the map's, or for the Account map what the sketch holds of an evicted one. */
 	const lookup = (c: Counter, id: string, at: number): Entry | undefined =>
-		c.entries.get(id) ?? (c === accounts ? recall(id, at) : undefined);
+		held(c, id, at) ?? (c === accounts ? recall(id, at) : undefined);
+	/**
+	 * The map's entry for a key, if its window has not ended. `sweep` stops at the first live entry, and an
+	 * Account restored from the sketch keeps its old window end behind newer entries, so an ended entry can
+	 * sit past that point: drop it when met.
+	 */
+	const held = (c: Counter, id: string, at: number): Entry | undefined => {
+		const entry = c.entries.get(id);
+		if (entry && entry.resetAt <= at) {
+			c.entries.delete(id);
+			return undefined;
+		}
+		return entry;
+	};
 
 	const sweep = ({ entries }: Counter, at: number) => {
 		for (const [id, entry] of entries) {
@@ -326,7 +342,7 @@ export const createThrottle = ({
 			if (retryAfterMs > 0) return { allowed: false, retryAfterMs };
 			const counted: Partial<Record<Slot, CountedIn>> = {};
 			for (const [slot, c, id] of slots) {
-				const live = c.entries.get(id);
+				const live = held(c, id, at);
 				if (live) {
 					live.count += 1;
 					counted[slot] = { key: id, resetAt: live.resetAt };

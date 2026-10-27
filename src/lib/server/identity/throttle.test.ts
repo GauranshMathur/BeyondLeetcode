@@ -760,4 +760,18 @@ describe('the Account map at maxKeys', () => {
 		// a0 had one count before it was evicted, and gets back the one this try took.
 		expect(admittedFor(throttle, 'a0', 600)).toBe(49);
 	});
+
+	it('lets a restored Account go when its own window ends, though newer entries stand behind it', () => {
+		const { throttle, advance } = setup({ ...open, maxKeys: 3 });
+		throttle.attempt(from(fresh(0), 'a0'));
+		advance(MIN);
+		for (let i = 0; i < 3; i++) throttle.attempt(from(fresh(100 + i), `f${i}`));
+		advance(4 * MIN);
+		for (let i = 0; i < 3; i++) throttle.attempt(from(fresh(200 + i), `g${i}`));
+		// Restored behind the g entries, with the window it began in at t0 (it ends before theirs).
+		throttle.attempt(from(fresh(300), 'a0'));
+		advance(5 * MIN + 1);
+		// Its window is over, so it starts again at 50, however many entries with later windows stand ahead.
+		expect(admittedFor(throttle, 'a0', 400)).toBe(50);
+	});
 });
