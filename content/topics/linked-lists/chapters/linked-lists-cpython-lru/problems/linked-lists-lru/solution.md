@@ -5,4 +5,4 @@ Keep a ring with a head node `root` and a map from key to node. Entries are link
 - **Miss, full:** `node = root.next`; unlink it; delete its key from the map; print `miss evict` and that key; write `K` and `V` into the same node, link it before `root`, add it to the map. This is what CPython does: it reuses the link instead of freeing it and allocating a new one.
 - **`order`** walks from `root.next` to `root` and prints each node's key.
 
-**Cost.** Each call does a constant number of ring operations, O(1) in the worst case, and a constant number of map operations, O(1) expected. So a call is O(1) expected. `order` is O(n) for n entries.
+**Cost.** Each call does a constant number of ring operations, O(1) in the worst case, and a constant number of map operations, O(1) expected. So a call is O(1) expected. `order` is O(n) in the worst case, for n entries.

@@ -9,4 +9,4 @@
 
 None of them takes the head except `hadd`, and none walks the list. Each is O(1) in the worst case. Compare Problem 4, where removing the k-th node stepped over k - 1.
 
-**What is lost.** The head knows only the first node, so there is no way to add at the end without walking: O(n).
+**What is lost.** The head knows only the first node, so if the tail is not known there is no way to add at the end without walking: O(n) in the worst case. If the caller already holds the tail, `hadd_behind` on it adds at the end in O(1).

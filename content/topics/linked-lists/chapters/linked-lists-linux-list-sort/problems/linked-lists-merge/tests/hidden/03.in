@@ -1,15 +1,15 @@
-spush 10 304
-spush 10 302
-spush 10 300
-set 301 1
-set 303 2
-set 305 3
-spush 20 310
-spush 20 308
-spush 20 306
-set 307 4
-set 309 5
-set 311 6
+spush 10 204
+spush 10 202
+spush 10 200
+set 201 1
+set 203 2
+set 205 3
+spush 20 210
+spush 20 208
+spush 20 206
+set 207 4
+set 209 5
+set 211 6
 smerge 20 10
 svalues 20
 svalues 10

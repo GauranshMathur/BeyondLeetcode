@@ -4,4 +4,4 @@
 
 **Reverse walk.** `show_rev H` starts at `H.prev` and follows `prev` until it is back at `H`. It prints the same nodes as `show H`, in the opposite order.
 
-**Cost.** `del` and `del_init` are O(1) in the worst case: a fixed number of reads and writes whatever the length of the list. `show_rev` is O(n).
+**Cost.** `del` and `del_init` are O(1) in the worst case: a fixed number of reads and writes whatever the length of the list. `show_rev` is O(n) in the worst case, for a list of n nodes.

@@ -9,4 +9,4 @@
 
 **The rest.** `init P` writes `P` into both of its cells. `empty H` compares `H`'s `next` with `H`. `show H` follows `next` from `H`'s `next` until the cursor equals `H`, collecting addresses.
 
-**Cost.** `init`, `add`, `add_tail` and `empty` make a fixed number of reads and writes: O(1) in the worst case. `show` visits every node once: O(n) for a list of n nodes.
+**Cost.** `init`, `add`, `add_tail` and `empty` make a fixed number of reads and writes: O(1) in the worst case. `show` visits every node once: O(n) in the worst case, for a list of n nodes.

@@ -1,0 +1,7 @@
+init 10
+values 10 1
+set 100 6
+add_tail 101 10
+values 10 1
+del 101
+values 10 1
