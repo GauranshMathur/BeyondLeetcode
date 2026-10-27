@@ -184,6 +184,21 @@ Not in the sprint:
 
 **Exit:** both cards Done and CI green on `main`. Releases stay `1.x`.
 
+**Status (2026-10-27):** exit met. Both Sprint 10 cards are Done, and `ci` is green on `main` (94f2b0c). Release 1.10.5 shipped.
+
+- **C109 (#366):** the README's operator notes say a reverse proxy needs a read timeout of at least about 100 s, because a Submit can take up to 90 s. nginx's default of 60 s is cited from nginx's own documentation, with `proxy_read_timeout 120s;` as the example.
+- **C110 (#367):** a late remove that gets 409 "removal already in progress" gives up after one 15 s deadline, measured on a monotonic clock, and frees its late-remove slot. Before, it could poll for up to about 12.6 minutes. The sandbox review probed it under Bun 1.2.19 with seven kinds of stalled daemon, and CI's Bun 1.2.19 check now covers the poll path.
+
+Decided along the way:
+- C110's cosmetic log at sandbox.ts:291 became an optional note at Tidy, so the card kept one Done-when line. It wasn't done.
+- C110 took engine.bun-check.ts for its Bun 1.2.19 check.
+
+Known and accepted:
+- On a degraded Docker daemon that answers fast but reports "in progress" for ever, a Run's cleanup can take about 27.6 s, so the learner may get "try again".
+
+Not in the sprint:
+- C111 (filed while checking C109's sources) should make one constant cap the Runner calls a Submission may make. The place ceiling, the README and the module map all assume three calls, and nothing enforces it today.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
