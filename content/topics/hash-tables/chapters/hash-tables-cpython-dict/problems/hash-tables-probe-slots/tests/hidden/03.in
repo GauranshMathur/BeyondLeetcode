@@ -1,0 +1,18 @@
+table 16
+put 2147483647 1
+put 2147483631 2
+put 1073741824 3
+put 2147483000 4
+dump
+get 2147483631
+probes 2147483647
+probes 2147483630
+table 2
+put 5 7
+get 5
+get 4
+probes 4
+probes 5
+dump
+len
+cap

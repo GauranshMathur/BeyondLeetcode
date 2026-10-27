@@ -1,0 +1,78 @@
+impl java
+put 0 0
+put 16 1
+put 32 2
+put 48 3
+put 64 4
+put 80 5
+put 96 6
+put 112 7
+cap
+trees
+longest
+impl java
+put 0 0
+put 16 1
+put 32 2
+put 48 3
+put 64 4
+put 80 5
+put 96 6
+put 112 7
+put 128 8
+put 144 9
+put 160 10
+put 176 11
+put 192 12
+put 208 13
+put 224 14
+put 240 15
+put 256 16
+put 272 17
+put 288 18
+put 304 19
+put 320 20
+put 336 21
+put 352 22
+put 368 23
+put 384 24
+put 400 25
+put 416 26
+put 432 27
+put 448 28
+put 464 29
+put 480 30
+put 496 31
+put 512 32
+put 528 33
+put 544 34
+put 560 35
+put 576 36
+put 592 37
+put 608 38
+put 624 39
+put 640 40
+put 656 41
+put 672 42
+put 688 43
+put 704 44
+put 720 45
+put 736 46
+put 752 47
+put 768 48
+put 784 49
+put 800 50
+put 816 51
+put 832 52
+put 848 53
+put 864 54
+put 880 55
+put 896 56
+put 912 57
+put 928 58
+put 944 59
+cap
+trees
+longest
+dump
+len

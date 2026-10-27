@@ -1,0 +1,15 @@
+table 8
+put 3 10
+put 11 20
+put 19 30
+indices
+keys
+nentries
+del 11
+indices
+keys
+nentries
+put 11 21
+indices
+keys
+nentries

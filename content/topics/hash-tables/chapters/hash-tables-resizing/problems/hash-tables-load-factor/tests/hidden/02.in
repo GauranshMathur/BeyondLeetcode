@@ -1,0 +1,39 @@
+impl java
+table 8
+resize on
+put 8 1
+put 16 1
+put 24 1
+put 32 1
+put 40 1
+cap
+moved
+dump
+resize off
+put 48 1
+put 56 1
+cap
+moved
+resize on
+put 999 1
+cap
+moved
+dump
+impl java
+resize on
+table 4
+put 0 0
+put 4 1
+put 8 2
+put 12 3
+put 16 4
+put 20 5
+put 24 6
+put 28 7
+put 32 8
+put 36 9
+cap
+trees
+moved
+dump
+longest

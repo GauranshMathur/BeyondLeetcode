@@ -1,0 +1,26 @@
+table 8
+put 0 0
+put 8 8
+put 16 16
+put 24 24
+del 8
+del 16
+probes 24
+get 24
+dump
+put 32 1
+put 40 2
+dump
+probes 24
+len
+table 8
+put 1 1
+put 9 2
+put 17 3
+del 1
+put 9 7
+dump
+get 9
+put 25 4
+dump
+probes 17

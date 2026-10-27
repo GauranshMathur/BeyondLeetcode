@@ -1,0 +1,6 @@
+table 8
+put 0 1
+put 65536 2
+put 131072 3
+dump
+probes 131072

@@ -1,0 +1,658 @@
+impl cpython
+resize on
+table 8
+put 6 901
+put 61 875
+put 52 34
+put 20 817
+del 23
+put 56 645
+del 56
+del 6
+probes 35
+put 53 125
+put 115 633
+put 11 589
+del 114
+put 69 134
+del 115
+put 35 94
+del 100
+put 103 576
+put 54 613
+del 61
+put 61 467
+del 20
+del 69
+get 54
+put 99 218
+del 35
+get 19
+probes 108
+get 85
+put 104 149
+del 52
+del 53
+put 13 756
+put 48 512
+put 0 154
+del 5
+del 103
+del 61
+del 104
+del 0
+del 11
+put 24 234
+probes 46
+del 35
+del 13
+put 41 764
+del 99
+put 87 694
+probes 0
+del 87
+del 11
+del 54
+del 41
+del 24
+del 48
+del 24
+probes 88
+put 7 78
+get 101
+del 7
+put 116 82
+put 16 575
+del 16
+del 116
+put 101 215
+del 41
+get 90
+put 42 219
+del 42
+get 56
+put 106 923
+put 113 706
+put 102 225
+put 14 426
+put 38 581
+del 64
+put 15 789
+put 42 943
+del 107
+put 35 160
+put 64 914
+put 35 749
+put 91 458
+del 42
+del 102
+put 118 640
+probes 34
+del 15
+del 14
+del 35
+del 106
+put 1 479
+del 42
+del 101
+put 75 581
+put 24 882
+del 38
+put 17 419
+del 64
+del 87
+del 35
+del 65
+del 43
+put 82 600
+del 55
+put 6 587
+del 82
+get 80
+del 75
+del 1
+del 101
+del 80
+del 113
+del 18
+put 43 390
+put 116 37
+del 64
+put 49 535
+del 24
+del 91
+put 24 594
+put 41 383
+put 43 690
+probes 6
+put 94 923
+del 118
+put 4 756
+del 17
+del 41
+del 116
+del 4
+probes 14
+put 113 332
+del 24
+del 6
+put 59 258
+get 26
+del 49
+put 103 227
+del 59
+put 36 240
+del 92
+put 8 232
+del 94
+put 82 738
+put 107 521
+put 84 467
+put 10 535
+del 82
+probes 96
+probes 84
+del 58
+put 108 252
+probes 119
+del 108
+del 66
+put 10 449
+del 48
+del 43
+put 71 770
+put 11 692
+put 104 40
+del 8
+put 18 131
+del 46
+del 117
+put 6 576
+get 44
+del 113
+put 28 848
+del 11
+put 25 159
+del 104
+del 10
+del 28
+del 81
+put 79 702
+probes 80
+del 103
+probes 43
+del 43
+del 36
+probes 78
+put 83 754
+put 10 507
+put 59 434
+del 25
+put 66 795
+put 2 59
+put 83 512
+put 11 391
+del 2
+put 78 809
+del 25
+put 54 937
+del 83
+get 112
+del 103
+del 52
+put 96 359
+cap
+nentries
+len
+moved
+keys
+impl cpython
+resize on
+table 16
+put 110 467
+probes 367
+put 372 31
+put 18 933
+del 372
+del 110
+del 225
+del 18
+probes 162
+put 28 340
+del 28
+get 198
+put 79 777
+del 79
+del 116
+put 40 32
+put 48 840
+put 395 489
+put 280 335
+del 40
+del 48
+get 328
+probes 245
+del 395
+del 280
+del 151
+del 333
+del 235
+get 159
+put 319 480
+get 117
+get 68
+del 319
+del 49
+put 5 251
+put 41 740
+put 398 384
+del 97
+put 131 583
+put 343 342
+probes 92
+del 343
+put 10 771
+put 272 473
+probes 348
+put 111 618
+put 27 253
+del 5
+put 11 344
+del 27
+get 332
+get 282
+put 243 760
+get 186
+del 210
+put 2 936
+put 26 419
+get 212
+del 148
+del 2
+del 398
+del 243
+probes 192
+del 243
+get 353
+get 218
+get 243
+del 354
+put 113 135
+del 111
+del 299
+del 10
+del 327
+del 113
+probes 10
+get 202
+put 336 126
+del 11
+put 318 284
+del 318
+del 89
+put 66 665
+put 34 336
+del 41
+del 336
+probes 314
+del 338
+put 190 615
+del 66
+del 26
+put 84 76
+del 360
+put 74 506
+put 232 339
+put 25 367
+get 105
+put 19 88
+put 193 105
+put 93 932
+del 25
+del 190
+del 172
+put 190 124
+del 84
+put 151 934
+del 11
+put 232 655
+del 292
+del 232
+put 139 600
+del 355
+del 19
+put 86 639
+put 78 929
+del 151
+probes 86
+probes 345
+put 30 239
+get 54
+put 197 458
+get 279
+put 176 514
+del 188
+get 70
+probes 241
+put 157 955
+probes 159
+del 294
+del 232
+put 162 894
+put 305 34
+probes 215
+put 155 753
+put 82 111
+probes 45
+put 155 762
+get 272
+get 94
+put 310 632
+put 391 784
+put 347 489
+put 76 771
+del 93
+put 6 613
+del 25
+put 325 626
+del 84
+get 98
+del 82
+del 280
+del 193
+put 215 56
+del 30
+put 251 517
+del 34
+del 169
+probes 227
+put 89 900
+del 193
+del 82
+probes 358
+put 286 622
+del 368
+del 329
+del 310
+del 286
+del 78
+probes 278
+get 159
+del 325
+get 137
+del 162
+del 6
+put 254 79
+get 102
+del 74
+del 27
+put 240 466
+put 270 904
+del 251
+get 372
+put 60 295
+del 347
+get 12
+probes 242
+del 169
+del 50
+put 0 802
+probes 246
+del 329
+put 276 585
+put 138 92
+put 318 133
+del 138
+del 374
+probes 37
+put 374 681
+del 197
+put 195 600
+del 110
+del 195
+del 0
+del 188
+put 305 288
+del 305
+put 278 787
+get 141
+del 66
+del 76
+get 93
+del 270
+put 178 999
+probes 190
+del 25
+del 240
+del 25
+put 176 522
+put 337 835
+del 139
+del 60
+del 178
+del 240
+del 176
+put 71 812
+probes 227
+del 361
+get 329
+del 348
+put 161 549
+del 66
+put 151 215
+get 58
+del 65
+del 374
+put 229 78
+del 391
+put 339 612
+get 68
+probes 226
+del 157
+put 238 83
+probes 258
+probes 389
+del 272
+del 319
+del 313
+put 132 866
+get 55
+put 79 431
+del 278
+put 128 480
+put 239 942
+get 344
+del 239
+put 105 617
+del 337
+probes 242
+del 229
+del 318
+del 238
+del 86
+del 128
+probes 109
+del 190
+del 155
+probes 166
+put 47 660
+put 122 971
+del 276
+put 113 360
+probes 90
+del 71
+del 305
+del 86
+put 45 114
+get 133
+put 250 321
+del 131
+put 272 22
+del 122
+get 318
+put 110 383
+put 204 457
+put 203 588
+del 81
+del 113
+del 110
+del 25
+put 246 587
+put 202 897
+del 301
+put 106 464
+del 215
+probes 9
+get 359
+del 203
+put 72 900
+put 311 599
+put 389 220
+put 53 913
+cap
+nentries
+len
+moved
+keys
+impl cpython
+resize on
+table 8
+put 590463589 1
+put 1885222961 1
+put 1279581444 1
+put 2074565775 1
+put 2093940896 1
+put 1633761547 1
+put 940604503 1
+put 1917704665 1
+put 1417646494 1
+put 1641094397 1
+put 896785829 1
+put 859161243 1
+put 240548429 1
+put 2128863181 1
+put 1944953944 1
+put 390736455 1
+put 1460750906 1
+put 1259588396 1
+put 1781615771 1
+put 1173170413 1
+put 611665609 1
+put 415568434 1
+put 1121647325 1
+put 1194196980 1
+put 1880171644 1
+put 159206378 1
+put 1614831751 1
+put 54270876 1
+put 1555503320 1
+put 1141621992 1
+put 1786048 1
+put 984731730 1
+put 88353521 1
+put 730514564 1
+put 585974802 1
+put 1627545534 1
+put 1042607410 1
+put 111154414 1
+put 893489213 1
+put 1919288368 1
+put 1634105236 1
+put 759666032 1
+put 1886275794 1
+put 1026915686 1
+put 1050185869 1
+put 68856950 1
+put 2083004838 1
+put 1010321054 1
+put 1460377074 1
+put 1689272823 1
+put 1800796179 1
+put 1834291278 1
+put 1667714768 1
+put 1565651213 1
+put 81482407 1
+put 2035939936 1
+put 1980097832 1
+put 1266915338 1
+put 927376670 1
+put 1523745184 1
+put 2078687868 1
+put 1234086311 1
+put 348858755 1
+put 251419257 1
+put 1922783532 1
+put 987473539 1
+put 1988785901 1
+put 687390297 1
+put 2131831443 1
+put 1487215548 1
+put 1309022162 1
+put 1370125812 1
+put 1177019150 1
+put 189377274 1
+put 417616884 1
+put 1371813296 1
+put 1650296636 1
+put 1721733451 1
+put 1808782685 1
+put 1717760775 1
+put 570919150 1
+put 1846491720 1
+put 1571536759 1
+put 1361837932 1
+put 2082739821 1
+put 1874005931 1
+put 420205138 1
+put 604805929 1
+put 1458306789 1
+put 1982630381 1
+put 1078671622 1
+put 567086878 1
+put 1803352293 1
+put 1473517580 1
+put 1197755073 1
+put 540962842 1
+put 1261069952 1
+put 1235213852 1
+put 454261199 1
+put 2001952200 1
+put 405836453 1
+put 864782740 1
+put 528174719 1
+put 654455965 1
+put 764066183 1
+put 1053661262 1
+put 1177472229 1
+put 551334930 1
+put 817253789 1
+put 865136238 1
+put 1429247415 1
+put 1363285436 1
+put 1373355140 1
+put 928487722 1
+put 766779501 1
+put 1835769320 1
+put 1116144782 1
+put 369966707 1
+put 162564560 1
+put 18213737 1
+cap
+moved
+dump
+indices
+probes 590463589
+probes 1885222961
+probes 1279581444
+probes 2074565775
+probes 2093940896
+probes 1633761547
+probes 940604503
+probes 1917704665
+probes 1417646494
+probes 1641094397
+probes 896785829
+probes 859161243
+probes 240548429
+probes 2128863181
+probes 1944953944

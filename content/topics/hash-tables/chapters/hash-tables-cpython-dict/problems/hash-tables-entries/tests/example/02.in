@@ -1,0 +1,9 @@
+table 8
+put 5 1
+put 2 2
+put 5 3
+keys
+get 5
+nentries
+dump
+indices

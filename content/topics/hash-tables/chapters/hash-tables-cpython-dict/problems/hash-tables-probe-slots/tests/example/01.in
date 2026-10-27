@@ -1,0 +1,11 @@
+table 8
+put 3 10
+put 11 20
+put 19 30
+dump
+probes 3
+probes 11
+probes 19
+get 11
+get 4
+probes 4

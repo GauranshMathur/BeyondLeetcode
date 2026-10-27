@@ -1,0 +1,28 @@
+impl java
+table 2
+put 0 1
+put 1 2
+put 2 3
+put 3 4
+dump
+longest
+len
+bin 7
+bin 8
+impl java
+table 16
+put 65536 65536
+put 65537 65537
+put 131072 131072
+put 196608 196608
+put 1048576 1048576
+put 16777216 16777216
+put 2147483647 2147483647
+dump
+bin 65536
+bin 65537
+bin 131072
+bin 196608
+bin 1048576
+bin 16777216
+bin 2147483647

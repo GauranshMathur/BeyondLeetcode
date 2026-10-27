@@ -1,0 +1,14 @@
+impl java
+put 0 0
+put 16 1
+put 32 2
+put 48 3
+put 64 4
+put 80 5
+put 96 6
+put 112 7
+put 128 8
+cap
+dump
+longest
+trees

@@ -1,0 +1,163 @@
+impl cpython
+resize off
+table 8
+put 0 1
+put 1 1
+put 2 1
+put 3 1
+put 4 1
+put 5 1
+cap
+nentries
+resize on
+put 6 1
+cap
+nentries
+dump
+impl cpython
+resize on
+table 16
+put 16 1
+put 32 1
+put 48 1
+put 64 1
+put 80 1
+put 96 1
+put 112 1
+put 128 1
+put 144 1
+put 160 1
+put 176 1
+cap
+moved
+dump
+probes 176
+probes 16
+impl cpython
+resize on
+table 8
+del 32
+probes 14
+put 25 561
+put 35 536
+put 37 676
+del 17
+del 0
+put 1 551
+del 1
+put 22 630
+del 22
+put 12 782
+put 28 979
+put 30 13
+put 6 843
+put 37 110
+del 37
+put 26 933
+del 30
+put 35 796
+del 6
+get 33
+put 34 804
+del 26
+put 34 102
+probes 34
+put 1 335
+probes 37
+probes 14
+get 13
+del 19
+get 38
+probes 16
+put 35 655
+put 11 115
+del 1
+put 26 743
+del 35
+put 18 592
+put 28 745
+probes 1
+del 35
+put 25 925
+put 24 324
+del 36
+put 21 565
+probes 37
+get 7
+del 13
+put 16 54
+del 35
+del 3
+get 2
+del 28
+get 34
+del 17
+del 24
+probes 15
+del 6
+put 0 628
+probes 37
+put 9 841
+get 26
+probes 29
+del 35
+put 7 302
+get 36
+put 38 866
+get 28
+put 31 236
+del 12
+get 10
+get 7
+put 30 539
+del 34
+put 19 304
+del 0
+put 6 137
+del 37
+put 5 97
+put 35 756
+del 2
+put 26 335
+put 3 454
+del 25
+del 34
+del 19
+del 25
+del 30
+del 2
+put 3 696
+del 9
+probes 11
+probes 27
+put 32 915
+put 7 26
+del 3
+probes 19
+put 3 235
+del 0
+del 21
+put 10 956
+put 19 860
+del 12
+del 26
+put 22 641
+put 1 290
+del 18
+del 6
+put 6 633
+get 0
+put 6 856
+del 1
+del 14
+put 20 234
+del 3
+probes 3
+del 7
+del 26
+del 21
+cap
+nentries
+len
+moved
+keys

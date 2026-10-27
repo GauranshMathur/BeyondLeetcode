@@ -1,0 +1,14 @@
+impl java
+put AaAaAaAaAaAaAaAaAaAa 0
+put AaAaAaAaAaAaAaAaAaBB 1
+put AaAaAaAaAaAaAaAaBBAa 2
+put AaAaAaAaAaAaAaAaBBBB 3
+put AaAaAaAaAaAaAaBBAaAa 4
+put AaAaAaAaAaAaAaBBAaBB 5
+put AaAaAaAaAaAaAaBBBBAa 6
+put AaAaAaAaAaAaAaBBBBBB 7
+put AaAaAaAaAaAaBBAaAaAa 8
+cap
+dump
+trees
+longest
