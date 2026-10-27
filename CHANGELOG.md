@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.1...v1.10.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C108a Runner: a Submission survives a busy Runner between its batches ([#359](https://github.com/GauranshMathur/BeyondLeetcode/issues/359)) ([32abf97](https://github.com/GauranshMathur/BeyondLeetcode/commit/32abf97fd3822f377b20f66d33ae2a74a67b864e))
+
 ## [1.10.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.0...v1.10.1) (2026-10-27)
 
 
