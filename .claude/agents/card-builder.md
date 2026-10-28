@@ -16,6 +16,9 @@ Rules of the lane:
 - Use context7 (or the Svelte MCP for SvelteKit) before using any library API.
 - Secret files are templates: edit `.env.example`, never `.env`.
 - Commit messages follow `type(beyondleetcode): <card code> <what>`.
+- The commit type is the one filed on the card, per `board.md`'s Commit types section: `feat` only for a user-visible feature, `fix` for a user-visible fix or hardening, and `test`, `ci`, `docs`, `refactor`, `chore` or `build` for everything else.
+- End the PR description with `Changelog: <one short sentence a user would understand>`, or `Changelog: none` for internal work (the PR template has the field).
+- Never add a `Release-As` footer; only the orchestrator does, at a cut.
 - Changes to the code runner or its container flags wait for a `sandbox-security-reviewer` pass before merge; ask the orchestrator for it.
 
 Report back, per card: Done with the PR link, or Blocked with the question.
