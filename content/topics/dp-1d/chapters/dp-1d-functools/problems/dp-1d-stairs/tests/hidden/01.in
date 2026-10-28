@@ -1,0 +1,13 @@
+load
+show
+ways 0
+ways 3
+load 5
+ways 0
+ways 4
+ways 5
+ways 9
+load 3 5
+ways 2
+ways 7
+ways 8

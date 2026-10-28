@@ -1,0 +1,11 @@
+load
+fewest 0
+fewest 5
+load 5
+fewest 0
+fewest 5
+fewest 10
+fewest 11
+load 7 1
+fewest 14
+fewest 3

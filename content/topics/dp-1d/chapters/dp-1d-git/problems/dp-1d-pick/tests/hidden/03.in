@@ -1,0 +1,8 @@
+load -4 8 -2 -9 6 3 -1 7
+pick
+load 9 -100 9 -100 9
+pick
+load -1 -1 5 -1 -1
+pick
+load 0 7 0 7 0
+pick

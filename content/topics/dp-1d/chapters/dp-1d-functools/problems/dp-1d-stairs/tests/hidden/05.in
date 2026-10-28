@@ -1,0 +1,10 @@
+load 1
+ways 300
+load 300
+ways 300
+ways 299
+load 1 300
+ways 300
+load 150 1 299
+show
+ways 300

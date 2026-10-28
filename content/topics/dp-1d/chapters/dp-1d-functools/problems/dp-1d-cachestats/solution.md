@@ -1,0 +1,5 @@
+Mark `N` as reached and count one call for `ways(N)` itself. Go through `m` from `N` down to 0. Every reached `m` is a miss, because its first call computes it. If `m` is above 0, computing it makes one call for each step size `s <= m`: add 1 to the call count for each, and mark `m - s` as reached. At the end the misses are the number of reached values, and the hits are the calls minus the misses.
+
+**Why it is right.** The cache holds an answer after the first call with that argument, so each different argument misses exactly once and every other call hits. A value `m` is only ever called from a larger value, so going downwards, `m` has been marked by the time it is visited. The number of calls does not depend on the order in which the steps are tried: every computed `ways(m)` makes the same calls whatever the order.
+
+**Cost.** One pass over `N + 1` values, each looking at every step size: O(N × S) in the **worst case**, and O(N) space. With no steps, or steps larger than `N`, nothing else is reached, so the answer is 0 hits and 1 miss.

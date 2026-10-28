@@ -1,0 +1,7 @@
+load 1 2 3
+vocab 1 2 3
+vocab 12 3
+vocab 1 23
+vocab 1 2 3 12 23 123
+vocab 123 12
+vocab 3 12 12 1 23

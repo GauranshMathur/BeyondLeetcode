@@ -1,0 +1,8 @@
+load
+tolerant 10 0
+load 7
+tolerant 7 0
+tolerant 10 0
+tolerant 10 99
+load 12
+tolerant 11 5

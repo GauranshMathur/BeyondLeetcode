@@ -1,0 +1,9 @@
+load 7 13
+fewest 1
+fewest 20
+fewest 27
+fewest 33
+load 10 20 50
+fewest 5
+fewest 90
+fewest 85

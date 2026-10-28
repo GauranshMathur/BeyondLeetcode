@@ -1,0 +1,5 @@
+load 1 2 3
+ways 100
+load 3 2 1
+ways 100
+ways 300

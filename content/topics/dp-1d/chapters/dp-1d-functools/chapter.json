@@ -1,0 +1,4 @@
+{
+	"title": "Python's functools.cache: remembering what a call already answered",
+	"problems": ["dp-1d-stairs", "dp-1d-cachestats"]
+}

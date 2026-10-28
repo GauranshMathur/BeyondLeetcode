@@ -1,0 +1,8 @@
+load
+cache 0
+cache 5
+load 7
+cache 3
+cache 7
+load 1 2
+cache 0

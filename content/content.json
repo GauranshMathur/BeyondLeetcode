@@ -12,6 +12,7 @@
 		"trees",
 		"backtracking",
 		"tries",
-		"heaps"
+		"heaps",
+		"dp-1d"
 	]
 }
