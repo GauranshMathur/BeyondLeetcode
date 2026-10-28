@@ -1,0 +1,10 @@
+load 2 2 2 5 2 2 2
+wrap 10
+tolerant 10 10
+tolerant 10 3
+tolerant 10 2
+tolerant 10 1
+tolerant 10 0
+load 4 4 4
+tolerant 9 0
+tolerant 4 0

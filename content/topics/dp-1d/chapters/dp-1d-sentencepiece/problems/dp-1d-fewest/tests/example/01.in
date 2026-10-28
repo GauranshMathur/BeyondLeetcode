@@ -1,0 +1,4 @@
+load 1 5 6
+show
+fewest 10
+fewest 0

@@ -1,0 +1,5 @@
+Keep `ways[i]`, the cuts of the first `i` digits, with `ways[0] = 1`. For each `i`, start from 0. If digit `i - 1` is not 0, add `ways[i - 1]`. If `i` is at least 2 and digits `i - 2` and `i - 1` make a number from 10 to 26, add `ways[i - 2]`. Take the remainder after 1000000007. Because only the last two values are read, keep two variables and shift them after each digit. Print `ways[n]`.
+
+**Why it is right.** The last token of a cut is one digit or two, and removing it leaves a cut of a shorter row. Cuts with different last tokens are different, and cuts with the same last token are counted by the shorter row's cuts, so each cut is counted once. A 0 can only be the second digit of 10 or 20, which the two-digit rule allows, and nothing allows it alone, so `0 7` or `3 0` end with 0 cuts.
+
+**Cost.** One pass over the digits, so O(n) time in the **worst case**, and O(1) extra space. The answer is a count, which grows exponentially with the row (a row of `n` ones has about as many cuts as the Fibonacci number for `n`), so it is taken modulo 1000000007, as `ways` was.

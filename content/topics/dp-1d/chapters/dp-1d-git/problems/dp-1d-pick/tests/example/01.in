@@ -1,0 +1,5 @@
+load 4 1 1 5
+show
+pick
+load -3 -1 -2
+pick

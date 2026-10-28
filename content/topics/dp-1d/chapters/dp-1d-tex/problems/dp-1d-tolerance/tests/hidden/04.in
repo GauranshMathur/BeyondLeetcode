@@ -1,0 +1,9 @@
+load 6 2 5 6 4 4 4 4 4 5 2 1
+tolerant 10 3
+tolerant 10 2
+tolerant 12 0
+tolerant 12 6
+load 7 6 7 5 2 5 2 6 6 7 1 4 7 6 2 3 4 2 3 7 2 8 7 2 2
+tolerant 20 4
+tolerant 20 1
+tolerant 14 2
