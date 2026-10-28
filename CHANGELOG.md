@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.7](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.6...v1.10.7) (2026-10-28)
+
+
+### Bug Fixes
+
+* **beyondleetcode:** C112 five quotes in shipped Chapters match their sources ([#375](https://github.com/GauranshMathur/BeyondLeetcode/issues/375)) ([f8c1205](https://github.com/GauranshMathur/BeyondLeetcode/commit/f8c12050c1a5e9eb08caa6275174eab05b5cef9a))
+
 ## [1.10.6](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.5...v1.10.6) (2026-10-27)
 
 
