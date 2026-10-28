@@ -105,8 +105,8 @@ Leads that changed.
 ## Chapter 4: Emacs, noticing that a list never ends (`two-pointers-emacs-cycles`)
 
 ### Claim 4.1. Circular lists exist and most end-finding functions loop forever on them.
-- Link: [doc/lispref/lists.texi L69-L83](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/doc/lispref/lists.texi#L69-L83)
-- Quote: "some cons cell's CDR could point to one of the previous cons cells in the list. We call that structure a circular list." and "Most functions that try to find the end of a list enter infinite loops if given a circular list." (The Texinfo source writes `@sc{cdr}` for CDR.)
+- Links: [doc/lispref/lists.texi L73-L75](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/doc/lispref/lists.texi#L73-L75), [L81-L82](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/doc/lispref/lists.texi#L81-L82)
+- Quote: "some cons cell's CDR could point to one of the previous cons cells in the list. We call that structure a circular list." (lines 73 to 75) and "Most functions that try to find the end of a list enter infinite loops if given a circular list." (lines 81 to 82). Texinfo markup dropped: the source writes `@sc{cdr}` and `@dfn{circular list}`. `@sc{cdr}` is small caps; the manual's HTML output (fetched from gnu.org) renders it as `<small class="sc">CDR</small>`, so the Chapter's "CDR" is the rendered word.
 - Type 2. Status: sourced.
 
 ### Claim 4.2. `FOR_EACH_TAIL` signals on a cycle; short lists skip the check.
