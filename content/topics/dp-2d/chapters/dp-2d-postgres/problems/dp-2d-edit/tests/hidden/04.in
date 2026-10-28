@@ -1,0 +1,10 @@
+words cccaccabccbc cbbbbcaba
+edit 1 1 1
+edit 2 3 4
+edit 4 3 2
+words xxyyyxx zzyyxxxzxzxzzx
+edit 1 2 3
+edit 10 1 5
+words bbaaaabbbbabbababaab abbabaabbaaabbaababa
+edit 1 1 1
+edit 1 1 100

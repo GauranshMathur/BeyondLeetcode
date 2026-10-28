@@ -1,0 +1,8 @@
+{
+	"title": "PyTorch: choosing what to keep under a memory budget",
+	"problems": [
+		"dp-2d-keep",
+		"dp-2d-ways",
+		"dp-2d-signs"
+	]
+}
