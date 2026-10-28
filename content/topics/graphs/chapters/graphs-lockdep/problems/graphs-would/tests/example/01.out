@@ -1,0 +1,3 @@
+cycle c a b c
+safe
+cycle a a

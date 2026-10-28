@@ -1,0 +1,13 @@
+edge s b
+edge s a
+edge a t
+edge b t
+edge t u
+path s t
+path s u
+path a u
+path b u
+edge a x
+edge x u
+path s u
+path s x

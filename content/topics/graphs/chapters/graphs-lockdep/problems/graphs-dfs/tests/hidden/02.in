@@ -1,0 +1,13 @@
+edge x y
+edge y z
+edge z x
+edge z z
+edge m m
+dfs x
+dfs z
+dfs m
+dfs w
+dfs q
+edge x m
+dfs x
+dfs m

@@ -1,0 +1,46 @@
+edge m5 m2
+same m6 m10
+edge m0 m1
+same m13 m8
+edge m1 m5
+same m9 m0
+edge m8 m3
+same m0 m1
+groups
+edge m6 m6
+same m1 m3
+edge m1 m8
+same m6 m0
+edge m13 m9
+same m1 m3
+edge m10 m10
+same m9 m0
+groups
+edge m9 m9
+same m6 m0
+edge m3 m0
+same m8 m13
+edge m2 m4
+same m6 m2
+edge m8 m1
+same m9 m4
+groups
+edge m8 m13
+same m10 m2
+edge m1 m9
+same m9 m10
+edge m3 m5
+same m1 m8
+edge m11 m1
+same m9 m0
+groups
+edge m9 m3
+same m7 m10
+edge m8 m6
+same m12 m5
+edge m7 m9
+same m7 m5
+edge m4 m3
+same m12 m2
+groups
+groups

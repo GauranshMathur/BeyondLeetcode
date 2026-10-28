@@ -1,0 +1,8 @@
+edge a b 7
+edge a c 2
+edge c b 3
+edge b d
+cost a b
+cost a d
+cost d a
+cost a a

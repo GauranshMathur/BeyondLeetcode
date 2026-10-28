@@ -1,0 +1,17 @@
+edge x y
+edge x z
+edge y z
+edge x y
+edge z x
+edge z z
+edge z z
+out x
+out y
+out z
+out w
+has x y
+has y x
+has z z
+has x w
+has w x
+count

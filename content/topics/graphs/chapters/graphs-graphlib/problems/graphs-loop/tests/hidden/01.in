@@ -1,0 +1,15 @@
+edge m n
+edge n o
+edge o m
+edge c d
+edge d e
+edge e c
+edge c a
+edge a d
+loop
+clear
+edge s t
+edge t s
+edge s u
+edge u s
+loop

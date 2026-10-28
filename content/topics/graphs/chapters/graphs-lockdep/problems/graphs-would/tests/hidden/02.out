@@ -1,0 +1,10 @@
+cycle a a
+cycle q q
+cycle b b
+safe
+safe
+safe
+cycle a b a
+cycle b a b
+cycle a b a
+safe

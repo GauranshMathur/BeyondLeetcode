@@ -1,0 +1,4 @@
+{
+	"title": "OSPF: every router runs Dijkstra",
+	"problems": ["graphs-cost", "graphs-farthest", "graphs-ways"]
+}

@@ -1,0 +1,19 @@
+loop
+edge a b
+edge b c
+loop
+edge d e
+loop
+edge c a
+loop
+clear
+edge z z
+edge y z
+loop
+edge y y
+loop
+clear
+edge b a
+edge a c
+edge c b
+loop

@@ -1,0 +1,15 @@
+edge s a 1
+edge s b 1
+edge a t 2
+edge b t 2
+edge s t 3
+edge s c 2
+edge c t 1
+edge a b 1
+ways s t
+ways s a
+ways s b
+ways a t
+ways s s
+edge s t 2
+ways s t

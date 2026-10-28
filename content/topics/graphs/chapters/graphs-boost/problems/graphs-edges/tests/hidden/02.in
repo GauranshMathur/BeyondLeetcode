@@ -1,0 +1,19 @@
+count
+out nothing
+has a b
+
+edge a b
+count
+
+frobnicate a b
+clear
+count
+out a
+edge b a
+out b
+out a
+has b a
+count
+clear
+clear
+count

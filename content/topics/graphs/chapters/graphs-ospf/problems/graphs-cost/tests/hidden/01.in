@@ -1,0 +1,17 @@
+edge s t 10
+edge s a 1
+edge a b 1
+edge b c 1
+edge c t 1
+edge s d 3
+edge d t 8
+edge t z 2
+edge u t 1
+cost s t
+cost s z
+cost s d
+cost u z
+cost z u
+cost t s
+cost a t
+cost s s

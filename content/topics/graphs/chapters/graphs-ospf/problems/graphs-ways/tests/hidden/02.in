@@ -1,0 +1,17 @@
+ways a b
+edge a b 5
+ways a b
+ways b a
+ways a a
+ways a zz
+ways zz a
+edge b c 1
+edge a c 6
+ways a c
+edge a c 5
+ways a c
+edge c a 1
+ways c c
+ways c b
+edge q q 4
+ways q q

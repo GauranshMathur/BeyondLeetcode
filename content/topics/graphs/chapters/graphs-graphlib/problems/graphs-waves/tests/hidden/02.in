@@ -1,0 +1,15 @@
+waves
+edge a b
+edge b c
+edge c b
+edge a d
+edge d e
+edge x x
+waves
+clear
+waves
+edge s s
+waves
+clear
+edge p q
+waves
