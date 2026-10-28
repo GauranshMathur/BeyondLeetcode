@@ -1,6 +1,6 @@
 # Linux interval tree: skip what cannot overlap
 
-Given a set of ranges, which of them overlap this one? The Linux kernel answers that with an interval tree, written once as a template in `include/linux/interval_tree_generic.h` and used by `lib/interval_tree.c`, at the commit of the tag v6.6 (`ffc253263a1375a65fa6c9f62a893e9767fbebfa`). A scan of every range would work, but the kernel's code answers without looking at most of them. This Chapter reads how, and in the Problem `find` you do the same on a sorted list.
+Given a set of ranges, which of them overlap this one? The Linux kernel answers that with an interval tree, written once as a template in `include/linux/interval_tree_generic.h` and used by `lib/interval_tree.c`, at the commit of the tag v6.6 (`ffc253263a1375a65fa6c9f62a893e9767fbebfa`). A scan of every range would work, but the kernel's code skips whole parts of its tree that cannot hold an answer. This Chapter reads how, and in the Problem `find` you do the same on a sorted list.
 
 ## A node is an interval, ordered by its start
 
