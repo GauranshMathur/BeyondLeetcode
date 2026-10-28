@@ -9,7 +9,7 @@ permissions:
   issues: write
   pull-requests: write
 
-# Runs merge and tag releases, so two at once could race on the same release
+# Runs open the release PR and tag releases, so two at once could race on the same release
 # PR. Queue them instead, and never cancel one partway through a release.
 concurrency:
   group: release-please
@@ -19,61 +19,18 @@ jobs:
   release-please:
     runs-on: ubuntu-24.04
     outputs:
-      # Either release-please run can create the release (the first one, when it recovers a release
-      # PR merged earlier), so take whichever did.
-      release_created: ${{ steps.tag.outputs.release_created || steps.release.outputs.release_created }}
-      tag_name: ${{ steps.tag.outputs.tag_name || steps.release.outputs.tag_name }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      # Accumulates conventional commits into a release PR. Merging that PR tags
-      # the release and writes CHANGELOG.md.
+      # Accumulates conventional commits into a release PR and keeps it fresh. Nothing merges it:
+      # the orchestrator cuts each release by merging the PR by hand (docs/releasing.md). That
+      # push runs this step again, which tags the release and writes CHANGELOG.md.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           # Opened with RELEASE_PAT, not the built-in token: workflows do not run on PRs the
           # built-in token creates, and the main ruleset requires those checks.
           token: ${{ secrets.RELEASE_PAT }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-      # Every releasable commit (feat, fix) ships its own release. Find the
-      # release PR: the one release-please just opened or refreshed, else one
-      # already open and unchanged (release-please leaves `pr` empty then, as
-      # after a failed merge or a docs or ci commit). Empty when none is open.
-      - name: Find the release PR
-        id: find
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_PR: ${{ steps.release.outputs.pr }}
-        run: |
-          if [ -n "$RELEASE_PR" ]; then
-            number="$(jq -r '.number' <<<"$RELEASE_PR")"
-          else
-            number="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
-              --label "autorelease: pending" --json number --jq '.[0].number // empty')"
-          fi
-          echo "number=$number" >> "$GITHUB_OUTPUT"
-
-      # Merge it, so a release PR left open by a failed merge is retried on the
-      # next push. Step env is evaluated even when `if` skips the step, so the
-      # number comes from an output, not fromJSON on an empty `pr`.
-      - name: Merge the release PR
-        if: ${{ steps.find.outputs.number }}
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
-          RELEASE_PR_NUMBER: ${{ steps.find.outputs.number }}
-        # Auto-merge: GitHub merges once the required checks pass. The merge pushes to main, which
-        # runs this workflow again; release-please then tags and publishes the merged release.
-        run: gh pr merge "$RELEASE_PR_NUMBER" --squash --auto --repo "$GITHUB_REPOSITORY"
-
-      # Normally a no-op now: auto-merge lands the release PR later, and that push re-runs this
-      # workflow, whose first release-please step tags it. This step still releases a release PR
-      # that was merged by hand before this run reached it. If it misses, the next push to main
-      # releases it, since release-please picks up any merged PR labelled autorelease: pending.
-      - name: Tag and publish the release
-        id: tag
-        if: ${{ steps.find.outputs.number }}
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
