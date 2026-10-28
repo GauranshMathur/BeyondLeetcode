@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.16.0...v1.17.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C121 2-D dynamic programming Topic ([#389](https://github.com/GauranshMathur/BeyondLeetcode/issues/389)) ([2ab0c54](https://github.com/GauranshMathur/BeyondLeetcode/commit/2ab0c54e4925060ce8e1e991f3135c0741e0f919))
+
 ## [1.16.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.15.0...v1.16.0) (2026-10-28)
 
 
