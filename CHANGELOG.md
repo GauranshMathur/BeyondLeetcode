@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.15.0...v1.16.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C118 Greedy Topic ([#390](https://github.com/GauranshMathur/BeyondLeetcode/issues/390)) ([25aa754](https://github.com/GauranshMathur/BeyondLeetcode/commit/25aa754992f90c9d67b2f29e0b3b429934b7b87e))
+
 ## [1.15.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.14.0...v1.15.0) (2026-10-28)
 
 
