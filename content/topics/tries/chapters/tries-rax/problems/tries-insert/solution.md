@@ -4,4 +4,4 @@ Each node holds a map from a character to its child and a value that is empty un
 
 `nodes` and `size` visit every node once.
 
-Cost, for a key of L characters: `add`, `get` and `del` take O(L) **expected** time, because each step is a lookup in a hash map and one lookup is O(1) expected. `nodes` and `size` are O(N) for N nodes. The tree holds at most one node per character of every stored key, so memory is O(total length of the keys) in the worst case, and less when keys share a prefix.
+Cost, for a key of L characters: `add`, `get` and `del` take O(L) **expected** time, because each step is a lookup in a hash map and one lookup is O(1) expected. `nodes` and `size` are O(N) for N nodes, in the best and the worst case alike. The tree holds at most one node per character of every stored key, so memory is O(total length of the keys) in the worst case, and less when keys share a prefix.

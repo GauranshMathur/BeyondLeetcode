@@ -1,6 +1,6 @@
 # Redis Cluster: listing by prefix
 
-A trie answers a question a hash table does not help with: which keys start with these characters? You can walk to the node for the prefix, and everything below it is the answer. This Chapter reads where Redis 7.2.5 asks that question, in `src/cluster.c`. The Problems build the same prefix listing.
+A trie answers a question a hash table does not help with: which keys start with these characters? You can walk to the node for the prefix, and everything below it is the answer. This Chapter reads a place where Redis 7.2.5 asks it, the function `unsigned int countChannelsInSlot(unsigned int hashslot) {` ([src/cluster.c, line 7705](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/cluster.c#L7705)). The Problems build the same prefix listing.
 
 ## The key is the slot, then the name
 

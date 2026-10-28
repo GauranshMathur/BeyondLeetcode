@@ -8,7 +8,7 @@ New command:
 
 **The rule.** A node uses a **map** if it has ever had more than 8 children at the same time since it was created. The first time a new child would be the ninth, the node becomes a map, and it stays a map for as long as the node exists, even if children are removed later. Any other node that has at least 1 child uses a **slice**. A node that has no children and never became a map counts in neither number.
 
-Go's own `mapping` has no way to remove a pair, so the rule for `del` is written for this Problem: a node that `del` cuts from the tree is gone, and if the same prefix is added again later, its node is new and starts as a slice. A node that stays in the tree keeps being a map.
+Go's own `mapping` has no way to remove a pair (see the Chapter), so the rule for `del` is written for this Problem: a node that `del` cuts from the tree is gone, and if the same prefix is added again later, its node is new and starts as a slice. A node that stays in the tree keeps being a map.
 
 Replacing the value of a stored key with `add` does not add a child. Root counts like any other node.
 
