@@ -1,0 +1,10 @@
+add foo 1
+add foobar 2
+add footer 3
+nodes
+rnodes
+add first 4
+nodes
+rnodes
+del first
+rnodes

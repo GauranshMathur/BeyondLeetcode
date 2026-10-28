@@ -1,0 +1,12 @@
+add hello 1
+del hell
+get hell
+nodes
+del hellox
+del h
+size
+del hello
+nodes
+add hello 2
+get hello
+nodes

@@ -11,6 +11,7 @@
 		"bit-manipulation",
 		"trees",
 		"backtracking",
+		"tries",
 		"dp-1d"
 	]
 }

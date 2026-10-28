@@ -1,0 +1,12 @@
+add abc 1
+add abd 2
+add xyz 3
+nodes
+del abc
+nodes
+del abd
+nodes
+del xyz
+nodes
+size
+del abc

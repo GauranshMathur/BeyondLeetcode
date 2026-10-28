@@ -1,0 +1,18 @@
+add k 1
+add ka 1
+add kb 1
+add kc 1
+add kd 1
+add ke 1
+add kf 1
+add kg 1
+add kh 1
+add ki 1
+shape
+del k
+shape
+add k 2
+shape
+del kb
+del kc
+shape

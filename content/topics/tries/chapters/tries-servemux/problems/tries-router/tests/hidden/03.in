@@ -1,0 +1,10 @@
+handle /a/b/c/d deep
+handle /a/{x}/c/e shallow
+serve /a/b/c/d
+serve /a/b/c/e
+serve /a/b/c/f
+serve /a/x/c/e
+serve /a/b/c
+handle /s1/s2/s3/s4/s5/s6/s7/s8/s9/s10/s11/s12/s13/s14/s15/s16/s17/s18/s19/s20 deepest
+serve /s1/s2/s3/s4/s5/s6/s7/s8/s9/s10/s11/s12/s13/s14/s15/s16/s17/s18/s19/s20
+serve /s1/s2/s3/s4/s5/s6/s7/s8/s9/s10/s11/s12/s13/s14/s15/s16/s17/s18/s19

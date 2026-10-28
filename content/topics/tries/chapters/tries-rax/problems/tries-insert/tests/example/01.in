@@ -1,0 +1,10 @@
+add foo 1
+add foobar 2
+add footer 3
+nodes
+get foo
+get fo
+del foo
+get foo
+get foobar
+nodes

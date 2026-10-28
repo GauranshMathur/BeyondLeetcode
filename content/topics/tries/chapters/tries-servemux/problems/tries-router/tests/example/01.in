@@ -1,0 +1,6 @@
+handle /a/b/z first
+handle /a/{x}/c second
+serve /a/b/c
+serve /a/b/z
+serve /a/q/c
+serve /a/b

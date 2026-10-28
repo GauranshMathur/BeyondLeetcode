@@ -1,0 +1,11 @@
+add ab 1
+get a
+get ab
+get abc
+add a 5
+get a
+size
+nodes
+add ab 9
+get ab
+size

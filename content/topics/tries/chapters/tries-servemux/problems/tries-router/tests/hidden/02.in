@@ -1,0 +1,6 @@
+handle /a/{x} wild
+handle /{y}/b other
+serve /a/b
+serve /c/b
+serve /a/c
+serve /c/c

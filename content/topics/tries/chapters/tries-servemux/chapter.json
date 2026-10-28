@@ -1,0 +1,4 @@
+{
+	"title": "Go ServeMux: a tree of path segments",
+	"problems": ["tries-child-repr", "tries-router", "tries-wildcard-find"]
+}

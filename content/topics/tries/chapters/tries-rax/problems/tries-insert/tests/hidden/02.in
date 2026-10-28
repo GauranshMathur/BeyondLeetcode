@@ -1,0 +1,13 @@
+add a 1
+add ab 2
+add abc 3
+del ab
+get ab
+get abc
+nodes
+size
+del ab
+del a
+nodes
+del abc
+nodes

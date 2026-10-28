@@ -1,0 +1,11 @@
+add abc 1
+add abd 1
+add xbc 1
+add xyc 1
+find .bc
+find a.c
+find ..c
+find ...
+find a..
+find .y.
+find x.c

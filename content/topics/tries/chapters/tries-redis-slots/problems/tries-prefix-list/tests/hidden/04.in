@@ -1,0 +1,15 @@
+add abc 1
+add abd 1
+add abe 1
+del abd
+list ab
+count ab
+del abc
+del abe
+list ab
+list
+count
+count a
+add ab 3
+list ab
+count a

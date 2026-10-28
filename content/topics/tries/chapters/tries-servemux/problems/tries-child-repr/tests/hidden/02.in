@@ -1,0 +1,25 @@
+add pa 1
+add pb 2
+add pc 3
+add pd 4
+add pe 5
+add pf 6
+add pg 7
+add ph 8
+add pi 9
+shape
+add q 1
+shape
+del pa
+del pb
+del pc
+del pd
+del pe
+del pf
+del pg
+del ph
+del pi
+shape
+nodes
+add pa 1
+shape
