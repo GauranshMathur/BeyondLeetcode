@@ -117,8 +117,21 @@ func init() {
 	commands["find"] = func(args []int) {
 		a, b := args[0], args[1]
 		if dirty {
-			order = append([]span{}, ivs...)
-			sort.SliceStable(order, func(i, j int) bool { return order[i].lo < order[j].lo })
+			idx := make([]int, len(ivs))
+			for i := range idx {
+				idx[i] = i
+			}
+			// Sort by (lo, position added): equal lo keep the order they were added in.
+			sort.Slice(idx, func(x, y int) bool {
+				if ivs[idx[x]].lo != ivs[idx[y]].lo {
+					return ivs[idx[x]].lo < ivs[idx[y]].lo
+				}
+				return idx[x] < idx[y]
+			})
+			order = make([]span, len(ivs))
+			for k, i := range idx {
+				order[k] = ivs[i]
+			}
 			sub = make([]int, len(order))
 			build(0, len(order))
 			dirty = false

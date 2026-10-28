@@ -1,6 +1,6 @@
 # Go regexp: sort the ranges, then merge
 
-A regular expression can say `[a-zA-Z0-9_]`: any character from a list of ranges. Before Go's regexp package can use such a class, its parser has to turn what was typed into a clean list: ranges in order, none overlapping, none touching. This Chapter reads how the parser does that, in `regexp/syntax/parse.go` at the commit of Go 1.22.0 (`a10e42f219abb9c5bc4e7d86d9464700a42c7d57`). In the Problems you build the same step on intervals of whole numbers. An interval `lo-hi` holds every whole number from `lo` to `hi`, both ends included.
+A regular expression can say `[a-zA-Z0-9_]`: any character from a list of ranges. Before Go's regexp package can use such a class, its parser has to turn what was typed into a clean list: ranges in order, none overlapping, none touching. This Chapter reads how the parser does that, in `regexp/syntax/parse.go` ([parse.go, lines 1832 to 1862](https://github.com/golang/go/blob/a10e42f219abb9c5bc4e7d86d9464700a42c7d57/src/regexp/syntax/parse.go#L1832-L1862)) at the commit of Go 1.22.0 (`a10e42f219abb9c5bc4e7d86d9464700a42c7d57`). In the Problems you build the same step on intervals of whole numbers. An interval `lo-hi` holds every whole number from `lo` to `hi`, both ends included.
 
 ## Two ways to collect ranges
 

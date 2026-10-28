@@ -1,6 +1,6 @@
 # Linux e820: sweep the edges
 
-When the machine starts, the firmware describes the memory it has as a list of ranges, and the list can contradict itself: ranges may overlap. The Linux kernel cleans such a list up in `e820__update_table`, in `arch/x86/kernel/e820.c` at the commit of the tag v6.6 (`ffc253263a1375a65fa6c9f62a893e9767fbebfa`). It does not compare every range with every other. It walks the edges of the ranges from left to right, a **sweep line**, and this Chapter reads how, and what the order of the edges has to be.
+The list of memory ranges that the firmware reports to Linux can contain overlapping entries ([e820.c, line 221](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/arch/x86/kernel/e820.c#L221)). The kernel cleans such a list up in `e820__update_table`, in `arch/x86/kernel/e820.c` at the commit of the tag v6.6 (`ffc253263a1375a65fa6c9f62a893e9767fbebfa`). It does not compare every range with every other. It walks the edges of the ranges from left to right, a **sweep line**, and this Chapter reads how, and what the order of the edges has to be.
 
 ## The job
 
