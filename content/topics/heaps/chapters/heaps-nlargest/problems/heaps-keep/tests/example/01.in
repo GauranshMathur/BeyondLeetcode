@@ -1,0 +1,9 @@
+keep 3
+push 4
+push 5
+push 8
+push 2
+peek
+push 9
+peek
+size

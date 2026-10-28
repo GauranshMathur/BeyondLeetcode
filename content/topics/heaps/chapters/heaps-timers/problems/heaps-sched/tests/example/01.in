@@ -1,0 +1,8 @@
+sched dns 30
+sched tcp 10
+sched log 30
+sched ntp 20
+advance 25
+peek
+advance 30
+size

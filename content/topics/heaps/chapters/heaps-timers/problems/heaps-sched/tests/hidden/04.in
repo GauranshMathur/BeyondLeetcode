@@ -1,0 +1,18 @@
+sched j1 0
+sched j2 5
+sched j3 3
+advance 1
+sched j4 6
+sched j5 9
+sched j6 3
+advance 3
+sched j7 0
+sched j8 1
+sched j9 1
+advance 4
+sched j10 2
+sched j11 5
+sched j12 3
+advance 6
+advance 100
+size

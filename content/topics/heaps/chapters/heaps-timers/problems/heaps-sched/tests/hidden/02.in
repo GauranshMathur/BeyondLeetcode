@@ -1,0 +1,9 @@
+sched a 40
+sched b 25
+advance 24
+peek
+advance 25
+peek
+advance 100
+peek
+size

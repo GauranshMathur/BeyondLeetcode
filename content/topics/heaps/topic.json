@@ -1,0 +1,6 @@
+{
+	"title": "Heaps",
+	"summary": "Build a priority queue that runs timers, and read how CPython's heapq, Go's container/heap, libuv, Kubernetes and asyncio keep one.",
+	"prerequisites": ["trees", "dynamic-arrays"],
+	"chapters": ["heaps-heapq", "heaps-go-heap", "heaps-nlargest", "heaps-timers", "heaps-scheduler"]
+}

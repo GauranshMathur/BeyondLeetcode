@@ -1,0 +1,50 @@
+sched s1 25
+sched s2 40
+sched s3 52
+sched s4 55
+sched s5 24
+sched s6 50
+sched s7 10
+sched s8 21
+sched s9 41
+sched s10 19
+sched s11 9
+sched s12 11
+sched s13 56
+sched s14 4
+sched s15 1
+sched s16 50
+sched s17 14
+sched s18 24
+sched s19 58
+sched s20 9
+sched s21 45
+sched s22 55
+sched s23 20
+sched s24 23
+sched s25 4
+sched s26 17
+sched s27 41
+sched s28 37
+sched s29 29
+sched s30 44
+show
+update s2 59
+cancel s30
+update s4 12
+cancel s25
+update s13 30
+cancel s4
+update s22 4
+cancel s4
+update s10 55
+cancel s20
+update s19 0
+cancel s19
+update s12 58
+cancel s21
+update s25 35
+show
+advance 30
+show
+size

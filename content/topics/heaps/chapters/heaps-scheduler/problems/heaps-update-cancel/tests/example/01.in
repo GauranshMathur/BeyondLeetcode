@@ -1,0 +1,11 @@
+sched a 50
+sched b 40
+sched c 30
+sched d 20
+show
+update a 10
+show
+cancel c
+show
+update zzz 5
+cancel c

@@ -1,0 +1,66 @@
+keep 4
+push -4
+peek
+push -17
+peek
+push -1
+peek
+push 21
+peek
+push 8
+peek
+push 17
+peek
+push 2
+peek
+push 16
+peek
+push 20
+peek
+push -19
+peek
+push 26
+peek
+push 18
+peek
+push 7
+peek
+push -5
+peek
+push -23
+peek
+push -27
+peek
+push -9
+peek
+push -2
+peek
+push 9
+peek
+push 25
+peek
+push 10
+peek
+push 12
+peek
+push 29
+peek
+push 15
+peek
+push -10
+peek
+push 13
+peek
+push -8
+peek
+push 3
+peek
+push -24
+peek
+push -29
+peek
+show
+pop
+pop
+show
+size

@@ -1,0 +1,117 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+)
+
+type item struct {
+	key    int
+	ticket int
+}
+
+type heap struct {
+	items []*item // the heap, in array order
+}
+
+// less reports whether a is smaller than b: lower key, or the same key and an earlier ticket.
+func (h *heap) less(a, b *item) bool {
+	return a.key < b.key || (a.key == b.key && a.ticket < b.ticket)
+}
+
+// siftUp moves the item at pos up while it is smaller than its parent.
+func (h *heap) siftUp(pos int) {
+	it := h.items[pos]
+	for pos > 0 {
+		parent := (pos - 1) / 2
+		if !h.less(it, h.items[parent]) {
+			break
+		}
+		h.items[pos] = h.items[parent]
+		pos = parent
+	}
+	h.items[pos] = it
+}
+
+// siftDown moves the item at pos down while a child is smaller than it.
+func (h *heap) siftDown(pos int) {
+	end := len(h.items)
+	it := h.items[pos]
+	for 2*pos+1 < end {
+		child := 2*pos + 1
+		if child+1 < end && h.less(h.items[child+1], h.items[child]) {
+			child++
+		}
+		if !h.less(h.items[child], it) {
+			break
+		}
+		h.items[pos] = h.items[child]
+		pos = child
+	}
+	h.items[pos] = it
+}
+
+func (h *heap) push(it *item) {
+	h.items = append(h.items, it)
+	h.siftUp(len(h.items) - 1)
+}
+
+func (h *heap) pop() *item {
+	last := h.items[len(h.items)-1]
+	h.items = h.items[:len(h.items)-1]
+	if len(h.items) == 0 {
+		return last
+	}
+	top := h.items[0]
+	h.items[0] = last
+	h.siftDown(0)
+	return top
+}
+
+func main() {
+	out := bufio.NewWriter(os.Stdout)
+	defer out.Flush()
+	h := &heap{}
+	tickets := 0 // how many pushes so far
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 0, 1<<16), 1<<24) // a line can be longer than the default 64 KiB
+	for scanner.Scan() {
+		parts := strings.Fields(scanner.Text())
+		if len(parts) == 0 {
+			continue
+		}
+		switch parts[0] {
+		case "push":
+			key, _ := strconv.Atoi(parts[1])
+			h.push(&item{key: key, ticket: tickets})
+			tickets++
+		case "pop":
+			if len(h.items) == 0 {
+				fmt.Fprintln(out, "empty")
+			} else {
+				fmt.Fprintln(out, h.pop().key)
+			}
+		case "peek":
+			if len(h.items) == 0 {
+				fmt.Fprintln(out, "empty")
+			} else {
+				fmt.Fprintln(out, h.items[0].key)
+			}
+		case "size":
+			fmt.Fprintln(out, len(h.items))
+		case "show":
+			if len(h.items) == 0 {
+				fmt.Fprintln(out, "empty")
+				break
+			}
+			keys := make([]string, len(h.items))
+			for i, it := range h.items {
+				keys[i] = strconv.Itoa(it.key)
+			}
+			fmt.Fprintln(out, strings.Join(keys, " "))
+		}
+	}
+}

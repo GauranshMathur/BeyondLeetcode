@@ -1,0 +1,23 @@
+sched t1 10
+sched t2 20
+sched t3 30
+sched t4 40
+sched t5 50
+sched t6 60
+sched t7 70
+sched t8 80
+drop t2
+drop t3
+drop t5
+update t2 1
+cancel t3
+drop t5
+advance 100
+size
+sched t2 7
+drop t2
+sched t2 9
+size
+show
+advance 9
+size

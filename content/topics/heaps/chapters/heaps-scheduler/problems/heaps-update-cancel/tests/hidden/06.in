@@ -1,0 +1,12 @@
+sched t1 2
+sched t2 0
+sched t3 0
+update t1 0
+update t3 0
+update t2 0
+advance 1
+sched u1 5
+sched u2 5
+sched u3 5
+update u1 5
+advance 5
