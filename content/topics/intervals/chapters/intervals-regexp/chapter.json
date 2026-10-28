@@ -1,7 +1,4 @@
 {
 	"title": "Go regexp: sort the ranges, then merge",
-	"problems": [
-		"intervals-merge",
-		"intervals-gaps"
-	]
+	"problems": ["intervals-merge", "intervals-gaps"]
 }

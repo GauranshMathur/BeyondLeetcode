@@ -1,14 +1,6 @@
 {
 	"title": "Intervals",
 	"summary": "Sort, merge, search and sweep ranges of numbers, and read how Go's regexp parser and the Linux kernel's memblock, interval tree and e820 map handle them.",
-	"prerequisites": [
-		"greedy",
-		"heaps"
-	],
-	"chapters": [
-		"intervals-regexp",
-		"intervals-memblock",
-		"intervals-tree",
-		"intervals-e820"
-	]
+	"prerequisites": ["greedy", "heaps"],
+	"chapters": ["intervals-regexp", "intervals-memblock", "intervals-tree", "intervals-e820"]
 }

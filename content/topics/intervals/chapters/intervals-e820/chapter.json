@@ -1,7 +1,4 @@
 {
 	"title": "Linux e820: sweep the edges",
-	"problems": [
-		"intervals-depth",
-		"intervals-rooms"
-	]
+	"problems": ["intervals-depth", "intervals-rooms"]
 }
