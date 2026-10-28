@@ -1,0 +1,4 @@
+{
+	"title": "Linux: reading a field as a signed number",
+	"problems": ["bit-manipulation-signext", "bit-manipulation-wrapsum"]
+}
