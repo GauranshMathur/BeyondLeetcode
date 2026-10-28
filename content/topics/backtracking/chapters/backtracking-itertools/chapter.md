@@ -1,6 +1,6 @@
 # Python's itertools: positions, not values
 
-Many search problems are really "list every way to pick or arrange these items". The shapes are few: choose some of the items (**subsets** and **combinations**), or put them in an order (**permutations**). Python ships all of them in the standard library, so its documentation has to say exactly which ones come out and in what order. This Chapter reads that documentation, from the CPython 3.13.0 source tree, as a specification. In the Problems you build the same lists with the choose, explore, undo loop, and your output has to match the order it states.
+Many search problems are really one question: list every way to pick or arrange these items. The shapes are few: choose some of the items (**subsets** and **combinations**), or put them in an order (**permutations**). Python ships all of them in the standard library, so its documentation has to say exactly which ones come out and in what order. This Chapter reads that documentation, from the CPython 3.13.0 source tree, as a specification. In the Problems you build the same lists with the choose, explore, undo loop, and your output has to match the order it states.
 
 ## The order is part of the contract
 

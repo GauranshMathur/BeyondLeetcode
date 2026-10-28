@@ -1,6 +1,6 @@
 # Knuth's dancing links: a rule for where to branch
 
-Some problems are not "list everything" but "find the arrangements that obey every rule": place eight queens so none attack each other, or fill a board with pieces that must not overlap. They are **constraint puzzles**. The loop is the same as before, but now there are two questions: how to undo a choice cheaply, and which choice to make first. Donald Knuth's paper "Dancing Links" (arXiv, November 2000, version 1) is about both. This Chapter reads it. In the Problems you place queens with the paper's cheapest undo, and then solve exact cover with its rule for choosing where to branch.
+Some problems are not about listing everything. They ask for the arrangements that obey every rule: place eight queens so none attack each other, or fill a board with pieces that must not overlap. They are **constraint puzzles**. The loop is the same as before, but now there are two questions: how to undo a choice cheaply, and which choice to make first. Donald Knuth's paper "Dancing Links" (arXiv, November 2000, version 1) is about both. This Chapter reads it. In the Problems you place queens with the paper's cheapest undo, and then solve exact cover with its rule for choosing where to branch.
 
 ## What backtracking is, and two ways to undo
 
