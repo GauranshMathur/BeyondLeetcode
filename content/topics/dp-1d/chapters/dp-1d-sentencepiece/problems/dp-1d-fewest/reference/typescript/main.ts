@@ -70,7 +70,8 @@ commands.fewest = (args) => {
 	for (let m = 1; m <= amount; m++) {
 		for (const item of values) {
 			const prev = table[m - item];
-			if (item <= m && prev !== null && (table[m] === null || prev + 1 < table[m])) {
+			const now = table[m];
+			if (item <= m && prev !== null && (now === null || prev + 1 < now)) {
 				table[m] = prev + 1;
 			}
 		}
