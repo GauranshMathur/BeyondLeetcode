@@ -1,0 +1,4 @@
+load 200 5 -3
+show
+ushow
+signext 8

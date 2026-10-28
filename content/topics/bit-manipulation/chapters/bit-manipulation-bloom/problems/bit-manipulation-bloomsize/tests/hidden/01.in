@@ -1,0 +1,17 @@
+bloomsize 0 10
+bloomsize 0 1
+bloomsize 1 1
+bloomsize 5 10
+bloomsize 6 10
+bloomsize 7 10
+bloomsize 6 11
+bloomsize 64 1
+bloomsize 65 1
+bloomsize 3 21
+bloomsize 3 22
+bloomsize 100 10
+bloomsize 1000000 100
+bloomsize 1000000 1
+bloomsize 12345 7
+bloomsize 9 7
+bloomsize 10 7

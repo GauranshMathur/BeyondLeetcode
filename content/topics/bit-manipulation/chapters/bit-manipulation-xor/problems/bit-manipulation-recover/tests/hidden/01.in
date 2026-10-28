@@ -1,0 +1,23 @@
+recover
+load
+recover
+load 0
+recover
+load 5
+recover
+load -1
+recover
+load 7 7
+recover
+load 5 12 6
+recover
+load 7 7 9 3 3
+recover
+load 4294967295 4294967295 4294967295
+recover
+load 2147483648 1
+recover
+load 1 2 4 8 16
+recover
+load 255 255 255 255
+recover

@@ -1,0 +1,11 @@
+{
+	"title": "Bit manipulation",
+	"summary": "Treat a word as 32 flags and read how the Linux kernel, Java, RAID 5, Roaring and LevelDB sign-extend, count, XOR and filter with them.",
+	"prerequisites": ["dynamic-arrays"],
+	"chapters": [
+		"bit-manipulation-signed",
+		"bit-manipulation-bitmap",
+		"bit-manipulation-xor",
+		"bit-manipulation-bloom"
+	]
+}

@@ -1,0 +1,9 @@
+{
+	"title": "Linux bitmaps: one bit per flag",
+	"problems": [
+		"bit-manipulation-bitset",
+		"bit-manipulation-reverse",
+		"bit-manipulation-weight",
+		"bit-manipulation-roaring"
+	]
+}
