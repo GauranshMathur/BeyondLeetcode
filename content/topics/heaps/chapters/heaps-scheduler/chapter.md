@@ -1,6 +1,6 @@
 # Kubernetes and asyncio: timers that change or go away
 
-Timers get cancelled and rescheduled. A heap can hand you its smallest item in O(1) but it cannot find an item in the middle. Two systems solve that in opposite ways. This Chapter reads the Kubernetes 1.31.0 scheduler, which remembers where every item is, and the Python 3.13.0 `asyncio` event loop, which marks an item as cancelled and moves on, and then looks at how the Go 1.22.0 runtime marks too. In the Problems you build both.
+Timers get cancelled and rescheduled. A heap can hand you its smallest item in O(1) in the **worst case** but it cannot find an item in the middle. Two systems solve that in opposite ways. This Chapter reads the Kubernetes 1.31.0 scheduler, which remembers where every item is, and the Python 3.13.0 `asyncio` event loop, which marks an item as cancelled and moves on, and then looks at how the Go 1.22.0 runtime marks too. In the Problems you build both.
 
 ## Kubernetes: write down where everything is
 
@@ -201,4 +201,4 @@ What marking costs, with `n` entries in the array: cancelling is O(1) in the **w
 
 ## What the Problems build
 
-Problem 6 adds `update ID T` and `cancel ID` the Kubernetes way: every item knows its index, a map takes IDs to items, and both commands fix the heap in O(log n). Problem 7 adds `drop ID` the asyncio way: mark it, leave it in the array, and let the clean-up at the start of `advance` remove it by the same two rules.
+Problem 6 adds `update ID T` and `cancel ID` the Kubernetes way: every item knows its index, a map takes IDs to items, and both commands fix the heap in O(log n) comparisons in the **worst case**. Problem 7 adds `drop ID` the asyncio way: mark it, leave it in the array, and let the clean-up at the start of `advance` remove it by the same two rules.
