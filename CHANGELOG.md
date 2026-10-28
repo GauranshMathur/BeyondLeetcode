@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.17.0...v1.18.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C117 Graphs Topic ([#391](https://github.com/GauranshMathur/BeyondLeetcode/issues/391)) ([57a445d](https://github.com/GauranshMathur/BeyondLeetcode/commit/57a445d6a52aa69ae46eb2ec551231e20116aa05))
+* **beyondleetcode:** C119 Intervals Topic ([#393](https://github.com/GauranshMathur/BeyondLeetcode/issues/393)) ([bd27323](https://github.com/GauranshMathur/BeyondLeetcode/commit/bd27323b0c9c43c75a8f471ad5a8341339dd8d03))
+
 ## [1.17.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.16.0...v1.17.0) (2026-10-28)
 
 
