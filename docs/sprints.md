@@ -335,6 +335,39 @@ Not in the sprint:
 
 **Not in the sprint:** C131, the bound on the fork-bomb test, waits for the maintainer to place it.
 
+**Status (2026-10-28):** exit met.
+- **Cards:** all eight Sprint 13 cards are Done.
+- **CI:** `ci` is green on `main` at the completing commit (65e6080) and at the release commit (13cbdf5).
+- **Release:** the orchestrator cut 1.19.0 from release PR #403, the first release merged by hand. The merge's own `release` run did all of it, and the cut is recorded in `docs/releasing.md`:
+  - it tagged `v1.19.0` and passed `release-gate`;
+  - it published the image as `v1.19.0` and `latest`, under one digest;
+  - the webhook answered `delivered`.
+
+| Card | PR | What landed |
+|---|---|---|
+| F17 | canvas v55 | The Logo artboard on the Foundations page: three directions in light and dark, each checked at 16, 32 and 200 px. |
+| C124 | #401 | Direction B exported to `docs/assets/` (mark and lockup, light and dark, wordmark outlined) and as the app favicon. |
+| C125 | #400 | README screenshots captured by Playwright with one command, kept out of `test:e2e` and CI. |
+| C126 | #404 | README rewrite: logo, badges, pitch, screenshots, a quick start run for real, a generated Topics table, repo map, contributing. Operator sections moved unchanged to `docs/self-hosting.md`. |
+| C127 | #399 | The `sprint-planner` agent, called by `/orchestrate` at a sprint's start and on a too-big card. |
+| C128 | #398 | `release.yml` no longer merges release PRs. `docs/releasing.md` holds the Releases and the cut steps. |
+| C129 | #402 | Every commit type has its own changelog heading. Release notes come from the template. |
+| C130 | #405 | Commit types and a `Changelog:` line on every card PR, plus the PR template. |
+
+Decided along the way:
+- **Logo:** the orchestrator picked direction B after rendering all three marks at real size. At 16 px, B's bracket bars sat between pixels, so the designer moved them from y 3 and 29 to y 4 and 28 on the canvas. C124 copied the result.
+- **Stop at green CI:** C124, C126, C127, C128, C129 and C130 stopped there for the orchestrator's review. C124, the only `feat`, merged only after C128, so no release shipped by itself on the way.
+- **C127's dry run:**
+  - The planner, dry-run on a sample "Sprint 14 · Test reliability" goal, passed its eight checks and reported where its definition was unclear.
+  - Eleven fixes went in before the merge: Releases follow release-please and are cut in order, and a card never has `Release: none`; the order of filing, with an undo; pulling in existing cards; codes for split children; never padding a sprint; flagging security reviews; about six rounds; the plan PR's own conflicts; comparing the whole option list; cheap re-reads; one observable `Done when`.
+- **Changelog lines:** `CHANGELOG.md` keeps release-please's headings. Each card's `Changelog:` line reaches a release through the notes template, set with `gh release edit` after the tag. release-please never edits a release it created.
+- **Quick start:** C126's first run used this host's stale cached `latest` (v0.43.0). It was re-run on `v1.18.0`, which had the same digest as `latest`. `init` pins its own version in `.env`.
+
+For the maintainer:
+- **Content commit types:** C130 records the orchestrator's reading that a Chapter or Problem added to a Topic that has already shipped is `feat`. Confirm or correct it.
+- **Next sprint:** C131 is still unsprinted. The planner's dry run left a candidate Sprint 14 · Test reliability: C131; a one-time re-run of content-check cases on a Runner error; per-checkout e2e ports; content-check jobs in parallel to `sandbox`; and the content check's concurrency on this host. It has two open questions: should the Runner retry Docker calls in production, and how are retries measured?
+- **Preview Instance:** `blc-preview` on this host runs v0.43.0 from a stale local `latest`. It was left untouched.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.

@@ -8,7 +8,7 @@ The board's `Release` field (id `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY`) has one option
 
 | Option | Option id |
 | --- | --- |
-| `R next: Foundations` | `5eb8b28c` |
+| `R v1.19.0: Foundations` | `5eb8b28c` |
 
 ## Planned releases
 
@@ -16,9 +16,8 @@ The `sprint-planner` agent (C127) adds future Releases here.
 
 | Release | Feature set | Target version |
 | --- | --- | --- |
-| `R next: Foundations` | F17, C124, C125, C126, C127, C128, C129, C130 | **1.19.0** |
 
-Foundations is the next minor after 1.18.0. Only C124 (`feat`, the favicon) adds a user-visible change; the rest are `docs` or `ci`, so the version needs the `Release-As` footer below.
+None yet. The next sprint's plan adds the next Release here. Foundations (F17, C124 to C130) was cut as 1.19.0: see the record below.
 
 ## History
 
@@ -72,3 +71,4 @@ Only when every card in the Release is Done and `ci` is green on main.
 
 | Version | Release | Date | Release PR | Completing commit | Notes |
 | --- | --- | --- | --- | --- | --- |
+| 1.19.0 | `R v1.19.0: Foundations` | 2026-10-28 | #403 | 65e6080 (C130, #405), with `Release-As: 1.19.0` | The first release merged by hand. The merge's `release` run tagged `v1.19.0`, passed `release-gate`, published the image as `v1.19.0` and `latest` (one digest), and the webhook answered `delivered`. Notes set from the template. |
