@@ -1,0 +1,9 @@
+add 1 100
+add 10 20
+add 30 40
+add 35 36
+add 50 50
+find 0 1000
+find 36 36
+find 41 49
+find 20 30
