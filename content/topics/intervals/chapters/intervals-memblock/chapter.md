@@ -62,4 +62,4 @@ Removing works from the other side. The function that does the first half says: 
 
 ## What the Problems build
 
-`place lo hi` adds an interval exactly like `add`, keeps the merged list in order as it goes, and prints how many merged intervals there are and how many numbers they hold. The command `merged` from the last Chapter still prints the same list. It is the classic "insert an interval into a sorted list of disjoint intervals" step, with the counters memblock keeps. `cut` (Extra) takes numbers back out.
+`place lo hi` adds an interval exactly like `add`, keeps the merged list in order as it goes, and prints how many merged intervals there are and how many numbers they hold. The command `merged` from the last Chapter still prints the same list. It is the classic step of inserting an interval into a sorted list of disjoint intervals, with the counters memblock keeps. `cut` (Extra) takes numbers back out.
