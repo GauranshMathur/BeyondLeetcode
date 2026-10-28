@@ -6,8 +6,12 @@ The orchestrator fills this in for each release, from the `Changelog:` line of e
 
 ```sh
 # Cards with the Release (replace the name with the option, e.g. "R next: Foundations")
-gh project item-list 1 --owner GauranshMathur --limit 200 --format json \
+gh project item-list 1 --owner GauranshMathur --limit 500 --format json \
   --jq '.items[] | select(.release=="R next: Foundations") | {title, status}'
+
+# Cards with the Release that are not Done (the cut needs this to print nothing)
+gh project item-list 1 --owner GauranshMathur --limit 500 --format json \
+  --jq '.items[] | select(.release=="R next: Foundations" and .status != "Done") | .title'
 
 # One card PR's Changelog line (the PR number is in the squash commit subject, "(#n)")
 gh api repos/GauranshMathur/BeyondLeetcode/pulls/<n> --jq .body | grep '^Changelog:'
