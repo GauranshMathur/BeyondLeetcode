@@ -2,4 +2,4 @@ If `T` is not as long as the two words together, print `no`. Otherwise keep a ta
 
 **Why it is right.** In any weave of the first `i + j` letters, the last letter belongs to the first word, and is its letter `i`, or to the second word, and is its letter `j`. Removing it leaves a weave of the shorter prefixes, and the converse holds the same way. Greedy matching fails: with both words starting with `a`, you cannot tell which word owns an `a`, and the table keeps both possibilities.
 
-**Cost.** (m + 1) × (n + 1) cells, each O(1): O(m × n) time and space in the **worst case**. Only the previous row is read, so two rows would do.
+**Cost.** (m + 1) × (n + 1) cells, each O(1): O((m + 1) × (n + 1)) time and space in the **worst case**. Only the previous row is read, so two rows would do.

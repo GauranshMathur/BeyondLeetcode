@@ -2,4 +2,4 @@ Build the table `c` as for `common`. Then walk from `(i, j) = (m, n)`. If `first
 
 **Why it is right.** Every cell holds the length of a longest common subsequence of its two prefixes. A match takes the cell diagonally up and to the left plus one, so taking the matching letter and moving there keeps the total. When the letters differ, the cell was the larger of the cell above and the cell to the left, so moving to the larger one stays on a path that reaches the cell's value. The number of letters taken is `c[m][n]`, and they are in order in both words, because the walk moves up and left only. The tie rule only chooses between two equally good ways.
 
-**Cost.** The table costs O(m × n) time and space in the **worst case**, as in `common`, and the walk takes at most `m + n` steps. The path needs more than the last row, because the walk reads cells all over the table.
+**Cost.** The table costs O((m + 1) × (n + 1)) time and space in the **worst case**, as in `common`, and the walk takes at most `m + n` steps. The path needs more than the last row, because the walk reads cells all over the table.

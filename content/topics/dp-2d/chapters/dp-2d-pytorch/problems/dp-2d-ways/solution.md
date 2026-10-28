@@ -2,4 +2,4 @@ Collect the weights above 0 as the coins. Keep a table with one row per coin plu
 
 **Why it is right.** The ways to pay `j` with the first `i` kinds either use no coin of kind `i`, which is `table[i - 1][j]`, or use at least one. Remove one such coin and what is left is a way to pay `j - coin` with the first `i` kinds, so the second case is `table[i][j - coin]`, and each way is counted once. Compare `keep`, which reads `table[i - 1][j - w]`: the row above allows the item once, and the same row allows it again. Looping over the amounts first and the coins inside would count the same coins in a different order as different ways, which this Problem does not want.
 
-**Cost.** (coins + 1) × (AMOUNT + 1) cells, each O(1): O(n × AMOUNT) time and space in the **worst case**, for `n` items. Only the current and the previous row are read, so two rows would do.
+**Cost.** (coins + 1) × (AMOUNT + 1) cells, each O(1): O((n + 1) × (AMOUNT + 1)) time and space in the **worst case**, for `n` items. Only the current and the previous row are read, so two rows would do.

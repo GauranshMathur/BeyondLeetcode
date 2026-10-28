@@ -2,4 +2,4 @@ Let `total` be the sum of the weights. If `TARGET` is more than `total` away fro
 
 **Why it is right.** With a plus group of sum `P`, the minus group sums to `total - P`, and the signed total is `P - (total - P)`, so it equals `TARGET` exactly when `P = (total + TARGET) / 2`. Each way of signing corresponds to one choice of the plus group, so counting groups counts ways. A weight of 0 can be in either group without changing a sum, and the table counts it in both ways, because for `weight = 0` the two terms are the same cell.
 
-**Cost.** (n + 1) × (P + 1) cells, each O(1): O(n × P) time and space in the **worst case**, with `P` at most 5000. It is the same table as `keep`, with sums in place of values and a count in place of a maximum.
+**Cost.** (n + 1) × (P + 1) cells, each O(1): O((n + 1) × (P + 1)) time and space in the **worst case**, with `P` at most 5000. It is the same table as `keep`, with sums in place of values and a count in place of a maximum.
