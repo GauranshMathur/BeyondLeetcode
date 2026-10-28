@@ -321,14 +321,14 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 - Type 3. Status: sourced. Section 1.
 
 ### Claim 5.3. The link-state database is a directed graph; a path's cost is the sum of its links' costs.
-- Link: [RFC 2328, section 16.1 (and 16.8)](https://www.rfc-editor.org/rfc/rfc2328.html#section-16)
+- Link: [RFC 2328, section 16.1](https://www.rfc-editor.org/rfc/rfc2328.html#section-16)
 - Quote: "The area's link state database is represented as a directed graph."
 - Quote: "The link state cost of a path is calculated as the sum of the costs of the path's constituent links (as advertised in router-LSAs and network-LSAs)."
 - Quote: "One path is said to be "shorter" than another if it has a smaller link state cost."
 - Type 3. Status: sourced. Section 16.1. The HTML anchors the RFC offers go down to the section number only (`#section-16`); the text sits in subsection 16.1.
 
 ### Claim 5.4. The cheapest candidate is guaranteed shortest, joins the tree, and the algorithm ends when the candidate list is empty.
-- Link: [RFC 2328, section 16.1 (and 16.8)](https://www.rfc-editor.org/rfc/rfc2328.html#section-16)
+- Link: [RFC 2328, section 16.1](https://www.rfc-editor.org/rfc/rfc2328.html#section-16)
 - Quote: "the paths to the candidate vertex that is closest to the root are guaranteed to be shortest; this vertex is added to the shortest-path tree, removed from the candidate list, and its adjacent vertices are examined for possible addition to/modification of the candidate list."
 - Quote: "It terminates when the candidate list becomes empty."
 - Type 3. Status: sourced. Section 16.1; the sentences run over a page break in the RFC.
@@ -364,6 +364,6 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 - Quote: "if multiple equal-cost routes to a destination exist, they are all discovered and used."
 - Link: [RFC 2328, section 16.8](https://www.rfc-editor.org/rfc/rfc2328.html#section-16)
 - Quote: "The OSPF protocol maintains multiple equal-cost routes to all destinations."
-- Link: [RFC 2328, section 16.1 (and 16.8)](https://www.rfc-editor.org/rfc/rfc2328.html#section-16)
+- Link: [RFC 2328, section 16.1](https://www.rfc-editor.org/rfc/rfc2328.html#section-16)
 - Quote: "There can be multiple shortest paths due to the equal-cost multipath capability."
 - Type 3. Status: sourced. Sections 2.4, 16.8 and 16.1 of the RFC. The Chapter's text says OSPF "maintains" multiple equal-cost routes (16.8), the RFC adds that an implementation may keep only a fixed number; the Chapter does not claim more.
