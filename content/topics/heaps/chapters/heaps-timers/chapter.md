@@ -199,4 +199,4 @@ ngx_event_find_timer(void)
 
 ## What the Problems build
 
-Problem 5 adds `sched ID T`, which starts a timer, and `advance T`, which fires every timer due at time `T` or earlier and prints their IDs in firing order. Timers with the same time fire in the order they were scheduled, as in libuv. The Extra Problem adds `arity D` so you can try Go's four children, or any number.
+Problem 5 adds `sched ID T`, which starts a timer, and `advance T`, which fires every timer due at time `T` or earlier and prints their IDs in firing order. Timers with the same time fire in the order they were scheduled, as in libuv ([src/timer.c, lines 38 to 55](https://github.com/libuv/libuv/blob/e9f29cb984231524e3931aa0ae2c5dae1a32884e/src/timer.c#L38-L55)). The Extra Problem adds `arity D` so you can try Go's four children ([src/runtime/time.go, line 990](https://github.com/golang/go/blob/a10e42f219abb9c5bc4e7d86d9464700a42c7d57/src/runtime/time.go#L990)), or any number.

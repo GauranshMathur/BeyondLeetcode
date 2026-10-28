@@ -9,6 +9,9 @@ sched t8 80
 drop t2
 drop t3
 drop t5
+update t2 1
+cancel t3
+drop t5
 advance 100
 size
 sched t2 7

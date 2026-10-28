@@ -2,4 +2,4 @@
 
 The smallest of the `N` kept items is the `N`-th largest of all the keys pushed, because anything smaller than it has been thrown out and the `N - 1` items above it are the ones larger.
 
-Cost, for `m` pushes with a limit `N`: each push compares with the smallest key in O(1), and a replace is O(log N) comparisons in the **worst case**, so the stream costs O(m log N) in the **worst case**, which happens when every key is larger than the one before it. The heap never holds more than `N` items, so the space is O(N), not O(m).
+Cost, for `m` pushes with a limit `N`: each push compares with the smallest key in O(1), and a replace is O(log N) comparisons in the **worst case**, so the stream costs O(m (1 + log N)) in the **worst case**, which happens when every key is larger than the one before it. The heap never holds more than `N` items, so the space is O(N) in the **worst case**, not O(m).

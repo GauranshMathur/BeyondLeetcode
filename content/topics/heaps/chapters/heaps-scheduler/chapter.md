@@ -1,6 +1,6 @@
 # Kubernetes and asyncio: timers that change or go away
 
-Timers get cancelled and rescheduled. A heap can hand you its smallest item in O(1) in the **worst case** but it cannot find an item in the middle. Two systems solve that in opposite ways. This Chapter reads the Kubernetes 1.31.0 scheduler, which remembers where every item is, and the Python 3.13.0 `asyncio` event loop, which marks an item as cancelled and moves on, and then looks at how the Go 1.22.0 runtime marks too. In the Problems you build both.
+Timers get cancelled and rescheduled. A heap can hand you its smallest item in O(1) in the **worst case** but it cannot find an item in the middle. Systems solve that in two opposite ways. This Chapter reads the Kubernetes 1.31.0 scheduler, the Python 3.13.0 `asyncio` event loop and the Go 1.22.0 runtime. In the Problems you build both ways.
 
 ## Kubernetes: write down where everything is
 

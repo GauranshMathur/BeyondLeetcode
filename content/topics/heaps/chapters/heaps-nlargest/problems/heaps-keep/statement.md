@@ -2,7 +2,7 @@ Make the heap keep only the best few items of a stream.
 
 | Command | What it does | Prints |
 |---|---|---|
-| `keep N` | Limits the heap to `N` items (`N` is at least 1). It only appears while the heap is empty, and at most once per input. | nothing |
+| `keep N` | Limits the heap to `N` items (`N` is at least 1). It only appears while the heap is empty, and at most once per input. An input that uses it never uses `init`. | nothing |
 
 Once `keep` has been given, `push K` changes. It still takes a ticket. Then:
 
@@ -11,7 +11,7 @@ Once `keep` has been given, `push K` changes. It still takes a ticket. Then:
 
 That comparison of `K` with the smallest key is not counted by `cmp`. The moves inside the heap are.
 
-Without `keep` nothing changes. With it, once `N` keys have been pushed `peek` is the `N`-th largest key pushed so far. Before that, `peek` is the smallest key, as always.
+Without `keep` nothing changes. In an input without `pop` or `init`, once `N` keys have been pushed `peek` is the `N`-th largest key pushed so far. Before that, `peek` is the smallest key, as always.
 
 ## Example
 

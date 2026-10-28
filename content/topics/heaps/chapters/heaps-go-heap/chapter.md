@@ -1,6 +1,6 @@
 # Go: a heap built in one pass
 
-Go's standard library has a heap too, in the package `container/heap`. It differs from `heapq` in two ways that matter here: it does not own your array, and it states what it costs to turn a whole slice into a heap. This Chapter reads it in Go 1.22.0. In the Problem you build a heap from all its keys at once, the way both libraries do.
+Go's standard library has a heap too, in the package `container/heap`. This Chapter reads it in Go 1.22.0 and sets it beside `heapq`. In the Problem you build a heap from all its keys at once, the way both libraries do.
 
 ## A heap for any slice
 

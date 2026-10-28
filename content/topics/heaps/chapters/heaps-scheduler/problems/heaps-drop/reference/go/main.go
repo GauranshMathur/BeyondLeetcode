@@ -154,6 +154,7 @@ func main() {
 		return it
 	}
 	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 0, 1<<16), 1<<24) // a line can be longer than the default 64 KiB
 	for scanner.Scan() {
 		parts := strings.Fields(scanner.Text())
 		if len(parts) == 0 {

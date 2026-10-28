@@ -1,4 +1,4 @@
-Make the number of children a choice. A binary heap gives every item two children. The heap that holds timers in Go's runtime gives every item four.
+Make the number of children a choice. A binary heap gives every item two children. The heap that holds timers in Go's runtime gives every item four ([src/runtime/time.go, line 990](https://github.com/golang/go/blob/a10e42f219abb9c5bc4e7d86d9464700a42c7d57/src/runtime/time.go#L990)).
 
 | Command | What it does | Prints |
 |---|---|---|

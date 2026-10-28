@@ -95,6 +95,7 @@ func main() {
 	tickets := 0 // how many pushes so far
 	limit := 0   // 0: keep every item; otherwise the most items to keep
 	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 0, 1<<16), 1<<24) // a line can be longer than the default 64 KiB
 	for scanner.Scan() {
 		parts := strings.Fields(scanner.Text())
 		if len(parts) == 0 {
