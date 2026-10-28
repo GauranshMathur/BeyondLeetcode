@@ -1,0 +1,6 @@
+edge x y
+edge b c
+edge c a
+edge a b
+edge c d
+loop

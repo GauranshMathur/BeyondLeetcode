@@ -1,0 +1,6 @@
+{
+	"title": "Graphs",
+	"summary": "Build a graph tool one command at a time, and read how Boost stores a graph, how the Linux kernel's lock validator searches one, how Python orders tasks, how the kernel merges CPU sets and how OSPF finds shortest paths.",
+	"prerequisites": ["trees", "hash-tables", "heaps"],
+	"chapters": ["graphs-boost", "graphs-lockdep", "graphs-graphlib", "graphs-cpuset", "graphs-ospf"]
+}

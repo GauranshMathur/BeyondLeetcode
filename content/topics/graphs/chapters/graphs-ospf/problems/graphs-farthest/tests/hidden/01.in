@@ -1,0 +1,13 @@
+edge s a 3
+edge s b 8
+edge a b 2
+edge b c 6
+edge a d 1
+edge d c 9
+edge x s 1
+farthest s
+farthest x
+farthest a
+farthest c
+farthest d
+farthest q

@@ -1,0 +1,14 @@
+edge a b
+edge a c
+edge b d
+edge c d
+edge d e
+would e a
+would e c
+would d a
+would a e
+would b c
+would c b
+edge e c
+would d e
+would d c

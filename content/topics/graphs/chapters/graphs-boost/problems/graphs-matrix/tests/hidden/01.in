@@ -1,0 +1,10 @@
+edge a b
+edge b c
+edge c a
+edge a c
+edge a b
+matrix
+cells
+edge d a
+edge d d
+matrix

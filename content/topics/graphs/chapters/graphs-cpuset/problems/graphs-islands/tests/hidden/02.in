@@ -1,0 +1,22 @@
+grid
+islands 4
+islands 8
+grid 0000 0000
+islands 4
+islands 8
+grid 10101
+islands 4
+grid 1 0 1 1 0 1
+islands 8
+grid 101 010 101
+islands 4
+islands 8
+grid 110 011 110
+islands 4
+islands 8
+edge a b
+same a b
+islands 4
+grid 11 11
+clear
+islands 4

@@ -1,0 +1,5 @@
+This is the breadth-first search of the Chapter. The queue holds the nodes that have been reached and not yet explored, and `came_from` holds, for each reached node, the node it was reached from. A node is put in the queue only the first time it is reached, so the first route to any node is one with the fewest edges: every node that is closer to `A` was taken from the queue before it. Following `came_from` back from `B` gives the route, and reversing it puts `A` first.
+
+Each node enters the queue at most once and each node's list is read once, so the search is O(V + E) time in the **worst case**, and the map and the queue take O(V) space. The Reference Code stops when `B` is reached, which does not change the worst case.
+
+A path with the fewest edges is the kind of path lockdep's search is chosen to find: "to find the shortest (circular) path" ([lockdep.c, lines 1449 to 1451](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/kernel/locking/lockdep.c#L1449-L1451)). The order the lists are read in decides which of several equally short routes you get, which is why the statement fixes it.

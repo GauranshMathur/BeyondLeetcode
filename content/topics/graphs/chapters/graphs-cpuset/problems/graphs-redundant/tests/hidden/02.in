@@ -1,0 +1,19 @@
+edge a b
+edge a b
+edge b a
+edge a b
+edge c c
+edge c c
+edge d e
+edge e d
+edge e d
+redundant
+clear
+redundant
+edge m n
+redundant
+edge n m
+redundant
+clear
+edge k k
+redundant

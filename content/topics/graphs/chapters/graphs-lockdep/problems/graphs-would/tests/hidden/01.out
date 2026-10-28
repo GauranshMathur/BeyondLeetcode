@@ -1,0 +1,8 @@
+cycle e a b d e
+cycle e c d e
+cycle d a b d
+safe
+safe
+safe
+cycle d e c d
+cycle d c d

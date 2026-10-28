@@ -1,0 +1,4 @@
+{
+	"title": "Linux lockdep: the shortest way round a cycle",
+	"problems": ["graphs-path", "graphs-dfs", "graphs-would"]
+}

@@ -1,0 +1,10 @@
+grid 11011 10001 00100 11011
+islands 4
+islands 8
+grid 1
+islands 4
+grid 0
+islands 8
+grid 111 111 111
+islands 4
+islands 8
