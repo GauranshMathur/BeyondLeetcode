@@ -2,7 +2,7 @@
 
 Planned work lives as **cards** on the GitHub Project board https://github.com/users/GauranshMathur/projects/1. Cards are draft items on the board, never repo issues. GitHub Issues stay for incoming requests (content, bugs) and for `architecture` findings; see `issue-tracker.md`.
 
-One orchestrator session runs the board with `/orchestrate` and dispatches workers (`card-designer`, `card-builder`). Workers never dispatch other agents.
+One orchestrator session runs the board with `/orchestrate` and dispatches workers (`card-designer`, `card-builder`). The orchestrator also calls the `sprint-planner` agent (see Planning). Workers never dispatch other agents.
 
 ## State lives on GitHub
 
@@ -18,18 +18,32 @@ Work can stop at any moment and resume from any machine with a local clone, so n
 
 A title reads `[CODE] Area: what`. The prefix names the canvas page (`F`, `P`, `R`, `A`, `AD`, `AC`, `S`; see `design-canvas.md`). Code cards use `C`.
 
-A body has three parts:
+A body has five parts:
 
 ```
 <what to change, 1–3 lines>
 Files: <the files this card edits>
 Done when: <one observable line>
 Blocked by: <card codes that must be Done first, or none>
+Release: <Release option> · commit type <type>
 ```
 
-Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is ready only when every card it names is Done.
+Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is ready only when every card it names is Done. Every card gets a Release when it is filed. Which commit type a card uses is in `docs/releasing.md`.
 
-**Size.** A card is one artboard or one state, one lane, one `Done when` line. A card that needs two is split: remove the parent and create children with suffixed codes (`P8` → `P8a`, `P8b`), each with its own `Done when`. Only the orchestrator splits.
+**Size.** A card is one artboard or one state (code: one PR touching one area), one lane, one `Done when` line. A card that needs two is split: remove the parent and create children with suffixed codes (`P8` → `P8a`, `P8b`), each with its own `Done when`. Only the `sprint-planner` splits, called by the orchestrator.
+
+## Planning
+
+The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
+
+- 5 to 8 cards, one theme, testable exit criteria, no more than about two days of orchestrator work.
+- Each card is one PR touching one area, and has a `Done when`.
+- Cards that share a file are an ordered chain in one lane, planned up front.
+- Cards are grouped into Releases (several short sprints can feed one); every card has a Release.
+
+It writes the sprint's section in `docs/sprints.md` and the Sprint option row in the Fields table through a plan PR, and creates the cards with Status Todo, Sprint and Release set. It never claims or dispatches a card.
+
+A new Sprint option, or a new Release option `R next: <name>`, is added with `updateProjectV2Field`. That mutation replaces the whole option list, so every existing option is resent with its id; count the cards per option before and after, and they must match.
 
 ## Fields
 
