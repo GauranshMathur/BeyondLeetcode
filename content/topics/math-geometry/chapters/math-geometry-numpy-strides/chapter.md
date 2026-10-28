@@ -24,7 +24,7 @@ In terms of strides, a step of -1 along the columns means: start at the last col
 
 ## A quarter turn is two views
 
-`rot90` rotates an array by a quarter turn. Its docstring starts "Rotate an array by 90 degrees in the plane specified by axes." ([line 156 of the same file](https://github.com/numpy/numpy/blob/2f7fe64b8b6d7591dd208942f1cc74473d5db4cb/numpy/lib/_function_base_impl.py#L156)) and its direction is stated plainly: "the rotation will be counterclockwise." ([line 160](https://github.com/numpy/numpy/blob/2f7fe64b8b6d7591dd208942f1cc74473d5db4cb/numpy/lib/_function_base_impl.py#L160)) The code for one and three quarter turns is:
+`rot90` rotates an array by a quarter turn. Its docstring starts "Rotate an array by 90 degrees in the plane specified by axes." ([line 156 of the same file](https://github.com/numpy/numpy/blob/2f7fe64b8b6d7591dd208942f1cc74473d5db4cb/numpy/lib/_function_base_impl.py#L156)) and its direction is stated plainly: "the rotation will be counterclockwise." ([lines 159 to 160](https://github.com/numpy/numpy/blob/2f7fe64b8b6d7591dd208942f1cc74473d5db4cb/numpy/lib/_function_base_impl.py#L159-L160)) The code for one and three quarter turns is:
 
 ```python
 if k == 1:
