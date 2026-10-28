@@ -1,0 +1,9 @@
+place 1 5
+place 6 10
+merged
+depth
+find 5 6
+add 5 6
+depth
+add 6 6
+depth

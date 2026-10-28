@@ -1,0 +1,7 @@
+place 0 1000000000
+cut 1 999999999
+merged
+cut 0 0
+merged
+place 0 5
+merged

@@ -1,0 +1,5 @@
+Sort the intervals by `lo`. Keep a list of merged intervals, empty at first. For each interval in order: if the list is not empty and `lo <= last_hi + 1`, where `last_hi` is the `hi` of the last merged interval, set that `hi` to the larger of `last_hi` and the interval's `hi`. Otherwise append the interval as a new merged one. Print the list as `lo-hi` pieces, or `none` when no interval was added.
+
+**Why it is right.** Claim: after each step the list is in order, and no two of its intervals touch. The intervals arrive in order of `lo`, so the next one starts at or after the start of the last merged one. Every earlier merged interval ended with a gap before the last one began, or the loop would have merged them. So an interval that does not touch the last merged one touches none of them, and one that does touch it can only push the end of the last one further right. The loop never takes a merge back.
+
+**Cost.** Sorting n intervals is O(n log n) in the **worst case**. The pass is O(n). Every `merged` command sorts again, so a run of q `merged` commands costs O(q n log n) in the **worst case**. Extra space is O(n) for the merged list.

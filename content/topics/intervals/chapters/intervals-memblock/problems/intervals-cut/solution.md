@@ -1,0 +1,5 @@
+Use the sorted list of merged intervals and the counter of held numbers from `place`. To cut `lo hi`: binary-search the first interval whose `hi` is at least `lo`, and walk forward while an interval starts at `hi` or earlier. For each walked interval `a-b`, subtract its size from the count, then, if `a < lo`, keep `a-(lo-1)`, and, if `b > hi`, keep `(hi+1)-b`, adding their sizes back. Replace the walked intervals with the kept pieces, and print the length of the list and the count.
+
+**Why it is right.** An interval that does not reach `lo hi` is not walked and keeps its place. A walked one loses exactly the numbers from `lo` to `hi`, and what remains is at most the piece below and the piece above. The pieces do not touch each other, because the cut separates them, and they do not touch their neighbours, since the intervals they came from did not.
+
+**Cost.** The search is O(log n) in the **worst case**, and the replacement shifts the list, which is O(n) in the **worst case**. A cut leaves at most two pieces from the intervals it reaches, the lower part of the first and the upper part of the last, so it can add at most one interval to the list.

@@ -1,0 +1,8 @@
+place 1 3
+place 5 7
+place 9 11
+cut 3 9
+merged
+cut 0 0
+cut 12 20
+merged
