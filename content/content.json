@@ -9,6 +9,7 @@
 		"sliding-window",
 		"math-geometry",
 		"bit-manipulation",
-		"trees"
+		"trees",
+		"heaps"
 	]
 }
