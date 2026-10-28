@@ -1,0 +1,3 @@
+match a(b|bc)d abcd
+match a(b|bc)d abd
+match a(b|bc)d abx

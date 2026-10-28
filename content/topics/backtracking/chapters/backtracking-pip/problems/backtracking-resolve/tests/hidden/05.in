@@ -1,0 +1,8 @@
+pkg a 1
+pkg b 1
+pkg c 5 4 3 2 1
+need a 1 1
+need b 1 1
+dep a 1 c 1 3
+dep b 1 c 2 5
+resolve

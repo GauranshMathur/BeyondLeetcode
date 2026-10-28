@@ -1,0 +1,2 @@
+cost (a|aa)(a|aa)(a|aa)(a|aa)b aaaaaab
+match (a|aa)(a|aa)(a|aa)(a|aa)b aaaaaab

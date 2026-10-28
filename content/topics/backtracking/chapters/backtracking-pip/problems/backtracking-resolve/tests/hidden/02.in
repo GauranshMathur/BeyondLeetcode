@@ -1,0 +1,7 @@
+pkg x 2 1
+pkg y 1
+dep x 2 phantom 1 1
+need x 1 2
+resolve
+need y 1 1
+resolve

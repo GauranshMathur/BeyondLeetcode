@@ -1,0 +1,4 @@
+match (a|b)(c|d)(e|f) bdf
+match x(a|b)y(c|d|ef)z xbycz
+match (a|b)(c|d) ae
+match (ab|abc|abcd)e abcde

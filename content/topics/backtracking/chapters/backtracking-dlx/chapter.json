@@ -1,0 +1,4 @@
+{
+	"title": "Knuth's dancing links: a rule for where to branch",
+	"problems": ["backtracking-queens", "backtracking-exact"]
+}

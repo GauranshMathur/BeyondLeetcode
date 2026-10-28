@@ -1,0 +1,4 @@
+find abcd abc
+find abcdef abc def
+find abcfed abc def
+find cba abc

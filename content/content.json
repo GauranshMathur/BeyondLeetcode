@@ -10,6 +10,7 @@
 		"math-geometry",
 		"bit-manipulation",
 		"trees",
+		"backtracking",
 		"tries"
 	]
 }
