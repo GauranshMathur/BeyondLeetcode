@@ -1,0 +1,10 @@
+words - abcde
+within 2 9 9 10
+within 2 9 9 9
+words abcdefgh ab
+within 9 3 9 18
+within 9 3 9 17
+words abc abcdefghij
+within 1 1 1 6
+within 1 1 1 7
+within 1 1 1 100

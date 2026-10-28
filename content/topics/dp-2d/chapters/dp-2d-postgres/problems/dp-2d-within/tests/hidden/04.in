@@ -1,0 +1,11 @@
+words babaaacaabaccbccacaaaaabc ccbacabccaccbcacaabbbc
+edit 1 1 1
+within 1 1 1 5
+within 1 1 1 10
+within 1 1 1 14
+within 1 1 1 30
+words yyzxzxzxxyxyxxzzyz xyxxyxyzzzzyzxyxzzyzzzxyz
+edit 2 1 3
+within 2 1 3 6
+within 2 1 3 12
+within 2 1 3 20

@@ -1,0 +1,5 @@
+If `T` is not as long as the two words together, print `no`. Otherwise keep a table `ok` with `m + 1` rows and `n + 1` columns, `ok[0][0]` true, where `ok[i][j]` says that the first `i + j` letters of `T` are a weave of the first `i` letters of the first word and the first `j` of the second. A cell is true if `ok[i - 1][j]` is true and `first[i - 1]` equals `T[i + j - 1]`, or if `ok[i][j - 1]` is true and `second[j - 1]` equals `T[i + j - 1]`. Print `yes` if `ok[m][n]` is true.
+
+**Why it is right.** In any weave of the first `i + j` letters, the last letter belongs to the first word, and is its letter `i`, or to the second word, and is its letter `j`. Removing it leaves a weave of the shorter prefixes, and the converse holds the same way. Greedy matching fails: with both words starting with `a`, you cannot tell which word owns an `a`, and the table keeps both possibilities.
+
+**Cost.** (m + 1) × (n + 1) cells, each O(1): O((m + 1) × (n + 1)) time and space in the **worst case**. Only the previous row is read, so two rows would do.

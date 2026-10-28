@@ -1,0 +1,12 @@
+words ab ba
+trace
+words ba ab
+trace
+words abcd acbd
+trace
+words aabb bbaa
+trace
+words xyxy yxyx
+trace
+words abc cba
+trace
