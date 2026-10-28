@@ -1,0 +1,5 @@
+grid 3 3 1 2 1 2 1 2 1 2 1
+seam
+ties
+grid 2 2 4 4 4 4
+ties

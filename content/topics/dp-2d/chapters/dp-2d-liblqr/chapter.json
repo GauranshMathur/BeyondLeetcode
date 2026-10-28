@@ -1,0 +1,4 @@
+{
+	"title": "liblqr: the cheapest seam down an image",
+	"problems": ["dp-2d-seam", "dp-2d-ties"]
+}

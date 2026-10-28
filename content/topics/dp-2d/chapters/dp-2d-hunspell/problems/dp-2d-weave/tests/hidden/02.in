@@ -1,0 +1,9 @@
+words ab cd
+weave abcd
+weave cdab
+weave acbd
+weave acdb
+weave abc
+weave abcde
+weave abdc
+weave cabd
