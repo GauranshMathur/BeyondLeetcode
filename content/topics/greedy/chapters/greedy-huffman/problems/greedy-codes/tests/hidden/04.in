@@ -1,0 +1,6 @@
+load 8 4 2 1
+huffman
+load 1 2 4 8 16 32 64 128
+huffman
+load 9 0 9 0 9
+huffman
