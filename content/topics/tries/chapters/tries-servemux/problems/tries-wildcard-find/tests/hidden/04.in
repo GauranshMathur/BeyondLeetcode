@@ -1,0 +1,12 @@
+add dog 1
+add dot 1
+add dig 1
+add dug 1
+del dot
+find d.g
+find do.
+find .o.
+del dig
+find d.g
+find ...
+find d..

@@ -1,0 +1,7 @@
+handle /a/b/c/d deep
+handle /a/{x}/c/e shallow
+serve /a/b/c/d
+serve /a/b/c/e
+serve /a/b/c/f
+serve /a/x/c/e
+serve /a/b/c

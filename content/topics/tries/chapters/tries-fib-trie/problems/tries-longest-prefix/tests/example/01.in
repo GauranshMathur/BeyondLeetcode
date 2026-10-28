@@ -1,0 +1,5 @@
+route 10.0.0.0/8 core
+route 10.1.0.0/16 edge
+match 10.1.2.3
+match 10.200.0.1
+match 192.168.0.1

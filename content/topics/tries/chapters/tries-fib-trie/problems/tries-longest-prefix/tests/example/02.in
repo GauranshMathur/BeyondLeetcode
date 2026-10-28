@@ -1,0 +1,7 @@
+route 0.0.0.0/0 wan
+route 192.168.1.0/24 lan
+route 192.168.1.7/24 bad
+match 192.168.1.9
+match 8.8.8.8
+route 192.168.1.9/32 host
+match 192.168.1.9

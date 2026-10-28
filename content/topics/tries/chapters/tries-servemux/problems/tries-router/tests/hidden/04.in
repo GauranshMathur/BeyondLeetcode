@@ -1,0 +1,10 @@
+handle /docs docs
+handle /docs/{page} page
+handle /docs/{page} again
+handle /docs conflict
+handle /docs/faq faq
+serve /docs
+serve /docs/faq
+serve /docs/other
+serve /docs/faq/more
+serve /

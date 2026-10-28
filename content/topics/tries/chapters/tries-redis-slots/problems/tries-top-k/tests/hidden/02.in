@@ -1,0 +1,8 @@
+add x1 0
+add x2 0
+top x 1
+top x 2
+top x 0
+top y 1
+add x2 1
+top x 2
