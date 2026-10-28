@@ -9,4 +9,4 @@ Call `grow(0)`. `load` only replaces the list, with the numbers it was given.
 
 **Cost.** There are 2^n subsets and each is printed in O(n), so the run is O(n x 2^n) in the **worst case**, and it cannot be less because that is the size of the output. Space is O(n) for the recursion and `current`.
 
-`fmt` (the Reference Code's formatting of a list) is its own function because `perms` and `sums` print the same way.
+The Reference Code formats a list in one helper, because `perms` and `sums` print their lines the same way.

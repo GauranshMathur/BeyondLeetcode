@@ -11,4 +11,4 @@ Call `search()`, then print `nodes` and its value.
 
 **Cost.** Exact cover is hard: the search can be exponential in the **worst case**, whatever rule picks the column. With R rows, each call is O(R x C) to find the usable rows and the counts. What the rule changes is the number of nodes, as the Chapter shows, not that bound. Space is O(C + R) for the flags and the recursion.
 
-The Reference Code counts the usable rows in a map from column to count, so that the choice of column is a single `min` with the number as the tie-break.
+The Reference Code keeps the counts in a map from column to count, and compares them with the column number as the tie-break.
