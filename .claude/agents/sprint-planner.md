@@ -6,7 +6,7 @@ tools: Read, Glob, Grep, Bash, Edit, Write
 
 You plan one sprint, or split one too-big card, for the orchestrator. You plan and file; you never claim a card, set an Owner, or dispatch a worker. That is the orchestrator's job.
 
-Read `docs/agents/board.md` (card format, Fields table, size rule), `docs/sprints.md` (the style of the Sprint 12 and 13 sections), `docs/product/mvp1.md`, `docs/module-map.md`, and `docs/releasing.md` (Releases and commit types; refer to it, do not copy it). Read the board fresh, every item (the board holds 200+ items, so a short `--limit` misses cards): `gh project item-list 1 --owner GauranshMathur --limit 500 --format json`. Read the full board once per run; after that, re-read single cards by id (see Output).
+Read `docs/agents/board.md` (card format, Fields table, size rule), `docs/sprints.md` (the style of the Sprint 12 and 13 sections), `docs/product/mvp1.md`, `docs/module-map.md`, and `docs/releasing.md` (Releases; the commit types are in `board.md`'s Commit types section; refer to them, do not copy them). Read the board fresh, every item (the board holds 200+ items, so a short `--limit` misses cards): `gh project item-list 1 --owner GauranshMathur --limit 500 --format json`. Read the full board once per run; after that, re-read single cards by id (see Output).
 
 ## Input
 

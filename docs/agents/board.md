@@ -32,6 +32,28 @@ Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is read
 
 **Size.** A card is one artboard or one state (code: one PR touching one area), one lane, one `Done when` line. A card that needs two is split: remove the parent and create children with suffixed codes (`P8` → `P8a`, `P8b`), each with its own `Done when`. Only the `sprint-planner` splits, called by the orchestrator.
 
+## Commit types
+
+A card's PR title uses the type that matches what a user sees. The type is filed on the card (`Release: ... · commit type <type>`).
+
+| Type | Use it for |
+| --- | --- |
+| `feat` | A user-visible feature only. |
+| `fix` | A user-visible fix, and hardening or security fixes. |
+| `test`, `ci`, `docs`, `refactor`, `build` | Everything else. |
+| `chore` | Everything else that needs no changelog entry (hidden from the changelog). |
+
+**A version moves only at a cut.** release-please lists every visible type (`feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`) in the release PR's changelog and proposes a version, but nothing ships until the orchestrator cuts a Release (`docs/releasing.md`). The cut sets the version with a `Release-As` footer: the next minor if the Release holds a `feat`, the next patch if it holds only fixes. So a `test`, `ci`, `docs`, `refactor`, `chore` or `build` card never decides the version, and a Release holding only those is not cut on its own (see `sprint-planner.md`'s Releases section).
+
+**Content PRs.**
+
+- A PR that adds a Topic is `feat`.
+- Chapters or Problems added inside a Topic not yet in any release are `chore(content)` or `docs`.
+- Chapters or Problems added to a Topic that has already shipped in a release are user-visible, so they are `feat`. (The orchestrator's reading of the maintainer's rule; flagged for the maintainer.)
+- A content fix a learner would notice (a wrong test, a broken citation) is `fix`.
+
+**Changelog line.** Every card PR's description ends with `Changelog: <one short sentence a user would understand>`, or `Changelog: none` for internal work. The orchestrator builds each release's notes from these lines (`docs/release-notes-template.md`). `.github/pull_request_template.md` carries the field. Never add a `Release-As` footer: only the orchestrator does, at a cut.
+
 ## Planning
 
 The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
