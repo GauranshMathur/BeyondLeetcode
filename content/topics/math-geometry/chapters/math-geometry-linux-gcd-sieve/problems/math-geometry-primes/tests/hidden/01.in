@@ -1,0 +1,6 @@
+nextprime 1
+nextprime 13
+nextprime 60
+nextprime 59
+nextprime 7
+sieve
