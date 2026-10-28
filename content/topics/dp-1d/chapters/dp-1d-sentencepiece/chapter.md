@@ -1,6 +1,6 @@
 # SentencePiece: one lattice, the best path or the sum over paths
 
-A tokeniser cuts text into pieces from a vocabulary, and the same text can usually be cut in many ways. "Which cut do we use?" is an optimising question: out of all the ways, pick the best. "How many cuts are there, or how likely is each?" is a counting question: add up all the ways. They look like different problems, and the recurrence behind them is the same one. Only the operation at each step changes, from taking the best to adding. This Chapter reads SentencePiece (the `google/sentencepiece` repository), v0.2.0, in `src/unigram_model.cc`, where one structure answers both.
+A tokeniser cuts text into pieces from a vocabulary, and the same text can usually be cut in many ways. "Which cut do we use?" is an optimising question: out of all the ways, pick the best. "How many cuts are there, or how likely is each?" is a counting question: add up all the ways. They look like different problems, and the recurrence behind them is the same one. Only the operation at each step changes, from taking the best to adding. This Chapter reads SentencePiece (the `google/sentencepiece` repository), v0.2.0, in [`src/unigram_model.cc`](https://github.com/google/sentencepiece/blob/17d7580d6407802f85855d2cc9190634e2c95624/src/unigram_model.cc), where one structure answers both.
 
 ## A lattice of pieces
 
@@ -8,7 +8,7 @@ The header describes the structure in one line: "Lattice represents a search spa
 
 ## Optimising: the best path
 
-`Lattice::Viterbi` finds the best path, and it is a loop over places:
+`Lattice::Viterbi` ([line 161](https://github.com/google/sentencepiece/blob/17d7580d6407802f85855d2cc9190634e2c95624/src/unigram_model.cc#L161)) finds the best path, and it is a loop over places:
 
 ```cpp
 for (int pos = 0; pos <= len; ++pos) {
@@ -37,7 +37,7 @@ for (int pos = 0; pos <= len; ++pos) {
 
 ## Counting: the same loops, a sum
 
-`Lattice::ForwardAlgorithm` has the same two loops over the same lists, and a different line in the middle:
+`Lattice::ForwardAlgorithm` ([line 200](https://github.com/google/sentencepiece/blob/17d7580d6407802f85855d2cc9190634e2c95624/src/unigram_model.cc#L200)) has the same two loops over the same lists, and a different line in the middle:
 
 ```cpp
 for (int pos = 0; pos <= len; ++pos) {

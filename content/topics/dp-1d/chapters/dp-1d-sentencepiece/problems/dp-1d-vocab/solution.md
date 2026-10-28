@@ -2,4 +2,4 @@ Turn the row into a string `text` and the list into a set of pieces, so a repeat
 
 **Why it is right.** This is `decode` with the two operations of the Chapter side by side: the cut counts add, and the piece counts take the minimum, over the same last pieces. Checking that the place before is reachable through `fewest`, not through `count`, matters because a count can be 0 modulo 1000000007 while cuts exist.
 
-**Cost.** Each place tries every piece and compares up to 10 digits, so with `P` pieces of at most `L` digits the time is O(n × P × L) in the **worst case**, and space is O(n). The piece comparison with the text is a string comparison, so there is no hashing and no **expected**-case claim.
+**Cost.** Each place tries every piece and compares up to 10 digits, so with `P` pieces of at most `L` digits the time is O(n × P × L) in the **worst case**, and space is O(n + P × L) for the tables and the set of pieces. The piece comparison with the text is a string comparison, so there is no hashing and no **expected**-case claim.

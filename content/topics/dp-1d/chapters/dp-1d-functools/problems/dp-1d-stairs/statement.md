@@ -10,7 +10,7 @@ The Build reads commands from standard input, one per line, and works on one **s
 | `show` | Writes the sequence out. | the items, separated by single spaces; an empty line if the sequence is empty |
 | `ways N` | Counts the ways to climb exactly `N` stairs when every move climbs one of the step sizes. Two ways are different if their moves differ, in order or in size. | the number of ways, modulo 1000000007 |
 
-`N` is between 0 and 300. There is one way to climb 0 stairs: make no moves. If no moves add up to `N`, the answer is 0. A step larger than the stairs left is never taken. The number of ways grows quickly, so every answer is the remainder after dividing by 1000000007, the same in every Language. The sequence does not change.
+`N` is between 0 and 300. There is one way to climb 0 stairs: make no moves. If no moves add up to `N`, the answer is 0. A step larger than the stairs left is never taken. The number of ways grows quickly, so every answer is the remainder after dividing by 1000000007, the same in every Language. Every integer in the Build's input has an absolute value of at most 1000000, so that every Language reads it exactly. The sequence does not change.
 
 A recursion that says "the ways to climb `N` are the ways to climb `N - step` for each step, added up" gives the right answer, but on `ways 60` with steps 1 and 2 it makes about 5 × 10^12 calls (arithmetic: 2 × fib(61) − 1), far more than a Test's time limit allows. The Tests include such inputs.
 

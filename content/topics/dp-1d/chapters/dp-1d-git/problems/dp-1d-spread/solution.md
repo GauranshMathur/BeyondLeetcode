@@ -2,4 +2,4 @@ Let `best[i]` be the largest total from the first `i` items, with `best[j] = 0` 
 
 **Why it is right.** Picking item `i` allows exactly the picks among the first `i - K` items before it, because those are the items at least `K` places earlier. Slot `i mod K` is shared by `best[i - K]` and `best[i]`, and `best[i - K]` is not needed after this step, because the next steps read `best[i + 1 - K]` and later. With `K` of 2 this is `pick`, and with `K` of 1 the ring has one slot and every positive item is taken.
 
-**Cost.** One pass: O(n) time in the **worst case**. Space is O(K), not O(n), when `K` is smaller than `n`. The ring is allocated at its full size `K`, so a huge `K` costs `K` numbers whatever the sequence length; the statement caps `K` at 100000.
+**Cost.** One pass over the items plus allocating the ring: O(n + K) time in the **worst case**. Space is O(K), not O(n), when `K` is smaller than `n`. The ring is allocated at its full size `K`, so a huge `K` costs `K` numbers and `K` steps of setup whatever the sequence length; the statement caps `K` at 100000.
