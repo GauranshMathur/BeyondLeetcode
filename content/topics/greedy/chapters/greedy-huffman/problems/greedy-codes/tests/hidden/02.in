@@ -1,0 +1,8 @@
+load 0 7 0
+huffman
+load 1000000
+huffman
+load 3 5
+huffman
+load 0 1 0 1
+huffman

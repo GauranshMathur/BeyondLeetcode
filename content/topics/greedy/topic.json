@@ -1,0 +1,6 @@
+{
+	"title": "Greedy",
+	"summary": "Take the best-looking choice now and never take it back, and read how CPython, zlib and the Linux kernel decide when that is safe and when it is only a good guess.",
+	"prerequisites": ["two-pointers", "heaps"],
+	"chapters": ["greedy-cidr", "greedy-huffman", "greedy-deadline", "greedy-lazy"]
+}

@@ -13,6 +13,7 @@
 		"backtracking",
 		"tries",
 		"heaps",
-		"dp-1d"
+		"dp-1d",
+		"greedy"
 	]
 }
