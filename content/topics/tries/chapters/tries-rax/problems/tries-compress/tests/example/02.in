@@ -1,0 +1,7 @@
+add ab 1
+add abcd 2
+nodes
+rnodes
+del abcd
+nodes
+rnodes

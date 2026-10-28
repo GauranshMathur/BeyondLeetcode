@@ -1,0 +1,16 @@
+nodes
+
+size
+get x
+
+del x
+add 0 0
+
+get 0
+add 9z 1000000000
+get 9z
+get 9
+del 0
+get 0
+size
+

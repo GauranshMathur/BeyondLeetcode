@@ -1,0 +1,11 @@
+route 8.0.0.0/7 pair
+route 9.0.0.0/8 nine
+match 8.1.1.1
+match 9.1.1.1
+match 10.1.1.1
+route 192.0.2.0/31 tiny
+route 192.0.2.2/31 tiny2
+match 192.0.2.1
+match 192.0.2.2
+match 192.0.2.3
+match 192.0.2.4

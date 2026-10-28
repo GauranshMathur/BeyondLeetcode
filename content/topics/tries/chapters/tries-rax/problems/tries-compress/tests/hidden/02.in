@@ -1,0 +1,9 @@
+add abcdefghij 1
+nodes
+rnodes
+add abcdefxyz 2
+nodes
+rnodes
+del abcdefghij
+nodes
+rnodes

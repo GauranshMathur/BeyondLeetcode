@@ -1,0 +1,6 @@
+handle / home
+handle /users/{id} user
+handle /users/{name} other
+serve /
+serve /users/42
+serve /users

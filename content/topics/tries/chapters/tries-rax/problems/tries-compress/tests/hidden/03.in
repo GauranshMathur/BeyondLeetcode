@@ -1,0 +1,11 @@
+add ab 1
+add abcd 2
+add abcdef 3
+nodes
+rnodes
+del abcd
+nodes
+rnodes
+del ab
+rnodes
+get abcdef

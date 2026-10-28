@@ -1,0 +1,8 @@
+10.0.0.0/8 new
+error
+error
+error
+192.168.0.0/23 fine
+none
+10.0.0.1/32 ok
+10.0.0.0/8 new

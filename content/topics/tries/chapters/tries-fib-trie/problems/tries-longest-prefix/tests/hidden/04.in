@@ -1,0 +1,13 @@
+route 10.0.0.0/8 old
+route 10.0.0.0/8 new
+match 10.9.9.9
+route 10.1.0.0/8 bad
+route 10.0.0.1/32 ok
+route 1.0.0.0/0 bad
+route 192.168.0.0/23 bad
+route 192.168.1.0/23 bad
+route 192.168.0.0/23 fine
+match 192.168.1.255
+match 192.168.2.0
+match 10.0.0.1
+match 10.0.0.2

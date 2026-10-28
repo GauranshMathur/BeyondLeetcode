@@ -1,0 +1,7 @@
+find .
+find a
+add a 1
+find .
+find a
+find b
+find ..

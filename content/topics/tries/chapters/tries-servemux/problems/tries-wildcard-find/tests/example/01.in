@@ -1,0 +1,9 @@
+add cat 1
+add cot 2
+add cut 3
+add ct 4
+add cats 5
+find c.t
+find c..
+find cat
+find ....
