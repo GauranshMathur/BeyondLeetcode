@@ -316,3 +316,47 @@ A link that doesn't hold up gets a note under its line, and the claim goes back 
 - [ ] [src/server.h, line 892 (Redis 7.2.0)](https://github.com/redis/redis/blob/29622276ecd7b74312798e6772744858a8a6f9bf/src/server.h#L892) · chapters/linked-lists-cpython-lru/chapter.md: `#define LRU_BITS 24`.
 - [ ] [src/server.h, lines 899 to 905 (Redis 7.2.0)](https://github.com/redis/redis/blob/29622276ecd7b74312798e6772744858a8a6f9bf/src/server.h#L899-L905) · chapters/linked-lists-cpython-lru/chapter.md: Each `redisObject` has `unsigned lru:LRU_BITS;`.
 - [ ] [functools.lru_cache, Python 3.13 docs](https://docs.python.org/3.13/library/functools.html#functools.lru_cache) · chapters/linked-lists-cpython-lru/chapter.md: The decorator wraps a function "with a memoizing callable that saves up to the maxsize most recent calls"; "An LRU (least recently used) cache works best when the most recent calls are the best predictors of upcoming calls"; `cache_info()` is a named tuple "showing hits, misses, maxsize and currsize".
+
+## Trees
+
+Nothing yet: C113 (#266) has not merged.
+
+## Heaps
+
+Nothing yet: C114 (#260) has not merged.
+
+## Tries
+
+Nothing yet: C115 (#267) has not merged.
+
+## Backtracking
+
+Nothing yet: C116 (#254) has not merged.
+
+## Graphs
+
+Nothing yet: C117 (#257) has not merged.
+
+## Greedy
+
+Nothing yet: C118 (#258) has not merged.
+
+## Intervals
+
+Nothing yet: C119 (#261) has not merged.
+
+## 1-D dynamic programming
+
+Nothing yet: C120 (#252) has not merged.
+
+## 2-D dynamic programming
+
+Nothing yet: C121 (#253) has not merged.
+
+## Math and geometry
+
+Nothing yet: C122 (#263) has not merged.
+
+## Bit manipulation
+
+Nothing yet: C123 (#256) has not merged.

@@ -218,6 +218,24 @@ Not in the sprint:
 
 For content authors: hash-tables-collisions already uses 44 of the 50 hidden Tests one Submit can carry (two batches of 25). Adding 7 or more hidden Tests to an earlier Core Problem in that Topic would be refused when the server starts.
 
+## Sprint 12 · Content
+
+**Goal:** the eleven roadmap Topics `docs/content-coverage.md` still lists as missing are on `main`, written to `docs/content-standards.md`, each with every link it cites queued for a human check. Five quotes in shipped Chapters match the sources they cite.
+
+- **First:** C112 checks five quotes in shipped Chapters against their cited sources at the pinned version, and fixes the citation, rewords or removes each one that doesn't match.
+- **Topics, in prerequisite order.** Each card is blocked by the cards for its Prerequisites, taken from its issue:
+  - Ready first, beside C112: C113 Trees (#266), C122 Math and geometry (#263), C123 Bit manipulation (#256).
+  - After Trees: C114 Heaps (#260), C115 Tries (#267), C116 Backtracking (#254).
+  - After Heaps: C117 Graphs (#257) and C118 Greedy (#258). After Backtracking: C120 1-D dynamic programming (#252).
+  - Last: C119 Intervals (#261), after Greedy, since #261 lists Greedy as a Prerequisite; and C121 2-D dynamic programming (#253), after C120.
+- **Beside the hardening session** (decided by the maintainer, 2026-10-28, as in Sprint 8): a second orchestrator works this sprint from its own clone while the first keeps hardening and infra. Its cards touch only `content/` and the content docs, never `src/`, CI or release files. Its codes are C112 to C123.
+- **Links:** as in Sprint 8. Agents fetch every source and check each quote, but never claim that a human opened a link. Every cited link is in its PR's checklist and in its Topic's section of `docs/research/human-review-queue.md`, and a Topic merges with that review still pending. CI must be green; nothing merges past a failing check.
+- **One Submit's limit** (C111): a Submission makes at most 3 Runner calls, so the hidden batches of a Problem's Submit hold at most 50 Tests: every earlier Core Problem's Tests plus its own hidden ones. The loader refuses content past that, naming the Problem. Each Build plans its Tests to fit.
+- **Shared files:** each card adds its id to `content/content.json` and fills only its own section of the review queue, which this sprint's setup created empty. A lane that conflicts in `content.json` keeps every id.
+- **Watch:** CI's `sandbox` job ran the content check for seven Topics in about 6.5 of its 30 minutes. Eighteen should fit. A lane whose run nears the limit reports it, and the timeout is the hardening session's to change.
+
+**Exit:** all twelve cards Done and CI green on `main`; CI's content check Accepts each new Topic's Reference Code in Python, TypeScript and Go; every link each Topic cites is listed in its section of the review queue; `docs/content-coverage.md` lists the Topics shipped. Releases stay `1.x`.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
