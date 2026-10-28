@@ -41,18 +41,19 @@ Only when every card in the Release is Done and `ci` is green on main.
    ```
 
    The title reads `chore(main): release X.Y.Z`, and `autoMergeRequest` is `null`. If auto-merge is armed, run `gh pr merge <n> --disable-auto`.
-3. Check before merging:
+3. Draft the release notes from [the template](release-notes-template.md). Fill it from the `Changelog:` line of each card PR in the Release (the template has the commands that list them), and save it outside the repo.
+4. Check before merging:
    - the required checks are green on the release PR;
-   - the changelog reads well and carries each card's Changelog line;
+   - the release notes carry each card's Changelog line, and the changelog reads well;
    - no open card has that Release;
    - the version matches the target in this file.
-4. Merge:
+5. Merge:
 
    ```sh
    gh pr merge <n> --squash
    ```
 
-5. Watch the run that the merge pushes to main, through `release-please`, `release-gate` and `publish-release`, including the "Notify release webhook" step:
+6. Watch the run that the merge pushes to main, through `release-please`, `release-gate` and `publish-release`, including the "Notify release webhook" step:
 
    ```sh
    gh run list --workflow release --branch main --limit 1 --json databaseId
@@ -60,7 +61,12 @@ Only when every card in the Release is Done and `ci` is green on main.
    ```
 
    The image `ghcr.io/gauranshmathur/beyondleetcode` is then published as `vX.Y.Z` and `latest`. The webhook step is non-fatal, so also read its log for a `::warning::`.
-6. Rename the Release option to `R vX.Y.Z: <name>` and add a row to the record below.
+7. Set the release notes on the GitHub release that the run created. release-please only creates a release, never edits one, so this sticks:
+
+   ```sh
+   gh release edit vX.Y.Z --notes-file <notes-file>
+   ```
+8. Rename the Release option to `R vX.Y.Z: <name>` and add a row to the record below.
 
 ## Record of cuts
 
