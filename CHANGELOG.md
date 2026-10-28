@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.11.0...v1.12.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C113 Trees Topic ([#379](https://github.com/GauranshMathur/BeyondLeetcode/issues/379)) ([1c77a47](https://github.com/GauranshMathur/BeyondLeetcode/commit/1c77a47b28e80f910fb30c60cdefcfefbc23c2d6))
+* **beyondleetcode:** C123 Bit manipulation Topic ([#376](https://github.com/GauranshMathur/BeyondLeetcode/issues/376)) ([80eef45](https://github.com/GauranshMathur/BeyondLeetcode/commit/80eef45cad20ff9380490b6c48abb10764cca7a7))
+
 ## [1.11.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.7...v1.11.0) (2026-10-28)
 
 
