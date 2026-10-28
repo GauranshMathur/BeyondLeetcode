@@ -1,0 +1,239 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+var (
+	out      = bufio.NewWriter(os.Stdout)
+	commands = map[string]func(args []string){}
+)
+
+type step struct {
+	group   bool
+	options []string
+}
+
+// parse splits a pattern into steps: whether it is a group, and the strings the step can match.
+func parse(pattern string) []step {
+	var steps []step
+	i := 0
+	for i < len(pattern) {
+		if pattern[i] == '(' {
+			j := i + strings.IndexByte(pattern[i:], ')')
+			steps = append(steps, step{true, strings.Split(pattern[i+1:j], "|")})
+			i = j + 1
+		} else {
+			j := i
+			for j < len(pattern) && pattern[j] != '(' {
+				j++
+			}
+			steps = append(steps, step{false, []string{pattern[i:j]}})
+			i = j
+		}
+	}
+	return steps
+}
+
+func match(args []string) {
+	steps := parse(args[0])
+	text := args[1]
+	var chosen []int // the alternative picked at each group so far
+	var do func(s, pos int) bool
+	do = func(s, pos int) bool {
+		if s == len(steps) {
+			return pos == len(text)
+		}
+		for index, option := range steps[s].options {
+			if !strings.HasPrefix(text[pos:], option) {
+				continue
+			}
+			if steps[s].group {
+				chosen = append(chosen, index) // choose
+			}
+			if do(s+1, pos+len(option)) { // explore
+				return true
+			}
+			if steps[s].group {
+				chosen = chosen[:len(chosen)-1] // undo
+			}
+		}
+		return false
+	}
+	if !do(0, 0) {
+		fmt.Fprintln(out, "no")
+		return
+	}
+	words := []string{"yes"}
+	for _, index := range chosen {
+		words = append(words, strconv.Itoa(index))
+	}
+	fmt.Fprintln(out, strings.Join(words, " "))
+}
+
+func init() { commands["match"] = match }
+
+// calls counts the states the search enters, where a state is (step, position).
+func calls(steps []step, text string, prune bool) int {
+	seen := map[[2]int]bool{}
+	count := 0
+	var do func(s, pos int) bool
+	do = func(s, pos int) bool {
+		if prune {
+			key := [2]int{s, pos}
+			if seen[key] {
+				return false // entered before, and the search is still going: it failed
+			}
+			seen[key] = true
+		}
+		count++
+		if s == len(steps) {
+			return pos == len(text)
+		}
+		for _, option := range steps[s].options {
+			if strings.HasPrefix(text[pos:], option) && do(s+1, pos+len(option)) {
+				return true
+			}
+		}
+		return false
+	}
+	do(0, 0)
+	return count
+}
+
+func cost(args []string) {
+	steps := parse(args[0])
+	text := args[1]
+	fmt.Fprintf(out, "plain %d visited %d\n", calls(steps, text, false), calls(steps, text, true))
+}
+
+func init() { commands["cost"] = cost }
+
+type rng struct {
+	pkg    string
+	lo, hi int
+}
+
+var (
+	available = map[string][]int{} // package -> its versions
+	requires  = map[string][]rng{} // "package version" -> its ranges
+	needs     []rng                // asked for by the root
+)
+
+func key(name string, version int) string { return name + " " + strconv.Itoa(version) }
+
+func pkg(args []string) {
+	versions := []int{}
+	for _, v := range args[1:] {
+		n, _ := strconv.Atoi(v)
+		versions = append(versions, n)
+	}
+	available[args[0]] = versions
+}
+
+func dep(args []string) {
+	version, _ := strconv.Atoi(args[1])
+	lo, _ := strconv.Atoi(args[3])
+	hi, _ := strconv.Atoi(args[4])
+	k := key(args[0], version)
+	requires[k] = append(requires[k], rng{args[2], lo, hi})
+}
+
+func need(args []string) {
+	lo, _ := strconv.Atoi(args[1])
+	hi, _ := strconv.Atoi(args[2])
+	needs = append(needs, rng{args[0], lo, hi})
+}
+
+func resolve(args []string) {
+	pins := map[string]int{}            // package -> the version chosen for it
+	wanted := append([]rng{}, needs...) // a stack of ranges
+	var do func() bool
+	do = func() bool {
+		var todo []string
+		seen := map[string]bool{}
+		for _, w := range wanted {
+			if _, pinned := pins[w.pkg]; !pinned && !seen[w.pkg] {
+				seen[w.pkg] = true
+				todo = append(todo, w.pkg)
+			}
+		}
+		if len(todo) == 0 {
+			return true
+		}
+		sort.Strings(todo)
+		name := todo[0]
+		versions := append([]int{}, available[name]...)
+		sort.Sort(sort.Reverse(sort.IntSlice(versions)))
+		for _, version := range versions {
+			fits := true
+			for _, w := range wanted {
+				if w.pkg == name && (version < w.lo || version > w.hi) {
+					fits = false
+				}
+			}
+			if !fits {
+				continue
+			}
+			added := requires[key(name, version)]
+			clash := false
+			for _, a := range added {
+				if v, pinned := pins[a.pkg]; pinned && (v < a.lo || v > a.hi) {
+					clash = true
+				}
+			}
+			if clash {
+				continue
+			}
+			pins[name] = version // choose
+			wanted = append(wanted, added...)
+			if do() { // explore
+				return true
+			}
+			wanted = wanted[:len(wanted)-len(added)] // undo
+			delete(pins, name)
+		}
+		return false
+	}
+	if !do() {
+		fmt.Fprintln(out, "conflict")
+		return
+	}
+	names := []string{}
+	for n := range pins {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	words := []string{"ok"}
+	for _, n := range names {
+		words = append(words, n+"="+strconv.Itoa(pins[n]))
+	}
+	fmt.Fprintln(out, strings.Join(words, " "))
+}
+
+func init() {
+	commands["pkg"] = pkg
+	commands["dep"] = dep
+	commands["need"] = need
+	commands["resolve"] = resolve
+}
+
+func main() {
+	defer out.Flush()
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 {
+			continue
+		}
+		if run, ok := commands[fields[0]]; ok {
+			run(fields[1:])
+		}
+	}
+}

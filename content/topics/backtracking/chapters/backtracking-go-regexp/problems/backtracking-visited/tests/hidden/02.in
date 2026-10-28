@@ -1,0 +1,3 @@
+cost (a|b)(c|d) bd
+cost (a|ab)(bc|c)d abcd
+cost (x|y)(z|w) aa

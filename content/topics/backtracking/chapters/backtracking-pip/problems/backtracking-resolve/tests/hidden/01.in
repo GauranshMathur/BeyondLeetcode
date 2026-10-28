@@ -1,0 +1,8 @@
+pkg a 1 2 3
+resolve
+need a 2 3
+resolve
+need a 1 2
+resolve
+need a 3 3
+resolve

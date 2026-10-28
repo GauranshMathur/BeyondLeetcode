@@ -1,0 +1,12 @@
+{
+	"title": "Backtracking",
+	"summary": "Build a search that chooses, explores and undoes, and read how CPython and Go match patterns, how pip resolves versions, what itertools promises about order, and how Knuth picks where to branch.",
+	"prerequisites": ["trees", "stacks"],
+	"chapters": [
+		"backtracking-sre",
+		"backtracking-go-regexp",
+		"backtracking-pip",
+		"backtracking-itertools",
+		"backtracking-dlx"
+	]
+}

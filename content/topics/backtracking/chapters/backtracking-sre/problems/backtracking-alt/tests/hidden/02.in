@@ -1,0 +1,4 @@
+match a(b|bc) abcd
+match a(b|bc) abc
+match (a|ab)(c|bc) abc
+match (ab|a)(c|bc) abc

@@ -1,0 +1,5 @@
+{
+	"title": "Exact cover, fewest first",
+	"kind": "extra",
+	"parent": "backtracking-queens"
+}
