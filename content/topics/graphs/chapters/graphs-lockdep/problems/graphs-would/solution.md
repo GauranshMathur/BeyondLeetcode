@@ -1,0 +1,3 @@
+Run the breadth-first search of `path` from `B` to `A`. If it finds a route, the new edge from `A` to `B` would close that route into a circle, and printing `A` followed by the route is the circle with its first edge being the new one. If there is no route, the edge is safe. A node joined to itself is always a circle, so that case is answered before the search.
+
+The cost is one search: O(V + E) time in the **worst case**. Because the search is breadth-first, the circle printed is the shortest one the new edge can close, the kind lockdep looks for ([lockdep.c, lines 1449 to 1451](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/kernel/locking/lockdep.c#L1449-L1451)).

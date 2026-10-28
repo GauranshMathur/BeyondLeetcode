@@ -1,0 +1,30 @@
+groups
+edge a b
+same b a
+same a b
+same a a
+same u u
+same a u
+same u a
+edge c b
+same a c
+same c a
+edge q q
+same q q
+same q a
+groups
+clear
+groups
+same a b
+edge a a
+groups
+same a a
+clear
+edge a b
+edge c d
+edge e f
+groups
+edge d e
+groups
+edge f a
+groups

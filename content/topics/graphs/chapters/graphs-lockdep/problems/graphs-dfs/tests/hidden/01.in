@@ -1,0 +1,12 @@
+edge a b
+edge a c
+edge b d
+edge c d
+edge d e
+edge b e
+edge e f
+edge c g
+dfs a
+dfs b
+dfs c
+dfs g

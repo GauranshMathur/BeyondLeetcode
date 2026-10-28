@@ -1,0 +1,31 @@
+edge a b 9
+edge a b 4
+edge a b 6
+edge b c
+edge b c 5
+edge a c 1000000
+out a
+edge c d 1000000
+edge d e 1000000
+edge e f 999999
+cost a b
+cost a c
+cost a f
+edge a c 2
+cost a c
+cost a f
+edge q q 3
+cost q q
+cost q a
+cost a q
+cost a zzz
+cost zzz a
+cost zzz zzz
+edge f f 1
+cost f f
+clear
+cost a b
+edge a b 2
+edge b a 3
+cost b a
+cost a a

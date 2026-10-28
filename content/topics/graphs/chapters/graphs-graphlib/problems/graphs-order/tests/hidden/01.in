@@ -1,0 +1,11 @@
+edge x10 x2
+edge x2 end
+edge x-1 end
+edge x.1 end
+edge x1 end
+edge x10 end
+edge solo solo2
+edge b a-1
+edge a.2 z
+edge z end
+order

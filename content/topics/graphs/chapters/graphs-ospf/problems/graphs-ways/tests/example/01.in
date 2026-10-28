@@ -1,0 +1,7 @@
+edge s a 1
+edge s b 1
+edge a t 2
+edge b t 2
+edge s t 3
+ways s t
+ways t s

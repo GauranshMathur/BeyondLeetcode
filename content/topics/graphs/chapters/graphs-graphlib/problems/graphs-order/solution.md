@@ -1,0 +1,5 @@
+Count the edges that lead into each node. The nodes with count 0 are ready; keep them in a min-heap of names. Take the smallest, write it, and for each node it has an edge to subtract 1 from that node's count, and push the node when it reaches 0. This is the counting method of `graphlib` ([Lib/graphlib.py, lines 191 to 195 (CPython 3.13.0)](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Lib/graphlib.py#L191-L195)), with the heap deciding the order of the ready nodes. If the loop ends with fewer names written than the graph has, the rest wait for each other and the answer is `cycle`.
+
+Each node is pushed and popped once, at O(log V) each, and each edge is counted down once: O(E + V log V) time in the **worst case**, with O(V + E) space. Counting the in-edges at the start is O(V + E).
+
+The smallest-name rule is this Problem's. `graphlib` does not promise an order among ready nodes: "The particular order that is returned may depend on the specific order in which the items were inserted in the graph." ([lines 238 to 239](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Lib/graphlib.py#L238-L239))

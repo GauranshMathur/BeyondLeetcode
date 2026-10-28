@@ -1,0 +1,7 @@
+edge app libc
+edge app zlib
+edge libc zlib
+edge app libc
+out app
+has libc app
+count

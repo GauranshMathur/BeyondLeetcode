@@ -1,0 +1,8 @@
+edge a b
+edge c d
+same a d
+edge d b
+same a c
+same b a
+same a z
+groups

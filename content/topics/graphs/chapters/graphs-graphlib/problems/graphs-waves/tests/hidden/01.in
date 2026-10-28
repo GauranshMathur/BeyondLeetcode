@@ -1,0 +1,13 @@
+edge l3b l4
+edge l1b l2c
+edge l1a l2a
+edge l1a l2b
+edge l2a l3a
+edge l2b l3a
+edge l2c l3b
+edge l3a l4
+edge l1a l3b
+edge l1b l1c
+edge l2c l5
+edge l4 l5
+waves

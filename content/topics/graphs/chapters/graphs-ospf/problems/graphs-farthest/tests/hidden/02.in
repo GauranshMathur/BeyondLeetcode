@@ -1,0 +1,17 @@
+edge p p 5
+farthest p
+edge p q 2
+farthest p
+farthest q
+edge q p 7
+farthest q
+farthest p
+edge q r 1
+edge r p 1
+farthest p
+edge p q 1
+farthest r
+clear
+farthest p
+edge m n
+farthest m

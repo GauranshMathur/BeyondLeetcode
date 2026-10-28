@@ -1,0 +1,13 @@
+redundant
+edge a b
+edge b c
+edge c d
+edge d e
+redundant
+edge e a
+edge a d
+edge b e
+edge x y
+edge y z
+edge z x
+redundant
