@@ -1,6 +1,6 @@
 # The height of the tree
 
-SQLite keeps the height of every expression tree it builds, so it can refuse one that is too tall. You start the Build that holds the tree of this Topic.
+SQLite keeps the height of every expression tree it builds, so it can refuse one that is too tall. You start the Build that holds the tree of this Topic. The source for each claim is in [Expression trees: SQLite caps their depth](/chapters/trees-sqlite-expression).
 
 The Build reads commands from standard input, one per line, and works on one **binary tree** of integers. Blank lines are ignored. The tree starts empty. Commands that print, print one line.
 

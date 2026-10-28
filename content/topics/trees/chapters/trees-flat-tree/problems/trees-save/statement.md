@@ -1,6 +1,6 @@
 # Save the tree as text and restore it
 
-The flattened device tree writes a tree as a list of tokens that begin and end each node. Give the Build a text form of its own with the same idea, and a way to read it back.
+The flattened device tree writes a tree as a list of tokens that begin and end each node. Give the Build a text form of its own with the same idea, and a way to read it back. The source for each claim is in [Flat trees and common ancestors: the device tree and git](/chapters/trees-flat-tree).
 
 The text of a tree is:
 

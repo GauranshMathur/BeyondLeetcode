@@ -1,6 +1,6 @@
 # A B-tree of at most three keys
 
-Rust's `BTreeMap` and SQLite's file format both keep several keys in each node, so that a search reads few nodes. Build the smallest B-tree that shows how: a node holds at most 3 keys.
+Rust's `BTreeMap` and SQLite's file format both keep several keys in each node, so that a search reads few nodes. Build the smallest B-tree that shows how: a node holds at most 3 keys. The source for each claim is in [B-trees: fewer, fatter nodes](/chapters/trees-btree-pages).
 
 The B-tree is a second structure in the Build, beside the binary tree. The commands for one do not touch the other, and `bt` has its own subcommands. It starts empty.
 

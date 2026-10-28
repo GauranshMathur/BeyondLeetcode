@@ -1,6 +1,6 @@
 # The lowest common ancestor
 
-Git finds the best common ancestor of two commits, and the device tree library finds the ancestor of a node by counting depth. Find the lowest common ancestor of two values in the tree.
+Git finds the best common ancestor of two commits, and the device tree library finds the ancestor of a node by counting depth. Find the lowest common ancestor of two values in the tree. The source for each claim is in [Flat trees and common ancestors: the device tree and git](/chapters/trees-flat-tree).
 
 The **ancestors** of a node are the nodes on the path from the root down to it, and the node itself is one of them. The **lowest common ancestor** of two nodes is the deepest node that is an ancestor of both.
 

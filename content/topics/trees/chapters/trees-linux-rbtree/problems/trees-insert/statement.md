@@ -1,6 +1,6 @@
 # Insert and find in a search tree
 
-The kernel's red-black tree is a binary search tree, and the walk that inserts or finds a key is a loop the caller writes. Write that loop.
+The kernel's red-black tree is a binary search tree, and the walk that inserts or finds a key is a loop the caller writes. Write that loop. The source for each claim is in [Binary search trees: why the kernel balances them](/chapters/trees-linux-rbtree).
 
 Add:
 

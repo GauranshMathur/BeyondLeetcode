@@ -1,6 +1,6 @@
 # One line per level
 
-`bfs` lists the shallowest files first. Do the same to the tree: a **level** is all the nodes at the same depth, and the root is the only node at depth 0.
+`bfs` lists the shallowest files first. Do the same to the tree: a **level** is all the nodes at the same depth, and the root is the only node at depth 0. The source for each claim is in [Walking a tree: Go goes deep, bfs goes wide](/chapters/trees-traversal).
 
 Add:
 

@@ -1,6 +1,6 @@
 # Check the search rule
 
-Nothing in the kernel's library compares keys, so nothing in it can check the order of a tree: the code that links the nodes is responsible for it. Write the check.
+Nothing in the kernel's library compares keys, so nothing in it can check the order of a tree: the code that links the nodes is responsible for it. Write the check. The source for each claim is in [Binary search trees: why the kernel balances them](/chapters/trees-linux-rbtree).
 
 Add:
 

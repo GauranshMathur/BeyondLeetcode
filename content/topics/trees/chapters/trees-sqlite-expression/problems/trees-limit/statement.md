@@ -1,6 +1,6 @@
 # Refuse a tree that is too tall
 
-SQLite does not accept an expression tree taller than a limit, and it says so when the tree is built, before anything walks it. Make the Build do the same.
+SQLite does not accept an expression tree taller than a limit, and it says so when the tree is built, before anything walks it. Make the Build do the same. The source for each claim is in [Expression trees: SQLite caps their depth](/chapters/trees-sqlite-expression).
 
 Add:
 

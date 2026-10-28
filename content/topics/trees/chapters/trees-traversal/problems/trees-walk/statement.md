@@ -1,6 +1,6 @@
 # Three depth-first orders
 
-Go's `fs.WalkDir` handles a directory before the files in it. A binary tree has two children, so there are three places to handle a node: before both children, between them, or after both. Print the tree in each order.
+Go's `fs.WalkDir` handles a directory before the files in it. A binary tree has two children, so there are three places to handle a node: before both children, between them, or after both. Print the tree in each order. The source for each claim is in [Walking a tree: Go goes deep, bfs goes wide](/chapters/trees-traversal).
 
 Add:
 
