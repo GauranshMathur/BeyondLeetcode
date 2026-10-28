@@ -393,7 +393,7 @@ Nothing yet: C114 (#260) has not merged.
 ## Tries
 
 - [ ] [src/stream.h, line 17 (Redis 7.2.5)](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/stream.h#L17) · chapters/tries-rax/chapter.md: Streams keep their entries in a radix tree
-- [ ] [src/rax.h, line 41 (Redis 7.2.5)](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L41) · chapters/tries-rax/chapter.md: The plain tree is the starting representation
+- [ ] [src/rax.h, lines 36 to 41 (Redis 7.2.5)](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L36-L41) · chapters/tries-rax/chapter.md: The plain tree, drawn for "foo", "foobar" and "footer", is the starting representation
 - [ ] [src/rax.h, lines 38 to 39 (Redis 7.2.5)](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L38-L39) · chapters/tries-rax/chapter.md: A node can be a key (written in brackets) or not
 - [ ] [src/rax.h, lines 43 to 55 (Redis 7.2.5)](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L43-L55) · chapters/tries-rax/chapter.md: In the drawing `foo` is a key with children `t` and `b`
 - [ ] [src/rax.h, lines 105 to 106 (Redis 7.2.5)](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L105-L106) · chapters/tries-rax/chapter.md: The character is stored in the parent: one byte and one pointer per child

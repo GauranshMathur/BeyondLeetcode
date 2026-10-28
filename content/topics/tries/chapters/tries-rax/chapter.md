@@ -4,7 +4,7 @@ A **trie** (or prefix tree) stores keys by their characters. The root stands for
 
 ## The plain tree
 
-The comment draws a tree that holds the strings "foo", "foobar" and "footer", and begins its first drawing with "This is the vanilla representation:" ([src/rax.h, line 41](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L41)). Its legend says: "When the node represents a key inside the radix tree, we write it between [], otherwise it is written between ()." ([lines 38 to 39](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L38-L39))
+The comment draws a tree that holds the strings "foo", "foobar" and "footer", and begins its first drawing with "This is the vanilla representation:" ([src/rax.h, lines 36 to 41](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L36-L41)). Its legend says: "When the node represents a key inside the radix tree, we write it between [], otherwise it is written between ()." ([lines 38 to 39](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L38-L39))
 
 Count the nodes in that drawing: the root (the empty string), then `f`, `fo`, `foo`, `foot`, `foote`, `footer`, `foob`, `fooba` and `foobar`. That is 10 nodes for 3 keys. In the drawing `foo` is written between `[]`, so it is a key, and it also has two children, `t` and `b`. ([lines 43 to 55](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L43-L55)) A node can be a key and have children, and most nodes are not keys at all. Your Build keeps that difference: a node holds a value only when a key ends there.
 
