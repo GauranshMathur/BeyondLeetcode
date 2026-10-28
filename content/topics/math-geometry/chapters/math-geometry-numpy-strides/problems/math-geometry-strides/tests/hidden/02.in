@@ -1,0 +1,15 @@
+matrix 3 2 10 20 30 40 50 60
+mirror
+show
+shape
+transpose
+mirror
+show
+rotate
+show
+at 2 0
+at -1 0
+at 0 3
+at 1 2
+at 0 -1
+block

@@ -1,0 +1,4 @@
+{
+	"title": "Linux: a gcd made of shifts, and a sieve that grows",
+	"problems": ["math-geometry-gcd", "math-geometry-primes", "math-geometry-lcm"]
+}

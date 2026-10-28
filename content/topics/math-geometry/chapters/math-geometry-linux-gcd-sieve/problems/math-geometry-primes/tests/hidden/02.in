@@ -1,0 +1,8 @@
+nextprime 127
+sieve
+nextprime 1000
+sieve
+nextprime 999983
+sieve
+nextprime 1000000
+sieve

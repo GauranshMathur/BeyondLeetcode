@@ -1,0 +1,9 @@
+{
+	"title": "NumPy: one block, many views",
+	"problems": [
+		"math-geometry-strides",
+		"math-geometry-spiral",
+		"math-geometry-spin",
+		"math-geometry-zero"
+	]
+}
