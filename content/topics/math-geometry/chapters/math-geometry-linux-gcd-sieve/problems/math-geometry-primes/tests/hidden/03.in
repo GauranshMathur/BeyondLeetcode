@@ -1,0 +1,10 @@
+nextprime 500
+sieve
+nextprime 100
+nextprime 509
+sieve
+nextprime 520
+sieve
+nextprime 0
+nextprime 997
+sieve
