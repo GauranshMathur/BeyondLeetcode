@@ -297,6 +297,44 @@ Not in the sprint:
 - C131 (filed by the hardening session): `escape.sandbox.test.ts` "ends a bomb that forks without bound" ran 16.5 s against its 15 s bound once, on #376. Its fix allows for Docker's create latency.
 - The shared GitHub GraphQL quota ran out once and held the merges for about 35 minutes. Every worker's `gh pr checks --watch` counts against it.
 
+## Sprint 13 · Foundations
+
+**Goal:** the project has a logo and a README a newcomer can follow end to end. A sprint-planner agent keeps sprints and cards small. Releases are cut by the orchestrator, by hand, once a planned feature set is complete.
+
+- **Three tracks, eight cards.** The maintainer planned them on 2026-10-28 and held them until Sprint 12 was Done.
+  - **Brand and README:**
+    - F17 designs the logo on the canvas's Foundations page: three directions in light and dark, each checked at 16, 32 and 200 px. The orchestrator picks one.
+    - C124 exports it to `docs/assets/` and the app favicon.
+    - C125 captures screenshots with Playwright.
+    - C126 rewrites README.md on top of both. It adds a Topics table generated from `content/` and a quick start that is run for real.
+  - **Planning:** C127 adds the `sprint-planner` agent and calls it from `/orchestrate`.
+  - **Releases:**
+    - C128 stops `release.yml` merging release PRs, and adds `docs/releasing.md`.
+    - C129 gives every commit type its own changelog heading, and adds a release-notes template.
+    - C130 sets which commit type a card PR uses, and adds a `Changelog:` line to every card PR.
+- **Order.** Round 1 runs four lanes: F17; C125; C127 then C130; and C128 then C129. C124 follows the orchestrator's pick on F17. C126 follows C124 and C125.
+- **Shared files:**
+  - `docs/agents/board.md` is a chain: C127, then C130.
+  - `docs/releasing.md` is a chain: C128, then C129.
+  - In `docs/assets/`, C124 and C125 write separate files, and C126 reads both.
+- **No version jumps on the way.** C128 lands before any card that bumps the version. Only C124 is `feat`, because the favicon is user-visible. Every other card is `docs` or `ci`, and F17, a design card, opens no PR.
+- **Release field.** The board's new Release field groups cards into releases. `R next: Foundations` (`5eb8b28c`) holds all eight cards. The target is 1.19.0, the next minor after 1.18.0, the last automatic release.
+- **The cut:**
+  - The card that completes the feature set carries `Release-As: 1.19.0`.
+  - The orchestrator runs the checks in `docs/releasing.md` and merges the release PR. It then watches the tag, release-gate, publish-release and the webhook.
+  - This is the first release PR merged by hand. It also checks that publishing and the webhook still run after a manual merge.
+- **Off `content/`.** No card in this sprint edits content. The README's Topics table only reads it.
+
+**Exit:**
+- All eight cards are Done, and `ci` is green on `main`.
+- README.md shows the logo, the badges, a Topics table that matches `content/`, and a quick start that its PR ran end to end.
+- `/orchestrate` calls the sprint-planner when a sprint starts.
+- `release.yml` leaves release PRs open.
+- The orchestrator cuts 1.19.0 from the release PR. Its images are published, the webhook runs, and the cut is recorded in `docs/releasing.md`.
+- Releases stay `1.x`.
+
+**Not in the sprint:** C131, the bound on the fork-bomb test, waits for the maintainer to place it.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
