@@ -1,0 +1,4 @@
+{
+	"title": "LevelDB: a Bloom filter in front of the disk",
+	"problems": ["bit-manipulation-bloomsize", "bit-manipulation-bloomfilter"]
+}

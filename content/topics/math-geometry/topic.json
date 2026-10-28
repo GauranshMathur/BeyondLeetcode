@@ -1,0 +1,11 @@
+{
+	"title": "Math and geometry",
+	"summary": "Build a small calculator and matrix machine, and read how CPython, the Linux kernel and NumPy handle overflow, powers, views of a matrix, gcd and primes.",
+	"prerequisites": ["hash-tables", "dynamic-arrays"],
+	"chapters": [
+		"math-geometry-cpython-int",
+		"math-geometry-linux-int-pow",
+		"math-geometry-numpy-strides",
+		"math-geometry-linux-gcd-sieve"
+	]
+}

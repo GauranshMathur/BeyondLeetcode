@@ -1,0 +1,12 @@
+show
+at 0 0
+rotate
+shape
+block
+mirror
+transpose
+matrix 1 1 5
+show
+rotate
+show
+shape

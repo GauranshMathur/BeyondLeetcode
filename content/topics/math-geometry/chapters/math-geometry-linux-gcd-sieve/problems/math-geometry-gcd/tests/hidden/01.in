@@ -1,0 +1,7 @@
+gcd 1024 64
+gcd 40 0
+gcd 0 0
+gcd 1 1
+gcd 6 6
+gcd 1 1000
+gcd 64 1024

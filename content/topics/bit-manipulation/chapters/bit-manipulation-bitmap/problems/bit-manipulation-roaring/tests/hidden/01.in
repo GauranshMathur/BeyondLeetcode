@@ -1,0 +1,22 @@
+roaring
+set 5
+set 65536
+set 65537
+roaring
+clear 5
+roaring
+set 200000
+roaring
+clear 65536
+clear 65537
+clear 200000
+roaring
+count 300000
+load 0 0 0
+roaring
+set 65535
+roaring
+set 65536
+roaring
+flip 65535
+roaring

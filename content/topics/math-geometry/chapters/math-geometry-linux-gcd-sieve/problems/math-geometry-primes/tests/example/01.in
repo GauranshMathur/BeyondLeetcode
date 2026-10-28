@@ -1,0 +1,5 @@
+sieve
+nextprime 0
+nextprime 2
+nextprime 61
+sieve

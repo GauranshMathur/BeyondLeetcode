@@ -1,0 +1,36 @@
+test 0
+ushow
+clear 5
+ushow
+flip 0
+ushow
+show
+clear 0
+ushow
+set 31
+show
+ushow
+set 32
+ushow
+set 31
+ushow
+test 31
+test 32
+test 33
+test 1000
+clear 1000
+ushow
+flip 95
+ushow
+flip 95
+ushow
+show
+set 0
+set 1
+set 2
+ushow
+clear 1
+ushow
+flip 2
+ushow
+test 1

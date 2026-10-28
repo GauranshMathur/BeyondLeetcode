@@ -1,0 +1,9 @@
+{
+	"title": "XOR and the lowest set bit: RAID 5 and power-of-two checks",
+	"problems": [
+		"bit-manipulation-recover",
+		"bit-manipulation-missing",
+		"bit-manipulation-lowbit",
+		"bit-manipulation-countbits"
+	]
+}

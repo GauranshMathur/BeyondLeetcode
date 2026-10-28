@@ -1,0 +1,8 @@
+set 3
+set 40
+test 3
+test 4
+ushow
+flip 3
+clear 40
+ushow

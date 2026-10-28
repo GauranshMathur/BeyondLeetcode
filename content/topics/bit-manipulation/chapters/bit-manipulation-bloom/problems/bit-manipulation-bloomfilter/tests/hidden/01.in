@@ -1,0 +1,50 @@
+maybe 1
+bloom 5
+maybe 0
+maybe 1
+ushow
+bloom 10 1 2 3
+maybe 1
+maybe 2
+maybe 3
+maybe 4
+maybe 99
+ushow
+bloom 10 7
+maybe 7
+maybe 8
+ushow
+bloom 1 -1 4294967295 0 -2147483648
+maybe -1
+maybe 4294967295
+maybe 0
+maybe 2147483648
+maybe 1
+maybe 5
+ushow
+bloom 100 5 5 5
+maybe 5
+maybe 6
+ushow
+bloom 3 10 20 30 40
+maybe 10
+maybe 40
+maybe 50
+ushow
+bloom 10 1 2 3
+load
+maybe 1
+maybe 2
+bloom 10 1 2 3
+load 83968449
+maybe 1
+maybe 2
+maybe 3
+show
+bloom 10 1 2 3
+test 0
+test 63
+test 64
+set 700
+ushow
+maybe 1
