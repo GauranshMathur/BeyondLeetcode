@@ -4,7 +4,7 @@ A linked list ends when a link says "nothing follows". A list can also go wrong:
 
 ## The problem: a list with no end
 
-Emacs Lisp lists are chains of cons cells. The Emacs Lisp manual describes the bad case: "some cons cell's CDR could point to one of the previous cons cells in the list. We call that structure a circular list." And the consequence: "Most functions that try to find the end of a list enter infinite loops if given a circular list." ([doc/lispref/lists.texi, lines 69 to 83, Emacs 30.2](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/doc/lispref/lists.texi#L69-L83))
+Emacs Lisp lists are chains of cons cells. The Emacs Lisp manual describes the bad case: "some cons cell's CDR could point to one of the previous cons cells in the list. We call that structure a circular list." ([doc/lispref/lists.texi, lines 73 to 75, Emacs 30.2](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/doc/lispref/lists.texi#L73-L75)) And the consequence: "Most functions that try to find the end of a list enter infinite loops if given a circular list." ([lines 81 to 82](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/doc/lispref/lists.texi#L81-L82))
 
 So the C code that walks lists uses a macro instead of a bare loop. `FOR_EACH_TAIL` is documented as: "Loop over conses of the list TAIL, signaling if a cycle is found, and possibly quitting after each loop iteration." ([src/lisp.h, lines 5867 to 5875](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/src/lisp.h#L5867-L5875)) Short lists skip the check. The comment on `SMALL_LIST_LEN_MAX`, which is 127, says these lists "are so short that code need not check for cycles or quits while traversing." ([lines 5862 to 5865](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/src/lisp.h#L5862-L5865))
 

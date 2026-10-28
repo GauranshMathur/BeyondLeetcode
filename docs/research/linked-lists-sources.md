@@ -483,6 +483,13 @@ These statements in the Chapters have no source on purpose and say so:
 - Quote: `_self->hits, _self->misses, _self->maxsize,`; `PyDict_GET_SIZE(_self->cache)`
 - Type 1. Status: sourced, quote checked against the fetched file.
 
+### Claim 62b. The documentation says `cache_info` shows "hits, misses, maxsize and currsize".
+
+- Link: [Doc/library/functools.rst, lines 204 to 205 (CPython 3.13.0)](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L204-L205)
+- Chapter: `linked-lists-cpython-lru`
+- Quote: "hits, misses, maxsize and currsize". reST markup dropped: the source writes `*hits*, *misses*,` at the end of line 204 and `*maxsize* and *currsize*.` on line 205.
+- Type 2. Status: sourced, quote checked against the fetched file.
+
 ### Claim 63. `cache_clear` ("Clear the cache and cache statistics") sets `hits = misses = 0` and clears the dict and the list.
 
 - Link: [Modules/_functoolsmodule.c, lines 1368 to 1385 (CPython 3.13.0)](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Modules/_functoolsmodule.c#L1368-L1385)
