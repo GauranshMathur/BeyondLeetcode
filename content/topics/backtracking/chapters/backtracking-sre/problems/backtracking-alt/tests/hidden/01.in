@@ -1,0 +1,8 @@
+
+foo match abc abc
+match abc abc
+
+match abc abd
+match abc ab
+match abc abcd
+

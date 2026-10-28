@@ -1,0 +1,8 @@
+pkg tea 2 1
+pkg cup 3 2 1
+pkg spoon 2 1
+dep tea 2 cup 2 3
+dep tea 2 spoon 2 2
+dep spoon 2 cup 1 2
+need tea 1 2
+resolve

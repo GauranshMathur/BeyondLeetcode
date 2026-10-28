@@ -1,0 +1,19 @@
+add a1 1
+add a2 1
+add a3 1
+add b1 1
+add b2 1
+add b3 1
+add b4 1
+add b5 1
+add b6 1
+add b7 1
+add b8 1
+add b9 1
+add c 1
+shape
+del b9
+shape
+del c
+shape
+size

@@ -1,0 +1,5 @@
+load 5 3 4 1
+sums 8
+load 10
+sums 10
+sums 3

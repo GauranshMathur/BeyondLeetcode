@@ -1,0 +1,13 @@
+add b 1
+add a1 1
+add a 1
+add aa 1
+add ab 1
+add b0 1
+add 9 1
+add 0z 1
+list
+list a
+list 0
+count
+count b

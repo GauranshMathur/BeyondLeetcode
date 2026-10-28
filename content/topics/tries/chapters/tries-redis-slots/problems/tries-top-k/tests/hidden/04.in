@@ -1,0 +1,9 @@
+add k 5
+add kk 5
+add kkk 5
+add kkkk 6
+top k 2
+top kk 3
+top kkk 9
+top kkkk 1
+top kkkkk 1

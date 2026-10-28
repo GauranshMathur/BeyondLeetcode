@@ -1,0 +1,9 @@
+add b 1
+add a 2
+add ab 3
+list
+count
+del a
+list
+count
+list a

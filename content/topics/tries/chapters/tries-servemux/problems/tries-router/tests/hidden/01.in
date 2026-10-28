@@ -1,0 +1,9 @@
+handle /{org}/{repo} pair
+serve /acme/tools
+serve /acme
+serve /acme/tools/extra
+handle /{a}/{b}/{c} triple
+serve /x/y/z
+handle /api/{version}/users/{id} user
+serve /api/v2/users/7
+serve /api/v2/users

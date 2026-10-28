@@ -1,0 +1,6 @@
+{
+	"title": "Tries",
+	"summary": "Build a prefix tree and read how Redis's rax stores edges in the parent and compresses chains, how the Linux kernel finds the longest matching route, how Go's ServeMux keeps its children, and how Redis Cluster lists keys by prefix.",
+	"prerequisites": ["trees", "hash-tables"],
+	"chapters": ["tries-rax", "tries-fib-trie", "tries-servemux", "tries-redis-slots"]
+}

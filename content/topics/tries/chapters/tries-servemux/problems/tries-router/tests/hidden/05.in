@@ -1,0 +1,13 @@
+handle /{x} any
+handle /static static
+serve /static
+serve /other
+serve /
+handle / root
+serve /
+handle /v1/{a}/{b} ab
+handle /v1/x/{b} xb
+handle /v1/{a}/y ay
+serve /v1/x/y
+serve /v1/z/y
+serve /v1/z/w

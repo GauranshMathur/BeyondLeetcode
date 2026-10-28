@@ -1,0 +1,21 @@
+add a 1
+add b 2
+add c 3
+add d 4
+add e 5
+add f 6
+add g 7
+add h 8
+add i 9
+del a
+del b
+del c
+del d
+del e
+del f
+del g
+del h
+shape
+del i
+nodes
+shape

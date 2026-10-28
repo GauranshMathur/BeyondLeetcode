@@ -1,0 +1,9 @@
+add a 1
+add b 2
+add ab 3
+find .
+find ..
+find a.
+find ...
+del a
+find .

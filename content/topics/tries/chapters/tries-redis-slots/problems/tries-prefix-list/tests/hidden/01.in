@@ -1,0 +1,9 @@
+list
+count
+list a
+count a
+add x 1
+list x
+count x
+list xy
+count xy

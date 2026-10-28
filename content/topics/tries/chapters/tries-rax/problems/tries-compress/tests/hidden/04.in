@@ -1,0 +1,14 @@
+add ab 1
+add cd 2
+add ef 3
+add gh 4
+nodes
+rnodes
+del cd
+del ef
+del gh
+nodes
+rnodes
+add abc 5
+add abd 6
+rnodes
