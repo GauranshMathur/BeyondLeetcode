@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.12.0...v1.13.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C116 Backtracking Topic ([#382](https://github.com/GauranshMathur/BeyondLeetcode/issues/382)) ([ad9ff4f](https://github.com/GauranshMathur/BeyondLeetcode/commit/ad9ff4f9bd9cd35139f5d2adfc0eeb9d64953ea4))
+
 ## [1.12.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.11.0...v1.12.0) (2026-10-28)
 
 
