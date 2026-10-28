@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.19.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.18.0...v1.19.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C124 Brand: logo SVGs and app favicon ([#401](https://github.com/GauranshMathur/BeyondLeetcode/issues/401)) ([bb3f11b](https://github.com/GauranshMathur/BeyondLeetcode/commit/bb3f11be4689bd8fba43c8a2cfbf67f64b53b460))
+
+
+### Documentation
+
+* **beyondleetcode:** C125 README screenshots captured with Playwright ([#400](https://github.com/GauranshMathur/BeyondLeetcode/issues/400)) ([d7f070b](https://github.com/GauranshMathur/BeyondLeetcode/commit/d7f070b4e95e25127fa755fde8a833f216a6b2c9))
+* **beyondleetcode:** C126 README rewrite with logo, Topics table and tested quick start ([#404](https://github.com/GauranshMathur/BeyondLeetcode/issues/404)) ([86fc6c8](https://github.com/GauranshMathur/BeyondLeetcode/commit/86fc6c8076d708defdb45bdc20335f407be77d5c))
+* **beyondleetcode:** C127 sprint-planner agent ([#399](https://github.com/GauranshMathur/BeyondLeetcode/issues/399)) ([4b44cad](https://github.com/GauranshMathur/BeyondLeetcode/commit/4b44cadec9f802475d67ebc44199e9d59cdca78e))
+* **beyondleetcode:** C130 Commit-type discipline and Changelog line on card PRs ([#405](https://github.com/GauranshMathur/BeyondLeetcode/issues/405)) ([65e6080](https://github.com/GauranshMathur/BeyondLeetcode/commit/65e6080a0a776578372fd96afa69fb92f0b0b542))
+* **beyondleetcode:** Sprint 12 status, exit met ([#396](https://github.com/GauranshMathur/BeyondLeetcode/issues/396)) ([96ba05b](https://github.com/GauranshMathur/BeyondLeetcode/commit/96ba05bad42ded6abc571444428924a6dc40790a))
+* **beyondleetcode:** Sprint 13 Foundations plan ([#397](https://github.com/GauranshMathur/BeyondLeetcode/issues/397)) ([ef036b8](https://github.com/GauranshMathur/BeyondLeetcode/commit/ef036b81c656aa6ee2c3880ea592df52c96c93b0))
+
+
+### CI
+
+* **beyondleetcode:** C128 Releases cut by hand, no auto-merge ([#398](https://github.com/GauranshMathur/BeyondLeetcode/issues/398)) ([c577afd](https://github.com/GauranshMathur/BeyondLeetcode/commit/c577afdeee3b3857efbb64923e55497e88035090))
+* **beyondleetcode:** C129 Changelog sections per commit type, release-notes template ([#402](https://github.com/GauranshMathur/BeyondLeetcode/issues/402)) ([b76b811](https://github.com/GauranshMathur/BeyondLeetcode/commit/b76b811c35a2d22b8cac814bacbf815cefeb96c9))
+
 ## [1.18.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.17.0...v1.18.0) (2026-10-28)
 
 
