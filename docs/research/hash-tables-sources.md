@@ -1301,16 +1301,15 @@ Commit message (title): `gh-133703: dict: fix calculate_log2_keysize() (GH-13380
 - Type: 1
 - Status: sourced
 
-### Claim 56. It "is computed as `s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]` using `int` arithmetic, where `s[i]` is the `i`th character of the string, `n` is the length of the string".
+### Claim 56. It "is computed as `s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]` using `int` arithmetic, where `s[i]` is the `i`th character of the string, `n` is the length of the string, and `^` indicates exponentiation".
 
-- Link: [java/lang/String.java, lines 2342 to 2350 (OpenJDK jdk-21+35)](https://github.com/openjdk/jdk/blob/890adb6410dab4606a4f26a942aed02fb2f55387/src/java.base/share/classes/java/lang/String.java#L2342-L2350)
+- Link: [java/lang/String.java, lines 2343 to 2349 (OpenJDK jdk-21+35)](https://github.com/openjdk/jdk/blob/890adb6410dab4606a4f26a942aed02fb2f55387/src/java.base/share/classes/java/lang/String.java#L2343-L2349)
 - Chapter: `hash-tables-adversarial-keys`
-- Quote:
+- Quote: Javadoc markup dropped (`{@code ...}` braces, `<blockquote><pre>` tags, `<i>i</i>` as `i`); the formula line 2345 matches the Chapter's formula character for character, spaces included (checked with `grep -n` and `cat -A`). The quote runs to the end of the sentence, ", and `^` indicates exponentiation", because in Java `^` is XOR and cutting there would change the meaning.
 
-Lines 2342 to 2350, fetched from the pinned commit with `curl` and read with `awk`:
+Lines 2343 to 2349, fetched from the pinned commit with `curl` and read with `awk`:
 
 ```
-2342:      * Returns a hash code for this string. The hash code for a
 2343:      * {@code String} object is computed as
 2344:      * <blockquote><pre>
 2345:      * s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]
@@ -1318,7 +1317,6 @@ Lines 2342 to 2350, fetched from the pinned commit with `curl` and read with `aw
 2347:      * using {@code int} arithmetic, where {@code s[i]} is the
 2348:      * <i>i</i>th character of the string, {@code n} is the length of
 2349:      * the string, and {@code ^} indicates exponentiation.
-2350:      * (The hash value of the empty string is zero.)
 ```
 
 - Type: 1
@@ -1483,17 +1481,23 @@ Page text from `curl`, tags stripped:
 
 ### Claim 64. The first Chapter's source comment says that ints "are their own hash codes", and the numeric hash is a reduction modulo a fixed prime `P = 2**61 - 1` on a 64-bit build, which agrees with that for ints below `P`.
 
-- Link: [Python/pyhash.c, lines 31 to 34 (CPython 3.13.0)](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/pyhash.c#L31-L34)
+- Link (the quote "are their own hash codes"): [Objects/dictobject.c, lines 306 to 307 (CPython 3.13.0)](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Objects/dictobject.c#L306-L307)
+- Link (the reduction modulo `P`): [Python/pyhash.c, lines 31 to 32 (CPython 3.13.0)](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Python/pyhash.c#L31-L32)
 - Chapter: `hash-tables-adversarial-keys`
-- Quote:
+- Quote: no markup. The words "are their own hash codes" run across the end of line 306 and the start of line 307. `Python/pyhash.c` lines 31 to 34 do not contain them; the Chapter used to cite them there.
 
-Lines 31 to 34, fetched from the pinned commit with `curl` and read with `awk`:
+Lines 306 to 307 of `Objects/dictobject.c`, fetched from the pinned commit with `curl` and read with `sed`:
+
+```
+306: the list [i << 16 for i in range(20000)] as a set of keys.  Since ints are
+307: their own hash codes, and this fits in a dict of size 2**15, the last 15 bits
+```
+
+Lines 31 to 32 of `Python/pyhash.c`:
 
 ```
 31: /* For numeric types, the hash of a number x is based on the reduction
 32:    of x modulo the prime P = 2**_PyHASH_BITS - 1.  It's designed so that
-33:    hash(x) == hash(y) whenever x and y are numerically equal, even if
-34:    x and y have different types.
 ```
 
 - Type: 1
