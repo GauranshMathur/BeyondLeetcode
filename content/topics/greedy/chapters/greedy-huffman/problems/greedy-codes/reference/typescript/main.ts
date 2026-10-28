@@ -75,7 +75,7 @@ commands.huffman = () => {
 		return;
 	}
 	if (used.length === 1) {
-		// zlib forces a second code, so the one symbol still costs one bit each time.
+		// One symbol that occurs still costs one bit each time (the Problem's rule).
 		out.push(String(used[0]));
 		return;
 	}

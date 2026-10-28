@@ -1,12 +1,12 @@
 # Linux: the earliest deadline runs next
 
-A CPU has several jobs, each with a deadline, and can run only one at a time. Which runs next? This Chapter reads the answer the Linux kernel gives for its deadline scheduling class, which is a greedy rule: look only at the deadlines and take the earliest. The sources are the kernel's scheduler documentation and `kernel/sched/deadline.c`, both at the commit of the tag v6.6 (`ffc253263a1375a65fa6c9f62a893e9767fbebfa`).
+A CPU has several jobs, each with a deadline, and can run only one at a time. Which runs next? This Chapter reads the answer the Linux kernel gives for its deadline scheduling class, which is a greedy rule: look only at the deadlines and take the earliest. The sources are the kernel's [scheduler documentation](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/Documentation/scheduler/sched-deadline.rst) and [`kernel/sched/deadline.c`](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/kernel/sched/deadline.c), both at the commit of the tag v6.6 (`ffc253263a1375a65fa6c9f62a893e9767fbebfa`).
 
 ## The rule
 
 The documentation opens with the name of the rule: "The SCHED_DEADLINE policy contained inside the sched_dl scheduling class is basically an implementation of the Earliest Deadline First (EDF) scheduling algorithm" ([sched-deadline.rst, lines 40 to 42](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/Documentation/scheduler/sched-deadline.rst#L40-L42)). It says what that means for the next task: "the task with the earliest scheduling deadline is selected for execution". ([lines 59 to 60](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/Documentation/scheduler/sched-deadline.rst#L59-L60)) The documentation says how that deadline comes about: "every time the task wakes up, the scheduler computes a "scheduling deadline"" ([line 57](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/Documentation/scheduler/sched-deadline.rst#L57)). This Chapter ignores how it is computed, as the Problem does.
 
-The code keeps the runnable deadline tasks in a red-black tree that is ordered by deadline:
+The code keeps the runnable deadline tasks in a red-black tree that is ordered by deadline ([deadline.c, lines 1524 to 1527](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/kernel/sched/deadline.c#L1524-L1527)):
 
 ```c
 static inline bool __dl_less(struct rb_node *a, const struct rb_node *b)
@@ -39,7 +39,7 @@ The Extra Problem takes the overload question on its own terms, in the job-list 
 
 ## The cost
 
-Sorting n jobs by deadline is O(n log n) in the **worst case**, and one pass over the sorted jobs is O(n). Reading the next task from the kernel's tree is O(1) in the **worst case**, a read of the cached leftmost pointer (above); the Chapter does not cost the inserts. The Extra Problem adds a heap: each job is pushed once and popped at most once, O(n log n) in the **worst case** overall.
+Sorting n jobs by deadline is O(n log n) in the **worst case**, and one pass over the sorted jobs is O(n). Reading the next task from the kernel's tree is O(1) in the **worst case**, a read of the cached leftmost pointer ([rbtree.h, line 106](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/include/linux/rbtree.h#L106)); the Chapter does not cost the inserts. The Extra Problem adds a heap: each job is pushed once and popped at most once, O(n log n) in the **worst case** overall.
 
 ## What the Problems build
 

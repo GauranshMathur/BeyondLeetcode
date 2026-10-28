@@ -72,7 +72,7 @@ func init() {
 			return
 		}
 		if h.Len() == 1 {
-			// zlib forces a second code, so the one symbol still costs one bit each time.
+			// One symbol that occurs still costs one bit each time (the Problem's rule).
 			fmt.Fprintln(out, (*h)[0])
 			return
 		}

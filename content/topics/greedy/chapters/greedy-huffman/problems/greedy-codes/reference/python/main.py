@@ -40,7 +40,7 @@ def huffman(args):
         print(0)
         return
     if len(heap) == 1:
-        # zlib forces a second code, so the one symbol still costs one bit each time.
+        # One symbol that occurs still costs one bit each time (the Problem's rule).
         print(heap[0])
         return
     heapq.heapify(heap)
