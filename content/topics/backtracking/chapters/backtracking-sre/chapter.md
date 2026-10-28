@@ -1,6 +1,6 @@
 # CPython's regex engine: try an alternative, undo it, try the next
 
-Some questions have no formula. Does `a(b|bc)d` match `abcd`? The group offers two ways to go on, and only one of them works. A program that cannot tell in advance has to **try**: pick a way, follow it, and if it fails, go back and pick the other. That is **backtracking**. This Chapter reads how Python's `re` module does it in CPython 3.13.0, and the rule the documentation gives for the order of the tries. In the Problems you build a small matcher that makes the same moves. The list of choices a backtracking search has made so far works like a stack, which the Stacks Topic taught, and the way back is to take choices off it.
+Some questions have no formula. Does `a(b|bc)d` match `abcd`? The group offers two ways to go on, and only one of them works. A program that cannot tell in advance has to **try**: pick a way, follow it, and if it fails, go back and pick the other. That is **backtracking**. This Chapter reads how Python's `re` module does it in CPython 3.13.0 ([the opcode, lines 850 to 881](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Modules/_sre/sre_lib.h#L850-L881)), and the rule the documentation gives for the order of the tries ([lines 300 to 302](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/re.rst#L300-L302)). In the Problems you build a small matcher that makes the same moves. The list of choices a backtracking search has made so far works like a stack, which the Stacks Topic taught, and the way back is to take choices off it.
 
 ## A decision tree
 
@@ -12,7 +12,7 @@ The documentation of `re` says what a `|` means for the order of the tries. "As 
 
 ## The code: save, try, restore
 
-The engine is C code in `Modules/_sre/sre_lib.h`. The opcode for an alternation, `BRANCH`, is the whole loop in 32 lines:
+The engine is C code in [`Modules/_sre/sre_lib.h`](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Modules/_sre/sre_lib.h#L850-L881). The opcode for an alternation, `BRANCH`, is the whole loop in 32 lines:
 
 ```c
 TARGET(SRE_OP_BRANCH):

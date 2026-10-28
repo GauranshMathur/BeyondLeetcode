@@ -1,8 +1,8 @@
 # Resolve versions
 
-pip installs a package by picking a version of it and of everything it needs, newest first, and going back when two choices clash. This Problem builds a small resolver that does that. The reading is [pip: pick the newest, go back when it conflicts](/chapters/backtracking-pip). The rules below are written for this Problem; the Chapter says how pip differs.
+pip installs a package by picking a version of it and of everything it needs, newest first, and going back when two choices clash ([lines 42 to 43](https://github.com/pypa/pip/blob/97146c7f4cd85551f3dc261830a57f304e43c181/docs/html/topics/dependency-resolution.md#L42-L43), [lines 44 to 47](https://github.com/pypa/pip/blob/97146c7f4cd85551f3dc261830a57f304e43c181/docs/html/topics/dependency-resolution.md#L44-L47)). This Problem builds a small resolver that does that. The reading is [pip: pick the newest, go back when it conflicts](/chapters/backtracking-pip). The rules below are written for this Problem; the Chapter says how pip differs.
 
-Packages have lowercase names. A version is a positive whole number. A **range** is two numbers, `LO` and `HI`, and a version is **in** it when `LO <= version <= HI`.
+Packages have lowercase names. A version is a positive whole number up to 1,000,000. A **range** is two numbers, `LO` and `HI`, and a version is **in** it when `LO <= version <= HI`.
 
 Add:
 

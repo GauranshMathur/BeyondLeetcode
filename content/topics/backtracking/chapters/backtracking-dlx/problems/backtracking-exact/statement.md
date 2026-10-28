@@ -1,6 +1,6 @@
 # Exact cover, fewest first
 
-Knuth's paper "Dancing Links" solves exact cover by choosing, at each step, the column that has the fewest rows to choose from, and measures how much that shrinks the search tree on its pentomino puzzle. This Problem makes you do the same and count the nodes. The reading is [Knuth's dancing links: a rule for where to branch](/chapters/backtracking-dlx). This Problem is an Extra: it adds to the Build as it stands after `queens`, and nothing it adds is in the later Problems.
+Knuth's paper "Dancing Links" solves exact cover by choosing, at each step, the column that has the fewest rows to choose from, and measures how much that shrinks the search tree on its pentomino puzzle ([page 4](https://arxiv.org/pdf/cs/0011047v1#page=4), [page 5](https://arxiv.org/pdf/cs/0011047v1#page=5)). This Problem makes you do the same and count the nodes. The reading is [Knuth's dancing links: a rule for where to branch](/chapters/backtracking-dlx). This Problem is an Extra: it adds to the Build as it stands after `queens`, and nothing it adds is in the later Problems.
 
 Add:
 
@@ -21,7 +21,7 @@ The search starts with no rows chosen.
 
 ## Example
 
-This is the example matrix of the paper, with the seven columns A to G numbered 1 to 7, and its six rows.
+This is the example matrix of the paper ([page 2](https://arxiv.org/pdf/cs/0011047v1#page=2)), with the seven columns A to G ([page 5](https://arxiv.org/pdf/cs/0011047v1#page=5)) numbered 1 to 7, and its six rows.
 
 Input:
 

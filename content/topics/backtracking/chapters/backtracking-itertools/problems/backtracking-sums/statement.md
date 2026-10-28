@@ -1,6 +1,6 @@
 # Combinations that reach a sum
 
-`combinations_with_replacement` in Python lets an item be taken more than once, still counting items by position. This Problem lists the ways of reaching a total that way, and gives up on a path as soon as it has gone past the total. The reading is [Python's itertools: positions, not values](/chapters/backtracking-itertools). This Problem is an Extra: it adds to the Build as it stands after `subsets`, and nothing it adds is in the later Problems.
+`combinations_with_replacement` in Python lets an item be taken more than once ([lines 271 to 272](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/itertools.rst#L271-L272)), still counting items by position ([lines 283 to 284](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/itertools.rst#L283-L284)). This Problem lists the ways of reaching a total that way, and gives up on a path as soon as it has gone past the total. The reading is [Python's itertools: positions, not values](/chapters/backtracking-itertools). This Problem is an Extra: it adds to the Build as it stands after `subsets`, and nothing it adds is in the later Problems.
 
 Add:
 

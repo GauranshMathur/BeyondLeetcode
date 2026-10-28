@@ -1,6 +1,6 @@
 # Every subset
 
-Python's `itertools` documents the order in which `combinations` and `permutations` produce their tuples, and says that items are told apart by position, not by value. This Problem builds the list of every subset with the choose, explore, undo loop, in an order its loop gives. The reading is [Python's itertools: positions, not values](/chapters/backtracking-itertools). The order below is written for this Problem; the Chapter says how it differs from the `powerset` recipe.
+Python's `itertools` documents the order in which `combinations` and `permutations` produce their tuples ([lines 236 to 237](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/itertools.rst#L236-L237), [lines 542 to 543](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/itertools.rst#L542-L543)), and says that items are told apart by position, not by value ([lines 240 to 241](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/itertools.rst#L240-L241)). This Problem builds the list of every subset with the choose, explore, undo loop, in an order its loop gives. The reading is [Python's itertools: positions, not values](/chapters/backtracking-itertools). The order below is written for this Problem; the Chapter says how it differs from the `powerset` recipe.
 
 From this Problem the Build holds a list of integers.
 

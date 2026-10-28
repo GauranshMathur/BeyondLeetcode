@@ -9,6 +9,6 @@ Call `search()`, then print `nodes` and its value.
 
 **Why it is right.** The choice of column does not lose answers: every answer covers `col` with exactly one row, and the loop tries every usable row that holds it. A usable row never touches a covered column, so the rows chosen never overlap. The undo restores `covered` to what it was before the row, so the loop's next row sees the same state. The fewest rule picks the column with the fewest branches, and a column with none ends the call at once.
 
-**Cost.** Exact cover is hard: the search can be exponential in the **worst case**, whatever rule picks the column. With R rows, each call is O(R x C) to find the usable rows and the counts. What the rule changes is the number of nodes, as the Chapter shows, not that bound. Space is O(C + R) for the flags and the recursion.
+**Cost.** Exact cover is hard: the search can be exponential in the **worst case**, whatever rule picks the column. With R rows and C columns, each call is O((R + 1) x C) to find the open columns, the usable rows and the counts. What the rule changes is the number of nodes, as the Chapter shows, not that bound. Space is O(C x (R + C)) in the **worst case**, because up to C calls are nested and each keeps its own lists of open columns, usable rows and counts, besides the O(C) flags.
 
 The Reference Code keeps the counts in a map from column to count, and compares them with the column number as the tie-break.

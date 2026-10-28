@@ -1,6 +1,6 @@
 # Place the queens
 
-Knuth's paper "Dancing Links" describes Dijkstra's program for the queens puzzle, which kept three arrays of flags and set and cleared one entry of each as it placed and took back a queen. This Problem builds that search. The reading is [Knuth's dancing links: a rule for where to branch](/chapters/backtracking-dlx).
+Knuth's paper "Dancing Links" describes Dijkstra's program for the queens puzzle, which kept three arrays of flags and set and cleared one entry of each as it placed and took back a queen ([page 2](https://arxiv.org/pdf/cs/0011047v1#page=2)). This Problem builds that search. The reading is [Knuth's dancing links: a rule for where to branch](/chapters/backtracking-dlx).
 
 Add:
 

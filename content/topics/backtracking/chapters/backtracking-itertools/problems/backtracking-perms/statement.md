@@ -1,6 +1,6 @@
 # Every ordering
 
-Python's `permutations` emits every ordering of its input in lexicographic order of the input's own order, and counts items by position. This Problem builds the same list with a search that never takes an item twice. The reading is [Python's itertools: positions, not values](/chapters/backtracking-itertools).
+Python's `permutations` emits every ordering of its input in lexicographic order of the input's own order ([lines 542 to 543](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/itertools.rst#L542-L543)), and counts items by position ([lines 546 to 547](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/itertools.rst#L546-L547)). This Problem builds the same list with a search that never takes an item twice. The reading is [Python's itertools: positions, not values](/chapters/backtracking-itertools).
 
 Add:
 

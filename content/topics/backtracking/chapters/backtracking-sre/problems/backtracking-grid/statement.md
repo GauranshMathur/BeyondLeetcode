@@ -1,6 +1,6 @@
 # Trace a word through a grid
 
-A matcher has a text to walk along. Here the text is a grid of letters, and a word has to be traced through it, one neighbouring cell after another. Marking a cell as used is the choose, and clearing the mark is the undo, the same as the way CPython restores its marks between two alternatives in [CPython's regex engine: try an alternative, undo it, try the next](/chapters/backtracking-sre). This Problem is an Extra: it adds to the Build as it stands after `match`, and nothing it adds is in the later Problems.
+A matcher has a text to walk along. Here the text is a grid of letters, and a word has to be traced through it, one neighbouring cell after another. Marking a cell as used is the choose, and clearing the mark is the undo, the same as the way CPython restores its marks between two alternatives ([code](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Modules/_sre/sre_lib.h#L365-L374)) in [CPython's regex engine: try an alternative, undo it, try the next](/chapters/backtracking-sre). This Problem is an Extra: it adds to the Build as it stands after `match`, and nothing it adds is in the later Problems.
 
 Add:
 

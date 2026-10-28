@@ -1,6 +1,6 @@
 # Go: never enter the same state twice
 
-Backtracking can repeat itself. Two different paths through the choices can arrive at the same situation, and if that situation led nowhere the first time, it leads nowhere the second time. Remembering that and cutting the search short there is **pruning**, and it can change the cost from exponential to linear. This Chapter reads how the `regexp` package of Go 1.22.0 does it, in one engine of that package, the one that backtracks. In the Problems you add the same memory to the matcher from the last Chapter and count what it saves.
+Backtracking can repeat itself. Two different paths through the choices can arrive at the same situation, and if that situation led nowhere the first time, it leads nowhere the second time. Remembering that and cutting the search short there is **pruning**, and it can change the cost from exponential to linear. This Chapter reads how the `regexp` package of Go 1.22.0 does it, in one engine of that package, the one that backtracks ([src/regexp/backtrack.go, lines 12 to 13](https://github.com/golang/go/blob/a10e42f219abb9c5bc4e7d86d9464700a42c7d57/src/regexp/backtrack.go#L12-L13)). In the Problems you add the same memory to the matcher from the last Chapter and count what it saves.
 
 ## Go promises linear time
 
@@ -37,7 +37,7 @@ Why is it safe to skip a state that is entered again? That is this Chapter's own
 
 ## What it costs
 
-Without the set, a pattern of n groups with two alternatives each can have 2^n paths in the **worst case**. With it, the states are the pairs (step, position), at most (S + 1) x (n + 1) of them for S steps and a text of length n. Each state tries at most k alternatives (k is the most options in a step), and checking one against the text costs O(m), where m is the longest alternative. So the search is O(S x n x k x m) in the **worst case**, plus the set operations, which are O(1) in the **expected** case for a hash set (the Hash tables Topic explains why). The price is memory: one bit per pair in Go, one entry per visited pair in the Problems.
+Without the set, a pattern of n groups with two alternatives each can have 2^n paths in the **worst case**. With it, the states are the pairs (step, position), at most (S + 1) x (n + 1) of them for S steps and a text of length n. Each state tries at most k alternatives (k is the most options in a step), and checking one against the text costs O(m), where m is the longest alternative. So the search is O(S x n x k x m) in the **worst case**, plus the set operations, which are O(1) in the **expected** case for a hash set (the Hash tables Topic explains why). The price is memory: one bit per pair in Go ([lines 5 to 10](https://github.com/golang/go/blob/a10e42f219abb9c5bc4e7d86d9464700a42c7d57/src/regexp/backtrack.go#L5-L10)), one entry per visited pair in the Problems.
 
 ## What the Problems build
 

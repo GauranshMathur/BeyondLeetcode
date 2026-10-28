@@ -1,4 +1,4 @@
-Keep three arrays of flags, as in Dijkstra's program: `cols` with N entries, and `diag` and `anti` with 2N - 1 entries each. A queen at row `r` and column `c` (counted from 0) uses `cols[c]`, `diag[r + c]` and `anti[r - c + N - 1]`. Keep `placed`, the columns so far, counted from 1, a counter of ways, and a copy of the first way.
+Keep three arrays of flags: `cols` with N entries, and `diag` and `anti` with 2N - 1 entries each. A queen at row `r` and column `c` (counted from 0) uses `cols[c]`, `diag[r + c]` and `anti[r - c + N - 1]`. Keep `placed`, the columns so far, counted from 1, a counter of ways, and a copy of the first way.
 
 A function `place(row)`:
 

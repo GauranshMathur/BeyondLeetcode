@@ -1,6 +1,6 @@
 # Knuth's dancing links: a rule for where to branch
 
-Some problems are not about listing everything. They ask for the arrangements that obey every rule: place eight queens so none attack each other, or fill a board with pieces that must not overlap. They are **constraint puzzles**. The loop is the same as before, but now there are two questions: how to undo a choice cheaply, and which choice to make first. Donald Knuth's paper "Dancing Links" (arXiv, November 2000, version 1) is about both. This Chapter reads it. In the Problems you place queens with the paper's cheapest undo, and then solve exact cover with its rule for choosing where to branch.
+Some problems are not about listing everything. They ask for the arrangements that obey every rule: place eight queens so none attack each other, or fill a board with pieces that must not overlap. They are **constraint puzzles**. The loop is the same as before, but now there are two questions: how to undo a choice cheaply, and which choice to make first. Donald Knuth's paper "Dancing Links" (arXiv, 15 November 2000, version 1; [page 1](https://arxiv.org/pdf/cs/0011047v1#page=1)) is about both. This Chapter reads it. In the Problems you place queens with the paper's cheapest undo, and then solve exact cover with its rule for choosing where to branch.
 
 ## What backtracking is, and two ways to undo
 
@@ -24,4 +24,4 @@ Exact cover can take exponential time in the **worst case**; the number of nodes
 
 ## What the Problems build
 
-`queens N` counts the ways to place N queens and prints the first, using three arrays of flags as in the paper. It is a Core Problem. The Extra Problem `exact` solves an exact cover from a list of rows with the fewest-1s rule, and prints the solutions and the number of nodes in its search, so the order of the choices shows in the count. Its first example is the paper's matrix, whose answer is rows 1, 4 and 5.
+`queens N` counts the ways to place N queens and prints the first, using three arrays of flags as in the paper ([page 2](https://arxiv.org/pdf/cs/0011047v1#page=2)). It is a Core Problem. The Extra Problem `exact` solves an exact cover from a list of rows with the fewest-1s rule, and prints the solutions and the number of nodes in its search, so the order of the choices shows in the count. Its first example is the paper's matrix, whose answer is rows 1, 4 and 5 ([page 2](https://arxiv.org/pdf/cs/0011047v1#page=2)).
