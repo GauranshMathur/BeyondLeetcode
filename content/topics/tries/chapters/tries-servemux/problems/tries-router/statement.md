@@ -1,4 +1,4 @@
-Go's `ServeMux` is a trie whose keys are the segments of a path. Add a router that matches paths to patterns, and that backs up when a literal segment leads nowhere.
+Go's `ServeMux` is a trie whose keys are the segments of a path. Add a router that matches paths to patterns, and that backs up when a literal segment leads nowhere. The source for each claim is in [Go ServeMux: a tree of path segments](/chapters/tries-servemux).
 
 A **path** starts with `/` and has segments separated by `/`: `/a/b/c` has the segments `a`, `b`, `c`. The path `/` has no segments. A segment is 1 to 10 lowercase letters or digits. A **pattern** is written like a path, except that a segment may be a wildcard `{name}` instead (`name` is 1 to 10 lowercase letters). A wildcard matches exactly one segment, never zero and never two.
 

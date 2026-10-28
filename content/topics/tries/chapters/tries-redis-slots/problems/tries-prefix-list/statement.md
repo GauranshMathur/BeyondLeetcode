@@ -1,4 +1,4 @@
-Redis Cluster keeps its shard channels in a trie under a two-byte slot prefix, and finds the channels of one slot by seeking to the prefix and reading forward. Add the same question to the Build: which stored keys start with this prefix?
+Redis Cluster keeps its shard channels in a trie under a two-byte slot prefix, and finds the channels of one slot by seeking to the prefix and reading forward. Add the same question to the Build: which stored keys start with this prefix? The source for each claim is in [Redis Cluster: listing by prefix](/chapters/tries-redis-slots).
 
 New commands:
 

@@ -1,4 +1,4 @@
-Redis reads the channels of a slot by prefix. A search box wants something else from the same prefix: only the best few keys. Use the value stored with each key as its score, and answer for a prefix with the keys that score highest.
+Redis reads the channels of a slot by prefix. A search box wants something else from the same prefix: only the best few keys. Use the value stored with each key as its score, and answer for a prefix with the keys that score highest. The source for each claim is in [Redis Cluster: listing by prefix](/chapters/tries-redis-slots).
 
 New command:
 

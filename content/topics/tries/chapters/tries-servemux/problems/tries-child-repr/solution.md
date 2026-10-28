@@ -2,6 +2,6 @@ Add one boolean to each node, "has been a map". When `add` creates a child and t
 
 `shape` walks all the nodes, the root included. A node with the flag counts as a map. Otherwise a node with at least one child counts as a slice. A leaf that was never a map counts nowhere.
 
-This is the choice Go makes in `mapping.add`: it appends to a slice while `len(h.s) < maxSlice`, and when the ninth pair arrives it builds a map and drops the slice. Nothing in that file turns the map back, which is why the flag is never cleared.
+This is the choice Go makes in `mapping.add`: it appends to a slice while `len(h.s) < maxSlice`, and when the ninth pair arrives it builds a map and drops the slice. Nothing in that file turns the map back, which is why the flag is never cleared. The lines are in [Go ServeMux: a tree of path segments](/chapters/tries-servemux).
 
 Cost: `add` and `del` stay as they were in Problem 1, O(L) expected for a key of L characters, and the flag adds O(1) to a step. `shape` is one pass, O(N) for N nodes.

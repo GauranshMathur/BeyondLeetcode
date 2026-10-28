@@ -1,4 +1,4 @@
-Redis's rax stores a chain of nodes that each have one child as a single node. The tree your Build keeps does not. Count how many nodes it would need if it did.
+Redis's rax stores a chain of nodes that each have one child as a single node. The tree your Build keeps does not. Count how many nodes it would need if it did. The source for each claim is in [Redis rax: the edge lives in the parent](/chapters/tries-rax).
 
 New command:
 

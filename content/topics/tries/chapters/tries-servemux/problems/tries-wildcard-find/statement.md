@@ -1,4 +1,4 @@
-A ServeMux wildcard matches exactly one segment. Give the trie the same for characters: count the stored keys that fit a pattern in which a dot stands for any one character.
+A ServeMux wildcard matches exactly one segment. Give the trie the same for characters: count the stored keys that fit a pattern in which a dot stands for any one character. The source for each claim is in [Go ServeMux: a tree of path segments](/chapters/tries-servemux).
 
 New command:
 

@@ -1,4 +1,4 @@
-Build the tree that Redis's rax starts from: a trie that holds a set of keys, one character per level, with an integer value for each key.
+Build the tree that Redis's rax starts from: a trie that holds a set of keys, one character per level, with an integer value for each key. The source for each claim is in [Redis rax: the edge lives in the parent](/chapters/tries-rax).
 
 The program reads commands from standard input, one per line, and prints what each command says it prints. A line with no command is empty and is ignored. A key is 1 to 20 characters, each a lowercase letter or a digit. A value is an integer from 0 to 1,000,000,000. There are at most 2,000 commands.
 

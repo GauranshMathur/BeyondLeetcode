@@ -1,4 +1,4 @@
-Go's `ServeMux` keeps the children of a node in a slice while there are at most 8 of them, and in a map after that. Report how many nodes of your tree would use each.
+Go's `ServeMux` keeps the children of a node in a slice while there are at most 8 of them, and in a map after that. Report how many nodes of your tree would use each. The source for each claim is in [Go ServeMux: a tree of path segments](/chapters/tries-servemux).
 
 New command:
 

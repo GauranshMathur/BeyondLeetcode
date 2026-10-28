@@ -1,4 +1,4 @@
-A router chooses where to send a packet by the longest prefix of its address that has a route. Add a route table to the Build, kept as a trie with one level for each bit of the address.
+A router chooses where to send a packet by the longest prefix of its address that has a route. Add a route table to the Build, kept as a trie with one level for each bit of the address. The source for each claim is in [Linux FIB: the longest matching route](/chapters/tries-fib-trie).
 
 A **prefix** is written `a.b.c.d/n`: four octets, each a decimal number from 0 to 255 (the address as 32 bits, first octet first), then a slash and a length `n` from 0 to 32. It stands for the first `n` bits of the address. `10.0.0.0/8` covers every address whose first octet is 10. `0.0.0.0/0` covers every address.
 

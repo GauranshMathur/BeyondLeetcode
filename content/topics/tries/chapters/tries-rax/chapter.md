@@ -23,7 +23,7 @@ The header is four bit fields:
 
 ([lines 99 to 102](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.h#L99-L102))
 
-Put the pieces together. A node with `size` children takes `size` bytes of characters and `size` pointers, and a node with no children takes neither. The cost follows the children a node has, not the size of the alphabet. That is the memory side of the decision. The rax project's README gives the speed side: "Edges are stored as arrays of bytes directly in the parent node, no need to access non useful children while trying to find a match." ([README.md, line 30](https://github.com/antirez/rax/blob/1927550cb218ec3c3dda8b39d82d1d019bf0476d/README.md#L30)) It adds that the edge characters and the edge pointers are kept as "two separated arrays: an array of edge chars and one of edge pointers" ([line 31](https://github.com/antirez/rax/blob/1927550cb218ec3c3dda8b39d82d1d019bf0476d/README.md#L31)), so a lookup scans the characters in one place and follows a pointer only when it finds a match. The README is the standalone rax project's, pinned to a commit.
+Put the pieces together. A node with `size` children takes `size` bytes of characters and `size` pointers, and a node with no children takes neither. The cost follows the children a node has, not the size of the alphabet. That is the memory side of the decision. The rax project's README gives the speed side: "Edges are stored as arrays of bytes directly in the parent node, no need to access non useful children while trying to find a match." ([README.md, line 30](https://github.com/antirez/rax/blob/1927550cb218ec3c3dda8b39d82d1d019bf0476d/README.md#L30)) It adds that the edge characters and the edge pointers are kept as "two separated arrays: an array of edge chars and one of edge pointers" ([line 31](https://github.com/antirez/rax/blob/1927550cb218ec3c3dda8b39d82d1d019bf0476d/README.md#L31)), so the characters sit side by side in memory, as the layout above shows. The README is the standalone rax project's, pinned to a commit.
 
 Your Build stores each node's children in a hash map instead of two packed arrays, so each step down is one lookup, O(1) **expected**. A call on a key of L characters walks at most L + 1 nodes, which is O(L) expected. rax scans the characters of a node, so its cost at each level grows with the number of children that node has.
 
@@ -40,10 +40,6 @@ The optimisation has a price, which the comment also states. Adding "first" mean
 Which nodes may share a chain? The code that recompresses after a delete says: "Compressed nodes represent chains of nodes that are not keys and have a single child". ([src/rax.c, lines 1095 to 1096](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.c#L1095-L1096)) The function that builds a chain adds one case: the node it turns into a chain "can be a key or not: this property and the associated value if any will be preserved." ([lines 391 to 392](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/rax.c#L391-L392)) So the first node of a chain may be a key, and the nodes it absorbs may not.
 
 Problem 2 turns those sentences into a rule you can count with. Read it as this Problem's rule, written from the comments above. It is not a copy of rax's code, and the Problem does not claim that rax's own node counter would agree with it after every sequence of inserts and deletes.
-
-## Who uses it
-
-A stream keeps its entries in a rax, and the same struct keeps its consumer groups in another: `rax *cgroups; /* Consumer groups dictionary: name -> streamCG */` ([src/stream.h, line 23](https://github.com/redis/redis/blob/f60370ce28b946c1146dcea77c9c399d39601aaa/src/stream.h#L23)). So a trie is not only for prefixes: Redis also uses it as a dictionary from a name to a value.
 
 ## What the Build leaves out
 
