@@ -1,0 +1,15 @@
+sched t1 1
+sched t3 3
+sched t2 2
+sched t8 8
+sched t5 5
+sched t4 4
+sched t7 7
+show
+cancel t1
+show
+cancel t7
+show
+cancel t5
+show
+size

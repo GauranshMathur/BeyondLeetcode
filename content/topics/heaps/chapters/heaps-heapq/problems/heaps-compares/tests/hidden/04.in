@@ -1,0 +1,52 @@
+push -24
+push 6
+push -40
+push -32
+push 22
+push 10
+push 3
+push -5
+push -4
+push -37
+push -6
+push 4
+push 45
+push -41
+push -33
+push -50
+push -17
+push 14
+push 19
+push -43
+push 29
+push 12
+push -46
+push -49
+push -10
+push 42
+push -16
+push 27
+push 44
+push 35
+push 33
+cmp
+pop
+pop
+pop
+pop
+pop
+cmp
+pop
+pop
+pop
+pop
+pop
+cmp
+pop
+pop
+pop
+pop
+pop
+cmp
+show
+size

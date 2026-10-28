@@ -1,0 +1,14 @@
+init -7 25 29 17 16 39 3 -36 -26 -21 24 -6 11 31 35 -32 36 1 8 7 -13 28
+show
+cmp
+push 0
+show
+cmp
+pop
+pop
+pop
+pop
+pop
+pop
+show
+cmp

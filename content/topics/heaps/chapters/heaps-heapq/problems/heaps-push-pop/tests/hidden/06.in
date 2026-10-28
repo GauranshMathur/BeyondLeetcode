@@ -1,0 +1,15 @@
+push 2
+peek
+push 1
+push 0
+push 1
+push 2
+pop
+show
+pop
+show
+push 1
+push 1
+show
+pop
+show

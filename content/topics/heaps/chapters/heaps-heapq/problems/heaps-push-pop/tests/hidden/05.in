@@ -1,0 +1,54 @@
+pop
+push -1
+pop
+push -4
+show
+show
+show
+peek
+push 2
+show
+show
+push -5
+pop
+size
+push 3
+show
+peek
+show
+show
+size
+pop
+pop
+pop
+pop
+show
+peek
+push -5
+push 3
+peek
+show
+push 6
+show
+pop
+pop
+show
+push 2
+push -5
+peek
+show
+push -3
+size
+push -2
+show
+push -3
+pop
+pop
+pop
+pop
+pop
+pop
+pop
+size
+pop
+show

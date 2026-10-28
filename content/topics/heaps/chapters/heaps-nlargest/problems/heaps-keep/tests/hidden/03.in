@@ -1,0 +1,15 @@
+keep 2
+push 5
+push 5
+push 5
+show
+cmp
+push 7
+show
+push 5
+show
+cmp
+push 6
+show
+peek
+cmp

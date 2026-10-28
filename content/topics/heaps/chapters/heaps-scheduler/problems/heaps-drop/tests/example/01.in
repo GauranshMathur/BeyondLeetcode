@@ -1,0 +1,13 @@
+sched a 10
+sched b 20
+sched c 30
+drop a
+size
+advance 0
+size
+show
+drop c
+advance 15
+size
+advance 20
+size

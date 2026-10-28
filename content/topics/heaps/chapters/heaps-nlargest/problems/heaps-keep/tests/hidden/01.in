@@ -1,0 +1,15 @@
+keep 1
+peek
+push 4
+peek
+push 9
+peek
+push 2
+peek
+push 9
+peek
+push 11
+peek
+push 1
+peek
+size

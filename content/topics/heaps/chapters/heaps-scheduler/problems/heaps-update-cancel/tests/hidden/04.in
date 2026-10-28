@@ -1,0 +1,15 @@
+sched a 5
+sched b 6
+update q 1
+cancel q
+cancel a
+cancel a
+update a 2
+advance 6
+cancel b
+update b 1
+sched a 9
+show
+cancel a
+show
+size

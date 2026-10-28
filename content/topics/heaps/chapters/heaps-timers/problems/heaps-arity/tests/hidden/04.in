@@ -1,0 +1,32 @@
+arity 5
+pop
+show
+sched t1 3
+sched t2 17
+sched t3 0
+sched t4 13
+sched t5 14
+sched t6 15
+sched t7 15
+sched t8 3
+sched t9 5
+sched t10 17
+sched t11 0
+sched t12 3
+sched t13 8
+sched t14 7
+sched t15 17
+sched t16 19
+sched t17 2
+sched t18 14
+sched t19 7
+sched t20 18
+sched t21 12
+sched t22 1
+sched t23 5
+sched t24 3
+show
+advance 6
+show
+advance 100
+size

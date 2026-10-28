@@ -1,0 +1,12 @@
+sched t1 1
+sched t10 10
+sched t2 2
+sched t11 11
+sched t12 12
+sched t3 3
+sched t4 4
+show
+cancel t11
+show
+cancel t12
+show
