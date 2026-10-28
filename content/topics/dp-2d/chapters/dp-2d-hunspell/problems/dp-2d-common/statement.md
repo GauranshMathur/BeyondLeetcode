@@ -1,6 +1,6 @@
 # Letters two words share
 
-Hunspell scores a suggestion by the length of the longest common subsequence of the typed word and the guess ([the Chapter](/chapters/dp-2d-hunspell) reads how). You start the Build that holds the programs of this Topic, and the first one finds that length with a table.
+Hunspell uses the length of the longest common subsequence of the typed word and a guess when it scores the guess ([the Chapter](/chapters/dp-2d-hunspell) reads how). You start the Build that holds the programs of this Topic, and the first one finds that length with a table.
 
 The Build reads commands from standard input, one per line, and works on two **words**, the **first** and the **second**. Blank lines are ignored. Both start empty. A word is 0 to 1000 lowercase letters (`a` to `z`), and an **empty word** is written `-`, both when you read it and when you print it. Commands that print, print one line.
 
