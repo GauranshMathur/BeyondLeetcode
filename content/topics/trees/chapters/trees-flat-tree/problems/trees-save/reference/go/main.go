@@ -317,15 +317,14 @@ func init() {
 	}
 }
 
-// levelsOf returns the nodes of each level, from the root down.
-func levelsOf(top *node) [][]*node {
-	var result [][]*node
+// eachLevel calls visit with the nodes of each level, from the root down, one level at a time.
+func eachLevel(top *node, visit func(level []*node)) {
 	var level []*node
 	if top != nil {
 		level = []*node{top}
 	}
 	for len(level) > 0 {
-		result = append(result, level)
+		visit(level)
 		var next []*node
 		for _, n := range level {
 			if n.left != nil {
@@ -337,42 +336,37 @@ func levelsOf(top *node) [][]*node {
 		}
 		level = next
 	}
-	return result
 }
 
 func init() {
 	commands["levels"] = func(args []string) {
-		for _, level := range levelsOf(root) {
+		eachLevel(root, func(level []*node) {
 			values := make([]string, len(level))
 			for i, n := range level {
 				values[i] = strconv.Itoa(n.value)
 			}
 			fmt.Fprintln(out, strings.Join(values, " "))
-		}
+		})
 	}
 }
 
-// pathTo returns the nodes from n down to the one holding value, or nil if it is not below n.
-func pathTo(n *node, value int) []*node {
+// pathTo adds to path the nodes from n down to the one holding value. It returns whether it is there.
+func pathTo(n *node, value int, path *[]*node) bool {
 	if n == nil {
-		return nil
+		return false
 	}
-	if n.value == value {
-		return []*node{n}
+	*path = append(*path, n)
+	if n.value == value || pathTo(n.left, value, path) || pathTo(n.right, value, path) {
+		return true
 	}
-	for _, child := range []*node{n.left, n.right} {
-		if below := pathTo(child, value); below != nil {
-			return append([]*node{n}, below...)
-		}
-	}
-	return nil
+	*path = (*path)[:len(*path)-1]
+	return false
 }
 
 func init() {
 	commands["lca"] = func(args []string) {
-		first := pathTo(root, number(args[0]))
-		second := pathTo(root, number(args[1]))
-		if first == nil || second == nil {
+		var first, second []*node
+		if !(pathTo(root, number(args[0]), &first) && pathTo(root, number(args[1]), &second)) {
 			fmt.Fprintln(out, "none")
 			return
 		}
@@ -384,11 +378,16 @@ func init() {
 	}
 }
 
-func encode(n *node) string {
+func encode(n *node, text *strings.Builder) {
 	if n == nil {
-		return "."
+		text.WriteString(".")
+		return
 	}
-	return "(" + strconv.Itoa(n.value) + " " + encode(n.left) + " " + encode(n.right) + ")"
+	text.WriteString("(" + strconv.Itoa(n.value) + " ")
+	encode(n.left, text)
+	text.WriteString(" ")
+	encode(n.right, text)
+	text.WriteString(")")
 }
 
 // decode reads one subtree starting at text[pos]. It returns it and the position after it.
@@ -405,7 +404,9 @@ func decode(text string, pos int) (*node, int) {
 
 func init() {
 	commands["save"] = func(args []string) {
-		fmt.Fprintln(out, encode(root))
+		var text strings.Builder
+		encode(root, &text)
+		fmt.Fprintln(out, text.String())
 	}
 	commands["restore"] = func(args []string) {
 		next, _ := decode(strings.Join(args, " "), 0)

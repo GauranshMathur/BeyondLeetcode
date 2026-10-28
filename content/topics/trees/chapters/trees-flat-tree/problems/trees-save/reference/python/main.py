@@ -257,13 +257,11 @@ def walk(args):
 commands["walk"] = walk
 
 def levels_of(top):
-    """The nodes of each level, from the root down."""
-    result = []
+    """Yields the nodes of each level, from the root down, one level at a time."""
     level = [top] if top is not None else []
     while level:
-        result.append(level)
+        yield level
         level = [child for n in level for child in (n.left, n.right) if child is not None]
-    return result
 
 
 def levels(args):
@@ -273,23 +271,20 @@ def levels(args):
 
 commands["levels"] = levels
 
-def path_to(node, value):
-    """The nodes from node down to the one holding value, or None if it is not below node."""
+def path_to(node, value, path):
+    """Adds to path the nodes from node down to the one holding value. Returns whether it is there."""
     if node is None:
-        return None
-    if node.value == value:
-        return [node]
-    for child in (node.left, node.right):
-        below = path_to(child, value)
-        if below is not None:
-            return [node] + below
-    return None
+        return False
+    path.append(node)
+    if node.value == value or path_to(node.left, value, path) or path_to(node.right, value, path):
+        return True
+    path.pop()
+    return False
 
 
 def lca(args):
-    first = path_to(root, int(args[0]))
-    second = path_to(root, int(args[1]))
-    if first is None or second is None:
+    first, second = [], []
+    if not (path_to(root, int(args[0]), first) and path_to(root, int(args[1]), second)):
         print("none")
         return
     common = None
@@ -302,14 +297,21 @@ def lca(args):
 
 commands["lca"] = lca
 
-def encode(node):
+def encode(node, parts):
     if node is None:
-        return "."
-    return "(" + str(node.value) + " " + encode(node.left) + " " + encode(node.right) + ")"
+        parts.append(".")
+        return
+    parts.append("(" + str(node.value) + " ")
+    encode(node.left, parts)
+    parts.append(" ")
+    encode(node.right, parts)
+    parts.append(")")
 
 
 def save(args):
-    print(encode(root))
+    parts = []
+    encode(root, parts)
+    print("".join(parts))
 
 
 def decode(text, pos):

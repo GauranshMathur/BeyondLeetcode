@@ -257,13 +257,11 @@ def walk(args):
 commands["walk"] = walk
 
 def levels_of(top):
-    """The nodes of each level, from the root down."""
-    result = []
+    """Yields the nodes of each level, from the root down, one level at a time."""
     level = [top] if top is not None else []
     while level:
-        result.append(level)
+        yield level
         level = [child for n in level for child in (n.left, n.right) if child is not None]
-    return result
 
 
 def levels(args):

@@ -12,7 +12,7 @@ The Build reads commands from standard input, one per line, and works on one **b
 
 **Tokens.** Each token is an integer or `-`, which means "no node here". The first token is the root; a lone `-` is the empty tree. After that, each node that exists, in the order the tokens listed them, takes the next two tokens as its left child and its right child. When the tokens run out, every child still waiting is absent. The tokens always describe a whole tree: none is left over. `show` writes a tree in this form with the fewest tokens: it stops after the last node that exists, so it never ends with `-`.
 
-Values are integers and may repeat or be negative.
+Every integer in the Build, from here on (values, keys and limits), has an absolute value of at most 1,000,000,000. Values may repeat and may be negative.
 
 ## Example
 

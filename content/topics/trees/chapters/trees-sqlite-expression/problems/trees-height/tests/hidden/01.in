@@ -1,9 +1,12 @@
 show
+
 height
+   
 tree 5
 show
 height
 tree -
+
 show
 height
 tree 8 - 9

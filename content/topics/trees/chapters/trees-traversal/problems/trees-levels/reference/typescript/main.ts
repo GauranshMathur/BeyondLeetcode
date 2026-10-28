@@ -225,12 +225,11 @@ commands.walk = (args) => {
 	out.push(values.join(' '));
 };
 
-/** The nodes of each level, from the root down. */
-function levelsOf(top: TreeNode | null): TreeNode[][] {
-	const result: TreeNode[][] = [];
+/** Yields the nodes of each level, from the root down, one level at a time. */
+function* levelsOf(top: TreeNode | null): Generator<TreeNode[]> {
 	let level: TreeNode[] = top === null ? [] : [top];
 	while (level.length > 0) {
-		result.push(level);
+		yield level;
 		const next: TreeNode[] = [];
 		for (const node of level) {
 			if (node.left !== null) next.push(node.left);
@@ -238,7 +237,6 @@ function levelsOf(top: TreeNode | null): TreeNode[][] {
 		}
 		level = next;
 	}
-	return result;
 }
 
 commands.levels = () => {

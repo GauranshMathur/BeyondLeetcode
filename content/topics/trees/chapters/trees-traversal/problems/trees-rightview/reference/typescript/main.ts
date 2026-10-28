@@ -225,12 +225,11 @@ commands.walk = (args) => {
 	out.push(values.join(' '));
 };
 
-/** The nodes of each level, from the root down. */
-function levelsOf(top: TreeNode | null): TreeNode[][] {
-	const result: TreeNode[][] = [];
+/** Yields the nodes of each level, from the root down, one level at a time. */
+function* levelsOf(top: TreeNode | null): Generator<TreeNode[]> {
 	let level: TreeNode[] = top === null ? [] : [top];
 	while (level.length > 0) {
-		result.push(level);
+		yield level;
 		const next: TreeNode[] = [];
 		for (const node of level) {
 			if (node.left !== null) next.push(node.left);
@@ -238,7 +237,6 @@ function levelsOf(top: TreeNode | null): TreeNode[][] {
 		}
 		level = next;
 	}
-	return result;
 }
 
 commands.levels = () => {
@@ -246,11 +244,9 @@ commands.levels = () => {
 };
 
 commands.rightview = () => {
-	out.push(
-		levelsOf(root)
-			.map((level) => level[level.length - 1].value)
-			.join(' ')
-	);
+	const values: number[] = [];
+	for (const level of levelsOf(root)) values.push(level[level.length - 1].value);
+	out.push(values.join(' '));
 };
 
 for (const line of readFileSync(0, 'utf8').split('\n')) {

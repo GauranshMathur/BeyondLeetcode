@@ -225,12 +225,11 @@ commands.walk = (args) => {
 	out.push(values.join(' '));
 };
 
-/** The nodes of each level, from the root down. */
-function levelsOf(top: TreeNode | null): TreeNode[][] {
-	const result: TreeNode[][] = [];
+/** Yields the nodes of each level, from the root down, one level at a time. */
+function* levelsOf(top: TreeNode | null): Generator<TreeNode[]> {
 	let level: TreeNode[] = top === null ? [] : [top];
 	while (level.length > 0) {
-		result.push(level);
+		yield level;
 		const next: TreeNode[] = [];
 		for (const node of level) {
 			if (node.left !== null) next.push(node.left);
@@ -238,28 +237,27 @@ function levelsOf(top: TreeNode | null): TreeNode[][] {
 		}
 		level = next;
 	}
-	return result;
 }
 
 commands.levels = () => {
 	for (const level of levelsOf(root)) out.push(level.map((n) => n.value).join(' '));
 };
 
-/** The nodes from node down to the one holding value, or null if it is not below node. */
-function pathTo(node: TreeNode | null, value: number): TreeNode[] | null {
-	if (node === null) return null;
-	if (node.value === value) return [node];
-	for (const child of [node.left, node.right]) {
-		const below = pathTo(child, value);
-		if (below !== null) return [node, ...below];
+/** Adds to path the nodes from node down to the one holding value. Returns whether it is there. */
+function pathTo(node: TreeNode | null, value: number, path: TreeNode[]): boolean {
+	if (node === null) return false;
+	path.push(node);
+	if (node.value === value || pathTo(node.left, value, path) || pathTo(node.right, value, path)) {
+		return true;
 	}
-	return null;
+	path.pop();
+	return false;
 }
 
 commands.lca = (args) => {
-	const first = pathTo(root, Number(args[0]));
-	const second = pathTo(root, Number(args[1]));
-	if (first === null || second === null) {
+	const first: TreeNode[] = [];
+	const second: TreeNode[] = [];
+	if (!(pathTo(root, Number(args[0]), first) && pathTo(root, Number(args[1]), second))) {
 		out.push('none');
 		return;
 	}

@@ -317,15 +317,14 @@ func init() {
 	}
 }
 
-// levelsOf returns the nodes of each level, from the root down.
-func levelsOf(top *node) [][]*node {
-	var result [][]*node
+// eachLevel calls visit with the nodes of each level, from the root down, one level at a time.
+func eachLevel(top *node, visit func(level []*node)) {
 	var level []*node
 	if top != nil {
 		level = []*node{top}
 	}
 	for len(level) > 0 {
-		result = append(result, level)
+		visit(level)
 		var next []*node
 		for _, n := range level {
 			if n.left != nil {
@@ -337,18 +336,17 @@ func levelsOf(top *node) [][]*node {
 		}
 		level = next
 	}
-	return result
 }
 
 func init() {
 	commands["levels"] = func(args []string) {
-		for _, level := range levelsOf(root) {
+		eachLevel(root, func(level []*node) {
 			values := make([]string, len(level))
 			for i, n := range level {
 				values[i] = strconv.Itoa(n.value)
 			}
 			fmt.Fprintln(out, strings.Join(values, " "))
-		}
+		})
 	}
 }
 
