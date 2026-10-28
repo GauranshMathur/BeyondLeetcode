@@ -237,9 +237,7 @@ commands.waves = () => {
 
 commands.same = (args) => {
 	const [a, b] = args;
-	printed.push(
-		parents.has(a) && parents.has(b) && find(parents, a) === find(parents, b) ? 'yes' : 'no'
-	);
+	printed.push(parents.has(a) && parents.has(b) && find(parents, a) === find(parents, b) ? 'yes' : 'no');
 };
 
 commands.groups = () => {
@@ -282,7 +280,13 @@ commands.farthest = (args) => {
 		return;
 	}
 	const dist = search(args[0]);
-	printed.push(dist.size === names.length ? String(Math.max(...dist.values())) : 'none');
+	if (dist.size !== names.length) {
+		printed.push('none');
+		return;
+	}
+	let slowest = 0;
+	for (const d of dist.values()) slowest = Math.max(slowest, d);
+	printed.push(String(slowest));
 };
 
 for (const line of readFileSync(0, 'utf8').split('\n')) {

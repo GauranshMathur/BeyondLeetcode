@@ -1,6 +1,6 @@
 # Python graphlib: tasks that are ready
 
-A build has tasks, and some tasks must finish before others start. Draw an arrow from each task to the ones that wait for it and you have a directed graph, and the question is in what order to run the tasks. This Chapter reads how Python 3.13 answers it in the standard library's `graphlib` module, and what two other tools do differently.
+A build has tasks, and some tasks must finish before others start. Draw an arrow from each task to the ones that wait for it and you have a directed graph, and the question is in what order to run the tasks. This Chapter reads how Python 3.13 answers it in the standard library's `graphlib` module ([graphlib, Python 3.13 documentation](https://docs.python.org/3.13/library/graphlib.html)), and what two other tools do differently.
 
 ## An order the arrows allow
 

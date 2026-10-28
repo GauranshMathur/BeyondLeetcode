@@ -1,6 +1,6 @@
 # Boost.Graph: a matrix or a list
 
-A **graph** is a set of **vertices** joined by **edges**. In this Topic a vertex is a **node** with a name, and an edge goes from one node to another, so it has a direction. Before any algorithm can run, the program has to decide how to hold the graph in memory. There are two classic ways, and this Chapter reads how Boost.Graph, a C++ graph library, offers both and says when to use which. It uses Boost 1.85.0. The Build you start in the Problems keeps each node's edges in a map from a name to a list, and the map is the one [Hash tables](/chapters/hash-tables-cpython-dict) taught.
+A **graph** is a set of **vertices** joined by **edges**. In this Topic a vertex is a **node** with a name, and an edge goes from one node to another, so it has a direction. Before any algorithm can run, the program has to decide how to hold the graph in memory. There are two classic ways, and this Chapter reads how Boost.Graph, a C++ graph library, offers both and says when to use which ([Graph Theory Review, lines 201 to 204 (Boost 1.85.0)](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/graph_theory_review.html#L201-L204)). The Build you start in the Problems keeps each node's edges in a map from a name to a list, and the map is the one [Hash tables](/chapters/hash-tables-cpython-dict) taught.
 
 ## The property that decides: how many edges there are
 

@@ -1,6 +1,6 @@
 # Linux lockdep: the shortest way round a cycle
 
-A search asks one question about a graph: starting here, what can I reach? There are two orders to ask it in, and this Chapter reads a real program that had to pick one: the Linux kernel's lock validator, in v6.6. In the Problems you build both searches. If you have walked a tree ([Walking a tree: Go goes deep, bfs goes wide](/chapters/trees-traversal)), the new part is that a graph node can be reached by more than one route, so a search must remember where it has been.
+A search asks one question about a graph: starting here, what can I reach? There are two orders to ask it in, and this Chapter reads a real program that had to pick one: the Linux kernel's lock validator, lockdep, in v6.6 ([kernel/locking/lockdep.c, lines 12 to 16](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/kernel/locking/lockdep.c#L12-L16)). In the Problems you build both searches. If you have walked a tree ([Walking a tree: Go goes deep, bfs goes wide](/chapters/trees-traversal)), the new part is that a graph node can be reached by more than one route, so a search must remember where it has been.
 
 ## Locks as a graph
 

@@ -2,4 +2,4 @@ Run the search of `cost` and keep a count for each node beside its total. `A` ha
 
 The cost is the search, O((V + E) log V) in the **worst case**, with the counts adding O(V) space. The counts can be large: a chain of `k` diamonds has 2^k cheapest routes. That is why the Tests stay below 10^15.
 
-The RFC says OSPF uses such routes; this Problem only counts them.
+The RFC says OSPF uses such routes ("if multiple equal-cost routes to a destination exist, they are all discovered and used", [RFC 2328, section 2](https://www.rfc-editor.org/rfc/rfc2328.html#section-2)); this Problem only counts them.

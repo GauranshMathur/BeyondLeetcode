@@ -14,7 +14,7 @@ var (
 	out      = map[string][]string{} // node -> the nodes it has an edge to, in the order added
 	parents  = map[string]string{}   // union-find: node -> its parent; a root is its own parent
 	ranks    = map[string]int{}      // union-find: root -> an upper bound on its tree's height
-	rows []string                    // the grid, one string of 0 and 1 per row
+	rows     []string                // the grid, one string of 0 and 1 per row
 	commands = map[string]func(args []string){}
 	printer  = bufio.NewWriter(os.Stdout)
 )
@@ -96,10 +96,14 @@ func init() {
 func init() {
 	commands["matrix"] = func(args []string) {
 		for _, a := range names {
+			targets := map[string]bool{}
+			for _, t := range out[a] {
+				targets[t] = true
+			}
 			row := make([]string, len(names))
 			for i, b := range names {
 				row[i] = "0"
-				if slices.Contains(out[a], b) {
+				if targets[b] {
 					row[i] = "1"
 				}
 			}

@@ -99,10 +99,14 @@ func init() {
 func init() {
 	commands["matrix"] = func(args []string) {
 		for _, a := range names {
+			targets := map[string]bool{}
+			for _, t := range out[a] {
+				targets[t] = true
+			}
 			row := make([]string, len(names))
 			for i, b := range names {
 				row[i] = "0"
-				if slices.Contains(out[a], b) {
+				if targets[b] {
 					row[i] = "1"
 				}
 			}

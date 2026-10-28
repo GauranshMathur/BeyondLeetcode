@@ -1,6 +1,6 @@
 # Linux cpusets: merging overlapping sets
 
-Sometimes the question about a graph is not a route but a group: are these two nodes connected at all, if you ignore the direction of the edges? And the graph keeps growing while you ask. A search from scratch answers it each time. This Chapter reads a structure that answers it while edges arrive: **union-find**, in the Linux kernel at v6.12, where it merges overlapping sets of CPUs.
+Sometimes the question about a graph is not a route but a group: are these two nodes connected at all, if you ignore the direction of the edges? And the graph keeps growing while you ask. A search from scratch answers it each time. This Chapter reads a structure that answers it while edges arrive: **union-find**, in the Linux kernel at v6.12, where it merges overlapping sets of CPUs ([kernel/cgroup/cpuset.c, lines 823 to 841](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/kernel/cgroup/cpuset.c#L823-L841)).
 
 ## What union-find is
 
