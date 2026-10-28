@@ -1,0 +1,14 @@
+bt show
+bt find 5
+bt add 5
+bt show
+bt find 5
+bt find 4
+bt add 5 5 5
+bt show
+bt add 3 1
+bt show
+bt add 2
+bt show
+bt add 4 4
+bt show

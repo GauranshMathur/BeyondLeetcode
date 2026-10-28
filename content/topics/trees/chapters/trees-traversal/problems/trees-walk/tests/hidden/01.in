@@ -1,0 +1,14 @@
+walk pre
+walk in
+walk post
+tree 5
+walk pre
+walk in
+walk post
+tree 5 3
+walk in
+walk post
+tree 5 - 8
+walk pre
+walk in
+walk post

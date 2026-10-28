@@ -1,0 +1,3 @@
+Both commands are one loop from the root: compare, go left if the value is smaller, go right if it is larger, stop if it is equal. `insert` stops at a missing child and puts the new node there. `find` counts the nodes it compared with.
+
+Each step moves one level down, so both take O(h) time in the **worst case**, for a tree of height h. That is the Chapter's point. The height depends on the order the values arrive in: increasing values make a chain with h = n, so the last `find` above costs n steps. The same values in the order `4 2 6 1 3 5 7` have h = 3. A tree that rebalances itself, like the kernel's, keeps h within O(log n) in the **worst case** whatever the order; this Build does not, and the second example shows what that costs.

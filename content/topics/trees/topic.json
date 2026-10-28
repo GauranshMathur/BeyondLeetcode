@@ -1,0 +1,12 @@
+{
+	"title": "Trees",
+	"summary": "Build a binary tree workbench and read how SQLite limits expression depth, how the Linux kernel balances its red-black tree, why Rust and SQLite use B-trees, how Go and bfs walk a directory tree, and how the device tree and git find ancestors.",
+	"prerequisites": ["linked-lists", "stacks"],
+	"chapters": [
+		"trees-sqlite-expression",
+		"trees-linux-rbtree",
+		"trees-btree-pages",
+		"trees-traversal",
+		"trees-flat-tree"
+	]
+}

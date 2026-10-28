@@ -1,0 +1,3 @@
+Read the tokens into a new tree, measure it with `height`, and replace the current tree only if the height is within the limit. The current tree is never touched when `tree` refuses, because the new one was built on the side.
+
+Measuring costs O(n) in the **worst case** for each `tree` command, and the tree has just been read in O(n) anyway, so the check does not change the cost. SQLite does it differently, as the Chapter shows: it keeps each node's height and works it out from the children's when a node is made, which is O(1) per node, so a tree that is too tall is refused as soon as the node that makes it too tall is built. In the Build the tree arrives whole, so measuring it once is enough.

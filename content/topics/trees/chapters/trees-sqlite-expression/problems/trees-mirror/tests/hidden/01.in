@@ -1,0 +1,12 @@
+mirror
+show
+height
+tree 5
+mirror
+show
+tree 5 3
+mirror
+show
+tree 5 - 3
+mirror
+show

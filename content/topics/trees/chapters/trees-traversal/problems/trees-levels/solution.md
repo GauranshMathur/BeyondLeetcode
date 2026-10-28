@@ -1,0 +1,3 @@
+Hold one level at a time. Start with the root. Write the values of the level on one line, then build the next level from the children of its nodes, left child before right child, skipping missing ones. Stop when a level is empty. An empty tree has no first level, so nothing is printed.
+
+Each node is in exactly one level and is visited once, so it takes O(n) time in the **worst case**. The lists hold at most two levels at a time, so the space is O(w) in the **worst case**, where w is the width of the widest level. A queue that holds nodes in the order they are discovered does the same job. Compare a chain, where w is 1, with a complete tree, where the bottom level holds about half of all the nodes.

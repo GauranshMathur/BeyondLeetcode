@@ -1,0 +1,4 @@
+bt add 10 20 30
+bt show
+bt add 40
+bt show

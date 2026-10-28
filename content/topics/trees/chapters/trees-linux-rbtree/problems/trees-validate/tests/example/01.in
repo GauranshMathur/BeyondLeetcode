@@ -1,0 +1,4 @@
+tree 5 3 8 1 4 7 9
+validate
+tree 5 3 8 1 6
+validate

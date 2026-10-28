@@ -1,0 +1,6 @@
+tree 6 2 8 0 4 7 9 - - 3 5
+lca 2 8
+lca 3 5
+lca 2 4
+lca 5 5
+lca 3 10

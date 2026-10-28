@@ -1,0 +1,15 @@
+save
+restore .
+show
+tree 4
+save
+restore (7 . .)
+show
+save
+restore (-3 (-5 . .) .)
+show
+height
+save
+restore .
+save
+height
