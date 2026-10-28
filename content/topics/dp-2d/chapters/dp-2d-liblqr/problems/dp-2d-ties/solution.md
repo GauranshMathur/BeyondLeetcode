@@ -1,0 +1,5 @@
+Keep `m` as in `seam`, and a second table `count`. In the first row every `count` is 1. For every later cell, let `low` be the smallest `m` among its neighbours above. Then `m[y][x]` is `grid[y][x] + low`, and `count[y][x]` is the sum of `count` over the neighbours whose `m` equals `low`, modulo 1000000007. Let `best` be the smallest `m` in the last row. Print the sum of `count` over the last row's cells whose `m` equals `best`, modulo 1000000007.
+
+**Why it is right.** A cheapest seam to `(y, x)` must come through a neighbour whose own cheapest cost is `low`, because any other neighbour leaves a total that is larger. Each cheapest seam to such a neighbour extends in exactly one way, so the seams to `(y, x)` are counted once each, under the neighbour they came through. The same argument over the last row counts every cheapest seam once.
+
+**Cost.** Two tables of R × C cells, each cell reading at most 3 neighbours: O(R × C) time and space in the **worst case**. Without the remainder the counts would grow like 3 to the power of the number of rows, so keep them reduced as you add.

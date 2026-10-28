@@ -1,0 +1,9 @@
+words - abc
+trace
+words abc -
+trace
+words - -
+trace
+words abc xyz
+trace
+show

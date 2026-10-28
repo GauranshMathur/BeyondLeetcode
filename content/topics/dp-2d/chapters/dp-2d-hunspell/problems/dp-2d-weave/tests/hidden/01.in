@@ -1,0 +1,11 @@
+words - -
+weave -
+weave a
+words - abc
+weave abc
+weave abd
+weave ab
+words abc -
+weave abc
+weave cba
+weave -

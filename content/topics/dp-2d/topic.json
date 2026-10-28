@@ -1,0 +1,6 @@
+{
+	"title": "2-D dynamic programming",
+	"summary": "Fill a table with one axis per sequence, capacity or grid direction, and read how Hunspell scores suggestions by a shared subsequence, liblqr finds the cheapest seam down an image, PyTorch picks what to keep under a memory budget, and PostgreSQL keeps two rows of its edit-distance table.",
+	"prerequisites": ["dp-1d"],
+	"chapters": ["dp-2d-hunspell", "dp-2d-liblqr", "dp-2d-pytorch", "dp-2d-postgres"]
+}
