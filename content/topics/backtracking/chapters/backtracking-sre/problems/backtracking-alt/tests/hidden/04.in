@@ -1,0 +1,5 @@
+match (a|aa)(a|aa)(a|aa)b aaaaab
+match (a|aa)(a|aa)(a|aa)b aaaab
+match (a|aa)(a|aa)(a|aa)b aab
+match (a|b) b
+match ab(c|d) abd

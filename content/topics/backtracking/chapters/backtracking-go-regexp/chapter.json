@@ -1,0 +1,4 @@
+{
+	"title": "Go: never enter the same state twice",
+	"problems": ["backtracking-visited"]
+}
