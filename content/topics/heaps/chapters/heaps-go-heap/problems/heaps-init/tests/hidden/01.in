@@ -1,0 +1,8 @@
+init
+size
+show
+init 5
+show
+cmp
+pop
+show

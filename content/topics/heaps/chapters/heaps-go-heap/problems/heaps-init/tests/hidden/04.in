@@ -1,0 +1,14 @@
+push 4
+push 2
+push 9
+cmp
+init 7 7 3 7 3
+show
+cmp
+pop
+show
+pop
+show
+size
+push 3
+show

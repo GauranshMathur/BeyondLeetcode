@@ -1,0 +1,27 @@
+sched n1 50
+sched n2 30
+sched n3 50
+sched n4 30
+sched n5 10
+sched n6 50
+sched n7 40
+sched n8 10
+sched n9 20
+sched n10 40
+sched n11 40
+sched n12 40
+sched n13 40
+sched n14 10
+sched n15 20
+sched n16 40
+sched n17 30
+sched n18 10
+sched n19 40
+sched n20 30
+show
+advance 20
+show
+advance 40
+show
+advance 50
+size

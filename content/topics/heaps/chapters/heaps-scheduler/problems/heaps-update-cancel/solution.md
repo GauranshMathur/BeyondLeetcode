@@ -1,0 +1,5 @@
+To find a timer without a scan, every item records its own index, and a map takes an ID to its item. All moves of items go through one function, `put`, which writes the slot and the index together, so the indexes never go stale. The map is kept in step: `sched` adds the ID, and `cancel`, `advance` and `pop` remove it when the item leaves.
+
+`update` changes the key and calls `fix` on the item's index. `fix` moves the item down from where it stands and, if it finished at the index it started from, moves it up. That is enough because a new item can break only one of the two rules: the slot's parent was no larger than the item that used to be there, and its children were no smaller. `cancel` is the same idea: take the last item out, put it in the freed slot, and `fix` it. If the freed slot is the last one there is nothing to fix.
+
+Cost: `update` and `cancel` are O(log n) comparisons in the **worst case**, since `fix` is one move down and at most one move up, and a lookup in the map is O(1) expected. The price is the extra bookkeeping on every move and a second structure that must always agree with the array.
