@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.14.0...v1.15.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C114 Heaps Topic ([#384](https://github.com/GauranshMathur/BeyondLeetcode/issues/384)) ([b8b0f25](https://github.com/GauranshMathur/BeyondLeetcode/commit/b8b0f25094c8a3514fc5dd2139b69649962a32a5))
+
 ## [1.14.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.13.0...v1.14.0) (2026-10-28)
 
 
