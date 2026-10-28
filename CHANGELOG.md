@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.13.0...v1.14.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C115 Tries Topic ([#383](https://github.com/GauranshMathur/BeyondLeetcode/issues/383)) ([ecbe971](https://github.com/GauranshMathur/BeyondLeetcode/commit/ecbe971370a1601406201bacf8a2a1b2fe440c18))
+
 ## [1.13.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.12.0...v1.13.0) (2026-10-28)
 
 
