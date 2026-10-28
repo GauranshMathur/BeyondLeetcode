@@ -400,6 +400,13 @@ clear 108
 set 26
 ushow
 show
+set 1000000
+test 1000000
+test 999999
+clear 1000000
+test 1000000
+flip 1000000
+test 1000000
 set 99999
 test 99999
 test 99998

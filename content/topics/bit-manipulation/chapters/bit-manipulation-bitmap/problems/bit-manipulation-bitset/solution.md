@@ -2,7 +2,7 @@ The word is `I >> 5` (or `I / 32`) and the bit is `I & 31` (or `I % 32`). The ma
 
 For `set` and `flip`, append zero words until the sequence has `I / 32 + 1` of them. For `clear` and `test`, a flag past the end needs no work: `clear` has nothing to turn off and `test` prints `0`. Never shrink the sequence.
 
-Each operation touches one word, so it is O(1) in the worst case. A `set` or `flip` past the end also appends words, which costs time in proportion to the number it appends, so a single operation is O(I / 32) in the worst case.
+Each operation touches one word, so it is O(1) in the worst case. A `set` or `flip` past the end also appends words. The sequence is a dynamic array, whose append is amortised O(1), so such an operation is O(I / 32) amortised, in proportion to the words it appends.
 
 **Language notes.** In TypeScript, `1 << 31` is negative, so after an OR or XOR convert back with `>>> 0` to keep the word an unsigned number. In Go, use `uint32` and the AND-NOT operator `&^`. In Python, mask the complement: `~mask & 0xFFFFFFFF`.
 

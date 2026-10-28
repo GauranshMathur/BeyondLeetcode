@@ -85,7 +85,7 @@ def weight32(w):
 def count(args):
     n = int(args[0])
     full, rest = n >> 5, n & 31
-    total = sum(weight32(w) for w in words[:full])
+    total = sum(weight32(words[i]) for i in range(min(full, len(words))))
     if rest and full < len(words):
         total += weight32(words[full] & ((1 << rest) - 1))
     print(total)

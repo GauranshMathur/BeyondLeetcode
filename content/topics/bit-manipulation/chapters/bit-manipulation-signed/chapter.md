@@ -21,7 +21,7 @@ __u8 shift = 31 - index;
 return (__s32)(value << shift) >> shift;
 ```
 
-([include/linux/bitops.h, lines 179 to 190](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/include/linux/bitops.h#L179-L190); comment markers dropped.) The comment adds: "This is safe to use for 16- and 8-bit types as well." (same lines)
+([include/linux/bitops.h, lines 179 to 190](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/include/linux/bitops.h#L179-L190); comment markers dropped.) The comment adds: "This is safe to use for 16- and 8-bit types as well." ([same lines](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/include/linux/bitops.h#L179-L190))
 
 Read the code with a field of `B` bits, so `index` is `B - 1` and `shift` is `32 - B`. The left shift moves the field's top bit up to bit 31 and pushes everything above the field off the end, so whatever junk was in the high bits is gone. The right shift then moves the field back down, and because the word is now read as signed, it copies bit 31 into the places it leaves empty. The decision is to do the whole job with two shifts and no branch, instead of masking the field and then testing its top bit to decide whether to subtract 2^B. The result is the same, and the cost is two operations per word: O(1) in the **worst case**. This is the Problem `signext`.
 

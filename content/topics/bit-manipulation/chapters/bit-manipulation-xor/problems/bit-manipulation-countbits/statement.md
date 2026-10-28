@@ -8,7 +8,7 @@ Add to the Build:
 |---|---|---|
 | `countbits N` | For every number from 0 up to and including `N`, counts the bits that are on in it. This command does not use the sequence. | the `N + 1` counts, separated by single spaces |
 
-`N` is from 0 to 100,000.
+`N` is from 0 to 10,000.
 
 ## Example
 

@@ -1,6 +1,6 @@
 # XOR and the lowest set bit: RAID 5 and power-of-two checks
 
-Two bit operations do a great deal of work in systems code. XOR makes a value that undoes itself, which is what RAID 5 needs to survive a dead disk. AND with the number one less than it clears the lowest bit that is set, which is how the kernel asks whether a number is a power of two. This Chapter reads both in the Linux kernel (v6.6), and the Problems use them on the Build's sequence of words.
+Two bit operations do a great deal of work in systems code. XOR makes a value that undoes itself, which the kernel's RAID 5 code uses to rebuild a block ([`raid5.c`](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/drivers/md/raid5.c#L1594-L1599)). AND with the number one less than it clears the lowest bit that is set, which is how the kernel asks whether a number is a power of two ([`log2.h`](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/include/linux/log2.h#L37-L47)). This Chapter reads both in the Linux kernel (v6.6), and the Problems use them on the Build's sequence of words.
 
 ## XOR undoes itself
 

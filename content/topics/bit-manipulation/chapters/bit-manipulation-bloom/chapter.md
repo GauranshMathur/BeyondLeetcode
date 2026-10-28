@@ -1,6 +1,6 @@
 # LevelDB: a Bloom filter in front of the disk
 
-A database that keeps its data on disk would like to know, before it reads, that a key is not there. A **Bloom filter** answers that from a small array of bits kept in memory. It can be wrong in one direction only. This Chapter reads LevelDB 1.23's version of it: how big it makes the array, how many bits it sets per key, and how it finds those bits from one hash. The Problems build it on the Build's bitmap.
+A database that keeps its data on disk would like to know, before it reads, that a key is not there. A **Bloom filter** answers that from a small array of bits kept in memory, and it can be wrong in one direction only ([the contract](https://github.com/google/leveldb/blob/99b3c03b3284f5886f9ef9a4ef703d57373e61be/include/leveldb/filter_policy.h#L46-L50)). This Chapter reads LevelDB 1.23's version of it ([`bloom.cc`](https://github.com/google/leveldb/blob/99b3c03b3284f5886f9ef9a4ef703d57373e61be/util/bloom.cc#L20-L23)): how big it makes the array, how many bits it sets per key, and how it finds those bits from one hash. The Problems build it on the Build's bitmap.
 
 ## What the filter is for, and what it promises
 

@@ -1,6 +1,6 @@
 # Linux bitmaps: one bit per flag
 
-When a system has to remember yes or no for a great many numbered things, one bit each is the smallest it can be. This Chapter reads how the Linux kernel (v6.6) keeps such an array of bits and does the four things a program asks of it (set a bit, clear it, test it, count them), and then how Roaring, a format used for large sets of integers, decides between two ways to store a block of them. In the Problems the sequence of words from the last Chapter is the array.
+When a system has to remember yes or no for a great many numbered things, one bit each is the smallest it can be. This Chapter reads how the Linux kernel (v6.6) keeps such an array of bits ([`bitmap.h`](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/include/linux/bitmap.h#L17-L18)) and does the four things a program asks of it (set a bit, clear it, test it, count them), and then how Roaring, a format for sets of 32-bit integers ([format specification, line 50](https://github.com/RoaringBitmap/RoaringFormatSpec/blob/e1b736158c29d077f37bd8a969bcc78995f59377/README.md#L50-L50)), decides between two ways to store a block of them ([lines 95 to 97](https://github.com/RoaringBitmap/RoaringFormatSpec/blob/e1b736158c29d077f37bd8a969bcc78995f59377/README.md#L95-L97)). In the Problems the sequence of words from the last Chapter is the array.
 
 ## An array of bits is an array of words
 
@@ -28,7 +28,7 @@ and for clearing, the same two lines followed by `*p &= ~mask;`. ([include/asm-g
 
 These are the double-underscore versions, and their comment says what that costs: "Unlike set_bit(), this function is non-atomic and may be reordered." ([lines 23 to 26](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/include/asm-generic/bitops/generic-non-atomic.h#L23-L26); comment markers dropped.) The Build is single-threaded, so it has no use for the atomic kind.
 
-Each of the four operations touches one word, so each is O(1) in the **worst case**. A `set` past the end has first to add the words in between, which costs time in proportion to the number of words it adds. This is the Problem `bitset`.
+Each of the four operations touches one word, so each is O(1) in the **worst case**. A `set` past the end has first to add the words in between. The sequence is a dynamic array, whose append is **amortised** O(1), so such a `set` costs time in proportion to the number of words it adds, amortised. This is the Problem `bitset`.
 
 ## Counting the bits
 
