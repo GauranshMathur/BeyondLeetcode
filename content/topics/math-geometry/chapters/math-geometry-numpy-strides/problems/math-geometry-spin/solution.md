@@ -14,4 +14,4 @@ Each cycle moves four items and the cycles cover each item once, so every item i
 
 `spin` only applies when the view is the standard one: a turned view would make "the item at `(i, j)`" a different block position, and the move would not do what its name says. The Reference Code checks the offset and the two strides, and the number of rows and columns, before it moves anything.
 
-Compare it with `rotate`: `rotate` is O(1) and moves nothing. `spin` is O(n^2) in time, the number of items, in the worst case, with O(1) extra space.
+Compare it with `rotate`: `rotate` is O(1) in the worst case and moves nothing. `spin` is O(n^2) in time, the number of items, in the worst case, with O(1) extra space.

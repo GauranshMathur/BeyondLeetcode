@@ -12,4 +12,4 @@ Why `rotate` is a clockwise turn. After the transpose, the view's item `(i, j)` 
 
 Two things catch people. First, `mirror` changes the offset as well as the stride: with a negative column stride, row 0 must start at the last column's position. Second, `at` and `show` must use the view's rows and columns after a `transpose`, which differ from the matrix you loaded unless it was square.
 
-Cost: `at`, `shape`, `transpose`, `mirror` and `rotate` are O(1) in the worst case, and none of them touches the block. `matrix`, `show` and `block` are O(R x C). Extra space is O(1) beyond the block.
+Cost: `at`, `shape`, `transpose`, `mirror` and `rotate` are O(1) in the worst case, and none of them touches the block. `matrix`, `show` and `block` are O(R x C) in the worst case. Extra space is O(1) beyond the block.

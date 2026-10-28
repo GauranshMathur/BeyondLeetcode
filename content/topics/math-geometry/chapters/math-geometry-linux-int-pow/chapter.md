@@ -1,6 +1,6 @@
 # Linux: raising to a power in a loop of squares
 
-Computing `base` to the power `exp` the way you would on paper takes `exp - 1` multiplications. For an exponent of a million that is nearly a million of them. The Linux kernel's integer power function does it in at most forty, and the whole function is thirteen lines. This Chapter reads it in Linux 6.6, then adds a modulus, as Python's `pow` does.
+Computing `base` to the power `exp` the way you would on paper takes `exp - 1` multiplications. For an exponent of a million that is nearly a million of them. The Linux kernel's integer power function does it in at most forty, and the whole function is thirteen lines ([lib/math/int_pow.c, lines 19 to 31](https://github.com/torvalds/linux/blob/ffc253263a1375a65fa6c9f62a893e9767fbebfa/lib/math/int_pow.c#L19-L31)). This Chapter reads it in Linux 6.6, then adds a modulus, as Python's `pow` does ([Python 3.13 documentation](https://docs.python.org/3.13/library/functions.html#pow)).
 
 ## The function
 

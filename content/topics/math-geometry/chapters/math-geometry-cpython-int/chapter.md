@@ -1,6 +1,6 @@
 # CPython: integers with no ceiling
 
-Every integer type has to answer one question before anything else: what happens when a result does not fit? A language can wrap the answer, refuse it, or make room for it. Go wraps. CPython, the standard Python interpreter, makes room. This Chapter reads both rules, in the Go 1.22.0 language specification and in CPython 3.13.0. In the Problems you build the wrapping answer first, then the one that makes room.
+Every integer type has to answer one question before anything else: what happens when a result does not fit? A language can wrap the answer, refuse it, or make room for it. Go wraps ([Go 1.22.0 specification, Integer overflow](https://github.com/golang/go/blob/a10e42f219abb9c5bc4e7d86d9464700a42c7d57/doc/go_spec.html#L5003-L5004)). CPython, the standard Python interpreter, makes room ([Python 3.13 documentation](https://docs.python.org/3.13/library/stdtypes.html#numeric-types-int-float-complex)). This Chapter reads both rules, in the Go 1.22.0 language specification and in CPython 3.13.0. In the Problems you build the wrapping answer first, then the one that makes room.
 
 ## Go: the answer wraps
 
