@@ -1,0 +1,6 @@
+load 4 7 10
+ways 30
+ways 100
+load 6 9 20
+ways 100
+ways 299

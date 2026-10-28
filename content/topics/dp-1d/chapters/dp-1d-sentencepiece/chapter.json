@@ -1,0 +1,4 @@
+{
+	"title": "SentencePiece: one lattice, the best path or the sum over paths",
+	"problems": ["dp-1d-fewest", "dp-1d-decode", "dp-1d-vocab"]
+}

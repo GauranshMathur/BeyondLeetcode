@@ -1,0 +1,6 @@
+{
+	"title": "1-D dynamic programming",
+	"summary": "Answer each smaller question once and keep it in a table, and read how Python's functools.cache remembers, TeX chooses line breaks, git keeps only the rows it needs, and SentencePiece counts or optimises over the same lattice.",
+	"prerequisites": ["backtracking", "hash-tables"],
+	"chapters": ["dp-1d-functools", "dp-1d-tex", "dp-1d-git", "dp-1d-sentencepiece"]
+}
