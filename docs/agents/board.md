@@ -28,7 +28,7 @@ Blocked by: <card codes that must be Done first, or none>
 Release: <Release option> · commit type <type>
 ```
 
-Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is ready only when every card it names is Done. Every card gets a Release when it is filed. Which commit type a card uses is in `docs/releasing.md`.
+Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is ready only when every card it names is Done. Every card gets a Release when it is filed. Which commit type a card uses: see Commit types below.
 
 **Size.** A card is one artboard or one state (code: one PR touching one area), one lane, one `Done when` line. A card that needs two is split: remove the parent and create children with suffixed codes (`P8` → `P8a`, `P8b`), each with its own `Done when`. Only the `sprint-planner` splits, called by the orchestrator.
 
@@ -41,24 +41,24 @@ The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planne
 - Cards that share a file are an ordered chain in one lane, planned up front.
 - Cards are grouped into Releases (several short sprints can feed one); every card has a Release.
 
-It writes the sprint's section in `docs/sprints.md` and the Sprint option row in the Fields table through a plan PR, and creates the cards with Status Todo, Sprint and Release set. It never claims or dispatches a card.
+It writes the sprint's section in `docs/sprints.md`, the Sprint option row in the Fields table, and, in `docs/releasing.md`, the new cards in their Release's feature set (plus any new `R next: <name>` Release with its target version), all through one plan PR that the orchestrator reviews and merges at green CI. It then creates the cards with Status Todo, Sprint and Release set. It never claims or dispatches a card.
 
 A new Sprint option, or a new Release option `R next: <name>`, is added with `updateProjectV2Field`. That mutation replaces the whole option list, so every existing option is resent with its id; count the cards per option before and after, and they must match.
 
 ## Fields
 
-| Field   | ID                               | Values                                                                                                                                                                                                              |
-| ------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status  | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` | Todo `f75ad846` · In Progress `47fc9ee4` · Done `98236657`                                                                                                                                                          |
-| Sprint  | `PVTSSF_lAHOAm0pms4Bk1LBzhjlFwI` | 0 `3ad2db80` · 1 `ec5cba1c` · 2 `9bd8950b` · 3 `bc546063` · 4 `42ff5017` · 5 `420a1181` · 6 `b06bc1b7` · 7 `0738df2b` · 8 `4f7b943d` · 9 `2d37a7f3` · 10 `c4925fcc` · 11 `2e87bf36` · 12 `5a6498ca` · 13 `7014a845` |
-| Release | `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY` | R next: Foundations `5eb8b28c`                                                                                                                                                                                      |
-| Owner   | `PVTF_lAHOAm0pms4Bk1LBzhjlEXM`   | text: the worker name holding the card                                                                                                                                                                              |
+| Field | ID | Values |
+|---|---|---|
+| Status | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` | Todo `f75ad846` · In Progress `47fc9ee4` · Done `98236657` |
+| Sprint | `PVTSSF_lAHOAm0pms4Bk1LBzhjlFwI` | 0 `3ad2db80` · 1 `ec5cba1c` · 2 `9bd8950b` · 3 `bc546063` · 4 `42ff5017` · 5 `420a1181` · 6 `b06bc1b7` · 7 `0738df2b` · 8 `4f7b943d` · 9 `2d37a7f3` · 10 `c4925fcc` · 11 `2e87bf36` · 12 `5a6498ca` · 13 `7014a845` |
+| Release | `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY` | R next: Foundations `5eb8b28c` |
+| Owner | `PVTF_lAHOAm0pms4Bk1LBzhjlEXM` | text: the worker name holding the card |
 
 Project ID `PVT_kwHOAm0pms4Bk1LB`, number `1`, owner `GauranshMathur`. What each sprint is for: `docs/sprints.md`.
 
 ```bash
 # Todo cards in a sprint, with owner
-gh project item-list 1 --owner GauranshMathur --limit 200 --format json \
+gh project item-list 1 --owner GauranshMathur --limit 500 --format json \
   --jq '.items[] | select(.status=="Todo" and .sprint=="Sprint 1 · Design foundations") | {id, title, owner, body: .content.body}'
 
 # Set a single-select field (Status, Sprint or Release)
@@ -88,14 +88,12 @@ Cards that edit the same file share a **lane** and run in order; cards on differ
 A worker moves its own card to Done once the card's type bar is met. Owner stays set, as the record of who did it.
 
 **Design card**
-
 - The `Done when` line holds on the canvas.
 - Light and dark both render from `tokens()`; a new artboard ships with its `-dark` wrapper.
 - Only Foundations patterns are used.
 - New artboards (file, width, height, page) are reported to the orchestrator, who updates `canvas.json` and the STATUS sticky.
 
 **Code card**
-
 1. **Branch.** If the branch `<code>-<slug>` already exists on origin, you are resuming: check it out and read its draft PR checklist. Otherwise create it: `git worktree add ../BeyondLeetcode.worktrees/<code> -b <code>-<slug> origin/main` (see `superpowers:using-git-worktrees`).
 2. **Draft PR.** On the first commit, push and open `gh pr create --draft` with the card code in the title (`feat(beyondleetcode): P8 run/submit states`) and a checklist of the steps left. Push every commit after that and tick the checklist as you go.
 3. Build test-first with `mattpocock-skills:tdd`.
