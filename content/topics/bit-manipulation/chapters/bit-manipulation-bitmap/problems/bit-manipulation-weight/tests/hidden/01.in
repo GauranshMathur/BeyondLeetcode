@@ -1,0 +1,38 @@
+count 0
+count 5
+load
+count 0
+count 100
+load 0
+count 32
+load 4294967295
+count 0
+count 1
+count 31
+count 32
+count 33
+count 1000
+load 1 2 4 8
+count 3
+count 4
+count 64
+load -1 -1 -1
+count 31
+count 32
+count 33
+count 63
+count 64
+count 65
+count 95
+count 96
+count 97
+count 100000000
+load 2147483648 1
+count 31
+count 32
+count 33
+count 64
+load 255 4294967295
+count 8
+count 40
+count 100

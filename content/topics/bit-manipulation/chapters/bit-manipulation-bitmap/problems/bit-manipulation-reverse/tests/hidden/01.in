@@ -1,0 +1,18 @@
+reverse
+load
+reverse
+load 0
+reverse
+load 1 2 4294967295 2147483648
+reverse
+ushow
+load 4026531840 252645135 -1 -2147483648
+reverse
+load 1431655765
+reverse
+load 305419896
+reverse
+show
+set 70
+reverse
+ushow

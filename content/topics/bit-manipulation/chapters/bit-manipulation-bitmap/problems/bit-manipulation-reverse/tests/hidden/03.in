@@ -1,0 +1,10 @@
+set 0
+set 8
+set 17
+set 31
+reverse
+ushow
+flip 0
+clear 31
+reverse
+show

@@ -1,0 +1,26 @@
+load 4294967295 0 -1
+test 0
+test 31
+test 32
+test 63
+test 64
+test 95
+test 96
+clear 63
+clear 64
+clear 95
+clear 96
+clear 100000
+ushow
+set 100
+ushow
+load
+ushow
+set 0
+ushow
+load 1 2
+flip 64
+ushow
+show
+set 999
+ushow

@@ -1,0 +1,4 @@
+load 100 -30 5
+wrapsum
+load 2147483647 1
+wrapsum

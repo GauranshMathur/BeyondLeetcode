@@ -1,0 +1,23 @@
+load
+show
+ushow
+signext 5
+
+load -2147483648 2147483647 4294967295 0 2147483648 1
+show
+ushow
+signext 32
+signext 31
+signext 1
+signext 2
+load 496 15 16 31 1000000
+signext 4
+signext 5
+signext 8
+signext 20
+signext 21
+load 7
+signext 3
+signext 2
+load 1 2 3
+show

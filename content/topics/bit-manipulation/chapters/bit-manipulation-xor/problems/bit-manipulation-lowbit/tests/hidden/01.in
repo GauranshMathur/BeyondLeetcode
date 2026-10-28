@@ -1,0 +1,23 @@
+lowbit
+pow2
+load
+lowbit
+pow2
+load 0
+lowbit
+pow2
+load 1
+lowbit
+pow2
+load -1
+lowbit
+pow2
+load 12 8 0 -2147483648
+lowbit
+pow2
+load 2147483647 2147483648 2147483649 4294967295
+lowbit
+pow2
+load 6 10 96 1000 65536 65537 -65536
+lowbit
+pow2

@@ -1,0 +1,37 @@
+wrapsum
+load
+wrapsum
+load 0
+wrapsum
+load 5
+wrapsum
+load -7
+wrapsum
+load 4294967295 1
+wrapsum
+load 2147483647 1
+wrapsum
+load -2147483648 -1
+wrapsum
+load 4294967295 4294967295
+wrapsum
+load -2147483648 -2147483648
+wrapsum
+load 2147483647 2147483647 2147483647
+wrapsum
+load 2147483648 2147483648
+wrapsum
+load 100 -100
+wrapsum
+load 1 2 3 4 5 6 7 8 9 10
+wrapsum
+load -1 -1 -1
+wrapsum
+load 1431655765 2863311530
+wrapsum
+load 1431655765 1431655766
+wrapsum
+load 2147483647 -2147483648 1
+wrapsum
+load 2147483647 1 -2147483648
+wrapsum
