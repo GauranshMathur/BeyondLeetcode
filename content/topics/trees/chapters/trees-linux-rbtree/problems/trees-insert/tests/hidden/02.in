@@ -1,0 +1,13 @@
+insert -5 -10 0 10 -7 3
+show
+find -10
+find -7
+find 3
+find -11
+find 100
+insert 20
+find 20
+find 11
+insert -20
+find -21
+find 0

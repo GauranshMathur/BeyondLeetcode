@@ -1,0 +1,20 @@
+limit 1
+tree 7
+show
+tree 7 3
+show
+tree -
+show
+tree 4 5
+height
+limit 3
+tree 1 2 3 4 5 6 7
+height
+tree 1 2 3 4 - - - 8
+height
+show
+tree
+height
+limit 3
+tree 1 2 - 3 - 4
+show

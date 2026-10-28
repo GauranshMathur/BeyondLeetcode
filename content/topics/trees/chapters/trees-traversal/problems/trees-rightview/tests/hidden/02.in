@@ -1,0 +1,6 @@
+tree 5 4 - 3 - 2 - 1
+rightview
+tree 1 - 2 - 3
+rightview
+tree 1 2 - - 3 4 - - 5 6
+rightview

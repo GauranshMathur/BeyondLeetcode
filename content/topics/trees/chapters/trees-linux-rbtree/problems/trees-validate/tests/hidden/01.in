@@ -1,0 +1,15 @@
+validate
+tree 4
+validate
+tree 4 4
+validate
+tree 4 - 4
+validate
+tree 4 2 6
+validate
+tree 4 6 2
+validate
+tree 4 4 6
+validate
+tree 4 2 4
+validate

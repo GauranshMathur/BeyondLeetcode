@@ -1,0 +1,17 @@
+find 3
+insert 5
+show
+find 5
+insert 5 5 3 3 8 8
+show
+height
+find 3
+find 8
+find 4
+insert
+show
+tree 5 8 3
+insert 4
+show
+find 4
+find 3

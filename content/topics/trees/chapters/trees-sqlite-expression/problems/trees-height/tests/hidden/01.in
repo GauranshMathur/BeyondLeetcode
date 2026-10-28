@@ -1,0 +1,26 @@
+show
+height
+tree 5
+show
+height
+tree -
+show
+height
+tree 8 - 9
+show
+height
+tree
+show
+height
+tree 8 - 9 - 10
+show
+height
+tree 1 2
+show
+height
+tree 1 2 - - -
+show
+height
+tree -3 -5 0
+show
+height

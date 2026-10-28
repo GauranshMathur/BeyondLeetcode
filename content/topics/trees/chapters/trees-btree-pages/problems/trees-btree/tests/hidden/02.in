@@ -1,0 +1,9 @@
+bt add 9 8 7 6 5 4 3 2 1
+bt show
+bt find 5
+bt find 1
+bt find 9
+bt find 10
+bt find 0
+bt add -1 -2 -3
+bt show
