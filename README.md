@@ -7,7 +7,7 @@
 [![release](https://img.shields.io/github/v/release/GauranshMathur/BeyondLeetcode)](https://github.com/GauranshMathur/BeyondLeetcode/releases)
 [![license](https://img.shields.io/github/license/GauranshMathur/BeyondLeetcode)](LICENSE)
 
-You learn data structures and algorithms by Topic. Each Topic's Chapters read a real system's source at a pinned version, and each Problem is a step in a Build, not a puzzle. Every claim is cited to a primary source (see the [content standards](docs/content-standards.md)). It is self-hosted and free, for one learner (Local Mode) or a group (Multi-user).
+BeyondLeetcode teaches data structures and algorithms by Topic. Each Topic's Chapters read a real system's source at a pinned version, and each Problem is a step in a Build, not a puzzle. Every claim is cited to a primary source (see the [content standards](docs/content-standards.md)). It is self-hosted and free, for one learner (Local Mode) or a group (Multi-user).
 
 <p>
   <picture>
