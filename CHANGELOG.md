@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.7...v1.11.0) (2026-10-28)
+
+
+### Features
+
+* **beyondleetcode:** C122 Math and geometry Topic ([#378](https://github.com/GauranshMathur/BeyondLeetcode/issues/378)) ([6a1d7fa](https://github.com/GauranshMathur/BeyondLeetcode/commit/6a1d7fa77e7fd59742cce7ff22dedf07c7c41fc1))
+
 ## [1.10.7](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.10.6...v1.10.7) (2026-10-28)
 
 
