@@ -236,6 +236,67 @@ For content authors: hash-tables-collisions already uses 44 of the 50 hidden Tes
 
 **Exit:** all twelve cards Done and CI green on `main`; CI's content check Accepts each new Topic's Reference Code in Python, TypeScript and Go; every link each Topic cites is listed in its section of the review queue; `docs/content-coverage.md` lists the Topics shipped. Releases stay `1.x`.
 
+**Status (2026-10-28):** exit met. All twelve Sprint 12 cards are Done, and `ci` is green on `main` (bd27323). Its content check Accepts every Problem of all 18 Topics in Python, TypeScript and Go, in 13 minutes 6 seconds of the `sandbox` job's 30 minutes. Eleven Topics shipped, each Chapter a reading of one real system at a pinned version:
+
+| Topic | Card (PR) | Chapters | Problems (core + extra) | Largest Submit (of 50) | Links queued |
+|---|---|---|---|---|---|
+| Math and geometry | C122 (#378) | 4 | 8 + 4 | 33 | 53 |
+| Bit manipulation | C123 (#376) | 4 | 10 + 2 | 39 | 35 |
+| Trees | C113 (#379) | 5 | 9 + 2 | 41 | 61 |
+| Backtracking | C116 (#382) | 5 | 6 + 4 | 40 | 74 |
+| Tries | C115 (#383) | 4 | 6 + 2 | 44 | 75 |
+| Heaps | C114 (#384) | 5 | 7 + 2 | 43 | 68 |
+| 1-D dynamic programming | C120 (#386) | 4 | 6 + 3 | 43 | 55 |
+| Greedy | C118 (#390) | 4 | 4 + 2 | 39 | 67 |
+| 2-D dynamic programming | C121 (#389) | 4 | 5 + 5 | 41 | 77 |
+| Graphs | C117 (#391) | 5 | 10 + 4 | 39 | 90 |
+| Intervals | C119 (#393) | 4 | 4 + 3 | 43 | 69 |
+
+That is 48 Chapters and 108 Problems. All 724 queue lines are unticked, and no `[NEEDS SOURCE]` ships. Each PR lists the claims it cut for want of a source and the Codex findings it fixed. Releases 1.10.7 to 1.18.0 shipped, all `1.x`.
+
+C112 (#375) checked the five shipped quotes against their sources at the pinned version:
+- "are their own hash codes" was re-cited to `Objects/dictobject.c` lines 306 to 307.
+- "hits, misses, maxsize and currsize" was re-cited to `Doc/library/functools.rst` lines 204 to 205.
+- The Emacs circular-list quote and the fail2ban `findtime` quotes were confirmed, with their ranges narrowed and the dropped Texinfo and roff markup noted.
+- The `String.hashCode` quote got back its last clause, "and `^` indicates exponentiation": in Java `^` is XOR, so the cut changed the meaning.
+
+Decided along the way:
+- Intervals followed Greedy, because #261 lists Greedy as a Prerequisite (orchestrator, from the issue).
+- Codes started at C112, after the hardening session's C111.
+- Workers stopped at green CI. Before each merge the orchestrator checked every quote against the source fetched at its pinned version.
+  - That check led to two fixes before merge: in C123 the RAID 6 comment quote is now linked to its own line (`raid5.c` line 1715); in C115 the `rax.h` example strings are cited at lines 36 to 41.
+  - For C116 it checked the Knuth quotes against the paper's arXiv TeX source.
+- Every brief after round 1 required each quote's link in the quote's own paragraph, with markup dropped only as rendered and recorded in the sources file.
+- Workers merged `main` into their branches instead of rebasing, because force-push is not allowed. Each `content/content.json` conflict kept every id.
+- The content check ran locally with `SANDBOX_CONCURRENCY=1`. At 4 on the shared 2-CPU host, TypeScript Problems with 20 or more hidden Tests got false Time Limit Exceeded verdicts. CI ran at its own setting.
+- Where a Topic built on an earlier one, the later brief named what was taken:
+  - 2-D dynamic programming links to `dp-1d-git` instead of reading git's `levenshtein.c` again, and reads PostgreSQL's two-row version.
+  - Intervals was offered earliest-finish scheduling, which Greedy had no source for. It found none either.
+
+Outline entries that became sections, not Chapters:
+- Tries: array-versus-map children is part of the Go `ServeMux` Chapter.
+- Graphs: depth-first search is part of the lockdep Chapter.
+- Heaps: the two-heap median is an Extra Problem with no system claim.
+- Intervals: meeting rooms with a heap is part of the e820 Chapter, and a memblock Chapter was added to carry Insert Interval.
+- Greedy: its interval-scheduling half was dropped for want of a source.
+
+Candidate Problems left out, each for want of a real system that frames it or a fit with the Build (reasons in each PR):
+- Heaps: Last Stone Weight, K Closest Points to Origin, Task Scheduler.
+- Tries: Word Search II.
+- Graphs: Clone Graph, Rotting Oranges, Word Ladder.
+- Greedy: Maximum Subarray, Gas Station, Hand of Straights, Partition Labels.
+- Intervals: Non-overlapping Intervals.
+- 1-D dynamic programming: Longest Increasing Subsequence.
+- 2-D dynamic programming: Unique Paths.
+- Math and geometry: Happy Number.
+
+Not in the sprint:
+- Every new link waits for its human check in the review queue. Two Topics also rest on a PDF:
+  - Two pointers quotes Brent's 1980 abstract.
+  - Backtracking quotes Knuth's "Dancing Links". The worker checked it against text extracted from the PDF, and the orchestrator against the paper's arXiv TeX source.
+- C131 (filed by the hardening session): `escape.sandbox.test.ts` "ends a bomb that forks without bound" ran 16.5 s against its 15 s bound once, on #376. Its fix allows for Docker's create latency.
+- The shared GitHub GraphQL quota ran out once and held the merges for about 35 minutes. Every worker's `gh pr checks --watch` counts against it.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
