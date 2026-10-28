@@ -1,0 +1,37 @@
+# Python's functools.cache: remembering what a call already answered
+
+Some recursions ask the same question many times. The ways to climb 10 stairs, one or two at a time, are the ways to climb 9 plus the ways to climb 8. Each of those splits again, and "the ways to climb 8" is asked for from both sides. When the same smaller question comes up over and over, the work grows much faster than the number of different questions. The smaller questions that repeat are **overlapping subproblems**, and the fix is to answer each one once and keep the answer. The Backtracking Topic met the same idea as pruning, in [Go: never enter the same state twice](/chapters/backtracking-go-regexp). This Chapter reads how Python's standard library does it for any function, `functools.cache` in CPython 3.13.0, and how that turns into a table you fill yourself. A lookup or an insert in a dict is O(1) in the **expected** case, as the Hash tables Topic established ([CPython: a dict that probes](/chapters/hash-tables-cpython-dict)).
+
+## The library's answer: a dictionary lookup
+
+The documentation describes `cache` in two sentences: "Simple lightweight unbounded function cache. Sometimes called "memoize"." ([Doc/library/functools.rst, lines 31 to 32](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L31-L32); the link markup around "memoize" dropped) The second sentence reads "Returns the same as lru_cache(maxsize=None), creating a thin wrapper around a dictionary lookup for the function arguments." ([lines 34 to 35](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L34-L35); the double backticks around `lru_cache(maxsize=None)` dropped) The dictionary is a plain one in the implementation: `cache = {}` ([Lib/functools.py, line 552](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Lib/functools.py#L552)). The wrapper that `maxsize=None` selects is nine lines:
+
+```python
+key = make_key(args, kwds, typed)
+result = cache_get(key, sentinel)
+if result is not sentinel:
+    hits += 1
+    return result
+misses += 1
+result = user_function(*args, **kwds)
+cache[key] = result
+return result
+```
+
+([Lib/functools.py, lines 575 to 583](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Lib/functools.py#L575-L583)) That is the whole decision. Build a key from the arguments, look it up, and if it is there count a **hit** and return the stored answer. If not, count a **miss**, call the real function, store the answer under the key, and return it. A function called twice with the same arguments does its work once. For one `int` argument the key is the argument itself: "If there is only a single argument and its data type is known to cache its hash value, then that argument is returned without a wrapper." ([Lib/functools.py, lines 477 to 478](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Lib/functools.py#L477-L478)) The price of using a dictionary is stated too: "Since a dictionary is used to cache results, the positional and keyword arguments to the function must be hashable." ([Doc/library/functools.rst, lines 166 to 167](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L166-L167); the role markup around "hashable" dropped)
+
+## What the cache saves
+
+The documentation's own example counts the saving. A recursive `fib` is wrapped with `@lru_cache(maxsize=None)`, and after `[fib(n) for n in range(16)]` the report reads `CacheInfo(hits=28, misses=16, maxsize=None, currsize=16)` ([Doc/library/functools.rst, lines 258 to 268](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L258-L268)). The same page says what `cache_info` reports: a named tuple "showing hits, misses, maxsize and currsize" ([lines 204 to 205](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L204-L205); the role markup and emphasis dropped). The numbers follow from the code above. There are 16 misses because there are 16 different arguments, 0 to 15, and each is computed once. Each of `fib(2)` to `fib(15)` makes two inner calls, so there are 16 + 2 × 14 = 44 calls in all, and 44 − 16 = 28 of them are hits (arithmetic on the example). Without the cache, the calls for `fib(15)` alone number 1,973, and for `fib(40)` 331,160,281 (arithmetic: the calls `c(n)` obey `c(n) = 1 + c(n-1) + c(n-2)`, which gives `c(n) = 2 × fib(n+1) − 1`).
+
+The docs' other example shows the saving on a second call. `factorial(10)` has "no previously cached result, makes 11 recursive calls" ([Doc/library/functools.rst, line 45](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L45); the comment marker dropped), and `factorial(12)` "makes two new recursive calls, the other 10 are cached" ([line 49](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L49); the comment marker dropped).
+
+## Top-down and bottom-up
+
+Writing the recursion and letting a cache remember it is **top-down**, or **memoisation**: you start from the question you want and the answers it needs are computed when it asks. A **table** is the same answers computed **bottom-up**: you decide the order yourself, smallest question first, and fill an array so that every answer is there before anything asks for it. For climbing stairs, `table[m]` holds the ways to climb `m` stairs, `table[0]` is 1, and `table[m]` is the sum of `table[m - step]` over the allowed steps. There is one entry per different question, so the work is one table lookup per entry per step: O(N × S) in the **worst case** for N stairs and S step sizes (every entry looks at every step), and O(N) space. The cache cannot be bottom-up by itself, because it only sees the calls it is given and not the order they depend on (the Chapter's reading of the wrapper above). The table needs no recursion, so it also needs no stack as deep as N.
+
+This is the decision to remember. When a recursion has few different subproblems and many repeated calls, store each answer under the argument that identifies it, and look before computing. The documentation sets `cache` apart from `lru_cache` by whether anything is ever thrown away: `lru_cache` "saves up to the maxsize most recent calls" ([Doc/library/functools.rst, lines 154 to 155](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L154-L155); the emphasis dropped), while "If maxsize is set to None, the LRU feature is disabled and the cache can grow without bound." ([lines 182 to 183](https://github.com/python/cpython/blob/60403a5409ff2c3f3b07dd2ca91a7a3e096839c7/Doc/library/functools.rst#L182-L183); the emphasis and double backticks dropped). In a dynamic program every answer may be needed again, so nothing may be evicted, and the table keeps them all. The next Chapters ask when that is more than you need.
+
+## What the Problems build
+
+You start the Build that this Topic grows. It reads commands and works on one sequence of integers, and in this Chapter the sequence is the list of step sizes you may take. `ways` counts the ways to climb with a table, as above. The Extra Problem `cachestats` prints the hits and the misses that a memoised `ways` would report.

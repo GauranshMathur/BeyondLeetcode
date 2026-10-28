@@ -1,0 +1,9 @@
+load 3 7
+fewest 10000
+fewest 9998
+load 11 17 29 31
+fewest 7777
+fewest 10000
+load 100
+fewest 10000
+fewest 9999
