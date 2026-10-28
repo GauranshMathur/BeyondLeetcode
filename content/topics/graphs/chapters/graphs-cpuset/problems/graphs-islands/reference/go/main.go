@@ -14,7 +14,7 @@ var (
 	out      = map[string][]string{} // node -> the nodes it has an edge to, in the order added
 	parents  = map[string]string{}   // union-find: node -> its parent; a root is its own parent
 	ranks    = map[string]int{}      // union-find: root -> an upper bound on its tree's height
-	rows     []string                // the grid, one string of 0 and 1 per row
+	rows []string                    // the grid, one string of 0 and 1 per row
 	commands = map[string]func(args []string){}
 	printer  = bufio.NewWriter(os.Stdout)
 )

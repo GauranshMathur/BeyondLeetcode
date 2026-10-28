@@ -4,6 +4,7 @@ edge a b 6
 edge b c
 edge b c 5
 edge a c 1000000
+out a
 edge c d 1000000
 edge d e 1000000
 edge e f 999999

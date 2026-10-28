@@ -237,9 +237,7 @@ commands.waves = () => {
 
 commands.same = (args) => {
 	const [a, b] = args;
-	printed.push(
-		parents.has(a) && parents.has(b) && find(parents, a) === find(parents, b) ? 'yes' : 'no'
-	);
+	printed.push(parents.has(a) && parents.has(b) && find(parents, a) === find(parents, b) ? 'yes' : 'no');
 };
 
 commands.groups = () => {

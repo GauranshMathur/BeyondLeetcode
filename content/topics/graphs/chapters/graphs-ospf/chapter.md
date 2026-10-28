@@ -1,6 +1,6 @@
 # OSPF: every router runs Dijkstra
 
-Give every edge a cost and the question changes: not the route with the fewest edges but the one with the lowest total cost. This Chapter reads how a real routing protocol answers it. OSPF, the Open Shortest Path First protocol, is defined in [RFC 2328](https://www.rfc-editor.org/rfc/rfc2328.html), and the code here is from FRRouting 10.0, a routing suite whose `ospfd/ospf_spf.c` marks its steps with the RFC's numbers ([lines 1750 to 1754](https://github.com/FRRouting/frr/blob/03a143cd49ed1b190cb38f48a31ef4d71fa01a02/ospfd/ospf_spf.c#L1750-L1754)).
+Give every edge a cost and the question changes: not the route with the fewest edges but the one with the lowest total cost. This Chapter reads how a real routing protocol answers it. OSPF is the protocol RFC 2328 specifies: "This document is a specification of the Open Shortest Path First (OSPF) TCP/IP internet routing protocol." ([RFC 2328, section 1](https://www.rfc-editor.org/rfc/rfc2328.html#section-1)) The code here is from FRRouting 10.0, a routing suite whose `ospfd/ospf_spf.c` marks its steps with the RFC's numbers ([lines 1750 to 1754](https://github.com/FRRouting/frr/blob/03a143cd49ed1b190cb38f48a31ef4d71fa01a02/ospfd/ospf_spf.c#L1750-L1754)).
 
 ## Every router solves the same graph
 

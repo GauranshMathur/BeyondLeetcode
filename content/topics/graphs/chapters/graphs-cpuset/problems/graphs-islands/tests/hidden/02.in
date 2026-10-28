@@ -17,3 +17,6 @@ islands 8
 edge a b
 same a b
 islands 4
+grid 11 11
+clear
+islands 4
