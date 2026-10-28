@@ -1,8 +1,4 @@
 {
 	"title": "Hunspell: ranking spelling suggestions by what two words share",
-	"problems": [
-		"dp-2d-common",
-		"dp-2d-trace",
-		"dp-2d-weave"
-	]
+	"problems": ["dp-2d-common", "dp-2d-trace", "dp-2d-weave"]
 }

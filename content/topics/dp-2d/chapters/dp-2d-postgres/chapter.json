@@ -1,7 +1,4 @@
 {
 	"title": "PostgreSQL: two rows of the table are enough",
-	"problems": [
-		"dp-2d-edit",
-		"dp-2d-within"
-	]
+	"problems": ["dp-2d-edit", "dp-2d-within"]
 }

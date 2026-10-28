@@ -20,7 +20,9 @@ commands.show = () => {
 
 function lcsTable(): number[][] {
 	// c[i][j]: length of the longest common subsequence of the first i letters of first and the first j of second
-	const c = Array.from({ length: first.length + 1 }, () => new Array<number>(second.length + 1).fill(0));
+	const c = Array.from({ length: first.length + 1 }, () =>
+		new Array<number>(second.length + 1).fill(0)
+	);
 	for (let i = 1; i <= first.length; i++) {
 		for (let j = 1; j <= second.length; j++) {
 			c[i][j] =
@@ -107,7 +109,9 @@ commands.signs = (args) => {
 	}
 	const plus = (total + target) / 2; // the weights that get a plus must add up to this
 	// table[i][s]: the ways to choose among the first i weights so that the chosen ones add up to s
-	const table = Array.from({ length: weights.length + 1 }, () => new Array<number>(plus + 1).fill(0));
+	const table = Array.from({ length: weights.length + 1 }, () =>
+		new Array<number>(plus + 1).fill(0)
+	);
 	table[0][0] = 1;
 	for (let i = 1; i <= weights.length; i++) {
 		const weight = weights[i - 1];

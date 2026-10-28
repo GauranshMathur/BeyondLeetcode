@@ -20,7 +20,9 @@ commands.show = () => {
 
 function lcsTable(): number[][] {
 	// c[i][j]: length of the longest common subsequence of the first i letters of first and the first j of second
-	const c = Array.from({ length: first.length + 1 }, () => new Array<number>(second.length + 1).fill(0));
+	const c = Array.from({ length: first.length + 1 }, () =>
+		new Array<number>(second.length + 1).fill(0)
+	);
 	for (let i = 1; i <= first.length; i++) {
 		for (let j = 1; j <= second.length; j++) {
 			c[i][j] =
@@ -91,7 +93,8 @@ commands.ties = () => {
 	const last = cost.length - 1;
 	const low = Math.min(...cost[last]);
 	let total = 0;
-	for (let x = 0; x < cost[last].length; x++) if (cost[last][x] === low) total = (total + count[last][x]) % MOD;
+	for (let x = 0; x < cost[last].length; x++)
+		if (cost[last][x] === low) total = (total + count[last][x]) % MOD;
 	out.push(String(total));
 };
 

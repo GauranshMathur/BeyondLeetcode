@@ -1,0 +1,5 @@
+Let `total` be the sum of the weights. If `TARGET` is more than `total` away from 0, or `total + TARGET` is odd, print 0. Otherwise the weights with a plus must add up to `P = (total + TARGET) / 2`. Count the ways to choose a group of weights that add up to `P`: keep a table with a row per item plus a row 0 and `P + 1` columns, `table[0][0]` is 1, and `table[i][s]` is `table[i - 1][s]` plus, when `weight <= s`, `table[i - 1][s - weight]`, modulo 1000000007. Print `table[n][P]`.
+
+**Why it is right.** With a plus group of sum `P`, the minus group sums to `total - P`, and the signed total is `P - (total - P)`, so it equals `TARGET` exactly when `P = (total + TARGET) / 2`. Each way of signing corresponds to one choice of the plus group, so counting groups counts ways. A weight of 0 can be in either group without changing a sum, and the table counts it in both ways, because for `weight = 0` the two terms are the same cell.
+
+**Cost.** (n + 1) × (P + 1) cells, each O(1): O(n × P) time and space in the **worst case**, with `P` at most 5000. It is the same table as `keep`, with sums in place of values and a count in place of a maximum.

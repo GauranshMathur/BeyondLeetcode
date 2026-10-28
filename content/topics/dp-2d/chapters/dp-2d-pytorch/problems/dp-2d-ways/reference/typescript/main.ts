@@ -20,7 +20,9 @@ commands.show = () => {
 
 function lcsTable(): number[][] {
 	// c[i][j]: length of the longest common subsequence of the first i letters of first and the first j of second
-	const c = Array.from({ length: first.length + 1 }, () => new Array<number>(second.length + 1).fill(0));
+	const c = Array.from({ length: first.length + 1 }, () =>
+		new Array<number>(second.length + 1).fill(0)
+	);
 	for (let i = 1; i <= first.length; i++) {
 		for (let j = 1; j <= second.length; j++) {
 			c[i][j] =
@@ -101,7 +103,9 @@ commands.ways = (args) => {
 	const amount = Number(args[0]);
 	const coins = items.map((item) => item.weight).filter((weight) => weight > 0);
 	// table[i][j]: the ways to pay j using only the first i coins, each as often as you like
-	const table = Array.from({ length: coins.length + 1 }, () => new Array<number>(amount + 1).fill(0));
+	const table = Array.from({ length: coins.length + 1 }, () =>
+		new Array<number>(amount + 1).fill(0)
+	);
 	table[0][0] = 1;
 	for (let i = 1; i <= coins.length; i++) {
 		const coin = coins[i - 1];

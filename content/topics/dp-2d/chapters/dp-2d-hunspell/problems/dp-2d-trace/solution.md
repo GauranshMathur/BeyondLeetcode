@@ -1,0 +1,5 @@
+Build the table `c` as for `common`. Then walk from `(i, j) = (m, n)`. If `first[i - 1] == second[j - 1]`, push that letter and move to `(i - 1, j - 1)`. Otherwise, if `c[i - 1][j] >= c[i][j - 1]`, move to `(i - 1, j)`, and if not, to `(i, j - 1)`. When `i` or `j` reaches 0, reverse the pushed letters and print them, or `-` if there are none.
+
+**Why it is right.** Every cell holds the length of a longest common subsequence of its two prefixes. A match takes the cell diagonally up and to the left plus one, so taking the matching letter and moving there keeps the total. When the letters differ, the cell was the larger of the cell above and the cell to the left, so moving to the larger one stays on a path that reaches the cell's value. The number of letters taken is `c[m][n]`, and they are in order in both words, because the walk moves up and left only. The tie rule only chooses between two equally good ways.
+
+**Cost.** The table costs O(m × n) time and space in the **worst case**, as in `common`, and the walk takes at most `m + n` steps. The path needs more than the last row, because the walk reads cells all over the table.
