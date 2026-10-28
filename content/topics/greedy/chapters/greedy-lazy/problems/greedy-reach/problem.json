@@ -1,0 +1,5 @@
+{
+	"title": "The fewest tokens when a match may be cut short",
+	"kind": "extra",
+	"parent": "greedy-parse"
+}
