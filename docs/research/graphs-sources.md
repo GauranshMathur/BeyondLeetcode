@@ -21,7 +21,7 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 
 ## Observed, not cited
 
-- **The oracle.** The expected outputs of every Test come from a second implementation of all the commands, written with other techniques (Floyd-Warshall for costs and hop counts, repeated minimum selection for `order`, recomputed components for `same`, `groups` and `redundant`, a lexicographically smallest walk found by dynamic programming for `path`, `would` and `loop`). The Reference Code of the last stage, in each Language, was compared with it on random command scripts (see the PR for the counts) before the content check ran it.
+- **The oracle.** The expected outputs of every Test come from a second implementation of all the commands, written with other techniques (Floyd-Warshall for costs and hop counts, repeated minimum selection for `order`, recomputed components for `same`, `groups` and `redundant`, a lexicographically smallest walk found by dynamic programming for `path`, `would` and `loop`). The Reference Code of the last stage, in each Language, was compared with it on random command scripts on 1,500 random command scripts per Language (names from a small set, repeated edges, self-loops, unknown names, `clear`, weights 1 to 6, random grids) before the content check ran it, with no difference.
 - **Reference Code.** Python, TypeScript (Node) and Go were each run on every Test in the Problem's scope in the real Sandbox by the content check.
 - **The Chapters' own code.** The Python of the Chapters (the breadth-first search of the lockdep Chapter) was run before it was shown.
 
@@ -39,8 +39,8 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 - That a batch from `get_ready` is "why the module is built this way": replaced by the documentation sentence "designed to easily support parallel processing" (claim 3.5).
 - That OSPF "is how many routers learn where to send each packet", and that an OSPF router "keeps every first step of a tie": replaced by what the RFC says (claims 5.1, 5.8).
 - That the scheduler "needs to know which CPUs may share work": cut; the Chapter quotes what `generate_sched_domains` says it does (claim 4.8).
-- That lists and sets of graph code are "what most graph code does", that a depth-first search "is deeper than some languages allow a recursive call to go", that "the queues of Python, Go and the Build's own heap have no cheap way to remove an entry": cut as unsourced or untrue (Go's `container/heap` has `Remove`).
-- The name "path halving" for the kernel's `uf_find` loop: not used; the Chapter says what the loop does and quotes the comment's word, path compression.
+- That every search "is what most graph code does", that a deep chain "is deeper than some languages allow a recursive call to go", and that "the queues of Python, Go and the Build's own heap have no cheap way to remove an entry": cut as unsourced, or untrue (Go's `container/heap` has `Remove`).
+- The name "path halving" for the kernel's `uf_find` loop: not used in the Chapters, which say what the loop does and quote the comment's word, path compression. (A code comment in the Reference Code uses the name, as a label for what the loop does, not as a claim about the kernel.)
 
 ---
 
