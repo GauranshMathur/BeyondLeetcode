@@ -1,11 +1,12 @@
 import { inspect } from 'node:util';
 import { isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { INVITE_COOKIE } from '#lib/server/identity/auth.js';
 import { createInvites, INVITE_LIFETIME_MS } from '#lib/server/identity/invites.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
 import { createTestAuth } from '#lib/server/identity/test-auth.js';
-import { createThrottle } from '#lib/server/identity/throttle.js';
+import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import { createAccept } from './accept';
 
 afterEach(() => vi.restoreAllMocks());
@@ -21,7 +22,19 @@ const formOf = (values: Form) => {
 	return body;
 };
 
-async function real(options: { throttle?: ReturnType<typeof createThrottle> } = {}) {
+/** The account actions over this Better Auth, whose Invites are judged by `invites`. */
+const accountsOver = (
+	auth: unknown,
+	invites: { lookup: (t: string, n: Date) => Promise<unknown> }
+) =>
+	createAccountActions({
+		auth: auth as never,
+		providerStarts: createProviderStarts(),
+		registrationOpen: () => false,
+		inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
+	});
+
+async function real() {
 	// Invites and the Registration rule are built on the harness's database, after it.
 	let invites!: ReturnType<typeof createInvites>;
 	let registration!: ReturnType<typeof createRegistration>;
@@ -43,13 +56,17 @@ async function real(options: { throttle?: ReturnType<typeof createThrottle> } = 
 	});
 	invites = createInvites({ db, origin });
 	registration = createRegistration({ instance, invites });
-	const accept = createAccept(options.throttle ?? createThrottle());
+	const accept = createAccept();
 	const jar = new Map<string, string>();
 	const cookies = {
 		set: vi.fn((name: string, value: string) => void jar.set(name, value)),
 		delete: vi.fn((name: string) => void jar.delete(name))
 	};
-	const locals = { instance, auth, invites, identity: undefined as unknown };
+	const locals = {
+		instance,
+		multiUser: { auth, invites, accounts: accountsOver(auth, invites) },
+		identity: undefined as unknown
+	};
 	const event = (token: string, values: Form = {}) => ({
 		request: { formData: async () => formOf(values) },
 		locals,
@@ -271,13 +288,16 @@ describe('accepting', () => {
 			['NAME_INVALID_CHARACTERS', 'name'],
 			['NAME_REQUIRED', 'name']
 		] as const) {
-			locals.auth = {
-				api: {
-					signUpEmail: async () => {
-						throw new APIError('BAD_REQUEST', { message: 'x', code });
+			locals.multiUser.accounts = accountsOver(
+				{
+					api: {
+						signUpEmail: async () => {
+							throw new APIError('BAD_REQUEST', { message: 'x', code });
+						}
 					}
-				}
-			} as never;
+				},
+				{ lookup: async () => ({}) }
+			);
 			expect(await post(token, lin)).toMatchObject({ status: 400, data: { field } });
 		}
 	});
@@ -296,7 +316,7 @@ describe('accepting', () => {
 	});
 
 	it('counts every attempt against the caller address', async () => {
-		const { post, create } = await real({ throttle: createThrottle() });
+		const { post, create } = await real();
 		const { token } = await create();
 		for (let i = 0; i < 20; i++) {
 			expect(await post(token, { ...lin, password: 'x' })).toMatchObject({ status: 400 });
@@ -305,19 +325,70 @@ describe('accepting', () => {
 		expect(await post(token, { ...lin, password: 'x' })).toMatchObject({ status: 429 });
 	});
 
+	it('answers the limit with Retry-After and creates nothing', async () => {
+		const { accept, event, create, db } = await real();
+		const { token } = await create();
+		for (let i = 1; i <= 20; i++) {
+			expect(
+				await accept.action(event(token, { ...lin, password: 'x' }) as never),
+				`attempt ${i}`
+			).toMatchObject({ status: 400, data: { field: 'password' } });
+		}
+		const last = event(token, lin);
+
+		expect(await accept.action(last as never)).toMatchObject({ status: 429 });
+		expect(last.setHeaders).toHaveBeenCalledWith({
+			'retry-after': expect.stringMatching(/^[1-9]\d*$/)
+		});
+		expect(await db.user.count({ where: { role: 'learner' } })).toBe(0);
+	});
+
+	it('charges a body that is not a form: it and 19 parseable attempts use up the limit', async () => {
+		const { accept, event, create } = await real();
+		const { token } = await create();
+		const broken = {
+			...event(token),
+			request: {
+				formData: async () => {
+					throw new TypeError('Failed to parse body');
+				}
+			}
+		};
+		expect(await accept.action(broken as never)).toMatchObject({ status: 400 });
+		for (let i = 1; i <= 19; i++) {
+			expect(
+				await accept.action(event(token, { ...lin, password: 'x' }) as never),
+				`attempt ${i}`
+			).toMatchObject({ status: 400, data: { field: 'password' } });
+		}
+
+		expect(await accept.action(event(token, lin) as never)).toMatchObject({ status: 429 });
+	});
+
+	it('is unavailable, not a crash, when the request has no account actions', async () => {
+		const { accept, event, create, locals } = await real();
+		const { token } = await create();
+		(locals as { multiUser?: unknown }).multiUser = undefined;
+
+		expect(await accept.action(event(token, lin) as never)).toMatchObject({ status: 503 });
+	});
+
 	it('does not log the token, the password or the path', async () => {
 		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
 			vi.spyOn(console, m).mockImplementation(() => {})
 		);
 		const { post, create, locals } = await real();
 		const { token } = await create();
-		locals.auth = {
-			api: {
-				signUpEmail: async () => {
-					throw new Error(`boom ${token} ${lin.password}`);
+		locals.multiUser.accounts = accountsOver(
+			{
+				api: {
+					signUpEmail: async () => {
+						throw new Error(`boom ${token} ${lin.password}`);
+					}
 				}
-			}
-		} as never;
+			},
+			{ lookup: async () => ({}) }
+		);
 
 		expect(await post(token, lin)).toMatchObject({ status: 500 });
 

@@ -1,9 +1,6 @@
 import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
-import { isAPIError } from 'better-auth/api';
-import { z } from 'zod';
+import type { AccountField, Refusal, RefusalCode } from '#lib/server/identity/account-actions.js';
 import {
-	hasForbiddenNameCharacter,
-	isNameTooLong,
 	MAX_NAME_LENGTH,
 	MAX_PASSWORD_LENGTH,
 	MIN_PASSWORD_LENGTH
@@ -11,7 +8,6 @@ import {
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { clientAddress } from '#lib/server/identity/client-address.js';
 import { INVITE_COOKIE, INVITE_COOKIE_PATH } from '#lib/server/identity/invites.js';
-import type { Throttle } from '#lib/server/identity/throttle.js';
 
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
 const MESSAGES = {
@@ -28,7 +24,6 @@ const MESSAGES = {
 	failed: 'The account could not be created. Try again.'
 } as const;
 
-type Field = 'name' | 'email' | 'password';
 type AcceptEvent = Pick<
 	RequestEvent,
 	'request' | 'locals' | 'cookies' | 'params' | 'url' | 'getClientAddress' | 'setHeaders'
@@ -57,46 +52,34 @@ function forget(cookies: Pick<RequestEvent['cookies'], 'delete'>, secure: boolea
 	cookies.delete(INVITE_COOKIE, { path: OLD_COOKIE_PATH, secure });
 }
 
+/** The status and text each refusal of an accept gets; any other refusal is a failure. */
+const ANSWERS: Partial<
+	Record<RefusalCode, { status: 400 | 403 | 429; message: string; invalid?: boolean }>
+> = {
+	TOO_MANY_ATTEMPTS: { status: 429, message: MESSAGES.tooMany },
+	// The Invite is not usable, or the gate or the claim said no: used, expired or cancelled.
+	INVITE_INVALID: { status: 403, message: MESSAGES.invalid, invalid: true },
+	NAME_REQUIRED: { status: 400, message: MESSAGES.name },
+	NAME_TOO_LONG: { status: 400, message: MESSAGES.nameLong },
+	NAME_INVALID_CHARACTERS: { status: 400, message: MESSAGES.nameCharacters },
+	INVALID_EMAIL: { status: 400, message: MESSAGES.email },
+	PASSWORD_TOO_SHORT: { status: 400, message: MESSAGES.passwordShort },
+	PASSWORD_TOO_LONG: { status: 400, message: MESSAGES.passwordLong },
+	EMAIL_UNAVAILABLE: { status: 400, message: MESSAGES.emailUnavailable }
+};
+
 /** What the form page gets back from a refused attempt: always the same keys, never the password. */
 const refused = (
 	status: 400 | 403 | 429 | 500 | 503,
 	typed: { name: string; email: string },
 	message: string,
-	options: { field?: Field; invalid?: boolean } = {}
+	options: { field?: AccountField; invalid?: boolean } = {}
 ) => fail(status, { ...typed, field: options.field, invalid: options.invalid === true, message });
 
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
 	return typeof value === 'string' ? value : '';
 };
-
-/** The Better Auth refusals this form maps to a fixed text; anything else is a failure. */
-function known(
-	error: unknown
-): { status: 400 | 403; field?: Field; invalid?: boolean; message: string } | null {
-	if (!isAPIError(error)) return null;
-	// The gate or the claim said no: the Invite was used, expired or cancelled (or the sign-up is closed).
-	if (error.statusCode === 403) return { status: 403, invalid: true, message: MESSAGES.invalid };
-	switch (error.body?.code) {
-		case 'USER_ALREADY_EXISTS':
-		case 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL':
-			return { status: 400, field: 'email', message: MESSAGES.emailUnavailable };
-		case 'NAME_REQUIRED':
-			return { status: 400, field: 'name', message: MESSAGES.name };
-		case 'NAME_TOO_LONG':
-			return { status: 400, field: 'name', message: MESSAGES.nameLong };
-		case 'NAME_INVALID_CHARACTERS':
-			return { status: 400, field: 'name', message: MESSAGES.nameCharacters };
-		case 'INVALID_EMAIL':
-			return { status: 400, field: 'email', message: MESSAGES.email };
-		case 'PASSWORD_TOO_SHORT':
-			return { status: 400, field: 'password', message: MESSAGES.passwordShort };
-		case 'PASSWORD_TOO_LONG':
-			return { status: 400, field: 'password', message: MESSAGES.passwordLong };
-		default:
-			return null;
-	}
-}
 
 /**
  * The Accept invite page. The token is in the URL path, so nothing here logs the path or the token, and
@@ -108,7 +91,7 @@ function known(
  * through Better Auth with that token as the invite cookie of the call; the registration gate checks it
  * and Better Auth's `user.create.before` hook claims it, atomically (`Invites.claim`). Nothing here spends it.
  */
-export function createAccept(throttle: Throttle) {
+export function createAccept() {
 	const secure = (event: Pick<RequestEvent, 'url'>) => event.url.protocol === 'https:';
 	return {
 		async load({
@@ -119,7 +102,7 @@ export function createAccept(throttle: Throttle) {
 		}: Pick<RequestEvent, 'locals' | 'params' | 'cookies' | 'url'>) {
 			// Someone who is signed in has nothing to accept.
 			if (locals.identity) redirect(303, '/');
-			const invite = await locals.invites?.lookup(params.token ?? '', new Date());
+			const invite = await locals.multiUser?.invites.lookup(params.token ?? '', new Date());
 			if (!invite) {
 				forget(cookies, secure({ url }));
 				return { valid: false, minPasswordLength: MIN_PASSWORD_LENGTH };
@@ -138,79 +121,56 @@ export function createAccept(throttle: Throttle) {
 			const { request, locals, cookies, params } = event;
 			if (locals.identity) redirect(303, '/');
 
-			// Before anything else, so a flood of attempts of any kind is counted and none is free.
-			const turn = throttle.attempt({ address: clientAddress(event), accountId: null });
+			const accounts = locals.multiUser?.accounts;
+			if (!accounts) return refused(503, { name: '', email: '' }, MESSAGES.failed);
 
-			let data: FormData;
-			try {
-				data = await request.formData();
-			} catch {
-				// A body that is not a form: a fixed answer, and nothing of the request is logged.
-				return refused(400, { name: '', email: '' }, MESSAGES.failed);
-			}
 			// What was typed comes back, except the password.
-			const typed = { name: text(data, 'name'), email: text(data, 'email') };
-			if (!turn.allowed) {
-				event.setHeaders({
-					'retry-after': String(Math.max(1, Math.ceil(turn.retryAfterMs / 1000)))
-				});
-				return refused(429, typed, MESSAGES.tooMany);
-			}
-
-			const { auth, invites } = locals;
-			if (!auth || !invites) return refused(503, typed, MESSAGES.failed);
-			const token = params.token ?? '';
-			if (!(await invites.lookup(token, new Date()))) {
-				return refused(403, typed, MESSAGES.invalid, { invalid: true });
-			}
-
-			const name = typed.name.trim();
-			const email = typed.email.trim();
-			const password = text(data, 'password');
-			if (name === '') return refused(400, typed, MESSAGES.name, { field: 'name' });
-			if (isNameTooLong(name)) return refused(400, typed, MESSAGES.nameLong, { field: 'name' });
-			if (hasForbiddenNameCharacter(name)) {
-				return refused(400, typed, MESSAGES.nameCharacters, { field: 'name' });
-			}
-			if (!z.email().safeParse(email).success) {
-				return refused(400, typed, MESSAGES.email, { field: 'email' });
-			}
-			if (password.length < MIN_PASSWORD_LENGTH) {
-				return refused(400, typed, MESSAGES.passwordShort, { field: 'password' });
-			}
-			if (password.length > MAX_PASSWORD_LENGTH) {
-				return refused(400, typed, MESSAGES.passwordLong, { field: 'password' });
-			}
-
-			let headers: Headers;
+			let typed = { name: '', email: '' };
+			let unreadable = false;
+			let result: Awaited<ReturnType<typeof accounts.signUp>>;
 			try {
-				// Only these three fields go on: a client cannot add a role, a Learner or anything else. The
-				// token is the one in this page's URL, handed over as the invite cookie the gate reads.
-				({ headers } = await auth.api.signUpEmail({
-					body: { name, email, password },
-					headers: new Headers({ cookie: `${INVITE_COOKIE}=${token}` }),
-					returnHeaders: true
-				}));
+				result = await accounts.signUp({
+					fields: async () => {
+						let data: FormData;
+						try {
+							data = await request.formData();
+						} catch (error) {
+							unreadable = true;
+							throw error;
+						}
+						typed = { name: text(data, 'name'), email: text(data, 'email') };
+						return { ...typed, password: text(data, 'password') };
+					},
+					address: clientAddress(event),
+					// The token is the one in this page's URL, handed over as the invite cookie the gate reads.
+					invite: params.token ?? ''
+				});
 			} catch (error) {
-				const refusal = known(error);
-				if (refusal) {
-					return refused(refusal.status, typed, refusal.message, {
-						field: refusal.field,
-						invalid: refusal.invalid
-					});
-				}
-				// Only the kind of failure is logged: the error text may hold paths, query text and the input.
-				const code = isAPIError(error) ? error.body?.code : (error as { code?: unknown })?.code;
-				console.error(
-					'Accept invite: creating the account failed:',
-					error instanceof Error ? error.name : typeof error,
-					typeof code === 'string' ? code : undefined
-				);
-				return refused(500, typed, MESSAGES.failed);
+				// A body that is not a form: a fixed answer, and nothing of the request is logged.
+				if (unreadable) return refused(400, { name: '', email: '' }, MESSAGES.failed);
+				throw error;
 			}
-			forwardSetCookies(cookies, headers.getSetCookie());
+
+			if ('refused' in result) return answer(event, typed, result);
+			forwardSetCookies(cookies, result.cookies);
 			forget(cookies, secure(event));
 			redirect(303, '/');
 		}
 	};
+}
+
+function answer(
+	event: Pick<AcceptEvent, 'setHeaders'>,
+	typed: { name: string; email: string },
+	refusal: Refusal
+) {
+	const known = ANSWERS[refusal.refused];
+	if (!known) return refused(500, typed, MESSAGES.failed);
+	if (refusal.refused === 'TOO_MANY_ATTEMPTS') {
+		event.setHeaders({ 'retry-after': String(refusal.retryAfterSeconds ?? 1) });
+	}
+	return refused(known.status, typed, known.message, {
+		field: refusal.field,
+		invalid: known.invalid
+	});
 }

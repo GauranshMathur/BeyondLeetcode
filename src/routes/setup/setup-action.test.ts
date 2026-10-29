@@ -368,6 +368,23 @@ describe('step 2: create the admin', () => {
 		});
 	});
 
+	it.each([['PASSWORD_TOO_SHORT'], ['PASSWORD_TOO_LONG']])(
+		'maps Better Auth\u2019s %s, should it get through, to Setup\u2019s own password text',
+		async (code) => {
+			const refusal = new APIError('BAD_REQUEST', { message: 'x', code });
+			const createFirstAdmin = vi.fn(async () => Promise.reject(refusal));
+
+			const result = await run(actions.admin, admin, {
+				setup: setupWith({ kind: 'open' }, createFirstAdmin)
+			});
+
+			expect(result).toMatchObject({
+				status: 400,
+				data: { field: 'password', message: 'Use 12 to 128 characters.' }
+			});
+		}
+	);
+
 	describe('control and bidi characters in the name', () => {
 		const MESSAGE = "This name contains a character that can't be used.";
 		const open = (createFirstAdmin = vi.fn(async () => ({ headers: new Headers() }))) => ({
@@ -519,6 +536,8 @@ describe('step 2: create the admin', () => {
 		});
 		expect(JSON.stringify(result)).not.toMatch(/prisma|secret|\$2b/);
 		expect(JSON.stringify(error.mock.calls)).not.toMatch(/invocation|secret|\$2b|correct horse/);
+		expect(error).toHaveBeenCalledOnce();
+		expect(String(error.mock.calls[0]?.[0])).toContain('Setup: creating the admin failed');
 	});
 
 	it('missing fields are a bad form, not a crash', async () => {

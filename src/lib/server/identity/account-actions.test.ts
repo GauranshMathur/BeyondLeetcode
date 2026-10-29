@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { APIError } from 'better-auth/api';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -11,7 +12,26 @@ import {
 import { INVITE_COOKIE } from './invites.ts';
 import { currentSession } from './session-binding.ts';
 import { createTestAuth } from './test-auth.ts';
-import { createProviderStarts } from './throttle.ts';
+import { createProviderStarts, type ThrottleInput } from './throttle.ts';
+
+// Every attempt any throttle made is kept, so a test can see which keys the actions count against. The real
+// throttle still does the counting.
+const counted = vi.hoisted(() => ({ inputs: [] as ThrottleInput[] }));
+vi.mock('./throttle.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./throttle.ts')>();
+	return {
+		...actual,
+		createThrottle: (...args: Parameters<typeof actual.createThrottle>) => {
+			const throttle = actual.createThrottle(...args);
+			const attempt = throttle.attempt.bind(throttle);
+			throttle.attempt = (input) => {
+				counted.inputs.push(input);
+				return attempt(input);
+			};
+			return throttle;
+		}
+	};
+});
 
 const GOOD = 'correct horse battery';
 const SECRETS = { github: { clientId: 'id', clientSecret: 'secret' } };
@@ -405,6 +425,210 @@ describe('signIn', () => {
 	});
 });
 
+describe('signIn limits, keys and classification, with a real Better Auth', () => {
+	const WRONG = { refused: 'WRONG_SIGN_IN' };
+	const nope = 'nope nope nope';
+	const unauthorized = () =>
+		new APIError('UNAUTHORIZED', {
+			message: 'Invalid email or password',
+			code: 'INVALID_EMAIL_OR_PASSWORD'
+		});
+	const digestOf = (email: string) => createHash('sha256').update(email).digest('hex');
+	const lastInput = () => counted.inputs[counted.inputs.length - 1];
+
+	/** Better Auth answers a wrong password at once: a flood of attempts then does not pay for the hashing. */
+	function fastWrong(auth: Awaited<ReturnType<typeof harness>>['auth']) {
+		return vi.spyOn(auth.api, 'signInEmail').mockRejectedValue(unauthorized());
+	}
+
+	it('charges a blank form to the address only, and never asks Better Auth', async () => {
+		const { accounts, auth } = await harness();
+		const asked = vi.spyOn(auth.api, 'signInEmail');
+		counted.inputs.length = 0;
+
+		expect(await accounts.signIn({ email: '', password: '', address: '10.9.0.1' })).toEqual(WRONG);
+
+		expect(counted.inputs).toEqual([{ address: '10.9.0.1', accountId: null }]);
+		expect(asked).not.toHaveBeenCalled();
+	});
+
+	it('counts against the Account id for a known email, and a digest of the lowercased email for an unknown one, never the email', async () => {
+		const { accounts, signUp } = await harness();
+		const { id } = await signUp();
+		counted.inputs.length = 0;
+
+		await accounts.signIn({ email: 'Ada@Example.com', password: nope, address: '10.9.0.2' });
+		const known = lastInput();
+		await accounts.signIn({ email: 'Nobody@Example.com', password: nope, address: '10.9.0.2' });
+		const unknown = lastInput();
+		await accounts.signIn({ email: 'nobody@example.com', password: nope, address: '10.9.0.2' });
+		const sameUnknown = lastInput();
+		await accounts.signIn({ email: ' nobody@example.com', password: nope, address: '10.9.0.2' });
+		const padded = lastInput();
+
+		expect(known).toEqual({ address: '10.9.0.2', accountId: id });
+		expect(unknown).toEqual({
+			address: '10.9.0.2',
+			accountId: null,
+			unknownEmail: digestOf('nobody@example.com')
+		});
+		// One spelling cannot escape another's count; a padded email is another key, as for Better Auth.
+		expect(sameUnknown).toEqual(unknown);
+		expect(padded.unknownEmail).not.toBe(unknown.unknownEmail);
+		expect(JSON.stringify(counted.inputs)).not.toMatch(/nobody@|ada@/i);
+	});
+
+	it('limits an address to 20 attempts of any kind, before the password is looked at', async () => {
+		const { accounts, auth, signUp } = await harness();
+		await signUp();
+		const asked = fastWrong(auth);
+		for (let i = 0; i < 20; i++) {
+			await accounts.signIn({
+				email: `nobody${i}@example.com`,
+				password: nope,
+				address: '10.9.0.3'
+			});
+		}
+		asked.mockClear();
+
+		expect(
+			await accounts.signIn({ email: 'ada@example.com', password: GOOD, address: '10.9.0.3' })
+		).toEqual(WRONG);
+		expect(asked).not.toHaveBeenCalled();
+		// Another address has its own budget.
+		await accounts.signIn({ email: 'ada@example.com', password: GOOD, address: '10.9.0.4' });
+		expect(asked).toHaveBeenCalledOnce();
+	});
+
+	it('keeps every unreadable address (the empty string) in one shared bucket, so the limit still holds', async () => {
+		const { accounts, auth, signUp } = await harness();
+		await signUp();
+		const asked = fastWrong(auth);
+		for (let i = 0; i < 20; i++) {
+			await accounts.signIn({ email: `nobody${i}@example.com`, password: nope, address: '' });
+		}
+		asked.mockClear();
+
+		expect(
+			await accounts.signIn({ email: 'ada@example.com', password: GOOD, address: '' })
+		).toEqual(WRONG);
+		expect(asked).not.toHaveBeenCalled();
+	});
+
+	it('limits one Account to 50 attempts across addresses', async () => {
+		const { accounts, auth, signUp } = await harness();
+		await signUp();
+		const asked = fastWrong(auth);
+		for (let i = 0; i < 50; i++) {
+			await accounts.signIn({ email: 'ada@example.com', password: nope, address: `10.8.0.${i}` });
+		}
+		asked.mockClear();
+
+		expect(
+			await accounts.signIn({ email: 'ada@example.com', password: GOOD, address: '10.8.1.1' })
+		).toEqual(WRONG);
+		expect(asked).not.toHaveBeenCalled();
+	});
+
+	it('limits an unknown email to 50 across addresses, like a known one', async () => {
+		const { accounts, auth } = await harness();
+		const asked = fastWrong(auth);
+		for (let i = 0; i < 52; i++) {
+			await accounts.signIn({ email: 'who@example.com', password: nope, address: `10.7.0.${i}` });
+		}
+
+		expect(asked).toHaveBeenCalledTimes(50);
+	});
+
+	it('forgives typos: a right password takes its own attempt back from the Account and the address', async () => {
+		const { accounts, signUp } = await harness();
+		await signUp();
+		const address = '10.9.0.5';
+		for (let i = 0; i < 4; i++) {
+			await accounts.signIn({ email: 'ada@example.com', password: nope, address });
+		}
+		expect(
+			await accounts.signIn({ email: 'ada@example.com', password: GOOD, address })
+		).toHaveProperty('cookies');
+		for (let i = 0; i < 5; i++) {
+			await accounts.signIn({ email: 'ada@example.com', password: nope, address });
+		}
+
+		// Five wrong since the right one: the Account is limited again.
+		expect(await accounts.signIn({ email: 'ada@example.com', password: GOOD, address })).toEqual(
+			WRONG
+		);
+	});
+
+	it('does not let a right password at one Account clear an attacker’s guesses at another', async () => {
+		const { accounts, signUp } = await harness();
+		await signUp();
+		await signUp({ name: 'Eve', email: 'eve@example.com', password: 'eve eve eve eve' });
+		const address = '10.9.0.6';
+		for (let i = 0; i < 5; i++) {
+			await accounts.signIn({ email: 'ada@example.com', password: nope, address });
+		}
+
+		for (let i = 0; i < 10; i++) {
+			await accounts.signIn({ email: 'eve@example.com', password: 'eve eve eve eve', address });
+		}
+
+		expect(await accounts.signIn({ email: 'ada@example.com', password: GOOD, address })).toEqual(
+			WRONG
+		);
+	});
+
+	it('keeps Sign in and Sign up on separate throttles', async () => {
+		const { accounts, signUp } = await harness();
+		await signUp();
+		const address = '10.9.0.7';
+		for (let i = 0; i < 20; i++) {
+			await accounts.signUp(signUpInput({ name: '', address }));
+		}
+		expect(await accounts.signUp(signUpInput({ name: '', address }))).toMatchObject({
+			refused: 'TOO_MANY_ATTEMPTS'
+		});
+
+		expect(
+			await accounts.signIn({ email: 'ada@example.com', password: GOOD, address })
+		).toHaveProperty('cookies');
+	});
+
+	it.each([
+		['BAD_REQUEST', 'INVALID_EMAIL'],
+		['BAD_REQUEST', 'PASSWORD_TOO_LONG'],
+		['UNAUTHORIZED', 'INVALID_EMAIL_OR_PASSWORD']
+	] as const)('answers WRONG_SIGN_IN for Better Auth’s %s %s', async (status, code) => {
+		const { accounts, auth } = await harness();
+		vi.spyOn(auth.api, 'signInEmail').mockRejectedValueOnce(
+			new APIError(status, { message: `Better Auth says ${code}`, code })
+		);
+
+		expect(
+			await accounts.signIn({ email: 'ada@example.com', password: GOOD, address: '10.9.1.1' })
+		).toEqual(WRONG);
+	});
+
+	it.each([
+		['a ban', new APIError('FORBIDDEN', { message: 'banned', code: 'BANNED_USER' })],
+		[
+			'an unverified email',
+			new APIError('FORBIDDEN', { message: 'verify', code: 'EMAIL_NOT_VERIFIED' })
+		],
+		['a server error', new APIError('INTERNAL_SERVER_ERROR', { message: 'boom' })],
+		['an error that is not Better Auth’s', new Error('db down')]
+	])('answers SIGN_IN_FAILED, not a reason, for %s', async (_what, error) => {
+		const { accounts, auth } = await harness();
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		vi.spyOn(auth.api, 'signInEmail').mockRejectedValueOnce(error);
+
+		expect(
+			await accounts.signIn({ email: 'ada@example.com', password: GOOD, address: '10.9.1.2' })
+		).toEqual({ refused: 'SIGN_IN_FAILED' });
+		log.mockRestore();
+	});
+});
+
 describe('startProvider', () => {
 	it('answers the provider URL and the cookies of the flow, and records the start', async () => {
 		const { accounts, providerStarts } = await harness({ socialProviders: SECRETS });
@@ -418,19 +642,19 @@ describe('startProvider', () => {
 		expect(providerStarts.size()).toBe(1);
 	});
 
-	it('refuses SIGN_IN_FAILED for a provider the Instance lacks', async () => {
+	it('refuses PROVIDER_REFUSED for a provider the Instance lacks', async () => {
 		const { accounts } = await harness({ socialProviders: SECRETS });
 		expect(
 			await accounts.startProvider({ provider: 'google', next: '/', address: ADDRESS })
 		).toEqual({
-			refused: 'SIGN_IN_FAILED'
+			refused: 'PROVIDER_REFUSED'
 		});
 		expect(await accounts.startProvider({ provider: '', next: '/', address: ADDRESS })).toEqual({
-			refused: 'SIGN_IN_FAILED'
+			refused: 'PROVIDER_REFUSED'
 		});
 	});
 
-	it('refuses SIGN_IN_FAILED past 20 starts from one address', async () => {
+	it('refuses PROVIDER_REFUSED past 20 starts from one address', async () => {
 		const { accounts } = await harness({ socialProviders: SECRETS });
 		for (let i = 0; i < 20; i++) {
 			await accounts.startProvider({ provider: 'github', next: '/', address: ADDRESS });
@@ -438,7 +662,7 @@ describe('startProvider', () => {
 		expect(
 			await accounts.startProvider({ provider: 'github', next: '/', address: ADDRESS })
 		).toEqual({
-			refused: 'SIGN_IN_FAILED'
+			refused: 'PROVIDER_REFUSED'
 		});
 	});
 
@@ -689,6 +913,7 @@ describe('REFUSAL_CODES', () => {
 		const covered: RefusalCode[] = [
 			'WRONG_SIGN_IN',
 			'SIGN_IN_FAILED',
+			'PROVIDER_REFUSED',
 			'SIGN_UP_FAILED',
 			'NAME_REQUIRED',
 			'NAME_TOO_LONG',

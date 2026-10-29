@@ -6,7 +6,6 @@ import { isRedirect } from '@sveltejs/kit';
 import { expect, it, onTestFinished } from 'vitest';
 import { createApp } from '#lib/server/app.js';
 import { createHandle } from '#lib/server/handle.js';
-import { createThrottle } from '#lib/server/identity/throttle.js';
 import { actions as settingsActions } from '../settings/+page.server';
 import { createSignIn } from './sign-in';
 
@@ -92,7 +91,7 @@ it('a fresh Instance without the test switch: choose Multi-user, create the admi
 	expect((await visit('/', '/', first)).response.headers.get('location')).toBe('/signin?next=%2F');
 
 	// 4. Sign back in through the form, to the page they asked for.
-	const signIn = createSignIn(createThrottle());
+	const signIn = createSignIn();
 	jar.clear();
 	const form = new FormData();
 	form.set('email', admin.email);
@@ -100,7 +99,7 @@ it('a fresh Instance without the test switch: choose Multi-user, create the admi
 	const back = await outcome(() =>
 		signIn.action({
 			request: { formData: async () => form },
-			locals: { auth: app.multiUser?.auth, instance: app.instance },
+			locals: { auth: app.multiUser?.auth, multiUser: app.multiUser, instance: app.instance },
 			cookies,
 			url: new URL('http://localhost:3000/signin?next=%2Ftopics%2Fstacks'),
 			getClientAddress: () => '203.0.113.7'
