@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
+import { redactingLogger } from '../logging.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
 import { resetAdminPassword, resetPassword } from './accounts.ts';
 import {
@@ -11,17 +12,19 @@ import {
 	createAuth,
 	enabledProviders,
 	hasForbiddenNameCharacter,
-	INVITE_COOKIE,
 	isNameTooLong,
 	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
 	providerName,
-	redactInvite,
-	redactingLogger,
 	socialProvidersFrom
 } from './auth.ts';
-import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
+import {
+	createInvites,
+	INVITE_COOKIE,
+	INVITE_LIFETIME_MS,
+	INVITE_LOG_PATTERNS
+} from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
 import { createTestAuth, TEST_SECRET } from './test-auth.ts';
@@ -1081,49 +1084,6 @@ describe('accepting an Invite', () => {
 	});
 });
 
-describe('redactInvite', () => {
-	const t = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
-	const N = INVITE_COOKIE;
-
-	it.each([
-		[`/invite/${t}`, '/invite/[redacted]'],
-		[`GET /invite/${t}?x=1 done`, 'GET /invite/[redacted]?x=1 done'],
-		[`/invite/ ${t}`, '/invite/[redacted]'],
-		[`/invite/ \t${t} after`, '/invite/[redacted] after'],
-		[`${N}=${t}`, `${N}=[redacted]`],
-		[`a=1; ${N} = ${t}; b=2`, `a=1; ${N}=[redacted]; b=2`],
-		[`${N}="${t}"`, `${N}="[redacted]"`],
-		[`${N}='${t}'`, `${N}='[redacted]'`],
-		[`{\\"${N}\\":\\"${t}\\"}`, `{${N}=\\"[redacted]\\"}`],
-		[`${N}="${t}`, `${N}="[redacted]`],
-		[`${N}='${t} and more`, `${N}='[redacted]`],
-		[`{ ${N}: '${t}' }`, `{ ${N}='[redacted]' }`],
-		[`{"${N}":"${t}"}`, `{${N}="[redacted]"}`],
-		[`${N}=\t${t}`, `${N}=[redacted]`],
-		[`?a=1&${N}=${t}`, `?a=1&${N}=[redacted]`],
-		[`a|${N}=${t}`, `a|${N}=[redacted]`],
-		[`a$${N}=${t}`, `a$${N}=[redacted]`],
-		[`a%${N}=${t}`, `a%${N}=[redacted]`],
-		[`a#${N}=${t}`, `a#${N}=[redacted]`]
-	])('removes the token from %s', (input, expected) => {
-		expect(redactInvite(input)).toBe(expected);
-		expect(redactInvite(input)).not.toContain(t);
-	});
-
-	it('never crosses into the next line', () => {
-		expect(redactInvite(`${N}=\nnext ${t.slice(0, 5)}`)).toBe(`${N}=\nnext ${t.slice(0, 5)}`);
-		expect(redactInvite(`${N}="${t}\nsecond line`)).toBe(`${N}="[redacted]\nsecond line`);
-	});
-
-	it('over-redacts a longer name that ends in ours, and leaves route ids and other text alone', () => {
-		// Whatever comes before the name is ignored: redacting a harmless cookie is the safe side.
-		expect(redactInvite(`other_${N}=harmless`)).toBe(`other_${N}=[redacted]`);
-		for (const harmless of ['/invite/[token]', 'unrelated text', 'beyond_invite=1']) {
-			expect(redactInvite(harmless)).toBe(harmless);
-		}
-	});
-});
-
 describe('signing in with a provider', () => {
 	const origin = 'http://localhost:3000';
 	const adminWho = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
@@ -1609,7 +1569,12 @@ describe('signing in with a provider', () => {
 					headers: { [CLIENT_IP_HEADER]: '10.9.0.5' }
 				})
 			);
-			redactingLogger.log('error', 'Failed', { code: 'CALLER_CODE' }, 'CALLER_STRING');
+			redactingLogger(INVITE_LOG_PATTERNS).log(
+				'error',
+				'Failed',
+				{ code: 'CALLER_CODE' },
+				'CALLER_STRING'
+			);
 
 			const written = records(all);
 			expect(written.length).toBeGreaterThan(0);
@@ -1620,8 +1585,10 @@ describe('signing in with a provider', () => {
 
 		it('logs a recognized code, and only the fixed text of a message', () => {
 			const all = spies();
-			redactingLogger.log('error', 'Invalid origin: https://x.example', { code: 'INVALID_ORIGIN' });
-			redactingLogger.log('error', 'See https://x.example/page for more');
+			redactingLogger(INVITE_LOG_PATTERNS).log('error', 'Invalid origin: https://x.example', {
+				code: 'INVALID_ORIGIN'
+			});
+			redactingLogger(INVITE_LOG_PATTERNS).log('error', 'See https://x.example/page for more');
 			expect(records(all)).toEqual([
 				'[Better Auth] Invalid origin code=INVALID_ORIGIN',
 				'[Better Auth] [message omitted]'
@@ -1630,7 +1597,7 @@ describe('signing in with a provider', () => {
 
 		it('keeps only a short code from an object, and nothing from a string that is not one', () => {
 			const all = spies();
-			redactingLogger.log(
+			redactingLogger(INVITE_LOG_PATTERNS).log(
 				'error',
 				'Line\nbreak‮',
 				'two words',
@@ -2385,76 +2352,6 @@ describe('a session is bound to its credential generation', () => {
 		const w = await world();
 		await w.db.user.delete({ where: { id: w.lin.id } });
 		expect(await w.db.session.count({ where: { userId: w.lin.id } })).toBe(0);
-	});
-});
-
-describe('redactInvite with terminal escapes', () => {
-	const E = String.fromCharCode(27);
-	const t = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
-
-	it.each([
-		[`${INVITE_COOKIE}=${E}[31m${t}${E}[0m`],
-		[`${INVITE_COOKIE}${E}[0m=${t}`],
-		[`${INVITE_COOKIE}=${E}[1m${E}[31m ${t}`],
-		[`/invite/${E}[32m${t}${E}[0m`],
-		[`/invite${E}[0m/${t}`],
-		[`${E}]8;;http://x${E}\\/invite/${t}`],
-		[`${INVITE_COOKIE}=${String.fromCharCode(0x9b)}31m${t}`],
-		// An introducer that starts no complete sequence must not swallow the text after it.
-		[`${E}]0;never ended /invite/${t}`],
-		[`${E}]0;never ended ${INVITE_COOKIE}=${t}`],
-		[`${E} /invite/${t}${E}`],
-		[`${INVITE_COOKIE}=${E}[31${t}`],
-		[`lone ${E} then /invite/${t}`],
-		[`${String.fromCharCode(0x9b)} /invite/${t}`]
-	])('takes the token out of %j', (text) => {
-		const out = redactInvite(text);
-		expect(out).not.toContain(t);
-		expect(out).toMatch(/\[redacted\]/);
-	});
-
-	it.each(['7abc', 'abc', '-abc', 'Abc'])(
-		'a placeholder never breaks a match: tokens starting %j after a lone or unterminated introducer',
-		(start) => {
-			const tok = `${start}${t.slice(start.length)}`;
-			for (const text of [
-				`/invite/${E}${tok}`,
-				`${INVITE_COOKIE}=${E}${tok}`,
-				`/invite/${E}]0;${tok}`,
-				`${INVITE_COOKIE}=${E}]0;${tok}`,
-				`/invite/${E}[${tok}`,
-				`${INVITE_COOKIE}=${E}[12${tok}`,
-				`/invite/${E}]0;never ended ${tok}`,
-				`${INVITE_COOKIE}=${E}]0;x;${tok}`,
-				`${E}[ /i${tok}`,
-				`${INVITE_COOKIE}=${E}[ /i${tok}`,
-				`/invite/${E}[ /i${tok}`,
-				`word${E}xyz${tok}`,
-				`prefix ${E} ${tok} suffix`
-			]) {
-				expect(redactInvite(text), text).not.toContain(tok.slice(3));
-			}
-		}
-	);
-
-	it('redacts a bare 43-character run only in a record that held an escape', () => {
-		const bare = `id ${'A'.repeat(43)} ok`;
-		expect(redactInvite(bare)).toBe(bare);
-		expect(redactInvite(`${E} ${bare}`)).not.toContain('A'.repeat(43));
-		expect(redactInvite(`${E} ${'A'.repeat(42)}`)).toContain('A'.repeat(42));
-		expect(redactInvite(`${E} ${'B'.repeat(44)}`)).not.toContain('B'.repeat(44));
-	});
-
-	it('leaves the route id alone', () => {
-		expect(redactInvite('route /invite/[token] here')).toBe('route /invite/[token] here');
-	});
-
-	it('prints a record with escapes without them, and shows a lone introducer', () => {
-		expect(redactInvite(`colour ${E}[32mgreen${E}[0m ok`)).toBe('colour green ok');
-		expect(redactInvite(`${E}]8;;http://x${E}\\link`)).toBe('link');
-		expect(redactInvite(`lone ${E} escape`)).toBe('lone \u241b escape');
-		expect(redactInvite(`${E}]0;never ended but visible`)).toBe('\u241bnever ended but visible');
-		expect(redactInvite('plain')).toBe('plain');
 	});
 });
 

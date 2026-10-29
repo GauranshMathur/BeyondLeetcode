@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 vi.mock('$app/env/private', () => ({}));
 vi.mock('#lib/server/app.js', () => ({ createApp: vi.fn() }));
 
-const { formatServerError, handleError } = await import('./hooks.server.ts');
-const { installLogRedaction } = await import('#lib/server/identity/auth.js');
+const { handleError } = await import('./hooks.server.ts');
+const { INVITE_LOG_PATTERNS } = await import('#lib/server/identity/invites.js');
+const { formatServerError, installLogRedaction } = await import('#lib/server/logging.js');
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -129,7 +130,7 @@ describe('redaction at the console', () => {
 	it.each(printing)('console.%s prints no token and one redacted string', (method) => {
 		const target = fakeConsole();
 		const spy = target[method];
-		installLogRedaction(target as unknown as Console);
+		installLogRedaction(INVITE_LOG_PATTERNS, target as unknown as Console);
 
 		target[method](leaky());
 		target[method](`plain /invite/${token}`, { url: `/invite/${token}`, cookie }, 42);
@@ -150,7 +151,7 @@ describe('redaction at the console', () => {
 	it('redacts assert (only when it fails), dir and table', () => {
 		const target = fakeConsole();
 		const spies = { assert: target.assert, dir: target.dir, table: target.table };
-		installLogRedaction(target as unknown as Console);
+		installLogRedaction(INVITE_LOG_PATTERNS, target as unknown as Console);
 
 		target.assert(true, `/invite/${token}`);
 		target.assert(false, '/invite/', token);
@@ -168,9 +169,9 @@ describe('redaction at the console', () => {
 		const target = fakeConsole();
 		const spy = target.error;
 		const group = target.group;
-		installLogRedaction(target as unknown as Console);
+		installLogRedaction(INVITE_LOG_PATTERNS, target as unknown as Console);
 		const once = target.error;
-		installLogRedaction(target as unknown as Console);
+		installLogRedaction(INVITE_LOG_PATTERNS, target as unknown as Console);
 
 		expect(target.error).toBe(once);
 		target.error('x');
@@ -190,10 +191,12 @@ describe('redaction at the console', () => {
 	});
 
 	it('writes no token to the bytes of a real Bun process, whichever member logs', () => {
-		const auth = new URL('./lib/server/identity/auth.ts', import.meta.url).pathname;
+		const logging = new URL('./lib/server/logging.ts', import.meta.url).pathname;
+		const invites = new URL('./lib/server/identity/invites.ts', import.meta.url).pathname;
 		const script = `
-			import { installLogRedaction } from ${JSON.stringify(auth)};
-			installLogRedaction();
+			import { installLogRedaction } from ${JSON.stringify(logging)};
+			import { INVITE_LOG_PATTERNS } from ${JSON.stringify(invites)};
+			installLogRedaction(INVITE_LOG_PATTERNS);
 			const t = ${JSON.stringify(token)};
 			const e = new Error('outer beyondleetcode_invite=' + t, { cause: new Error('GET /invite/' + t) });
 			for (const m of ['error','warn','info','log','debug','dirxml']) { console[m](e); console[m]('/invite/%s', t); console[m]('/invite/', t); }
@@ -244,10 +247,11 @@ describe('redaction at the console', () => {
 
 	/** Runs `script` after installing the redaction in a real Bun process; its bytes and exit status. */
 	function inBun(script: string) {
-		const auth = new URL('./lib/server/identity/auth.ts', import.meta.url).pathname;
+		const logging = new URL('./lib/server/logging.ts', import.meta.url).pathname;
+		const invites = new URL('./lib/server/identity/invites.ts', import.meta.url).pathname;
 		const run = spawnSync('bun', [
 			'-e',
-			`import { installLogRedaction } from ${JSON.stringify(auth)}; installLogRedaction(); const t = ${JSON.stringify(token)}; ${script}`
+			`import { installLogRedaction } from ${JSON.stringify(logging)}; import { INVITE_LOG_PATTERNS } from ${JSON.stringify(invites)}; installLogRedaction(INVITE_LOG_PATTERNS); const t = ${JSON.stringify(token)}; ${script}`
 		]);
 		return {
 			status: run.status,

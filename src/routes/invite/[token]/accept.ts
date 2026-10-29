@@ -3,8 +3,6 @@ import { isAPIError } from 'better-auth/api';
 import { z } from 'zod';
 import {
 	hasForbiddenNameCharacter,
-	INVITE_COOKIE,
-	INVITE_COOKIE_PATH,
 	isNameTooLong,
 	MAX_NAME_LENGTH,
 	MAX_PASSWORD_LENGTH,
@@ -12,6 +10,7 @@ import {
 } from '#lib/server/identity/auth.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { clientAddress } from '#lib/server/identity/client-address.js';
+import { INVITE_COOKIE, INVITE_COOKIE_PATH } from '#lib/server/identity/invites.js';
 import type { Throttle } from '#lib/server/identity/throttle.js';
 
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
