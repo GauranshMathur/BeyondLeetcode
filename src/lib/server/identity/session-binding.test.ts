@@ -7,7 +7,8 @@ import {
 	emailKey,
 	PASSWORD_PROVIDER_ID,
 	passwordAccountWhere,
-	roleOf
+	roleOf,
+	sweepStaleSessions
 } from './session-binding.ts';
 import { createTestAuth, TEST_SECRET } from './test-auth.ts';
 
@@ -702,7 +703,6 @@ describe('a session is bound to its credential generation', () => {
 		});
 
 		expect(await w.resolves(w.lin.cookie)).toBe(true);
-		const { sweepStaleSessions } = await import('./multi-user.ts');
 		expect(await sweepStaleSessions(w.db)).toBe(0);
 		expect(await w.resolves(w.lin.cookie)).toBe(true);
 		// And a sign-in binds to the real one.
