@@ -12,6 +12,7 @@ import {
 	INVITE_LOG_PATTERNS,
 	inviteTokenFrom
 } from './invites.ts';
+import { secretProblem } from './secret.ts';
 import { createSessionBinding } from './session-binding.ts';
 
 // The invite cookie lives with Invites; re-exported so callers that import it from here keep working.
@@ -43,21 +44,6 @@ export type AdmitSignUp = (attempt: {
  * the address SvelteKit resolved, so a client cannot choose its own bucket (see `handleAuthRequest`).
  */
 export const CLIENT_IP_HEADER = 'x-beyondleetcode-client-ip';
-
-export const MIN_SECRET_LENGTH = 32;
-
-/** The secret Better Auth falls back to when none is set (`utils/constants` in better-auth 1.7.x). */
-const BETTER_AUTH_DEFAULT_SECRET = 'better-auth-secret-12345678901234567890';
-
-/**
- * A secret everyone can read: Better Auth's built-in default, or the `change-me...` placeholder that
- * `.env.example` ships (it is long enough to pass the length check). Signing sessions with either
- * lets anyone forge them, so it is treated like no secret at all.
- */
-export function isPlaceholderSecret(secret: string): boolean {
-	const value = secret.trim().toLowerCase();
-	return value === BETTER_AUTH_DEFAULT_SECRET || value.startsWith('change-me');
-}
 
 /**
  * Whether a redirect target is, or normalizes to, a path starting with `//` or `/\\`, which a browser or a later
@@ -296,11 +282,12 @@ export function createAuth({
 	providerStarts,
 	passwordHasher
 }: CreateAuthOptions) {
-	if (secret.length < MIN_SECRET_LENGTH) {
-		throw new Error('createAuth: secret is missing or shorter than 32 characters');
-	}
-	if (isPlaceholderSecret(secret)) {
+	const problem = secretProblem(secret);
+	if (problem === 'placeholder') {
 		throw new Error('createAuth: secret is a placeholder or default value anyone can read');
+	}
+	if (problem) {
+		throw new Error('createAuth: secret is missing or shorter than 32 characters');
 	}
 	const binding = createSessionBinding(db);
 

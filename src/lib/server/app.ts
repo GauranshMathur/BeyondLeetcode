@@ -1,18 +1,13 @@
 import { type Catalogue, loadCatalogue } from './content/catalogue.ts';
 import { createDb, type Db } from './db.ts';
 import { type AccountActions, createAccountActions } from './identity/account-actions.ts';
-import {
-	type Auth,
-	createAuth,
-	isPlaceholderSecret,
-	MIN_SECRET_LENGTH,
-	socialProvidersFrom
-} from './identity/auth.ts';
+import { type Auth, createAuth, socialProvidersFrom } from './identity/auth.ts';
 import { createIdentity, createLocalIdentity, type InstanceIdentity } from './identity/index.ts';
 import { createInvites, type Invites } from './identity/invites.ts';
 import { createMultiUserIdentity, repairLearners } from './identity/multi-user.ts';
 import { parseOrigin } from './identity/origin.ts';
 import { createRegistration } from './identity/registration.ts';
+import { MIN_SECRET_LENGTH, secretProblem } from './identity/secret.ts';
 import { sweepStaleSessions } from './identity/session-binding.ts';
 import {
 	createFirstAdmin,
@@ -212,21 +207,22 @@ function buildAuth(
 	instance: Instance
 ): BuiltAuth {
 	const secret = env.BETTER_AUTH_SECRET ?? '';
-	if (secret === '') {
+	const problem = secretProblem(secret);
+	if (problem === 'missing') {
 		return {
 			kind: 'missing',
 			message:
 				'Multi-user needs a secret to sign sessions. Add BETTER_AUTH_SECRET=<48 random hex characters> to your .env (for example from `openssl rand -hex 24`), then restart.'
 		};
 	}
-	if (isPlaceholderSecret(secret)) {
+	if (problem === 'placeholder') {
 		return {
 			kind: 'missing',
 			message:
 				'BETTER_AUTH_SECRET in your .env is still a placeholder or default value that anyone can read. Replace it with 48 random hex characters (for example from `openssl rand -hex 24`), then restart.'
 		};
 	}
-	if (secret.length < MIN_SECRET_LENGTH) {
+	if (problem === 'short') {
 		return {
 			kind: 'missing',
 			message: `BETTER_AUTH_SECRET in your .env is shorter than ${MIN_SECRET_LENGTH} characters. Use 48 random hex characters (for example from \`openssl rand -hex 24\`), then restart.`

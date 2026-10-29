@@ -1,7 +1,8 @@
 import { createDb, type Db } from '../db.ts';
 import { resetAdminPassword } from '../identity/accounts.ts';
-import { createAuth, isPlaceholderSecret, MIN_SECRET_LENGTH } from '../identity/auth.ts';
+import { createAuth } from '../identity/auth.ts';
 import { parseOrigin } from '../identity/origin.ts';
+import { MIN_SECRET_LENGTH, secretProblem } from '../identity/secret.ts';
 import { clearEmptyMultiInstance, restoreMultiInstance } from '../instance.ts';
 
 /**
@@ -57,7 +58,7 @@ export async function runResetAdminPassword(
 		return fail(EXIT_USAGE, `BETTER_AUTH_SECRET is not set. Use the one in your .env.\n\n${USAGE}`);
 	}
 
-	if (secret.length < MIN_SECRET_LENGTH || isPlaceholderSecret(secret)) {
+	if (secretProblem(secret)) {
 		return fail(
 			EXIT_USAGE,
 			`BETTER_AUTH_SECRET is unusable (shorter than ${MIN_SECRET_LENGTH} characters, or a placeholder). Use the one in your .env.\n\n${USAGE}`

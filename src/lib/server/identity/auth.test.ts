@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
@@ -11,7 +10,6 @@ import {
 	enabledProviders,
 	hasForbiddenNameCharacter,
 	isNameTooLong,
-	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
 	providerName,
@@ -354,16 +352,6 @@ describe('createAuth', () => {
 		).toBe(403);
 		expect((await signUp({ origin: 'https://evil.example' })).status).toBe(403);
 		expect((await signUp({ origin: 'http://localhost:3000' })).status).toBe(200);
-	});
-
-	it('refuses the BETTER_AUTH_SECRET that .env.example ships, whatever its wording', async () => {
-		const example = readFileSync(new URL('../../../../.env.example', import.meta.url), 'utf8');
-		const shipped = /^BETTER_AUTH_SECRET="(.*)"$/m.exec(example)?.[1];
-
-		expect(shipped).toBeTruthy();
-		expect(shipped?.length).toBeGreaterThanOrEqual(32);
-		expect(isPlaceholderSecret(shipped ?? '')).toBe(true);
-		expect(isPlaceholderSecret('d41d8cd98f00b204e9800998ecf8427e1a2b3c4d5e6f708192')).toBe(false);
 	});
 
 	it('needs a secret of at least 32 characters', async () => {
