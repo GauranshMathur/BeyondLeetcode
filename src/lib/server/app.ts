@@ -10,13 +10,10 @@ import {
 } from './identity/auth.ts';
 import { createIdentity, createLocalIdentity, type InstanceIdentity } from './identity/index.ts';
 import { createInvites, type Invites } from './identity/invites.ts';
-import {
-	createMultiUserIdentity,
-	repairLearners,
-	sweepStaleSessions
-} from './identity/multi-user.ts';
+import { createMultiUserIdentity, repairLearners } from './identity/multi-user.ts';
 import { parseOrigin } from './identity/origin.ts';
 import { createRegistration } from './identity/registration.ts';
+import { sweepStaleSessions } from './identity/session-binding.ts';
 import {
 	createFirstAdmin,
 	type FirstAdminInput,

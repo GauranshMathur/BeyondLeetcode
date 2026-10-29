@@ -1,6 +1,7 @@
 import type { Db } from '../db.ts';
 import type { Auth } from './auth.ts';
 import { type IdentityResolver, LOCAL_LEARNER_ID } from './index.ts';
+import { currentSession } from './session-binding.ts';
 
 /**
  * Multi-user adapter: a request is the Account its session cookie names. The session is read from
@@ -10,19 +11,12 @@ import { type IdentityResolver, LOCAL_LEARNER_ID } from './index.ts';
 export function createMultiUserIdentity(auth: Auth): IdentityResolver {
 	return {
 		resolve: async ({ request }) => {
-			// `returnHeaders`: an active session is extended and its new cookie comes back as a header.
-			const { headers, response: session } = await auth.api.getSession({
-				headers: request.headers,
-				returnHeaders: true
-			});
-			const user = session?.user;
-			if (!user?.learnerId || user.banned) return null;
+			const session = await currentSession(auth, request.headers);
+			if (!session) return null;
 			return {
-				refreshedCookies: headers.getSetCookie(),
-				learnerId: user.learnerId,
-				displayName: user.name,
-				role: user.role === 'admin' ? 'admin' : 'learner',
-				mustChangePassword: user.mustChangePassword ?? false
+				refreshedCookies: session.refreshedCookies,
+				...session.identity,
+				mustChangePassword: session.mustChangePassword
 			};
 		}
 	};
@@ -49,21 +43,4 @@ export async function repairLearners(db: Db): Promise<{ created: number; removed
 		  AND EXISTS (SELECT 1 FROM "User")
 		  AND NOT EXISTS (SELECT 1 FROM "User" AS "u" WHERE "u"."learnerId" = "Learner"."id")`;
 	return { created, removed };
-}
-
-/**
- * Deletes the sessions that can never resolve: those whose credential generation is not their user's current
- * one (a sign-in that lost a race with a password write and could not remove its own row, a session whose
- * deletion failed, or one the C58 migration marked as superseded). One statement, so nothing lands between the
- * check and the delete; a user without a password Account has generation "", and so do their sessions, which
- * are kept. Run at startup of a Multi-user Instance, next to `repairLearners`. Returns the count only.
- */
-export async function sweepStaleSessions(db: Db): Promise<number> {
-	return db.$executeRaw`
-		DELETE FROM "Session"
-		WHERE "credentialGeneration" <> COALESCE(
-			(SELECT "a"."credentialGeneration" FROM "Account" AS "a"
-			 WHERE "a"."userId" = "Session"."userId" AND "a"."providerId" = 'credential'
-			   AND "a"."accountId" = "Session"."userId"),
-			'')`;
 }
