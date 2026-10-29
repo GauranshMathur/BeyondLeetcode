@@ -28,7 +28,7 @@ Blocked by: <card codes that must be Done first, or none>
 Release: <Release option> · commit type <type>
 ```
 
-Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is ready only when every card it names is Done. Every card gets a Release when it is filed. Which commit type a card uses: see Commit types below.
+Code cards cut from the spec by `to-tickets` carry `Blocked by:`; a card is ready only when every card it names is Done. Every card gets its sprint's Release when it is filed (one Release per sprint: `docs/releasing.md`). Which commit type a card uses: see Commit types below.
 
 **Size.** A card is one artboard or one state (code: one PR touching one area), one lane, one `Done when` line. A card that needs two is split: remove the parent and create children with suffixed codes (`P8` → `P8a`, `P8b`), each with its own `Done when`. Only the `sprint-planner` splits, called by the orchestrator.
 
@@ -43,7 +43,7 @@ A card's PR title uses the type that matches what a user sees. The type is filed
 | `test`, `ci`, `docs`, `refactor`, `build` | Everything else. |
 | `chore` | Everything else that needs no changelog entry (hidden from the changelog). |
 
-**A version moves only at a cut.** release-please lists every visible type (`feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`) in the release PR's changelog and proposes a version, but nothing ships until the orchestrator cuts a Release (`docs/releasing.md`). The cut sets the version with a `Release-As` footer: the next minor if the Release holds a `feat`, the next patch if it holds only fixes. So a `test`, `ci`, `docs`, `refactor`, `chore` or `build` card never decides the version, and a Release holding only those is not cut on its own (see `sprint-planner.md`'s Releases section).
+**The sprint sets the version, not the commit.** One release per sprint (`docs/releasing.md`): the `sprint-planner` picks the version when it plans the sprint, the next minor if any of its cards is `feat` and the next patch otherwise, and the sprint's last card sets it with a `Release-As` footer. release-please still proposes a version from the commit types, but nothing ships until the sprint's exit, and the footer overrides its proposal. The type then decides where the card's Changelog line goes in the release's changelog (`docs/release-notes-template.md`).
 
 **Content PRs.**
 
@@ -52,20 +52,20 @@ A card's PR title uses the type that matches what a user sees. The type is filed
 - Chapters or Problems added to a Topic that has already shipped in a release are user-visible, so they are `feat`. (The orchestrator's reading of the maintainer's rule; flagged for the maintainer.)
 - A content fix a learner would notice (a wrong test, a broken citation) is `fix`.
 
-**Changelog line.** Every card PR's description ends with `Changelog: <one short sentence a user would understand>`, or `Changelog: none` for internal work. The orchestrator builds each release's notes from these lines (`docs/release-notes-template.md`). `.github/pull_request_template.md` carries the field. Never add a `Release-As` footer: only the orchestrator does, at a cut.
+**Changelog line.** Every card PR's description ends with `Changelog: <one short sentence a user would understand>`, or `Changelog: none` for internal work. The orchestrator builds each release's notes from these lines (`docs/release-notes-template.md`). `.github/pull_request_template.md` carries the field. Never add a `Release-As` footer: only the orchestrator does, on the sprint's last card.
 
 ## Planning
 
-The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
+The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, to plan the open backlog into sprints, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
 
-- 5 to 8 cards, one theme, testable exit criteria, no more than about two days of orchestrator work.
+- A sprint is one coherent theme drawn from the open issues, typically 12 to 25 cards, with testable exit criteria. Cards stay small; sprints are long.
 - Each card is one PR touching one area, and has a `Done when`.
 - Cards that share a file are an ordered chain in one lane, planned up front.
-- Cards are grouped into Releases (several short sprints can feed one); every card has a Release.
+- One Release per sprint: every card has its sprint's Release, whose version the planner picks now, and the sprint's last card carries `Release-As` (`docs/releasing.md`).
 
-It writes the sprint's section in `docs/sprints.md`, the Sprint option row in the Fields table, and, in `docs/releasing.md`, the new cards in their Release's feature set (plus any new `R next: <name>` Release with its target version), all through one plan PR that the orchestrator reviews and merges at green CI. It then creates the cards with Status Todo, Sprint and Release set. It never claims or dispatches a card.
+It writes each sprint's section in `docs/sprints.md`, the Sprint option row in the Fields table, and, in `docs/releasing.md`, each sprint's Release option and its row in Planned releases, all through one plan PR that the orchestrator reviews and merges at green CI. It then creates the cards with Status Todo, Sprint and Release set. It never claims or dispatches a card.
 
-A new Sprint option, or a new Release option `R next: <name>`, is added with `updateProjectV2Field`. That mutation replaces the whole option list, so every existing option is resent with its id; count the cards per option before and after, and they must match.
+A new Sprint option, or a new Release option `R vX.Y.Z: Sprint N · <Theme>`, is added with `updateProjectV2Field`. That mutation replaces the whole option list, so every existing option is resent with its id; count the cards per option before and after, and they must match.
 
 ## Fields
 
@@ -73,7 +73,7 @@ A new Sprint option, or a new Release option `R next: <name>`, is added with `up
 |---|---|---|
 | Status | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` | Todo `f75ad846` · In Progress `47fc9ee4` · Done `98236657` |
 | Sprint | `PVTSSF_lAHOAm0pms4Bk1LBzhjlFwI` | 0 `3ad2db80` · 1 `ec5cba1c` · 2 `9bd8950b` · 3 `bc546063` · 4 `42ff5017` · 5 `420a1181` · 6 `b06bc1b7` · 7 `0738df2b` · 8 `4f7b943d` · 9 `2d37a7f3` · 10 `c4925fcc` · 11 `2e87bf36` · 12 `5a6498ca` · 13 `7014a845` |
-| Release | `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY` | R v1.19.0: Foundations `5eb8b28c` |
+| Release | `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY` | one per sprint, `R vX.Y.Z: Sprint N · <Theme>`: R v1.19.0: Sprint 13 · Foundations `5eb8b28c` |
 | Owner | `PVTF_lAHOAm0pms4Bk1LBzhjlEXM` | text: the worker name holding the card |
 
 Project ID `PVT_kwHOAm0pms4Bk1LB`, number `1`, owner `GauranshMathur`. What each sprint is for: `docs/sprints.md`.
