@@ -3,7 +3,6 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
 import { createChangePassword } from '../../../routes/account/password/change-password.ts';
 import { deleteLearner } from '../learning/progress.ts';
-import { createFileTestDb } from '../test-db.ts';
 import {
 	type AccountRow,
 	listAccounts,
@@ -15,37 +14,23 @@ import {
 	SelfResetError,
 	UnknownAccountError
 } from './accounts.ts';
-import { type Admission, type Auth, createAuth } from './auth.ts';
+import type { Admission, Auth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
+import { createTestAuth, TEST_SECRET } from './test-auth.ts';
 import { createThrottle } from './throttle.ts';
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const password = 'correct horse battery staple';
 
 async function setup() {
-	const db = await createFileTestDb();
 	let admission: Admission = {};
-	const auth = createAuth({
-		db,
-		origin: 'http://localhost:3000',
-		secret,
-		admitSignUp: () => admission
-	});
+	const { auth, db, signUp: signUpAccount } = await createTestAuth({ admit: () => admission });
 	const resolver = createMultiUserIdentity(auth);
 
 	/** Signs an Account up (as an admin when asked) and returns the session cookie header it got. */
 	async function signUp(name: string, email: string, role?: 'admin') {
 		admission = role ? { role } : {};
-		const { headers } = await auth.api.signUpEmail({
-			body: { name, email, password },
-			returnHeaders: true
-		});
-		return {
-			cookie: headers
-				.getSetCookie()
-				.map((c) => c.split(';')[0])
-				.join('; ')
-		};
+		const { cookie } = await signUpAccount({ name, email, password });
+		return { cookie };
 	}
 
 	/** What Identity makes of a session cookie: the `who` and the headers a request would carry. */
@@ -313,7 +298,7 @@ describe('resetPassword', () => {
 				credentialGeneration: credential.credentialGeneration
 			}
 		});
-		const signature = createHmac('sha256', secret).update(token).digest('base64');
+		const signature = createHmac('sha256', TEST_SECRET).update(token).digest('base64');
 		const cookie = `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`;
 		const { action } = createChangePassword(createThrottle());
 		const ev = {
