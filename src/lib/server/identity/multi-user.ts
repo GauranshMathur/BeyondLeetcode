@@ -1,7 +1,6 @@
 import type { Db } from '../db.ts';
 import type { Auth } from './auth.ts';
-import type { IdentityResolver } from './index.ts';
-import { FIRST_ADMIN_LEARNER_ID } from './setup.ts';
+import { type IdentityResolver, LOCAL_LEARNER_ID } from './index.ts';
 
 /**
  * Multi-user adapter: a request is the Account its session cookie names. The session is read from
@@ -46,7 +45,7 @@ export async function repairLearners(db: Db): Promise<{ created: number; removed
 		WHERE NOT EXISTS (SELECT 1 FROM "Learner" AS "l" WHERE "l"."id" = "u"."learnerId")`;
 	const removed = await db.$executeRaw`
 		DELETE FROM "Learner"
-		WHERE "id" <> ${FIRST_ADMIN_LEARNER_ID}
+		WHERE "id" <> ${LOCAL_LEARNER_ID}
 		  AND EXISTS (SELECT 1 FROM "User")
 		  AND NOT EXISTS (SELECT 1 FROM "User" AS "u" WHERE "u"."learnerId" = "Learner"."id")`;
 	return { created, removed };

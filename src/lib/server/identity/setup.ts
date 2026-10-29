@@ -4,9 +4,7 @@ import type { Db } from '../db.ts';
 import type { Instance } from '../instance.ts';
 import { InstanceAlreadySetUpError } from '../instance.ts';
 import { type Auth, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './auth.ts';
-
-/** The Local Learner's id: the first admin takes it over, so Local progress stays theirs. */
-export const FIRST_ADMIN_LEARNER_ID = 'local';
+import { LOCAL_LEARNER_ID } from './index.ts';
 
 const firstAdmin = new AsyncLocalStorage<true>();
 
@@ -128,7 +126,7 @@ async function claimInstance(instance: Instance, convert: boolean): Promise<Clai
 
 async function rollback(claim: Claim, db: Db, removeAccount: boolean) {
 	try {
-		if (removeAccount) await db.user.deleteMany({ where: { learnerId: FIRST_ADMIN_LEARNER_ID } });
+		if (removeAccount) await db.user.deleteMany({ where: { learnerId: LOCAL_LEARNER_ID } });
 		await claim.undo();
 	} catch (cleanupError) {
 		console.error('createFirstAdmin: rollback failed, the Instance stays multi-user', cleanupError);
