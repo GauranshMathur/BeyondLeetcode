@@ -2,12 +2,10 @@ import { createHash } from 'node:crypto';
 import { isAPIError } from 'better-auth/api';
 import { z } from 'zod';
 import { logFailure } from '../logging.ts';
+import { hasForbiddenNameCharacter, isNameTooLong, MAX_NAME_LENGTH } from './account-creation.ts';
 import {
 	type Auth,
 	enabledProviders,
-	hasForbiddenNameCharacter,
-	isNameTooLong,
-	MAX_NAME_LENGTH,
 	MAX_PASSWORD_LENGTH,
 	MIN_PASSWORD_LENGTH,
 	SOCIAL_PROVIDER_NAMES,

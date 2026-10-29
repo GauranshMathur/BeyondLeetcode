@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
-import { enabledProviders, INVITE_COOKIE } from './identity/auth.ts';
+import { enabledProviders } from './identity/auth.ts';
+import { INVITE_COOKIE } from './identity/invites.ts';
 
 it('fails at start with a clear message when CONTENT_DIR is missing', async () => {
 	await expect(createApp({ DATABASE_URL: 'file:x.db' })).rejects.toThrow(/CONTENT_DIR is not set/);
