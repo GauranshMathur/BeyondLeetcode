@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
-import { createMultiUserIdentity, repairLearners, sweepStaleSessions } from './multi-user.ts';
+import { createMultiUserIdentity, repairLearners } from './multi-user.ts';
+import { sweepStaleSessions } from './session-binding.ts';
 import { createTestAuth } from './test-auth.ts';
 
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
