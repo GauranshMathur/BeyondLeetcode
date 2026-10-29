@@ -28,12 +28,7 @@ export function createHandle(
 		// Cannot happen at start (createApp refuses it); fail closed rather than serve nobody.
 		if (answer.kind === 'unavailable') return refuseFraming(refusal(503));
 		const { who, mustChangePassword } = answer;
-		if (mode === 'multi' && app.multiUser) {
-			event.locals.multiUser = app.multiUser;
-			event.locals.auth = app.multiUser.auth;
-			event.locals.invites = app.multiUser.invites;
-			event.locals.deleteLearner = app.multiUser.deleteLearner;
-		}
+		if (mode === 'multi' && app.multiUser) event.locals.multiUser = app.multiUser;
 		// An active session was extended: its new cookie goes out with whatever this request answers (a
 		// redirect or refusal included), or users are signed out after 7 days of use. Better Auth's own
 		// Set-Cookie line, unchanged. Never over a cookie of the same name that the response sets itself:

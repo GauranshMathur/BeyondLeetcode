@@ -4,12 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { App } from '#lib/server/app.js';
 import type { Db } from '#lib/server/db.js';
 import { createHandle } from '#lib/server/handle.js';
+import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
 import { createInvites } from '#lib/server/identity/invites.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
 import { createFirstAdmin } from '#lib/server/identity/setup.js';
 import { createTestAuth } from '#lib/server/identity/test-auth.js';
+import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import {
 	createInstance,
 	type Instance,
@@ -56,6 +58,17 @@ async function setup() {
 	const invites = createInvites({ db, origin: 'http://localhost:3000' });
 	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 	const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
+	const multiUser = {
+		auth,
+		accounts: createAccountActions({
+			auth,
+			providerStarts: createProviderStarts(),
+			registrationOpen: () => instance.registrationMode() === 'open',
+			inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
+		}),
+		invites,
+		deleteLearner: (id: string) => deleteLearner(db, id)
+	};
 	const handle = createHandle({
 		instance,
 		identity: createIdentity({
@@ -64,14 +77,10 @@ async function setup() {
 			multi: createMultiUserIdentity(auth)
 		}),
 		core,
-		multiUser: {
-			auth,
-			invites,
-			deleteLearner: (id: string) => deleteLearner(db, id)
-		},
+		multiUser,
 		setup: setupPort
 	});
-	return { db, auth, instance, admin, learner, handle, invites };
+	return { db, auth, instance, admin, learner, handle, invites, multiUser };
 }
 
 /** Runs one request through the hook; the page's load runs where SvelteKit would run it. */
@@ -239,6 +248,7 @@ describe('the load, if the hook ever let a request through', () => {
 
 	const identity = (role: 'admin' | 'learner') => ({ learnerId: 'l', displayName: 'N', role });
 	const auth = { api: { listUsers: vi.fn() } };
+	const multiUser = { auth };
 
 	it('is 404 without Better Auth, as in Local Mode where the Local Learner is an admin', async () => {
 		await expect(load(event({ identity: identity('admin') }))).rejects.toMatchObject({
@@ -247,11 +257,11 @@ describe('the load, if the hook ever let a request through', () => {
 	});
 
 	it('is 403 for nobody', async () => {
-		await expect(load(event({ auth }))).rejects.toMatchObject({ status: 403 });
+		await expect(load(event({ multiUser }))).rejects.toMatchObject({ status: 403 });
 	});
 
 	it('is 403 for a learner, and reads nothing', async () => {
-		await expect(load(event({ auth, identity: identity('learner') }))).rejects.toMatchObject({
+		await expect(load(event({ multiUser, identity: identity('learner') }))).rejects.toMatchObject({
 			status: 403
 		});
 		expect(auth.api.listUsers).not.toHaveBeenCalled();
@@ -445,7 +455,7 @@ describe('the Registration action, if the hook ever let a request through', () =
 		const formData = vi.fn();
 
 		await expect(
-			call({ auth: {}, identity: learner, instance: i }, request(formData as never))
+			call({ multiUser: {}, identity: learner, instance: i }, request(formData as never))
 		).rejects.toMatchObject({ status: 403 });
 
 		expect(formData).not.toHaveBeenCalled();
@@ -455,7 +465,9 @@ describe('the Registration action, if the hook ever let a request through', () =
 	it('is 403 for nobody', async () => {
 		const i = instance();
 
-		await expect(call({ auth: {}, instance: i }, request())).rejects.toMatchObject({ status: 403 });
+		await expect(call({ multiUser: {}, instance: i }, request())).rejects.toMatchObject({
+			status: 403
+		});
 
 		expect(i.setRegistrationMode).not.toHaveBeenCalled();
 	});
@@ -464,7 +476,9 @@ describe('the Registration action, if the hook ever let a request through', () =
 		const i = instance();
 		const odd = { ...admin, role: 'admin,learner' as never };
 
-		await expect(call({ auth: {}, identity: odd, instance: i }, request())).rejects.toMatchObject({
+		await expect(
+			call({ multiUser: {}, identity: odd, instance: i }, request())
+		).rejects.toMatchObject({
 			status: 403
 		});
 
@@ -488,15 +502,15 @@ describe('the Registration action, if the hook ever let a request through', () =
 			})
 		};
 
-		await expect(call({ auth: {}, identity: admin, instance: i }, request())).rejects.toMatchObject(
-			{ status: 404 }
-		);
+		await expect(
+			call({ multiUser: {}, identity: admin, instance: i }, request())
+		).rejects.toMatchObject({ status: 404 });
 	});
 
 	it('hands the Instance only the value from the form', async () => {
 		const i = instance();
 
-		await call({ auth: {}, identity: admin, instance: i }, request());
+		await call({ multiUser: {}, identity: admin, instance: i }, request());
 
 		expect(i.setRegistrationMode).toHaveBeenCalledExactlyOnceWith('open');
 	});
@@ -508,7 +522,7 @@ async function post(
 	cookie: string,
 	name: 'invite' | 'cancel' | 'reset' | 'remove',
 	fields: Record<string, string> = {},
-	/** What the app wiring adds to `locals` beyond the hook (the Learner remover). */
+	/** What the app wiring adds to `locals` beyond the hook (a Learner remover that fails). */
 	extraLocals: Record<string, unknown> = {}
 ) {
 	const setHeaders = vi.fn();
@@ -653,7 +667,9 @@ describe('Invites on the Users page', () => {
 			const event = (locals: Record<string, unknown>) =>
 				({ locals, setHeaders: vi.fn(), request: { formData: vi.fn() } }) as never;
 
-			await expect(actions[name](event({ identity: learner, invites: {} }))).rejects.toMatchObject({
+			await expect(
+				actions[name](event({ identity: learner, multiUser: {} }))
+			).rejects.toMatchObject({
 				status: 403
 			});
 			await expect(actions[name](event({}))).rejects.toMatchObject({ status: 403 });
@@ -772,7 +788,7 @@ describe('Reset password on the Users page', () => {
 		const event = (locals: Record<string, unknown>) =>
 			({ locals, request: { formData, headers: new Headers() } }) as never;
 
-		await expect(actions.reset(event({ identity: learner, auth: {} }))).rejects.toMatchObject({
+		await expect(actions.reset(event({ identity: learner, multiUser: {} }))).rejects.toMatchObject({
 			status: 403
 		});
 		await expect(actions.reset(event({}))).rejects.toMatchObject({ status: 403 });
@@ -890,13 +906,10 @@ describe('Remove on the Users page', () => {
 			({ locals, request: { formData, headers: new Headers() } }) as never;
 		const deleteIt = async () => {};
 		await expect(
-			actions.remove(event({ identity: learner, auth: {}, deleteLearner: deleteIt }))
+			actions.remove(event({ identity: learner, multiUser: { deleteLearner: deleteIt } }))
 		).rejects.toMatchObject({ status: 403 });
 		await expect(actions.remove(event({}))).rejects.toMatchObject({ status: 403 });
-		await expect(
-			actions.remove(event({ identity: admin, deleteLearner: deleteIt }))
-		).rejects.toMatchObject({ status: 404 });
-		await expect(actions.remove(event({ identity: admin, auth: {} }))).rejects.toMatchObject({
+		await expect(actions.remove(event({ identity: admin }))).rejects.toMatchObject({
 			status: 404
 		});
 		expect(formData).not.toHaveBeenCalled();
@@ -930,8 +943,11 @@ describe('Remove on the Users page', () => {
 			'remove',
 			{ id: s.linId },
 			{
-				deleteLearner: async () => {
-					throw new Error('/secret/path');
+				multiUser: {
+					...s.multiUser,
+					deleteLearner: async () => {
+						throw new Error('/secret/path');
+					}
 				}
 			}
 		);
