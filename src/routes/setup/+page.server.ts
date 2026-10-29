@@ -1,14 +1,15 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { isAPIError } from 'better-auth/api';
 import type { MultiUserChoice } from '#lib/server/app.js';
 import {
-	hasForbiddenNameCharacter,
-	isNameTooLong,
-	MAX_NAME_LENGTH
-} from '#lib/server/identity/auth.js';
+	ACCOUNT_LIMITS,
+	type RefusalCode,
+	refusalOf
+} from '#lib/server/identity/account-actions.js';
+import { hasForbiddenNameCharacter, isNameTooLong } from '#lib/server/identity/auth.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '#lib/server/identity/setup.js';
 import { AccountsExistError, InstanceAlreadySetUpError } from '#lib/server/instance.js';
+import { logFailure } from '#lib/server/logging.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /** Why Multi-user cannot be chosen here: what to add to `.env`. (`later` is never produced, see `MultiUserChoice`.) */
@@ -19,10 +20,21 @@ const unavailable = (choice: Exclude<MultiUserChoice, { kind: 'open' }>) =>
 const FIELD_MESSAGES = {
 	name: 'Enter a name.',
 	email: 'Enter a valid email address.',
-	password: 'Use 12 to 128 characters.'
+	password: `Use ${ACCOUNT_LIMITS.passwordMin} to ${ACCOUNT_LIMITS.passwordMax} characters.`
 } as const;
-const NAME_TOO_LONG = `Use at most ${MAX_NAME_LENGTH} characters.`;
+const NAME_TOO_LONG = `Use at most ${ACCOUNT_LIMITS.nameMax} characters.`;
 const NAME_CHARACTERS = "This name contains a character that can't be used.";
+/** The refusals Better Auth can still give the first admin's form, as the field and Setup's own text. */
+const REFUSAL_PROBLEMS: Partial<
+	Record<RefusalCode, { field: keyof typeof FIELD_MESSAGES; message: string }>
+> = {
+	NAME_REQUIRED: { field: 'name', message: FIELD_MESSAGES.name },
+	NAME_TOO_LONG: { field: 'name', message: NAME_TOO_LONG },
+	NAME_INVALID_CHARACTERS: { field: 'name', message: NAME_CHARACTERS },
+	INVALID_EMAIL: { field: 'email', message: FIELD_MESSAGES.email },
+	PASSWORD_TOO_SHORT: { field: 'password', message: FIELD_MESSAGES.password },
+	PASSWORD_TOO_LONG: { field: 'password', message: FIELD_MESSAGES.password }
+};
 const LOCAL_REFUSED = 'This instance already has accounts, so it cannot start in Local mode.';
 const ALREADY_SET_UP = 'This instance has already been set up.';
 const text = (data: FormData, key: string) => {
@@ -102,15 +114,9 @@ export const actions: Actions = {
 				converting ? { ...input, convert: true } : input
 			));
 		} catch (error) {
-			if (isAPIError(error) && error.body?.code === 'NAME_TOO_LONG') {
-				return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));
-			}
-			if (isAPIError(error) && error.body?.code === 'NAME_INVALID_CHARACTERS') {
-				return fail(400, adminStep(typed, { field: 'name', message: NAME_CHARACTERS }));
-			}
-			if (isAPIError(error) && error.body?.code === 'NAME_REQUIRED') {
-				return fail(400, adminStep(typed, { field: 'name', message: FIELD_MESSAGES.name }));
-			}
+			const refusal = refusalOf(error);
+			const problem = refusal && REFUSAL_PROBLEMS[refusal.refused];
+			if (problem) return fail(400, adminStep(typed, problem));
 			if (error instanceof InvalidFirstAdminError) {
 				return fail(
 					400,
@@ -126,12 +132,7 @@ export const actions: Actions = {
 					adminStep(typed, { message: 'Multi-user is not available on this server.' })
 				);
 			}
-			// Only the kind of failure is logged: the error text may hold paths, query text and hashes.
-			console.error(
-				'Setup: creating the admin failed:',
-				error instanceof Error ? error.name : typeof error,
-				(error as { code?: unknown })?.code
-			);
+			logFailure('Setup: creating the admin failed:', error);
 			return fail(
 				500,
 				adminStep(typed, { message: 'The admin account could not be created. Try again.' })

@@ -473,6 +473,8 @@ describe('createFirstAdmin', () => {
 
 		expect(logged).toHaveBeenCalledOnce();
 		expect(JSON.stringify(logged.mock.calls)).not.toContain(admin.password);
+		// The kind only: the cleanup error's own text (paths, query text) is not printed.
+		expect(logged.mock.calls.flat().map(String).join(' ')).not.toContain('undo failed');
 		logged.mockRestore();
 		expect(await db.user.count()).toBe(0);
 		expect(instance.mode()).toBe('multi');
