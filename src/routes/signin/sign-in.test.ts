@@ -408,6 +408,59 @@ describe('with the real Better Auth', () => {
 		expect(cookies.size).toBe(0);
 	});
 
+	it('hides a failure behind a fixed message and logs only the label and the kind: no email, password, message or cookie', async () => {
+		const { post, cookies, auth } = await real();
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const failure = Object.assign(
+			new Error(
+				`SQLITE_BUSY at /data/app.db: SELECT FROM "User" ${'ada@example.com'} ${password} abc.def`
+			),
+			{ code: 'SQLITE_BUSY' }
+		);
+		const signInEmail = vi.spyOn(auth.api, 'signInEmail').mockRejectedValueOnce(failure);
+
+		const result = await post({ email: 'ada@example.com', password });
+
+		expect(signInEmail).toHaveBeenCalledOnce();
+		expect(result).toMatchObject({ status: 500, data: { message: FAILED, wrong: false } });
+		expect(JSON.stringify(result)).not.toMatch(/SQLITE|app\.db|SELECT|correct horse/);
+		expect(log).toHaveBeenCalledOnce();
+		expect(log.mock.calls).toEqual([['Sign in: signing in failed: Error']]);
+		expect(JSON.stringify(log.mock.calls)).not.toMatch(
+			/app\.db|SELECT|ada@example|correct horse|abc\.def|Error: /
+		);
+		expect(cookies.size).toBe(0);
+	});
+
+	it('does not log the password, the email or the cookies, for a right or a wrong sign-in', async () => {
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+		const { post } = await real();
+
+		await post({ email: 'ada@example.com', password });
+		await post({ email: 'ada@example.com', password: 'wrong wrong wrong' });
+
+		expect(JSON.stringify(spies.flatMap((s) => s.mock.calls))).not.toMatch(
+			/correct horse|wrong wrong|abc\.def|ada@example/
+		);
+	});
+
+	it('logs only the kind when the Account lookup fails, and signs nobody in', async () => {
+		const { post, cookies, auth } = await real();
+		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const { internalAdapter } = await auth.$context;
+		vi.spyOn(internalAdapter, 'findUserByEmail').mockRejectedValueOnce(
+			new Error('SELECT * FROM "User" WHERE email = ada@example.com')
+		);
+
+		const result = await post({ email: 'ada@example.com', password });
+
+		expect(result).toMatchObject({ status: 500, data: { message: FAILED, wrong: false } });
+		expect(JSON.stringify(log.mock.calls)).not.toMatch(/SELECT|ada@example/);
+		expect(cookies.size).toBe(0);
+	});
+
 	it('maps the whole of Better Auth’s email check: a space-padded email is the one wrong message', async () => {
 		const { post, cookies } = await real();
 
@@ -495,19 +548,12 @@ describe('provider buttons', () => {
 
 			const result = await h.post({ provider: 'github' });
 
-			expect(result, code).toMatchObject({ status, data: { message: FAILED, wrong: false } });
+			expect(result, code).toMatchObject({
+				status,
+				data: { email: '', message: FAILED, wrong: false }
+			});
 			expect(h.cookies.set).not.toHaveBeenCalled();
 		}
-	});
-
-	it('answers a refused start with the fixed failure text and no cookie', async () => {
-		const h = harness({ accounts: { startProvider: async () => refusal('PROVIDER_REFUSED') } });
-
-		const result = (await h.post({ provider: 'google' })) as { status: number; data: unknown };
-
-		expect(result.status).toBe(400);
-		expect(result.data).toMatchObject({ email: '', message: FAILED, wrong: false });
-		expect(h.cookies.set).not.toHaveBeenCalled();
 	});
 
 	it('does nothing for someone who is already signed in', async () => {
