@@ -1,8 +1,7 @@
 import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from '#lib/server/identity/auth.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
-import { createFileTestDb } from '#lib/server/test-db.js';
+import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import { actions, load } from './+page.server';
 
 afterEach(() => vi.restoreAllMocks());
@@ -124,16 +123,8 @@ describe('a failed sign-out for an Account that must change its password', () =>
 
 describe('with the real Better Auth', () => {
 	async function signedIn() {
-		const db = await createFileTestDb();
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret: 'test-secret-test-secret-test-secret-0123',
-			admitSignUp: () => ({})
-		});
-		await auth.api.signUpEmail({
-			body: { name: 'Ada', email: 'ada@example.com', password: 'correct horse battery' }
-		});
+		const { db, auth, signUp } = await createTestAuth();
+		await signUp();
 		const { headers } = await auth.api.signInEmail({
 			body: { email: 'ada@example.com', password: 'correct horse battery' },
 			returnHeaders: true

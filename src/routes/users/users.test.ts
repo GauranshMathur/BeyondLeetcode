@@ -4,12 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { App } from '#lib/server/app.js';
 import type { Db } from '#lib/server/db.js';
 import { createHandle } from '#lib/server/handle.js';
-import { createAuth } from '#lib/server/identity/auth.js';
 import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
 import { createInvites } from '#lib/server/identity/invites.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
 import { createFirstAdmin } from '#lib/server/identity/setup.js';
+import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import {
 	createInstance,
 	type Instance,
@@ -23,7 +23,6 @@ import { actions, load } from './+page.server';
 
 // The Users page, through the real hook and the real Better Auth: who is let in, and what they see.
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const password = 'correct horse battery staple';
 const cookieOf = (headers: Headers) =>
 	headers
@@ -32,16 +31,15 @@ const cookieOf = (headers: Headers) =>
 		.join('; ');
 
 async function setup() {
-	const db = await createFileTestDb();
-	const instance = await createInstance(db);
 	let open = false;
-	const registration = createRegistration({ instance });
-	const auth = createAuth({
+	let registration!: ReturnType<typeof createRegistration>;
+	const {
+		auth,
 		db,
-		origin: 'http://localhost:3000',
-		secret,
-		admitSignUp: (attempt) => (open ? {} : registration(attempt))
-	});
+		signUp: signUpAccount
+	} = await createTestAuth({ admit: (attempt) => (open ? {} : registration(attempt)) });
+	const instance = await createInstance(db);
+	registration = createRegistration({ instance });
 	const { headers } = await createFirstAdmin(
 		{ instance, auth, db },
 		{ name: 'Ada Admin', email: 'ada@example.com', password }
@@ -50,12 +48,9 @@ async function setup() {
 
 	async function learner(name: string, email: string) {
 		open = true;
-		const signedUp = await auth.api.signUpEmail({
-			body: { name, email, password },
-			returnHeaders: true
-		});
+		const { cookie } = await signUpAccount({ name, email, password });
 		open = false;
-		return cookieOf(signedUp.headers);
+		return cookie;
 	}
 
 	const invites = createInvites({ db, origin: 'http://localhost:3000' });
