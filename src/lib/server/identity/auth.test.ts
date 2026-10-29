@@ -24,6 +24,7 @@ import {
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
+import { createTestAuth, TEST_SECRET } from './test-auth.ts';
 
 /** Everything the console got, as text: an Error counts with its message, stack and cause. */
 const everythingLogged = (spies: { mock: { calls: unknown[][] } }[]) =>
@@ -32,12 +33,10 @@ const everythingLogged = (spies: { mock: { calls: unknown[][] } }[]) =>
 		.map((arg) => inspect(arg, { depth: null }))
 		.join('\n');
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
 
 async function setup(admitSignUp: () => Admission | null | Promise<Admission | null> = () => ({})) {
-	const db = await createFileTestDb();
-	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, admitSignUp });
+	const { db, auth } = await createTestAuth({ admit: admitSignUp });
 	return { db, auth };
 }
 
@@ -60,7 +59,7 @@ describe('createAuth', () => {
 
 	it('refuses sign-up by default', async () => {
 		const db = await createFileTestDb();
-		const auth = createAuth({ db, origin: '', secret });
+		const auth = createAuth({ db, origin: '', secret: TEST_SECRET });
 
 		await expect(auth.api.signUpEmail({ body })).rejects.toThrow();
 		expect(await db.user.count()).toBe(0);
@@ -158,7 +157,7 @@ describe('createAuth', () => {
 	it('answers a closed sign-up the same for an existing email and a new one', async () => {
 		const { auth, db } = await setup();
 		await auth.api.signUpEmail({ body });
-		const closed = createAuth({ db, origin: '', secret });
+		const closed = createAuth({ db, origin: '', secret: TEST_SECRET });
 
 		const status = (email: string) =>
 			closed.handler(
@@ -577,14 +576,12 @@ describe('the name cap', () => {
 	});
 
 	it('refuses the first admin with a longer name, and leaves the Instance not set up', async () => {
-		const db = await createFileTestDb();
-		const instance = await createInstance(db);
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret,
-			admitSignUp: createRegistration({ instance })
+		const { db, auth } = await createTestAuth({
+			// The registration gate needs the Instance, which needs the database: admit through a late binding.
+			admit: (attempt) => gate(attempt)
 		});
+		const instance = await createInstance(db);
+		const gate = createRegistration({ instance });
 
 		await expect(
 			createFirstAdmin({ instance, auth, db }, { ...body, name: 'x'.repeat(101) })
@@ -730,14 +727,12 @@ describe('control and bidi characters in a name', () => {
 	});
 
 	it('refuses the first admin and leaves the Instance not set up', async () => {
-		const db = await createFileTestDb();
-		const instance = await createInstance(db);
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret,
-			admitSignUp: createRegistration({ instance })
+		const { db, auth } = await createTestAuth({
+			// The registration gate needs the Instance, which needs the database: admit through a late binding.
+			admit: (attempt) => gate(attempt)
 		});
+		const instance = await createInstance(db);
+		const gate = createRegistration({ instance });
 
 		await expect(
 			createFirstAdmin({ instance, auth, db }, { ...body, name: at(0x202e) })
@@ -755,7 +750,27 @@ describe('accepting an Invite', () => {
 	let caller = 0;
 
 	async function invited(options: { claim?: 'real' | 'lose' | 'throw'; now?: () => Date } = {}) {
-		const db = await createFileTestDb();
+		// The gate and the claim need the invites, which need the database the harness creates: bound late.
+		let invites: ReturnType<typeof createInvites>;
+		let gate: ReturnType<typeof createRegistration>;
+		const instance = {
+			mode: () => 'multi' as const,
+			registrationMode: () => 'invite' as 'invite' | 'open'
+		};
+		const now = options.now ?? (() => new Date());
+		const { db, auth } = await createTestAuth({
+			admit: (attempt) => gate(attempt),
+			claimInvite:
+				options.claim === 'lose'
+					? async () => false
+					: options.claim === 'throw'
+						? async () => {
+								throw new Error('database is locked');
+							}
+						: (t, at) => invites.claim(t, at)
+		});
+		invites = createInvites({ db, origin });
+		gate = createRegistration({ instance, invites, now });
 		await db.learner.create({ data: { id: 'local' } });
 		await db.user.create({
 			data: {
@@ -765,26 +780,6 @@ describe('accepting an Invite', () => {
 				role: 'admin',
 				learnerId: 'local'
 			}
-		});
-		const invites = createInvites({ db, origin });
-		const instance = {
-			mode: () => 'multi' as const,
-			registrationMode: () => 'invite' as 'invite' | 'open'
-		};
-		const now = options.now ?? (() => new Date());
-		const auth = createAuth({
-			db,
-			origin,
-			secret,
-			admitSignUp: createRegistration({ instance, invites, now }),
-			claimInvite:
-				options.claim === 'lose'
-					? async () => false
-					: options.claim === 'throw'
-						? async () => {
-								throw new Error('database is locked');
-							}
-						: (t, at) => invites.claim(t, at)
 		});
 		const post = (
 			token: string | null,
@@ -1171,7 +1166,18 @@ describe('signing in with a provider', () => {
 			providers?: Parameters<typeof createAuth>[0]['socialProviders'];
 		} = {}
 	) {
-		const db = await createFileTestDb();
+		// The gate and the claim need the invites, which need the database the harness creates: bound late.
+		let invites: ReturnType<typeof createInvites>;
+		let gate: ReturnType<typeof createRegistration>;
+		let mode: 'invite' | 'open' = options.mode ?? 'invite';
+		const instance = { mode: () => 'multi' as const, registrationMode: () => mode };
+		const { db, auth } = await createTestAuth({
+			admit: (attempt) => gate(attempt),
+			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at),
+			socialProviders: options.providers ?? SECRETS
+		});
+		invites = createInvites({ db, origin });
+		gate = createRegistration({ instance, invites });
 		await db.learner.create({ data: { id: 'local' } });
 		await db.user.create({
 			data: {
@@ -1181,17 +1187,6 @@ describe('signing in with a provider', () => {
 				role: 'admin',
 				learnerId: 'local'
 			}
-		});
-		const invites = createInvites({ db, origin });
-		let mode: 'invite' | 'open' = options.mode ?? 'invite';
-		const instance = { mode: () => 'multi' as const, registrationMode: () => mode };
-		const auth = createAuth({
-			db,
-			origin,
-			secret,
-			admitSignUp: createRegistration({ instance, invites }),
-			claimInvite: options.claim === 'lose' ? async () => false : (t, at) => invites.claim(t, at),
-			socialProviders: options.providers ?? SECRETS
 		});
 		onTestFinished(() => {
 			vi.restoreAllMocks();
@@ -1247,15 +1242,11 @@ describe('signing in with a provider', () => {
 	});
 
 	it('has the providers it was given, and none by default', async () => {
-		const db = await createFileTestDb();
-		expect(enabledProviders(createAuth({ db, origin, secret }))).toEqual([]);
-		expect(enabledProviders(createAuth({ db, origin, secret, socialProviders: SECRETS }))).toEqual([
+		expect(enabledProviders((await createTestAuth()).auth)).toEqual([]);
+		expect(enabledProviders((await createTestAuth({ socialProviders: SECRETS })).auth)).toEqual([
 			'github'
 		]);
-		const both = createAuth({
-			db,
-			origin,
-			secret,
+		const { auth: both } = await createTestAuth({
 			socialProviders: { ...SECRETS, google: { clientId: 'g', clientSecret: 's' } }
 		});
 		expect(enabledProviders(both)).toEqual(['github', 'google']);
@@ -1789,9 +1780,8 @@ describe('a password sign-in racing a writer of the password', () => {
 			.join('; ');
 
 	async function world() {
-		const db = await createFileTestDb();
 		let admission: Admission = {};
-		const auth = createAuth({ db, origin, secret, admitSignUp: () => admission });
+		const { db, auth } = await createTestAuth({ admit: () => admission });
 		const signUp = async (name: string, email: string, role?: 'admin') => {
 			admission = role ? { role } : {};
 			const res = await auth.api.signUpEmail({
@@ -2103,7 +2093,6 @@ describe('a password sign-in racing a writer of the password', () => {
 });
 
 describe('a session is bound to its credential generation', () => {
-	const origin = 'http://localhost:3000';
 	const oldPassword = 'correct horse battery';
 	const newPassword = 'a brand new passphrase 42';
 	const cookieOf = (headers: Headers) =>
@@ -2114,13 +2103,12 @@ describe('a session is bound to its credential generation', () => {
 	/** The cookie a browser would hold for a session row, signed as Better Auth signs it. */
 	const cookieForToken = (token: string) =>
 		`better-auth.session_token=${encodeURIComponent(
-			`${token}.${createHmac('sha256', secret).update(token).digest('base64')}`
+			`${token}.${createHmac('sha256', TEST_SECRET).update(token).digest('base64')}`
 		)}`;
 
 	async function world() {
-		const db = await createFileTestDb();
 		let admission: Admission = {};
-		const auth = createAuth({ db, origin, secret, admitSignUp: () => admission });
+		const { db, auth } = await createTestAuth({ admit: () => admission });
 		const signUp = async (name: string, email: string, role?: 'admin') => {
 			admission = role ? { role } : {};
 			const res = await auth.api.signUpEmail({
@@ -2474,8 +2462,7 @@ describe('redactInvite with terminal escapes', () => {
 // that is not localhost (a LAN name) must stay one the browser keeps: no Secure, no __Secure- prefix.
 describe('the session cookie by scheme', () => {
 	const signedUpWith = async (origin: string) => {
-		const db = await createFileTestDb();
-		const auth = createAuth({ db, origin, secret, admitSignUp: () => ({}) });
+		const { auth } = await createTestAuth({ origin });
 		const { headers } = await auth.api.signUpEmail({ body, returnHeaders: true });
 		return headers.getSetCookie().filter((c) => c.includes('session_token'));
 	};
