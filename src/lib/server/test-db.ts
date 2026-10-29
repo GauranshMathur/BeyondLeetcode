@@ -90,6 +90,10 @@ class PrismaLibSqlTracked extends PrismaLibSql {
 
 	override createClient(config: Parameters<PrismaLibSql['createClient']>[0]): Client {
 		const client = super.createClient(config);
+		// The pragma belongs to a connection, not to the file, so each client sets its own. libSQL's
+		// file client runs a statement synchronously when it is called, so this lands before any
+		// query that follows; test-db.test.ts reads it back inside a transaction.
+		void client.execute('PRAGMA synchronous = OFF');
 		this.clients.push(client);
 		return client;
 	}
