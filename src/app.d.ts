@@ -1,7 +1,5 @@
 import type { MultiUser, Setup } from '#lib/server/app.js';
-import type { Auth } from '#lib/server/identity/auth.js';
 import type { Identity } from '#lib/server/identity/index.js';
-import type { Invites } from '#lib/server/identity/invites.js';
 import type { Instance } from '#lib/server/instance.js';
 import type { Learner } from '#lib/server/learning/core.js';
 
@@ -18,14 +16,8 @@ declare global {
 			instance: Instance;
 			/** What the Setup screen needs: the Multi-user choice and creating the first admin. */
 			setup: Setup;
-			/** Better Auth, Invites and the Learner removal; set only in Multi-user Mode. C153 removes the three below. */
+			/** Better Auth, the account actions, Invites and the Learner removal; set only in Multi-user Mode. */
 			multiUser?: MultiUser;
-			/** Better Auth; set only in Multi-user Mode, where the auth route mounts its handler. */
-			auth?: Auth;
-			/** Invite links; set exactly when `auth` is (Multi-user Mode), so Local Mode never has them. */
-			invites?: Invites;
-			/** Deletes a Learner and all its progress (Users, remove an Account); set exactly when `auth` is. */
-			deleteLearner?: (learnerId: string) => Promise<void>;
 			/**
 			 * Who this request is, from Identity. Unset where nobody is resolved: /setup before the Instance is
 			 * set up, and the public pages of a multi-user Instance (Sign in, Sign up, Accept invite). A
