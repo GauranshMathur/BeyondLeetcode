@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.19.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.0...v1.19.1) (2026-10-29)
+
+
+### Fixes
+
+* **beyondleetcode:** C150 Setup: the shared refusal map, the shared limits, and failures logged by kind only ([#425](https://github.com/GauranshMathur/BeyondLeetcode/issues/425)) ([b9a3ab9](https://github.com/GauranshMathur/BeyondLeetcode/commit/b9a3ab9d32607af11eb3c2b22389cfe27e3c7321))
+* **beyondleetcode:** C151 Users failures are logged by kind only ([#422](https://github.com/GauranshMathur/BeyondLeetcode/issues/422)) ([0317165](https://github.com/GauranshMathur/BeyondLeetcode/commit/0317165deabb1e97f7ca79ea6f3ecbdc25610f5e))
+
+
+### Refactoring
+
+* **beyondleetcode:** C133 one logging module, outside Identity ([#412](https://github.com/GauranshMathur/BeyondLeetcode/issues/412)) ([503bce7](https://github.com/GauranshMathur/BeyondLeetcode/commit/503bce7d6d31e6c6cb931806cbe12fcf9eaa2579))
+* **beyondleetcode:** C134 one route-policy table the gate reads ([#410](https://github.com/GauranshMathur/BeyondLeetcode/issues/410)) ([9e7c708](https://github.com/GauranshMathur/BeyondLeetcode/commit/9e7c708badfac36ed2a45494493d1070b2ab0ec6))
+* **beyondleetcode:** C135 one Local Learner id ([#413](https://github.com/GauranshMathur/BeyondLeetcode/issues/413)) ([5032207](https://github.com/GauranshMathur/BeyondLeetcode/commit/5032207995b0e3bd938888efb1a30ef3b7d2d6ff))
+* **beyondleetcode:** C136 one currentSession that applies every session rule ([#414](https://github.com/GauranshMathur/BeyondLeetcode/issues/414)) ([6bf515c](https://github.com/GauranshMathur/BeyondLeetcode/commit/6bf515cc75523d27b0d32fa1f5e3c4e1a7f13a84))
+* **beyondleetcode:** C137 auth.ts and the hook use the logging module; Invites owns the invite patterns ([#416](https://github.com/GauranshMathur/BeyondLeetcode/issues/416)) ([b006c9e](https://github.com/GauranshMathur/BeyondLeetcode/commit/b006c9e8f1eb72b10d0768917501e0a1d0e6289f))
+* **beyondleetcode:** C138 createIdentity chooses the adapter, the hook asks it once ([#417](https://github.com/GauranshMathur/BeyondLeetcode/issues/417)) ([8e2d09f](https://github.com/GauranshMathur/BeyondLeetcode/commit/8e2d09f07e83638fcdf0763f48281963ffbe5b58))
+* **beyondleetcode:** C140 Identity account actions: one interface for signing in, signing up, changing a password and signing out ([#423](https://github.com/GauranshMathur/BeyondLeetcode/issues/423)) ([190213d](https://github.com/GauranshMathur/BeyondLeetcode/commit/190213d2d62a357ca15981a7b949db17f9048330))
+* **beyondleetcode:** C141 the credential generation moves from createAuth to session binding ([#421](https://github.com/GauranshMathur/BeyondLeetcode/issues/421)) ([bca9b2f](https://github.com/GauranshMathur/BeyondLeetcode/commit/bca9b2f826ff47599890e3a6b4beeef079726328))
+* **beyondleetcode:** C142 response headers come from the route-policy table ([#418](https://github.com/GauranshMathur/BeyondLeetcode/issues/418)) ([315737b](https://github.com/GauranshMathur/BeyondLeetcode/commit/315737b7b7e4f5ae7797695c842145bdfad69939))
+* **beyondleetcode:** C144 Multi-user adapter and Users page checks read currentSession; the sweep joins session binding ([#424](https://github.com/GauranshMathur/BeyondLeetcode/issues/424)) ([0ad3788](https://github.com/GauranshMathur/BeyondLeetcode/commit/0ad378849ef6df1437aa29132e982d10647e36e2))
+* **beyondleetcode:** C145 Sign in: the page signs in through the account actions ([#427](https://github.com/GauranshMathur/BeyondLeetcode/issues/427)) ([5ba2a23](https://github.com/GauranshMathur/BeyondLeetcode/commit/5ba2a238a8d595c647ec5327ef81b076d86d7ce6))
+* **beyondleetcode:** C146 Sign up and Accept invite both sign up through the account actions ([#426](https://github.com/GauranshMathur/BeyondLeetcode/issues/426)) ([7f9a73b](https://github.com/GauranshMathur/BeyondLeetcode/commit/7f9a73bf3410f1bf53cc727e104339cd1574085a))
+* **beyondleetcode:** C148 Identity: one check for Better Auth's secret ([#428](https://github.com/GauranshMathur/BeyondLeetcode/issues/428)) ([2526356](https://github.com/GauranshMathur/BeyondLeetcode/commit/252635639c501f370ccd65dc44f4d45c6f7f7feb))
+* **beyondleetcode:** C149 Change password and Sign out go through the account actions ([#429](https://github.com/GauranshMathur/BeyondLeetcode/issues/429)) ([e6e8d5f](https://github.com/GauranshMathur/BeyondLeetcode/commit/e6e8d5fd8f4f761cdc8caebe405e1fa20fc38712))
+
+
+### Documentation
+
+* **beyondleetcode:** backlog plan, Sprints 14 to 16 ([#409](https://github.com/GauranshMathur/BeyondLeetcode/issues/409)) ([4824a13](https://github.com/GauranshMathur/BeyondLeetcode/commit/4824a138adc47987f9fbcbbf929329bc4f3f42c4))
+* **beyondleetcode:** one release per sprint, and longer sprints ([#408](https://github.com/GauranshMathur/BeyondLeetcode/issues/408)) ([ccafda5](https://github.com/GauranshMathur/BeyondLeetcode/commit/ccafda51bbd2a829b617deca213b75aa31149957))
+* **beyondleetcode:** Sprint 13 status, exit met, and the 1.19.0 cut ([#406](https://github.com/GauranshMathur/BeyondLeetcode/issues/406)) ([a7a83c6](https://github.com/GauranshMathur/BeyondLeetcode/commit/a7a83c6745b197906ee122c38cf50eea8a9671aa))
+
+
+### Tests
+
+* **beyondleetcode:** C132 one Better Auth test harness with a fast hasher ([#411](https://github.com/GauranshMathur/BeyondLeetcode/issues/411)) ([38d1627](https://github.com/GauranshMathur/BeyondLeetcode/commit/38d1627bf8b608dbd55ac03d511290d3de274775))
+* **beyondleetcode:** C139 Identity tests use the Better Auth harness; test databases skip fsync ([#415](https://github.com/GauranshMathur/BeyondLeetcode/issues/415)) ([9a4813d](https://github.com/GauranshMathur/BeyondLeetcode/commit/9a4813dd7c3aad49b2891f3c9ba7eedb65fee5ee))
+* **beyondleetcode:** C143 route tests use the Better Auth harness ([#419](https://github.com/GauranshMathur/BeyondLeetcode/issues/419)) ([37f87ed](https://github.com/GauranshMathur/BeyondLeetcode/commit/37f87ed26ac12c5af4f599c6dce0f99b62f9dde8))
+* **beyondleetcode:** C197 every module the image runs from source is copied into it ([#420](https://github.com/GauranshMathur/BeyondLeetcode/issues/420)) ([f87df2b](https://github.com/GauranshMathur/BeyondLeetcode/commit/f87df2bed58199143cdb152be93bd6bf227a2a52))
+
 ## [1.19.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.18.0...v1.19.0) (2026-10-28)
 
 
