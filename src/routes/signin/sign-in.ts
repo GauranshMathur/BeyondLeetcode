@@ -1,16 +1,8 @@
-import { createHash } from 'node:crypto';
 import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
-import { isAPIError } from 'better-auth/api';
-import { enabledProviders, SOCIAL_PROVIDER_NAMES } from '#lib/server/identity/auth.js';
+import type { Refusal } from '#lib/server/identity/account-actions.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { clientAddress } from '#lib/server/identity/client-address.js';
 import { safeNext } from '#lib/server/identity/gate.js';
-import {
-	createProviderStarts,
-	type ProviderStarts,
-	type Throttle,
-	type ThrottleInput
-} from '#lib/server/identity/throttle.js';
 
 /**
  * Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form.
@@ -86,82 +78,22 @@ export function landing(next: string | null): string {
 }
 
 /**
- * The limits' stand-in for an email that has no Account: a digest of the normalised email (lowercased like
- * Better Auth's lookup, not trimmed), so the email itself is never held in memory. Known and unknown emails
- * then reach the throttled state on the same schedule; if only known ones did, a throttled refusal (which
- * skips the password hash, so it answers faster) would tell an attacker which emails have an Account. It
- * goes in its own field, not in `accountId`: the throttle keeps these keys, which the client chooses, apart
- * from real Account ids (`throttle.ts`).
+ * The refusal a form shows: the one text for a wrong sign-in, a 400 with the failure text for a provider start
+ * refused up front (unknown, over its limit), and a 500 with the same text for every other failure.
  */
-const emailDigest = (email: string) =>
-	createHash('sha256').update(email.toLowerCase()).digest('hex');
-
-/** The kind of failure only: the error text may hold paths, query text and the input. */
-function logFailure(what: string, error: unknown) {
-	const code = isAPIError(error) ? error.body?.code : (error as { code?: unknown })?.code;
-	console.error(
-		`Sign in: ${what}:`,
-		error instanceof Error ? error.name : typeof error,
-		typeof code === 'string' ? code : undefined
-	);
-}
-
-/** Better Auth answers 400 to an email or password it will not look at and 401 to a wrong one. */
-const isWrongSignIn = (error: unknown) =>
-	isAPIError(error) && (error.statusCode === 400 || error.statusCode === 401);
-
-/**
- * Sends the visitor to the provider. Only a provider this Instance has is started, with the one redirect back
- * (`next`, a path on this site) and Sign in as the error page; nothing else of the request goes on, so a client
- * cannot choose its own redirect or sign-up flag. Starting writes the flow's state, so it has its own limit.
- */
-async function startProvider(
-	event: SignInEvent,
-	auth: NonNullable<App.Locals['auth']>,
-	provider: string,
-	next: string,
-	starts: ProviderStarts
-) {
-	const known = enabledProviders(auth).find((id) => id === provider);
-	if (!known) return refused(400, '', MESSAGES.failed);
-	const turn = starts.throttle.attempt({ address: clientAddress(event), accountId: null });
-	if (!turn.allowed) return refused(400, '', MESSAGES.failed);
-	let target: string;
-	let headers: Headers;
-	try {
-		const started = await auth.api.signInSocial({
-			body: { provider: known, callbackURL: next, errorCallbackURL: '/signin' },
-			returnHeaders: true
-		});
-		headers = started.headers;
-		target = started.response.url ?? '';
-	} catch (error) {
-		logFailure('starting a provider sign-in failed', error);
-		return refused(500, '', MESSAGES.failed);
-	}
-	if (!/^https:\/\//.test(target)) return refused(500, '', MESSAGES.failed);
-	// The callback gives this start back when it signs someone in, found by the `state` of the authorize URL.
-	try {
-		const state = new URL(target).searchParams.get('state');
-		if (state) starts.record(state, turn.token);
-	} catch {
-		// No state to key it by: the start stays counted.
-	}
-	forwardSetCookies(event.cookies, headers.getSetCookie());
-	// SvelteKit 3 refuses an external target unless the call opts in. This one is the provider's authorize URL from
-	// Better Auth, checked to be https above; `javascript:` stays blocked either way.
-	redirect(303, target, { external: true });
+function refusedWith(refusal: Refusal, email: string) {
+	if (refusal.refused === 'WRONG_SIGN_IN') return wrongSignIn(email);
+	if (refusal.refused === 'PROVIDER_REFUSED') return refused(400, email, MESSAGES.failed);
+	return refused(500, email, MESSAGES.failed);
 }
 
 /**
  * The Sign in page: whether it links to Sign up, and the action that signs an Account in.
  *
- * Password sign-in is not served over HTTP (see `disabledPaths` in auth.ts), so this action is the one
- * way in with a password, and it carries the limits Better Auth's own limiter cannot: `throttle` counts
- * every attempt against the caller's address and, when the email names an Account, against that Account
- * (`throttle.ts`). Its counters live in memory in this process.
+ * The sign-in itself (the limits, the Account lookup, Better Auth) is `locals.multiUser.accounts`; this
+ * only reads the form, turns each refusal into its fixed text and forwards the cookies it answers.
  */
-export function createSignIn(throttle: Throttle, starts: ProviderStarts = createProviderStarts()) {
+export function createSignIn() {
 	return {
 		/**
 		 * `open` is whether the Registration Mode lets anyone sign up: only then the page links to Sign up.
@@ -173,10 +105,7 @@ export function createSignIn(throttle: Throttle, starts: ProviderStarts = create
 			if (locals.identity) redirect(303, landing(url.searchParams.get('next')));
 			return {
 				open: locals.instance.registrationMode() === 'open',
-				providers: (locals.auth ? enabledProviders(locals.auth) : []).map((id) => ({
-					id,
-					name: SOCIAL_PROVIDER_NAMES[id]
-				})),
+				providers: locals.multiUser?.accounts?.providers() ?? [],
 				notice: providerNotice(url.searchParams.get('error'))
 			};
 		},
@@ -190,50 +119,24 @@ export function createSignIn(throttle: Throttle, starts: ProviderStarts = create
 			const email = text(data, 'email');
 			const password = text(data, 'password');
 
-			const { auth } = locals;
-			if (!auth) return refused(503, email, MESSAGES.failed);
+			const accounts = locals.multiUser?.accounts;
+			if (!accounts) return refused(503, email, MESSAGES.failed);
+			const address = clientAddress(event);
 
 			// A provider button posts here too, with its id and no password.
 			const provider = text(data, 'provider');
-			if (provider !== '') return startProvider(event, auth, provider, next, starts);
-
-			// The Account Better Auth would sign in: looked up the way it does (lowercased, not trimmed), so the
-			// Account limits cannot be dodged by how the email is spelled. With none, the email's digest stands
-			// in, so an unknown email is limited exactly like a known one. A blank form names nobody.
-			let named: Pick<ThrottleInput, 'accountId' | 'unknownEmail'> = { accountId: null };
-			if (email !== '') {
-				try {
-					const { internalAdapter } = await auth.$context;
-					const found = await internalAdapter.findUserByEmail(email.toLowerCase());
-					named = found
-						? { accountId: found.user.id }
-						: { accountId: null, unknownEmail: emailDigest(email) };
-				} catch (error) {
-					logFailure('looking up the account failed', error);
-					return refused(500, email, MESSAGES.failed);
-				}
+			if (provider !== '') {
+				const started = await accounts.startProvider({ provider, next, address });
+				if ('refused' in started) return refusedWith(started, '');
+				forwardSetCookies(cookies, started.cookies);
+				// SvelteKit 3 refuses an external target unless the call opts in. This one is the provider's authorize URL
+				// from Better Auth, checked to be https by the action; `javascript:` stays blocked either way.
+				redirect(303, started.location, { external: true });
 			}
 
-			// Before the password is looked at, so a flood of guesses of any kind is counted and none is free.
-			const turn = throttle.attempt({ address: clientAddress(event), ...named });
-			if (!turn.allowed) return wrongSignIn(email);
-			if (email === '' || password === '') return wrongSignIn(email);
-
-			let headers: Headers;
-			try {
-				// Only these two fields go on: a client cannot ask for a longer session or a redirect.
-				({ headers } = await auth.api.signInEmail({
-					body: { email, password },
-					returnHeaders: true
-				}));
-			} catch (error) {
-				if (isWrongSignIn(error)) return wrongSignIn(email);
-				logFailure('signing in failed', error);
-				return refused(500, email, MESSAGES.failed);
-			}
-			// A right password takes its own attempt back, so signing in never uses up a shared address's budget.
-			throttle.succeed(turn.token);
-			forwardSetCookies(cookies, headers.getSetCookie());
+			const signedIn = await accounts.signIn({ email, password, address });
+			if ('refused' in signedIn) return refusedWith(signedIn, email);
+			forwardSetCookies(cookies, signedIn.cookies);
 			redirect(303, next);
 		}
 	};

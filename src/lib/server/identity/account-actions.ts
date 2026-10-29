@@ -33,7 +33,8 @@ export const ACCOUNT_LIMITS = {
  * One code per message the account forms show. A route turns a code into its text; no code carries one.
  *
  * - `WRONG_SIGN_IN`: "Email or password is wrong." (also for too many sign-in attempts, as the limits count per Account)
- * - `SIGN_IN_FAILED`: "Signing in failed. Try again." (also an unknown provider, a refused provider start)
+ * - `SIGN_IN_FAILED`: "Signing in failed. Try again." (a failure: the lookup, Better Auth, a provider start that did not work)
+ * - `PROVIDER_REFUSED`: "Signing in failed. Try again." (a provider start refused up front: an unknown provider, or past the start limit)
  * - `SIGN_UP_FAILED`: "The account could not be created. Try again."
  * - `NAME_REQUIRED`: "Enter a name."
  * - `NAME_TOO_LONG`: "Use at most 100 characters."
@@ -58,6 +59,7 @@ export const ACCOUNT_LIMITS = {
 export const REFUSAL_CODES = [
 	'WRONG_SIGN_IN',
 	'SIGN_IN_FAILED',
+	'PROVIDER_REFUSED',
 	'SIGN_UP_FAILED',
 	'NAME_REQUIRED',
 	'NAME_TOO_LONG',
@@ -268,9 +270,9 @@ export function createAccountActions({
 
 		async startProvider({ provider, next, address }) {
 			const known = enabledProviders(auth).find((id) => id === provider);
-			if (!known) return refuse('SIGN_IN_FAILED');
+			if (!known) return refuse('PROVIDER_REFUSED');
 			const turn = providerStarts.throttle.attempt({ address, accountId: null });
-			if (!turn.allowed) return refuse('SIGN_IN_FAILED');
+			if (!turn.allowed) return refuse('PROVIDER_REFUSED');
 			let target: string;
 			let headers: Headers;
 			try {
