@@ -328,8 +328,12 @@ describe('accepting', () => {
 	it('answers the limit with Retry-After and creates nothing', async () => {
 		const { accept, event, create, db } = await real();
 		const { token } = await create();
-		const attempt = () => accept.action(event(token, { ...lin, password: 'x' }) as never);
-		for (let i = 0; i < 20; i++) await attempt();
+		for (let i = 1; i <= 20; i++) {
+			expect(
+				await accept.action(event(token, { ...lin, password: 'x' }) as never),
+				`attempt ${i}`
+			).toMatchObject({ status: 400, data: { field: 'password' } });
+		}
 		const last = event(token, lin);
 
 		expect(await accept.action(last as never)).toMatchObject({ status: 429 });
@@ -337,6 +341,28 @@ describe('accepting', () => {
 			'retry-after': expect.stringMatching(/^[1-9]\d*$/)
 		});
 		expect(await db.user.count({ where: { role: 'learner' } })).toBe(0);
+	});
+
+	it('charges a body that is not a form: it and 19 parseable attempts use up the limit', async () => {
+		const { accept, event, create } = await real();
+		const { token } = await create();
+		const broken = {
+			...event(token),
+			request: {
+				formData: async () => {
+					throw new TypeError('Failed to parse body');
+				}
+			}
+		};
+		expect(await accept.action(broken as never)).toMatchObject({ status: 400 });
+		for (let i = 1; i <= 19; i++) {
+			expect(
+				await accept.action(event(token, { ...lin, password: 'x' }) as never),
+				`attempt ${i}`
+			).toMatchObject({ status: 400, data: { field: 'password' } });
+		}
+
+		expect(await accept.action(event(token, lin) as never)).toMatchObject({ status: 429 });
 	});
 
 	it('is unavailable, not a crash, when the request has no account actions', async () => {

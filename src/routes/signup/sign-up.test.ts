@@ -251,9 +251,20 @@ describe('what is wrong with the form', () => {
 
 		it('counts the refused attempt against the limit like any other', async () => {
 			const throttled = harness();
-			for (let i = 0; i < 20; i++) await throttled.post({ ...ada, name: 'x'.repeat(101) });
+			for (let i = 1; i <= 20; i++) {
+				expect(
+					await throttled.post({ ...ada, name: 'x'.repeat(101) }),
+					`attempt ${i}`
+				).toMatchObject({
+					status: 400,
+					data: { field: 'name' }
+				});
+			}
 
 			expect(await throttled.post(ada)).toMatchObject({ status: 429 });
+			expect(throttled.setHeaders).toHaveBeenCalledWith({
+				'retry-after': expect.stringMatching(/^[1-9]\d*$/)
+			});
 		});
 
 		it('maps Better Auth\u2019s own refusal of a blank name to the form\u2019s blank-name error', async () => {
@@ -480,12 +491,19 @@ describe('when Better Auth refuses', () => {
 describe('the sign-up limit', () => {
 	/** Uses up the 20 attempts the throttle allows an address. */
 	const useUp = async (post: (values: Form) => Promise<unknown>) => {
-		for (let i = 0; i < 20; i++) await post({ ...ada, password: 'x' });
+		for (let i = 1; i <= 20; i++) {
+			expect(await post({ ...ada, password: 'x' }), `attempt ${i}`).toMatchObject({
+				status: 400,
+				data: { field: 'password' }
+			});
+		}
 	};
 
 	it('refuses the attempt after the limit with the message and Retry-After, creating nothing', async () => {
 		const { post, signUpEmail, setHeaders } = harness();
-		for (let i = 0; i < 20; i++) await post(ada);
+		for (let i = 1; i <= 20; i++) {
+			expect(await post(ada), `attempt ${i}`).toMatchObject({ status: 303 });
+		}
 		signUpEmail.mockClear();
 
 		const result = await post(ada);
@@ -506,7 +524,9 @@ describe('the sign-up limit', () => {
 		expect(signUpEmail).not.toHaveBeenCalled();
 
 		const closed = harness({ registration: 'invite' });
-		for (let i = 0; i < 20; i++) await closed.post(ada);
+		for (let i = 1; i <= 20; i++) {
+			expect(await closed.post(ada), `attempt ${i}`).toMatchObject({ status: 403 });
+		}
 		expect(await closed.post(ada)).toMatchObject({ status: 429 });
 	});
 
@@ -530,10 +550,28 @@ describe('the sign-up limit', () => {
 		const unreadable = () => {
 			throw new Error('no address');
 		};
-		const first = harness({ address: unreadable });
-		await useUp(first.post);
+		// Two different requests, one set of account actions: neither names an address, so both count in one bucket.
+		const accounts = accountsOver(
+			{
+				api: {
+					signUpEmail: async () => ({ headers: new Headers(), response: {} })
+				}
+			},
+			() => true
+		);
+		const first = harness({ address: unreadable, accounts });
+		const second = harness({ address: unreadable, accounts });
+		for (let i = 1; i <= 10; i++) {
+			expect(await first.post({ ...ada, password: 'x' }), `first ${i}`).toMatchObject({
+				status: 400
+			});
+			expect(await second.post({ ...ada, password: 'x' }), `second ${i}`).toMatchObject({
+				status: 400
+			});
+		}
 
 		expect(await first.post(ada)).toMatchObject({ status: 429 });
+		expect(await second.post(ada)).toMatchObject({ status: 429 });
 	});
 
 	it('answers a body that does not parse as the action does today: the error, after the attempt is counted', async () => {
@@ -549,6 +587,24 @@ describe('the sign-up limit', () => {
 
 		await expect(signUp.action(broken as never)).rejects.toThrow('Failed to parse body');
 		expect(signUpEmail).not.toHaveBeenCalled();
+	});
+
+	it('charges a body that does not parse: it and 19 parseable attempts use up the limit', async () => {
+		const { signUp, event, post } = harness();
+		const broken = {
+			...event(ada),
+			request: {
+				formData: async () => {
+					throw new TypeError('Failed to parse body');
+				}
+			}
+		};
+		await expect(signUp.action(broken as never)).rejects.toThrow('Failed to parse body');
+		for (let i = 1; i <= 19; i++) {
+			expect(await post({ ...ada, password: 'x' }), `attempt ${i}`).toMatchObject({ status: 400 });
+		}
+
+		expect(await post(ada)).toMatchObject({ status: 429 });
 	});
 });
 
