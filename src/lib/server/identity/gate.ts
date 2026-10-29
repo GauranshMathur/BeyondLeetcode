@@ -1,5 +1,6 @@
 import type { InstanceMode } from '../instance.ts';
 import type { Identity } from './index.ts';
+import { policyOf } from './route-policy.ts';
 
 export interface GateInput {
 	/** The stored Instance mode; null when the Instance is not set up. */
@@ -32,17 +33,8 @@ const pass: GateResult = { kind: 'pass' };
 const redirect = (location: string): GateResult => ({ kind: 'redirect', status: 303, location });
 const status = (code: 403 | 404): GateResult => ({ kind: 'status', status: code });
 
-const isUnder = (routeId: string, base: string) =>
-	routeId === base || routeId.startsWith(`${base}/`);
-
-const isAuthApi = (routeId: string) => routeId.startsWith('/api/auth/');
-const isPublic = (routeId: string) =>
-	routeId === '/signin' ||
-	routeId === '/signup' ||
-	routeId.startsWith('/invite/') ||
-	isAuthApi(routeId);
-const isMultiOnly = (routeId: string) =>
-	isPublic(routeId) || isUnder(routeId, '/users') || routeId === '/account/password';
+const isPublic = (routeId: string) => policyOf(routeId).audience === 'public';
+const isMultiOnly = (routeId: string) => policyOf(routeId).multiOnly;
 
 /** The form action a POST runs, read the way SvelteKit reads it: the first query key that starts with '/'. */
 const formAction = (search: string): string | null => {
@@ -91,7 +83,7 @@ export function gate(input: GateInput): GateResult {
 		if (!atPasswordPage && !isSigningOut(input)) return redirect('/account/password');
 	}
 
-	if (routeId !== null && isUnder(routeId, '/users') && who.role !== 'admin') return status(403);
+	if (policyOf(routeId).audience === 'admin' && who.role !== 'admin') return status(403);
 
 	return pass;
 }
