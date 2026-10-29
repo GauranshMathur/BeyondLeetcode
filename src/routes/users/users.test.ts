@@ -971,6 +971,8 @@ describe('what the Users page logs when an action fails', () => {
 		try {
 			await act();
 			expect(quiet).toHaveBeenCalledTimes(1);
+			// One call with one plain string: an object argument could hide text behind its class.
+			expect(quiet.mock.calls[0]).toEqual([expect.any(String)]);
 			return quiet.mock.calls.flat().join(' ');
 		} finally {
 			quiet.mockRestore();
