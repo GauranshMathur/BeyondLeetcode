@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
-import { type Admission, CLIENT_IP_HEADER, createAuth } from './auth.ts';
+import { type Admission, type AdmitSignUp, CLIENT_IP_HEADER } from './auth.ts';
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
+import { createTestAuth, TEST_ORIGIN } from './test-auth.ts';
 
 const attempt = { email: 'ada@example.com' };
-const secret = 'test-secret-test-secret-test-secret-0123';
-const origin = 'http://localhost:3000';
+const origin = TEST_ORIGIN;
 const body = { email: attempt.email, password: 'correct horse battery', name: 'Ada' };
 
 type Registration = 'open' | 'invite';
@@ -24,7 +24,7 @@ const fakeInstance = (mode: 'local' | 'multi' | null, registration: Registration
 // Each request comes from its own address: Better Auth's limiter allows three sign-ups per address
 // in ten seconds, and these tests are about the registration gate, not the limiter.
 let caller = 0;
-const post = (auth: ReturnType<typeof createAuth>, payload: object = body) =>
+const post = (auth: Awaited<ReturnType<typeof createTestAuth>>['auth'], payload: object = body) =>
 	auth.handler(
 		new Request(`${origin}/api/auth/sign-up/email`, {
 			method: 'POST',
@@ -38,14 +38,8 @@ const post = (auth: ReturnType<typeof createAuth>, payload: object = body) =>
 	);
 
 async function open(mode: 'local' | 'multi' | null, registration: Registration) {
-	const db = await createFileTestDb();
 	const instance = fakeInstance(mode, registration);
-	const auth = createAuth({
-		db,
-		origin,
-		secret,
-		admitSignUp: createRegistration({ instance })
-	});
+	const { auth, db } = await createTestAuth({ admit: createRegistration({ instance }) });
 	return { db, instance, auth };
 }
 
@@ -113,20 +107,17 @@ it('lets a client body claim nothing: an open sign-up never becomes admin or tak
 });
 
 it('admits createFirstAdmin onto the Local Learner as admin even when invite-only, and later visitors only as the mode allows', async () => {
-	const db = await createFileTestDb();
-	const real = await createInstance(db);
-	const gate = createRegistration({ instance: real });
+	let gate: AdmitSignUp = () => null;
 	const answers: (Admission | null)[] = [];
-	const auth = createAuth({
-		db,
-		origin,
-		secret,
-		admitSignUp: async (a) => {
+	const { auth, db } = await createTestAuth({
+		admit: async (a) => {
 			const answer = await gate(a);
 			answers.push(answer);
 			return answer;
 		}
 	});
+	const real = await createInstance(db);
+	gate = createRegistration({ instance: real });
 
 	await createFirstAdmin(
 		{ instance: real, auth, db },

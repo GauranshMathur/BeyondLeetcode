@@ -3,14 +3,14 @@ import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { describe, expect, it, vi } from 'vitest';
 import type { App } from './app.ts';
 import { createHandle } from './handle.ts';
-import { createAuth } from './identity/auth.ts';
-import { createLocalIdentity } from './identity/index.ts';
+import { createIdentity, createLocalIdentity } from './identity/index.ts';
 import { createInvites } from './identity/invites.ts';
 import { createMultiUserIdentity } from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
 import { createFirstAdmin } from './identity/setup.ts';
+import { createTestAuth } from './identity/test-auth.ts';
 import { createInstance } from './instance.ts';
-import { createFileTestDb, createTestDb } from './test-db.ts';
+import { createTestDb } from './test-db.ts';
 
 async function setup(options: { local?: boolean } = {}) {
 	const db = await createTestDb();
@@ -24,7 +24,13 @@ async function setup(options: { local?: boolean } = {}) {
 	const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
 	return {
 		db,
-		handle: createHandle({ instance, identity, core, multiUser: null, setup: setupPort })
+		handle: createHandle({
+			instance,
+			identity: createIdentity({ instance, local: identity, multi: null }),
+			core,
+			multiUser: null,
+			setup: setupPort
+		})
 	};
 }
 
@@ -178,14 +184,12 @@ it('a Learner who chose a theme gets it on <html> in the render', async () => {
 
 describe('Multi-user Mode', () => {
 	async function multiSetup(options: { testLearnerCookie?: boolean } = {}) {
-		const db = await createFileTestDb();
-		const instance = await createInstance(db);
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret: 'test-secret-test-secret-test-secret-0123',
-			admitSignUp: createRegistration({ instance })
+		let registration: ReturnType<typeof createRegistration> | undefined;
+		const { auth, db } = await createTestAuth({
+			admit: (attempt) => (registration as NonNullable<typeof registration>)(attempt)
 		});
+		const instance = await createInstance(db);
+		registration = createRegistration({ instance });
 		const { headers } = await createFirstAdmin(
 			{ instance, auth, db },
 			{ name: 'Ada', email: 'ada@example.com', password: 'correct horse battery' }
@@ -198,7 +202,6 @@ describe('Multi-user Mode', () => {
 		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 		const multiUser = {
 			auth,
-			identity: createMultiUserIdentity(auth),
 			invites: createInvites({ db, origin: 'http://localhost:3000' }),
 			deleteLearner: async () => {}
 		};
@@ -207,7 +210,17 @@ describe('Multi-user Mode', () => {
 			db,
 			auth,
 			cookie,
-			handle: createHandle({ instance, identity, core, multiUser, setup: setupPort }),
+			handle: createHandle({
+				instance,
+				identity: createIdentity({
+					instance,
+					local: identity,
+					multi: createMultiUserIdentity(auth)
+				}),
+				core,
+				multiUser,
+				setup: setupPort
+			}),
 			asking: (path: string, routeId: string | null, cookieHeader = cookie) =>
 				request(path, routeId, 'GET', new Headers(cookieHeader ? { cookie: cookieHeader } : {}))
 		};
@@ -536,7 +549,7 @@ describe('Multi-user Mode', () => {
 		const identity = await createLocalIdentity(db, { testLearnerCookie: true });
 		const handle = createHandle({
 			instance,
-			identity,
+			identity: createIdentity({ instance, local: identity, multi: null }),
 			core: {} as App['core'],
 			multiUser: null,
 			setup: {} as App['setup']

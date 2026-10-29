@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createAuth } from '../identity/auth.ts';
+import { createTestAuth, TEST_SECRET } from '../identity/test-auth.ts';
 import { createInstance } from '../instance.ts';
-import { createFileTestDb } from '../test-db.ts';
 import {
 	EXIT_FAILED,
 	EXIT_NO_ADMIN,
@@ -11,18 +10,15 @@ import {
 	USAGE
 } from './reset-admin-password.ts';
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const password = 'correct horse battery staple';
-const env = { DATABASE_URL: 'file:unused', BETTER_AUTH_SECRET: secret };
+const env = { DATABASE_URL: 'file:unused', BETTER_AUTH_SECRET: TEST_SECRET };
 
 async function setup(roles: Array<'admin' | undefined>) {
-	const db = await createFileTestDb();
 	let role: 'admin' | undefined;
-	const auth = createAuth({
-		db,
-		origin: '',
-		secret,
-		admitSignUp: () => (role ? { role } : {})
+	// The command hashes with the production hasher and the tests sign in with that password.
+	const { auth, db } = await createTestAuth({
+		hasher: 'production',
+		admit: () => (role ? { role } : {})
 	});
 	let n = 0;
 	for (const r of roles) {
@@ -188,7 +184,7 @@ describe('reset-admin-password command', () => {
 	});
 
 	it('fails plainly when DATABASE_URL is missing', async () => {
-		const result = await runResetAdminPassword([], { BETTER_AUTH_SECRET: secret }, () => {
+		const result = await runResetAdminPassword([], { BETTER_AUTH_SECRET: TEST_SECRET }, () => {
 			throw new Error('db-was-opened');
 		});
 		expect(result.code).toBe(EXIT_USAGE);

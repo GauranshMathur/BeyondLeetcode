@@ -1,7 +1,7 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TEST_LEARNER_COOKIE } from '../../e2e-learner.ts';
 import { createTestDb } from '../test-db.ts';
-import { createLocalIdentity } from './index.ts';
+import { createIdentity, createLocalIdentity, type IdentityResolver } from './index.ts';
 
 const request = (cookies: Record<string, string> = {}) => ({
 	cookies: { get: (name: string) => cookies[name] },
@@ -65,4 +65,71 @@ it('with the gate on, the cookie Learner gets its row, once, so its progress can
 	await identity.resolve(request({ [TEST_LEARNER_COOKIE]: 'topic-e2e' }));
 
 	expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'topic-e2e' })]);
+});
+
+describe('createIdentity', () => {
+	const ada = { learnerId: 'l1', displayName: 'Ada', role: 'learner' as const };
+	const adapter = (found: Awaited<ReturnType<IdentityResolver['resolve']>>) => ({
+		resolve: vi.fn(async () => found)
+	});
+	const asking = (
+		mode: 'local' | 'multi' | null,
+		local: IdentityResolver,
+		multi: IdentityResolver | null
+	) => createIdentity({ instance: { mode: () => mode }, local, multi });
+
+	it('asks nobody before Setup', async () => {
+		const local = adapter(ada);
+		const multi = adapter(ada);
+
+		expect(await asking(null, local, multi).resolve(request())).toEqual({
+			kind: 'resolved',
+			who: null,
+			mustChangePassword: false,
+			refreshedCookies: []
+		});
+		expect(local.resolve).not.toHaveBeenCalled();
+		expect(multi.resolve).not.toHaveBeenCalled();
+	});
+
+	it('asks only the Local adapter in Local Mode', async () => {
+		const local = adapter(ada);
+		const multi = adapter(null);
+
+		expect(await asking('local', local, multi).resolve(request())).toEqual({
+			kind: 'resolved',
+			who: ada,
+			mustChangePassword: false,
+			refreshedCookies: []
+		});
+		expect(multi.resolve).not.toHaveBeenCalled();
+	});
+
+	it('asks only the Multi-user adapter in Multi-user Mode, and carries its extras apart from who', async () => {
+		const local = adapter(null);
+		const multi = adapter({ ...ada, mustChangePassword: true, refreshedCookies: ['a=b'] });
+
+		expect(await asking('multi', local, multi).resolve(request())).toEqual({
+			kind: 'resolved',
+			who: ada,
+			mustChangePassword: true,
+			refreshedCookies: ['a=b']
+		});
+		expect(local.resolve).not.toHaveBeenCalled();
+	});
+
+	it('is nobody in Multi-user Mode when the adapter finds no one', async () => {
+		expect(await asking('multi', adapter(ada), adapter(null)).resolve(request())).toEqual({
+			kind: 'resolved',
+			who: null,
+			mustChangePassword: false,
+			refreshedCookies: []
+		});
+	});
+
+	it('is unavailable for a Multi-user Instance with no adapter', async () => {
+		expect(await asking('multi', adapter(ada), null).resolve(request())).toEqual({
+			kind: 'unavailable'
+		});
+	});
 });

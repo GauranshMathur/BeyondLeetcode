@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createFileTestDb } from '../test-db.ts';
-import { createAuth } from './auth.ts';
 import { forwardSetCookies, handleAuthRequest } from './auth-handler.ts';
+import { createTestAuth, TEST_ORIGIN } from './test-auth.ts';
 
-const origin = 'http://localhost:3000';
-const secret = 'test-secret-test-secret-test-secret-0123';
+const origin = TEST_ORIGIN;
 
 async function setup() {
-	const db = await createFileTestDb();
-	return { db, auth: createAuth({ db, origin, secret }) };
+	// No sign-up is admitted: the limiter tests below depend on the 403.
+	const { db, auth } = await createTestAuth({ admit: () => null });
+	return { db, auth };
 }
 
 // Password sign-in and change-password are not served over HTTP (the forms are the one way, see auth.ts), so

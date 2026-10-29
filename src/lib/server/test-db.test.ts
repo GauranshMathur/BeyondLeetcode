@@ -68,3 +68,15 @@ test("a write waits for another connection's write lock instead of failing at on
 
 	expect(await db.learner.count()).toBe(2);
 });
+
+test('a file database skips fsync on every connection, inside a transaction and outside', async () => {
+	const db = await createFileTestDb();
+	const [outside] = await db.$queryRaw<{ synchronous: number }[]>`PRAGMA synchronous`;
+	const inside = await db.$transaction(async (tx) => {
+		const [row] = await tx.$queryRaw<{ synchronous: number }[]>`PRAGMA synchronous`;
+		return row;
+	});
+
+	expect(Number(outside.synchronous)).toBe(0);
+	expect(Number(inside.synchronous)).toBe(0);
+});

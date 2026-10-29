@@ -3,25 +3,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
 import { createInstance, InstanceAlreadySetUpError, restoreMultiInstance } from '../instance.ts';
 import { createLearningCore } from '../learning/core.ts';
-import { createFileTestDb } from '../test-db.ts';
-import { type Auth, createAuth } from './auth.ts';
+import type { AdmitSignUp, Auth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin, isFirstAdmin } from './setup.ts';
+import { createTestAuth } from './test-auth.ts';
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
-const secret = 'test-secret-test-secret-test-secret-0123';
 const admin = { name: 'Root', email: 'root@example.com', password: 'correct horse battery' };
 
 async function setup() {
-	const db = await createFileTestDb();
+	// The instance needs the database, and the registration gate needs the instance, so the gate
+	// reads it through a late binding.
+	let gate: AdmitSignUp = () => null;
+	const { auth, db } = await createTestAuth({ admit: (a) => gate(a) });
 	const instance = await createInstance(db);
-	const auth = createAuth({
-		db,
-		origin: 'http://localhost:3000',
-		secret,
-		admitSignUp: createRegistration({ instance })
-	});
+	gate = createRegistration({ instance });
 	const core = createLearningCore({ catalogue: await loadCatalogue(fixtureDir), db });
 	return { db, auth, instance, core };
 }
@@ -508,18 +505,13 @@ describe('createFirstAdmin', () => {
 	});
 
 	it('refuses a real sign-up made while the first-admin scope is live, over HTTP and auth.api', async () => {
-		const db = await createFileTestDb();
-		const instance = await createInstance(db);
-		const gate = createRegistration({ instance });
+		let gate: AdmitSignUp = () => null;
 		let release: () => void = () => {};
 		const latch = new Promise<void>((resolve) => {
 			release = resolve;
 		});
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret,
-			admitSignUp: async (a) => {
+		const { auth, db } = await createTestAuth({
+			admit: async (a) => {
 				if (a.email === admin.email) {
 					release();
 					await new Promise((resolve) => setTimeout(resolve, 20));
@@ -529,6 +521,8 @@ describe('createFirstAdmin', () => {
 				return gate(a);
 			}
 		});
+		const instance = await createInstance(db);
+		gate = createRegistration({ instance });
 		const eve = { name: 'Eve', email: 'eve@example.com', password: 'correct horse battery' };
 		const http = auth.handler(
 			new Request('http://localhost:3000/api/auth/sign-up/email', {

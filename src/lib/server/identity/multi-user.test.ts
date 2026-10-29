@@ -1,20 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createFileTestDb } from '../test-db.ts';
-import { createAuth } from './auth.ts';
 import { createMultiUserIdentity, repairLearners, sweepStaleSessions } from './multi-user.ts';
+import { createTestAuth } from './test-auth.ts';
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
 
 async function setup() {
-	const db = await createFileTestDb();
-	const auth = createAuth({ db, origin: 'http://localhost:3000', secret, admitSignUp: () => ({}) });
+	const { auth, db, signUp } = await createTestAuth();
 	const identity = createMultiUserIdentity(auth);
-	const res = await auth.api.signUpEmail({ body, returnHeaders: true });
-	const cookie = res.headers
-		.getSetCookie()
-		.map((c) => c.split(';')[0])
-		.join('; ');
+	const { cookie } = await signUp(body);
 	const asking = (cookieHeader?: string) => ({
 		cookies: { get: () => undefined },
 		request: { headers: new Headers(cookieHeader ? { cookie: cookieHeader } : {}) }
