@@ -34,9 +34,9 @@ COPY src/lib/server/runner ./src/lib/server/runner
 COPY src/lib/languages.ts ./src/lib/languages.ts
 COPY src/lib/server/init ./src/lib/server/init
 # `reset-admin-password` runs from source: it imports db.ts, instance.ts, identity/auth.ts, accounts.ts and origin.ts, and through
-# auth.ts logging.ts and identity/invites.ts (their other imports are types, which Bun drops) and the generated Prisma client, which only the build stage has.
+# auth.ts logging.ts, identity/invites.ts and identity/session-binding.ts (their other imports are types, which Bun drops) and the generated Prisma client, which only the build stage has.
 COPY src/lib/server/db.ts src/lib/server/instance.ts src/lib/server/logging.ts ./src/lib/server/
-COPY src/lib/server/identity/auth.ts src/lib/server/identity/accounts.ts src/lib/server/identity/origin.ts src/lib/server/identity/invites.ts ./src/lib/server/identity/
+COPY src/lib/server/identity/auth.ts src/lib/server/identity/accounts.ts src/lib/server/identity/origin.ts src/lib/server/identity/invites.ts src/lib/server/identity/session-binding.ts ./src/lib/server/identity/
 # The web role starts this entry, which pins the request origin to ORIGIN and then runs the build (adapter-node 6 no longer reads ORIGIN).
 COPY src/lib/server/web-entry.ts src/lib/server/origin-pin.ts ./src/lib/server/
 COPY --from=build /app/prisma/generated ./prisma/generated
