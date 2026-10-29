@@ -27,8 +27,8 @@ export interface IdentityResolver {
 	): Promise<(Identity & { mustChangePassword?: boolean; refreshedCookies?: string[] }) | null>;
 }
 
-/** The Local Learner's fixed id: one row per Instance, so concurrent first requests cannot make two. */
-const LOCAL_LEARNER_ID = 'local';
+/** The Local Learner's id: the first admin takes it over, so Local progress stays theirs (ADR 0006). One row per Instance, so concurrent first requests cannot make two. */
+export const LOCAL_LEARNER_ID = 'local';
 
 const TEST_LEARNER_ID = /^[a-z0-9-]{1,64}$/;
 

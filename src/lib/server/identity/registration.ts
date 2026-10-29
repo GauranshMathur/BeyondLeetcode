@@ -1,7 +1,8 @@
 import type { Instance } from '../instance.ts';
 import type { AdmitSignUp } from './auth.ts';
+import { LOCAL_LEARNER_ID } from './index.ts';
 import type { Invites } from './invites.ts';
-import { FIRST_ADMIN_LEARNER_ID, isFirstAdmin } from './setup.ts';
+import { isFirstAdmin } from './setup.ts';
 
 /**
  * Who may create an Account, asked on every sign-up (email or OAuth) by the one creation hook.
@@ -28,7 +29,7 @@ export function createRegistration({
 	now?: () => Date;
 }): AdmitSignUp {
 	return async ({ inviteToken }) => {
-		if (isFirstAdmin()) return { learnerId: FIRST_ADMIN_LEARNER_ID, role: 'admin' };
+		if (isFirstAdmin()) return { learnerId: LOCAL_LEARNER_ID, role: 'admin' };
 		if (instance.mode() !== 'multi') return null;
 		// A valid Invite is spent whenever it is used, open registration or not; the token is checked first.
 		if (inviteToken && invites && (await invites.lookup(inviteToken, now()))) {
