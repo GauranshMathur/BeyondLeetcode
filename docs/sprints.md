@@ -370,6 +370,221 @@ For the maintainer:
 - **Next sprint:** C131 is still unsprinted. The planner's dry run left a candidate Sprint 14 · Test reliability: C131; a one-time re-run of content-check cases on a Runner error; per-checkout e2e ports; content-check jobs in parallel to `sandbox`; and the content check's concurrency on this host. It has two open questions: should the Runner retry Docker calls in production, and how are retries measured?
 - **Preview Instance:** `blc-preview` on this host runs v0.43.0 from a stale local `latest`. It was left untouched.
 
+## Sprint 14 · Identity
+
+**Goal:** Identity is cut along its seams, so its cards stop colliding in one file and can run in parallel lanes. The cuts are one fast Better Auth test harness, a logging module, a session-binding module with one `currentSession`, account actions that the routes call instead of Better Auth, and one route-policy table for the gate and the response headers. Each security rule gets one definition, and a data request's gate redirect keeps the anti-framing headers.
+
+Release `R v1.19.1: Sprint 14 · Identity`, version 1.19.1 (patch, because no card is `feat`: nothing changes for a learner on any screen).
+
+- **Seven issues, checked against `main` at a7a83c6.** Six come from the architecture reviews after Sprints 4 and 5: #231 (test harness), #227 (auth.ts is nine modules), #228 (session rules in five places), #229 (eight rules written twice), #230 (adapter choice and route policy) and #226 (routes reach into Better Auth). The seventh is #172 (data redirects lose the anti-framing headers), which #230 places in the same step.
+- **Already on `main`, so no card for it:**
+  - #231: C59 (#235) copies a template database migrated once per worker, waits 10 s on a lock, and closes every client before removing the directory. C43b (#192) gave the Multi-user fixture a 10 s busy timeout and a retry.
+  - #226: C74 (#310) made one `clientAddress` and took the password minimum hint from `MIN_PASSWORD_LENGTH`.
+  - #229: C74 (#310) made one ORIGIN parser, `parseOrigin`.
+  - #230's comment: C63 gave Accept invite the bare header (#249).
+- **Four lanes, one card each per round.** The harness, the logging module, the route-policy table and the Local Learner id start the sprint side by side. Every later Identity card then runs on the fast harness.
+
+  | Round | A · Auth core | B · Logging and account actions | C · Request step | D · Tests and routes |
+  |---|---|---|---|---|
+  | 1 | C132 test harness, fast hasher | C133 logging module | C134 route-policy table, gate | C135 one Local Learner id |
+  | 2 | C137 callers use logging | C136 `currentSession` | C138 `createIdentity` | C139 Identity tests on the harness |
+  | 3 | C141 generation to session binding | C140 account actions | C142 headers from the table | C143 route tests on the harness |
+  | 4 | C144 adapter and Users checks via `currentSession` | C146 Sign up, Accept invite | C147 data redirects keep headers | C145 Sign in |
+  | 5 | C148 one secret check | C150 Setup | C151 Users logs | C149 Change password, Sign out |
+  | 6 | C152 account creation; `createAuth` is wiring only | C154 one class-name rule | C153 one Multi-user object in Locals | |
+  | 7 | C155 exit check and `Release-As` (the orchestrator) | | | |
+
+- **Shared files.** Each is an ordered chain, and each later card is blocked by the one before it:
+  - `identity/auth.ts` and `auth.test.ts`: C132, C137, C141, C148, C152.
+  - `identity/session-binding.ts` and its test (new in C136): C136, C141, C144.
+  - `lib/server/app.ts`: C138, C140, C144, C148.
+  - `src/app.d.ts`: C138, C140, C153.
+  - `lib/server/handle.ts` and `handle.test.ts`: C138, C142, C147, C153.
+  - `identity/gate.ts`: C134, C152.
+  - `lib/server/logging.ts` and its test (new in C133): C133, C154.
+  - `identity/account-actions.ts` (new in C140): C140, C152.
+  - `identity/index.ts`: C135, C138.
+  - `identity/multi-user.ts`: C135, C144.
+  - `multi-user.test.ts` and `accounts.test.ts`: C139, C144.
+  - `identity/setup.ts`: C135, C150.
+  - `identity/setup.test.ts`: C139, C150.
+  - `invite/[token]/accept.ts`: C137, C146.
+  - `users/+page.server.ts`: C151, C153.
+  - `users.test.ts`: C143, C151, C153.
+  - The other route tests: C143 first, then the card that rewrites that route (C145, C146 or C149).
+- **What closes what:**
+  - C143 closes #231, C142 closes #230 and C147 closes #172.
+  - C149 closes #228: once Change password and Sign out go through the account actions, nothing outside session binding reads Better Auth's session.
+  - C152 closes #227 and #229.
+  - C153 closes #226.
+- **For Sprint 15:** C134's table marks /setup, /signin, /signup and /invite/[token] `bare`. #246 reads `bare` from that table and drops the layout's own BARE list.
+- **Reviews.** Every card except C139, C143 and C155 changes where an Identity, gate, header, session, secret or log rule lives. Those 21 cards stop at green CI, and the orchestrator runs its two-reader security review (Fable and Codex) before each merge. No card touches the Runner, its container flags or the Docker socket, so none needs `sandbox-security-reviewer`.
+- **Waiting on the maintainer.** Two cards are written for the recommended answer, and neither runs until the maintainer answers:
+  - C147 (#172): should the hook answer a data request's gate redirect in SvelteKit's own JSON redirect form, so the response keeps the anti-framing headers? The alternative is closing #172 as accepted. Recommended: the JSON form, pinned by an e2e.
+  - C154 (#229): which of the two class-name rules for logs is the one rule? Recommended: the stricter one, `^[A-Za-z][A-Za-z0-9]{0,39}$`.
+- **Interfaces.** The cards fix the names and shapes the issues' Directions leave to the build: `createTestAuth`, `LogPatterns`, `RoutePolicy`, `createIdentity`'s answer, `currentSession` and the account actions. Workers build to them and decide nothing.
+- **Off the screens.** No card changes what a learner or an admin sees. Every route keeps its texts, and each route's e2e passes unchanged.
+
+**Exit:**
+- All 24 cards are Done, and `ci` is green on `main`.
+- `src/lib/server/identity/auth.ts` is under 400 lines, and `grep -cE 'installLogRedaction|currentGeneration|nameRefusal' src/lib/server/identity/auth.ts` prints 0.
+- `grep -rn 'getSession(' src --include=*.ts | grep -v '\.test\.ts'` lists only `session-binding.ts`.
+- No route reaches into Better Auth: `grep -rnE 'locals\.(auth|invites|deleteLearner)|\.api\.|\$context' src/routes --include=*.ts | grep -vE '\.test\.ts|e2e|multi-fixture'` prints nothing.
+- No route logs on its own: `grep -rn 'console.error' src/routes --include=*.ts | grep -vE '\.test\.ts|e2e'` prints nothing.
+- No test keeps its own copy of the secret: `grep -rl 'test-secret-test-secret' src` prints nothing.
+- Neither handle.ts nor gate.ts keeps a route list of its own: `grep -nE "route\.id ===|startsWith\('/invite/'\)" src/lib/server/handle.ts src/lib/server/identity/gate.ts` prints nothing.
+- On the Multi-user server, the `/settings/__data.json` redirect carries `frame-ancestors 'none'` (signin.multi.e2e.ts, in CI's e2e job).
+- `gh issue view` shows #226, #227, #228, #229, #230, #231 and #172 closed.
+- The orchestrator cuts 1.19.1 from the release PR and records the cut in `docs/releasing.md`. Releases stay `1.x`.
+
+**Not in the sprint:**
+- sign-in.ts's `AUTH_PAGES` (the pages a sign-in never returns to) stays a list of pathnames. #230's Direction names only the gate and the header step as readers of the table.
+- The layout's `BARE` list stays until Sprint 15's #246.
+- The C58 migration keeps its own copy of the password-Account selector, because it is applied history.
+- Better Auth's provider config and the disabled-path lists stay in auth.ts as `createAuth`'s wiring.
+- The one control-and-bidi class keeps today's rules: a name may hold U+2028 and U+2029, and only log lines drop them.
+- C131, the bound on the fork-bomb test, goes to Sprint 16 with the other sandbox tests.
+
+## Sprint 15 · Screens and phones
+
+**Goal:** every screen draws its phone layout through one seam each: one breakpoint that a test holds, F3's sizes as tokens, one app header, one view of the Problem screen's tabs, Markdown scroll boxes from the renderer, and phone tests written from one module. On the way, the screen bugs #313, #241 and #325 are fixed.
+
+**Release `R v1.19.2: Sprint 15 · Screens and phones`, version 1.19.2** (patch because no card is `feat`: the bug and accessibility fixes are `fix`, the seams `refactor`, the test work `test`).
+
+- **Eight issues, from the architecture reviews after Sprints 3 and 5 and from Sprint 6.** All were checked against `main` at a7a83c6 on 2026-10-29, and all still hold. Some parts are already done, and some have grown:
+  - #244: C62 (#299) changed the Problem screen's `767px` queries to `767.98px`. That leaves four widths, not six: 767.98, 800, 900 and 901 px, in 21 queries across 14 files.
+  - #246: C63 (#281) added `/invite/[token]` to the header's bare list. It is still a third list of signed-out pages, beside the gate's `isPublic` and Sign in's `AUTH_PAGES`.
+  - #245 has grown. C61 added a tagged test in problem.e2e.ts, so there are now six `@mobile` tests and twelve phone describes, and a phone is still written out 16 times.
+  - #247 has grown. All 177 shipped Problem statements have code fences, 173 have tables, and none gets a named scroll box.
+- **Lanes.** There are six lanes, by file, and the orchestrator runs about four at once:
+  - **Problem screen:** C156 (#313) and C157 (#134) run side by side. Then C162, then C166 (closes #134), then C174 (closes #247).
+  - **Header:** C161 needs C134, Sprint 14's route-policy table (#230). Then C167, which also waits for C162 and closes #246. Then C173, which closes #241.
+  - **Reading:** C159, then C164, then C168, then C175, which closes #244.
+  - **Styles and Map:** C158 adds the tokens that every screen card reads. Then C163, and C171 after C156 and C165.
+  - **Account forms:** C165, then C169, then C172, which closes #325.
+  - **Phone tests:** C160, then C170 (after C164), then C176, which closes #245.
+  - **Last:** C177 checks the exit and sets the version.
+- **Shared files.** Each is an ordered chain, planned now:
+  - `problems/[problemId]/+page.svelte`: C156, then C162, then C166, then C174.
+  - `ProblemWorkspace.svelte`: C156, then C162, then C167. `ResultsPanel.svelte`: C156, then C162.
+  - `view.ts` and `view.test.ts`: C157, then C162. `HintsTab.svelte` and `SolutionTab.svelte`: C166, then C174.
+  - `problems/[problemId]/breakpoints.test.ts`: C156, then C171, which moves it to `src/lib/styles/`.
+  - `src/lib/server/header.ts`, `header.test.ts` and `+layout.svelte`: C161, then C167. `AppHeader.svelte`: C161, then C167, then C173.
+  - `chapters/[chapterId]/+page.svelte`: C164, then C168. `chapter.e2e.ts`: C164, then C170.
+  - `ProblemTable.svelte`: C168, then C175. `topic.e2e.ts` and `problem.e2e.ts`: C170, then C175.
+  - The Sign in, Sign up and Accept invite pages, and the new `account-forms.multi.e2e.ts`: C165, then C169.
+  - The other new e2e files each belong to one card: `wordmark.e2e.ts` (C173) and `problems/prose.e2e.ts` (C174).
+- **Waiting on the maintainer.** Five questions hold five cards, and each card is written for the recommended answer:
+  - C171 waits for two #244 questions: a new dependency (recommended: none), and Setup's 900 px and the 800 px screens (recommended: they stay).
+  - C160 waits for #245's touch question (recommended: with touch). C170, C173, C174 and C176 use its `phone` setting, so they wait too.
+  - C169 and C172 wait for #325's option (recommended: option 2 for typed fields, option 1 for the Problem tabs).
+  - C175 waits for #244's shared Problem row (recommended: restyle one table, as the Chapter does).
+- **No visible change, except in these cards:**
+  - C156: the 900 to 901 px gap.
+  - C159 and C174: named code and table boxes on the Problem screen, reachable by keyboard.
+  - C165: Sign up and Accept invite between 768 and 900 px, following Sprint 5's rule.
+  - C169 and C172: typed values are kept.
+  - C173: the wordmark link's name.
+  - Every other card keeps each screen as its board shows it, and its Done when names the tests that pass unchanged.
+- **Reviews: none.** No card touches the Runner, the container flags or the Docker socket. None changes a security rule or a response header: C161 reads Identity and the route-policy table and changes neither.
+- **Rounds.** The longest chains are four cards (C158, C161, C167, C173 is one). Add the last card and the cut, and the sprint takes six rounds. With 21 work cards and about four lanes at once, expect six to seven.
+
+**Exit:**
+- All 22 cards are Done, and `ci` is green on `main`.
+- `bunx vitest run breakpoints` passes. Every `@media` in `src/` is a query named in `src/lib/styles/breakpoints.ts`, used only in the files it is tied to, and `grep -rn 901px src` prints nothing.
+- `grep -rln "width: 390" src` prints only `src/lib/e2e-phone.ts`.
+- `bunx playwright test --list --grep @mobile` lists every tagged test under `mobile` or `mobile-multi`, and under no other project.
+- `grep -rln 'class="brand"' src` prints only `src/lib/header/AppHeader.svelte`.
+- `grep -n route.id src/routes/+layout.svelte` and `grep -rn "content: 'Settings'" src` print nothing.
+- `bunx vitest run markdown` passes, and the Chapter page has no `$effect` that edits its article.
+- Issues #134, #241, #244, #245, #246, #247, #313 and #325 are closed.
+- The orchestrator cuts 1.19.2 from the release PR, as `docs/releasing.md` describes, and records the cut there.
+- Releases stay `1.x`.
+
+**Not in the sprint:**
+- #134's first point: each tab navigation still re-runs `learner.problem()`. The direction as extended on 2026-10-25 does not cover it. Stopping it, with a load that ignores `?tab`, would change when the Problem is re-read. C166 closes #134 with this noted, and a card follows if the maintainer wants one.
+- Run and Submit, which the Problem screen draws twice. Both copies render one snippet (`runAndSubmit`), so they cannot drift, and the boards place them in two places.
+- The other second copies, each kept because its board shows different content (#244 keeps such copies):
+  - the Chapter's two sets of Topic and Next links, "← Topic" beside the text and "↑ Topic" at its end;
+  - the Map's figure and its column (C163 shares their data);
+  - the header's two wordmarks.
+- Setup's 900 px and Settings', Users' and Change password's 800 px breakpoints stay, tied to their files by C171, unless the maintainer answers otherwise.
+- #241's optional note on the canvas's F.10f would be a design card. It is not filed.
+- #325's option 3, making the Problem tabs work before hydration. The recommended answer accepts that they do not.
+
+## Sprint 16 · Languages and the Learning core
+
+**Goal:** each Language is described once and read from there; the Sandbox harness is a real Python file whose per-Language rules are one tested table; and the Learning core's Main Line navigation, a Learner's stored state, the access check and the boundary with the Content catalogue each have one home. Nothing a Learner can see changes.
+
+Release `R v1.19.3: Sprint 16 · Languages and the Learning core`, version 1.19.3 (patch, because no card is `feat`: every card is `refactor`, `test`, `ci` or `docs`).
+
+- **From the backlog.** Six architecture issues from the reviews after Sprints 2, 3 and 6 (#101, #104, #107, #133, #135, #307), plus C131. Each claim was checked against `main` at a7a83c6, and only what still holds became a card. Already done:
+  - the six written-out Language lists, and TypeScript and Go highlighting (C15, #112);
+  - the content check's own copy of Submit's calls (C107, #353);
+  - `engine.listByLabel` (C80, #300) and the duplicated `freePort` (C82, #311);
+  - the ProblemView built on every autosave, Run and Submit (C73, #303, `openStep`).
+- **Twenty cards in six lanes.** Codes C178 to C196, plus C131.
+  - **Learning core** (the Content catalogue, `rules.ts`, `core.ts`, `progress.ts`):
+    - C178 gives the catalogue each Problem's place on the Main Line and each Test's name.
+    - C179 adds table tests for `judge`, `submitPlan`, `problemView` and `validateBuild`, before anything changes them.
+    - C186 makes `rules.ts` read the Main Line and Test names from the catalogue. It follows C178 and C179.
+    - C187 leaves one export named `LANGUAGES`. It follows C178 and the Languages lane.
+    - C190 names the access check, `requireOpenTopic`. It follows C186 and C187.
+    - Then C193 (revealed Hints and the Language per Topic), then C195 (Build steps), both stored through `progress.ts`.
+    - C194, the Submit plan in a module that content and learning both import, follows C190 and waits for the maintainer's answer on #307.
+  - **Core tests:** C180, one `setup` in `core.test.ts`.
+  - **Languages**, three cards with no shared file, all ready at once:
+    - C181 adds each Language's extension, and keys the editor's highlighting by Language.
+    - C182 makes the smoke test read the Language list.
+    - C183 makes CI read the Sandbox images from `config.ts`, with one publish job.
+  - **Harness** (`src/lib/server/runner/`):
+    - C184 moves the harness to `harness.py`.
+    - Then C188 makes its per-Language rules one table, and C191 table-tests them without Docker. C191 waits for the maintainer's answer on `python3`.
+    - Then C189 writes the harness protocol in one place, and C192 gives the sandbox tests one Runner start.
+    - C131, the fork-bomb test's bound, comes before C192.
+  - **Runner port:** C185, one schema for each shape.
+  - **Last:** C196, the exit check and `Release-As: 1.19.3` (`docs/releasing.md`, The last card).
+- **Issues closed.**
+  - C187 closes #101 and #135. It waits for C181 to C183. Both issues' harness half was folded into #104 when they were triaged.
+  - C191 closes #104, after C184, C185, C188 and C189.
+  - C192 closes #107, after C178 to C180, C183 and C186.
+  - C195 closes #133. C194 closes #307.
+- **Reviews.** Before merge, the orchestrator runs `sandbox-security-reviewer` on C184, C185, C188, C189, C191, C192 and C131. They are every card that touches `src/lib/server/runner/`. No card changes a security rule.
+- **Waiting on the maintainer.** C191 waits for the `python3` question, and C194 for #307's option. The orchestrator does not dispatch either until the maintainer answers.
+- **Shared files**, each an ordered chain:
+  - `content/catalogue.ts`: C178, then C187, then C194.
+  - `content/catalogue.test.ts`: C178, then C194.
+  - `learning/rules.ts`: C186, then C190, then C194.
+  - `learning/rules.test.ts`: C179, then C186, then C190.
+  - `learning/core.ts`: C187, then C190, then C193, then C195.
+  - `learning/progress.ts`: C193, then C195.
+  - `runner/harness.ts`: C184, then C189.
+  - `runner/harness.py`: C184, then C188.
+  - `runner/http-adapter.sandbox.test.ts`: C189, then C192.
+  - `runner/escape.sandbox.test.ts`: C131, then C192.
+- **Rounds:** 14.
+  - The longest chain is five cards: C178, C186, C190, C193, C195.
+  - There are seven sandbox reviews.
+  - The last card and the cut add one round each.
+  - Round 1 has nine ready cards for about four lanes at once, and the `sandbox` tests share one lock on this host. Start the Learning core and Harness lanes first.
+- **ADR 0002 stands.** One harness serves every image and branches only to compile and to run. It is still sent with `python -I -c`, so no Sandbox image, Dockerfile, mount or container flag changes. The app image already copies `src/lib/server/runner/` whole.
+
+**Exit:**
+- All twenty Sprint 16 cards are Done, and `ci` is green on `main`.
+- `src/lib/languages.ts` is the only module that exports `LANGUAGES`, and `src/routes/smoke.smoke.ts` declares no Language of its own.
+- `ci.yml` has one Sandbox publish job, and its matrix comes from `config.ts`.
+- `harness.ts` holds no Python. `harness.py` tests the Language only through its `LANGUAGES` table. The `unit` job runs `harness.test.ts`.
+- `grep -n "mainLine.indexOf\|lastIndexOf('/')" src/lib/server/learning/rules.ts` prints nothing.
+- `src/lib/server/learning/core.ts` names no Prisma model, and `core.test.ts` defines one `setup`.
+- No file under `src/lib/server/content/` imports from `src/lib/server/learning/`.
+- #101, #104, #107, #133, #135 and #307 are closed.
+- The orchestrator cuts 1.19.3 from the release PR (`docs/releasing.md`) and records the cut. Releases stay `1.x`.
+
+**Not in the sprint:**
+- **Kept keyed by Language:** the Sandbox image tags stay in `runner/config.ts`, and Go's `/exec` tmpfs stays a `language === 'go'` flag in `containerSpec`, where C15 and ADR 0002's amendment put them. Whether that is enough to close #101 is a question for the maintainer.
+- **Docker compile-error cases stay**, because they check the real toolchains' output. No Python linter is added: Ruff would be a new dependency.
+- **Left as they are, from #107:** the Runner port's `limits`, which the sandbox and escape tests use to lower the per-Test limit. Also the Problem screen's `outcome.ts`, which belongs to Sprint 15's area, and `scripted-catalogue.ts`'s split of a Test id, since the e2e fake only sees ids. Whether #107 closes without them is a question for the maintainer.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.

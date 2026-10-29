@@ -20,6 +20,9 @@ The board's `Release` field (id `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY`) has one option
 | Option | Option id |
 | --- | --- |
 | `R v1.19.0: Sprint 13 · Foundations` | `5eb8b28c` |
+| `R v1.19.1: Sprint 14 · Identity` | `528cefdd` |
+| `R v1.19.2: Sprint 15 · Screens and phones` | `acb16cb6` |
+| `R v1.19.3: Sprint 16 · Languages and the Learning core` | `07c751bf` |
 
 ## Planned releases
 
@@ -28,6 +31,9 @@ The `sprint-planner` adds a row for each sprint it plans.
 | Sprint | Release option | Version | State |
 | --- | --- | --- | --- |
 | 13 · Foundations | `R v1.19.0: Sprint 13 · Foundations` | 1.19.0 | cut 2026-10-28 |
+| 14 · Identity | `R v1.19.1: Sprint 14 · Identity` | 1.19.1 | planned |
+| 15 · Screens and phones | `R v1.19.2: Sprint 15 · Screens and phones` | 1.19.2 | planned |
+| 16 · Languages and the Learning core | `R v1.19.3: Sprint 16 · Languages and the Learning core` | 1.19.3 | planned |
 
 ## The last card
 
