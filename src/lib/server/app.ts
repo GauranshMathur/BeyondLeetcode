@@ -1,5 +1,6 @@
 import { type Catalogue, loadCatalogue } from './content/catalogue.ts';
 import { createDb, type Db } from './db.ts';
+import { type AccountActions, createAccountActions } from './identity/account-actions.ts';
 import {
 	type Auth,
 	createAuth,
@@ -48,9 +49,15 @@ export interface Setup {
 	createFirstAdmin(input: FirstAdminInput): Promise<{ headers: Headers }>;
 }
 
-/** Better Auth, Invites and the Learner removal: what the Multi-user routes use. */
+/** Better Auth, the account actions, Invites and the Learner removal: what the Multi-user routes use. */
 export interface MultiUser {
 	auth: Auth;
+	/**
+	 * Sign in, sign up, change password and sign out, built once so each form's throttle is the process's.
+	 * Always set by `createApp`; optional only until the test stubs in `handle.test.ts`, `signup-gate.test.ts`
+	 * and `users.test.ts` (other lanes' files) build one, and then it becomes required.
+	 */
+	accounts?: AccountActions;
 	invites: Invites;
 	/** `deleteLearner` of the progress module, bound to the database. */
 	deleteLearner: (learnerId: string) => Promise<void>;
@@ -190,6 +197,7 @@ type BuiltAuth =
 	| {
 			kind: 'built';
 			auth: Auth;
+			accounts: AccountActions;
 			invites: Invites;
 			deleteLearner: (learnerId: string) => Promise<void>;
 	  }
@@ -238,19 +246,21 @@ function buildAuth(
 	// Invite links name the same ORIGIN the cookies and the origin check use. The one Invites module
 	// serves the Users page and, through the gate and the claim, sign-up.
 	const invites = createInvites({ db, origin });
+	const auth = createAuth({
+		db,
+		origin,
+		secret,
+		admitSignUp: createRegistration({ instance, invites }),
+		socialProviders: socialProvidersFrom(providerEnvironment(env)),
+		claimInvite: (token, now) => invites.claim(token, now),
+		providerStarts
+	});
 	return {
 		kind: 'built',
 		invites,
 		deleteLearner: (learnerId) => deleteLearner(db, learnerId),
-		auth: createAuth({
-			db,
-			origin,
-			secret,
-			admitSignUp: createRegistration({ instance, invites }),
-			socialProviders: socialProvidersFrom(providerEnvironment(env)),
-			claimInvite: (token, now) => invites.claim(token, now),
-			providerStarts
-		})
+		auth,
+		accounts: createAccountActions({ auth, providerStarts })
 	};
 }
 
@@ -275,6 +285,7 @@ function providerEnvironment(
 
 const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>): MultiUser => ({
 	auth: built.auth,
+	accounts: built.accounts,
 	invites: built.invites,
 	deleteLearner: built.deleteLearner
 });
