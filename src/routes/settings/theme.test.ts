@@ -46,17 +46,36 @@ describe('the Settings load offers "Change password" only to an Account that has
 			request: { headers: new Headers() },
 			locals: {
 				instance: { mode: () => 'multi' },
-				auth: {
-					api: { getSession: async () => ({ user: { id: 'u1' } }) },
-					$context: Promise.resolve({
-						internalAdapter: { findCredentialAccount: async () => credential }
-					})
+				multiUser: {
+					accounts: {
+						status: async () => ({ forced: false, hasPassword: Boolean(credential?.password) })
+					}
 				}
 			}
 		} as never);
 
 	it('has one', async () => {
 		expect(await run({ password: 'hash' })).toMatchObject({ hasPassword: true });
+	});
+
+	it('shows the row when the status cannot be read, as the change itself answers truthfully', async () => {
+		const result = await load({
+			cookies: { get: () => undefined },
+			url: new URL('http://localhost/settings'),
+			request: { headers: new Headers() },
+			locals: {
+				instance: { mode: () => 'multi' },
+				multiUser: {
+					accounts: {
+						status: async () => {
+							throw new Error('down');
+						}
+					}
+				}
+			}
+		} as never);
+
+		expect(result).toMatchObject({ hasPassword: true });
 	});
 
 	it('has none (GitHub or Google only)', async () => {

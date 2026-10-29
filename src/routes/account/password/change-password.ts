@@ -1,9 +1,9 @@
 import { error, fail, type RequestEvent, redirect } from '@sveltejs/kit';
-import { isAPIError } from 'better-auth/api';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '#lib/server/identity/auth.js';
+import type { RefusalCode } from '#lib/server/identity/account-actions.js';
+import { ACCOUNT_LIMITS } from '#lib/server/identity/account-actions.js';
+import { MIN_PASSWORD_LENGTH } from '#lib/server/identity/auth.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { clientAddress } from '#lib/server/identity/client-address.js';
-import type { Throttle } from '#lib/server/identity/throttle.js';
 
 /**
  * Fixed texts only: an error's own message and the passwords typed never reach the form.
@@ -13,8 +13,8 @@ import type { Throttle } from '#lib/server/identity/throttle.js';
  */
 const MESSAGES = {
 	wrong: 'That is not your current password.',
-	short: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
-	long: `Use at most ${MAX_PASSWORD_LENGTH} characters.`,
+	short: `Use at least ${ACCOUNT_LIMITS.passwordMin} characters.`,
+	long: `Use at most ${ACCOUNT_LIMITS.passwordMax} characters.`,
 	mismatch: 'The two new passwords do not match.',
 	// Said plainly: the caller is signed in as this Account, so it tells them nothing they may not know.
 	noPassword:
@@ -31,60 +31,41 @@ type Field = 'current' | 'new' | 'confirm';
 
 type ChangeEvent = Pick<RequestEvent, 'request' | 'locals' | 'cookies' | 'getClientAddress'>;
 
-/**
- * Whether the Account has a password to change: the password Account Better Auth's change reads (the same
- * selection as `passwordGeneration` in `auth.ts`). One that signs in only with GitHub or Google has none, until
- * an admin's reset gives it one.
- */
-export async function hasPassword(
-	auth: NonNullable<RequestEvent['locals']['auth']>,
-	userId: string
-) {
-	const { internalAdapter } = await auth.$context;
-	return Boolean((await internalAdapter.findCredentialAccount(userId))?.password);
-}
-
 /** What the form gets back from a refusal: always the same keys, never a password. */
-const refused = (status: 400 | 500 | 503, field: Field | null, message: string) =>
+const refused = (status: 400 | 500, field: Field | null, message: string) =>
 	fail(status, { field, message });
+
+/** Each refusal the account actions' change answers, as the form shows it. */
+const FORM: Partial<Record<RefusalCode, [400 | 500, Field | null, string]>> = {
+	WRONG_CURRENT_PASSWORD: [400, 'current', MESSAGES.wrong],
+	PASSWORD_TOO_SHORT: [400, 'new', MESSAGES.short],
+	PASSWORD_TOO_LONG: [400, 'new', MESSAGES.long],
+	PASSWORDS_DO_NOT_MATCH: [400, 'confirm', MESSAGES.mismatch],
+	NO_PASSWORD: [400, null, MESSAGES.noPassword],
+	SAME_PASSWORD: [400, 'new', MESSAGES.same],
+	CHANGE_UNENDED: [500, null, MESSAGES.unended]
+};
 
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
 	return typeof value === 'string' ? value : '';
 };
 
-/** The kind of failure only: the error text may hold paths, query text and the input. */
-function logFailure(what: string, failure: unknown) {
-	const code = isAPIError(failure) ? failure.body?.code : (failure as { code?: unknown })?.code;
-	console.error(
-		`Change password: ${what}:`,
-		failure instanceof Error ? failure.name : typeof failure,
-		typeof code === 'string' ? code : undefined
-	);
-}
-
 /**
  * The Change password page: whether the user must change their password, and the action that does it.
  *
- * Better Auth's `/change-password` over HTTP is limited only by its own limiter, so a stolen session could
- * guess the current password there. This action is the way the app changes a password, and the current
- * password is checked behind `throttle`, which counts every try against the caller's address and the
- * Account (`throttle.ts`; its counters live in this process, apart from Sign in's). The three steps, in
- * order, are the library's change (which also ends every session and starts this one afresh), sending the
- * new session's cookie, and clearing the must-change flag, which the library never touches. If clearing
- * fails the password has changed and the sessions are gone, so the user has the new cookie and the form;
- * submitting again with the new password as the current one (and a different new one) clears the flag.
+ * The throttle on the current password, the Better Auth calls, ending the sessions after a failure and
+ * clearing the must-change flag are the account actions' (`accounts.changePassword`); this keeps the texts, the
+ * fields and the redirects. If clearing the flag fails the password has changed and the sessions are gone, so
+ * the user has the new cookie and the form; submitting again with the new password as the current one (and a
+ * different new one) clears the flag.
  */
-export function createChangePassword(throttle: Throttle) {
-	/** The signed-in Account, from the session cookie; the gate has let only a signed-in user this far. */
-	async function who({ request, locals }: Pick<RequestEvent, 'request' | 'locals'>) {
-		const { auth } = locals;
-		// Local Mode has no accounts and no passwords (the gate answers 404 there; this is a second lock).
-		if (!auth) error(404, 'Not found');
-		const session = await auth.api.getSession({ headers: request.headers });
-		if (!session) redirect(303, '/signin');
-		const user = session.user as { id: string; mustChangePassword?: boolean | null };
-		return { auth, userId: user.id, forced: user.mustChangePassword === true };
+export function createChangePassword() {
+	/** The account actions; Local Mode has none (the gate answers 404 there; this is a second lock). */
+	function actionsOf({ locals }: Pick<RequestEvent, 'locals'>) {
+		const accounts = locals.multiUser?.accounts;
+		if (!accounts) error(404, 'Not found');
+		return accounts;
 	}
 
 	return {
@@ -95,11 +76,12 @@ export function createChangePassword(throttle: Throttle) {
 		 * gone, so the answer is a redirect to a request that carries the new cookie.
 		 */
 		async load(event: Pick<RequestEvent, 'request' | 'locals' | 'url'>) {
-			// A no-JavaScript post whose failure ended every session loads with a cookie that names none: the
-			// page is shown with the failure and a link to Sign in, not a redirect that would hide it.
-			if (event.request.method === 'POST' && event.locals.auth) {
-				const session = await event.locals.auth.api.getSession({ headers: event.request.headers });
-				if (!session)
+			const accounts = actionsOf(event);
+			const status = await accounts.status(event.request.headers);
+			if (!status) {
+				// A no-JavaScript post whose failure ended every session loads with a cookie that names none: the
+				// page is shown with the failure and a link to Sign in, not a redirect that would hide it.
+				if (event.request.method === 'POST')
 					return {
 						forced: false,
 						changed: false,
@@ -107,11 +89,11 @@ export function createChangePassword(throttle: Throttle) {
 						signedOut: true,
 						minPasswordLength: MIN_PASSWORD_LENGTH
 					};
+				redirect(303, '/signin');
 			}
-			const { forced } = await who(event);
 			const { searchParams } = event.url;
 			return {
-				forced,
+				forced: status.forced,
 				changed: searchParams.has('changed'),
 				unfinished: searchParams.has('unfinished'),
 				signedOut: false,
@@ -121,71 +103,34 @@ export function createChangePassword(throttle: Throttle) {
 
 		async action(event: ChangeEvent) {
 			const { request, cookies } = event;
-			const { auth, userId, forced } = await who(event);
+			const accounts = actionsOf(event);
+			const status = await accounts.status(request.headers);
+			if (!status) redirect(303, '/signin');
 
-			// Before anything is counted: an Account with no password has no current password to guess.
-			if (!(await hasPassword(auth, userId))) return refused(400, null, MESSAGES.noPassword);
+			// Before the body is read or anything is counted: an Account with no password has no current
+			// password to guess.
+			if (!status.hasPassword) return refused(400, null, MESSAGES.noPassword);
 
 			const data = await request.formData();
-			const current = text(data, 'current');
-			const next = text(data, 'new');
-			const confirm = text(data, 'confirm');
+			const result = await accounts.changePassword({
+				headers: request.headers,
+				current: text(data, 'current'),
+				next: text(data, 'new'),
+				confirm: text(data, 'confirm'),
+				address: clientAddress(event)
+			});
 
-			// Checks that need no password hash and say nothing about the current password come first,
-			// and do not spend the budget.
-			if (next.length < MIN_PASSWORD_LENGTH) return refused(400, 'new', MESSAGES.short);
-			if (next.length > MAX_PASSWORD_LENGTH) return refused(400, 'new', MESSAGES.long);
-			if (next !== confirm) return refused(400, 'confirm', MESSAGES.mismatch);
-
-			// Before the current password is looked at, so a flood of guesses is counted and none is free.
-			const turn = throttle.attempt({ address: clientAddress(event), accountId: userId });
-			if (!turn.allowed) return refused(400, 'current', MESSAGES.wrong);
-			if (current === '' || current.length > MAX_PASSWORD_LENGTH) {
-				return refused(400, 'current', MESSAGES.wrong);
+			if ('refused' in result) {
+				if (result.refused === 'NOT_SIGNED_IN') redirect(303, '/signin');
+				const form = FORM[result.refused];
+				return form ? refused(...form) : refused(500, null, MESSAGES.failed);
 			}
-			// Better Auth hashes the NFKC form, so two spellings of one password are the same password.
-			if (next.normalize('NFKC') === current.normalize('NFKC'))
-				return refused(400, 'new', MESSAGES.same);
-
-			let headers: Headers;
-			try {
-				// Only these fields go on, and other sessions are always ended: a client cannot choose.
-				({ headers } = await auth.api.changePassword({
-					headers: request.headers,
-					body: { currentPassword: current, newPassword: next, revokeOtherSessions: true },
-					returnHeaders: true
-				}));
-			} catch (failure) {
-				if (isAPIError(failure) && failure.statusCode === 401) redirect(303, '/signin');
-				if (isAPIError(failure) && failure.statusCode === 400) {
-					return refused(400, 'current', MESSAGES.wrong);
-				}
-				logFailure('changing the password failed', failure);
-				// The library's change is separate writes: the credential may be new while other sessions survive,
-				// or the caller's own session may be gone. Whichever, no session from before the change survives.
-				try {
-					const { internalAdapter } = await auth.$context;
-					await internalAdapter.deleteUserSessions(userId);
-				} catch (cleanup) {
-					logFailure('ending the sessions after a failure failed', cleanup);
-					return refused(500, null, MESSAGES.unended);
-				}
-				return refused(500, null, MESSAGES.failed);
-			}
-			// The right current password takes its own attempt back.
-			throttle.succeed(turn.token);
 			// Every earlier session, this one included, is gone: the new cookie goes out whatever happens next.
-			forwardSetCookies(cookies, headers.getSetCookie());
+			forwardSetCookies(cookies, result.cookies);
 
-			if (forced) {
-				try {
-					const { internalAdapter } = await auth.$context;
-					await internalAdapter.updateUser(userId, { mustChangePassword: false });
-				} catch (failure) {
-					logFailure('clearing the must-change flag failed', failure);
-					// The load of this request would read the old cookie, so the page is asked for afresh.
-					redirect(303, '/account/password?unfinished');
-				}
+			if (result.forced) {
+				// The load of this request would read the old cookie, so the page is asked for afresh.
+				if (!result.flagCleared) redirect(303, '/account/password?unfinished');
 				redirect(303, '/');
 			}
 			redirect(303, '/account/password?changed');
