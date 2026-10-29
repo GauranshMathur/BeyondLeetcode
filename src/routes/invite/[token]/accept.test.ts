@@ -1,16 +1,15 @@
 import { inspect } from 'node:util';
 import { isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuth, INVITE_COOKIE } from '#lib/server/identity/auth.js';
+import { INVITE_COOKIE } from '#lib/server/identity/auth.js';
 import { createInvites, INVITE_LIFETIME_MS } from '#lib/server/identity/invites.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
+import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import { createThrottle } from '#lib/server/identity/throttle.js';
-import { createFileTestDb } from '#lib/server/test-db.js';
 import { createAccept } from './accept';
 
 afterEach(() => vi.restoreAllMocks());
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const origin = 'http://localhost:3000';
 const admin = { learnerId: 'local', displayName: 'Ada', role: 'admin' as const };
 const lin = { name: 'Lin Chen', email: 'lin@example.com', password: 'correct horse battery' };
@@ -23,7 +22,15 @@ const formOf = (values: Form) => {
 };
 
 async function real(options: { throttle?: ReturnType<typeof createThrottle> } = {}) {
-	const db = await createFileTestDb();
+	// Invites and the Registration rule are built on the harness's database, after it.
+	let invites!: ReturnType<typeof createInvites>;
+	let registration!: ReturnType<typeof createRegistration>;
+	const instance = { mode: () => 'multi' as const, registrationMode: () => 'invite' as const };
+	const { auth, db } = await createTestAuth({
+		origin,
+		admit: (attempt) => registration(attempt),
+		claimInvite: (token, now) => invites.claim(token, now)
+	});
 	await db.learner.create({ data: { id: 'local' } });
 	await db.user.create({
 		data: {
@@ -34,15 +41,8 @@ async function real(options: { throttle?: ReturnType<typeof createThrottle> } = 
 			learnerId: 'local'
 		}
 	});
-	const invites = createInvites({ db, origin });
-	const instance = { mode: () => 'multi' as const, registrationMode: () => 'invite' as const };
-	const auth = createAuth({
-		db,
-		origin,
-		secret,
-		admitSignUp: createRegistration({ instance, invites }),
-		claimInvite: (token, now) => invites.claim(token, now)
-	});
+	invites = createInvites({ db, origin });
+	registration = createRegistration({ instance, invites });
 	const accept = createAccept(options.throttle ?? createThrottle());
 	const jar = new Map<string, string>();
 	const cookies = {

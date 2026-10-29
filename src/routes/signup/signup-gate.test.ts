@@ -3,13 +3,12 @@ import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { expect, it, vi } from 'vitest';
 import type { App } from '#lib/server/app.js';
 import { createHandle } from '#lib/server/handle.js';
-import { createAuth } from '#lib/server/identity/auth.js';
 import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
 import { createInvites } from '#lib/server/identity/invites.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
+import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import { createInstance } from '#lib/server/instance.js';
-import { createTestDb } from '#lib/server/test-db.js';
 
 // /signup is judged by the gate (gate.ts) before the page or its action runs. These tests pin what the
 // gate answers for it, through the real hook, so the Sign up code never has to guard against them.
@@ -17,8 +16,13 @@ import { createTestDb } from '#lib/server/test-db.js';
 type ResolveFn = (event: RequestEvent, opts?: ResolveOptions) => Promise<Response>;
 
 async function app(mode: 'local' | 'multi' | null) {
-	const db = await createTestDb();
+	// The instance is built on the harness's database, and Sign up asks it who may register.
+	let registration!: ReturnType<typeof createRegistration>;
+	const { auth, db } = await createTestAuth({
+		admit: (attempt) => registration(attempt)
+	});
 	const instance = await createInstance(db);
+	registration = createRegistration({ instance });
 	const identity = await createLocalIdentity(db);
 	let multiUser: App['multiUser'] = null;
 	if (mode === 'local') {
@@ -27,12 +31,6 @@ async function app(mode: 'local' | 'multi' | null) {
 	}
 	if (mode === 'multi') {
 		await instance.chooseMulti();
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret: 'test-secret-test-secret-test-secret-0123',
-			admitSignUp: createRegistration({ instance })
-		});
 		multiUser = {
 			auth,
 			invites: createInvites({ db, origin: 'http://localhost:3000' }),
