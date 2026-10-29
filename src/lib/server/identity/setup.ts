@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Db } from '../db.ts';
 import type { Instance } from '../instance.ts';
 import { InstanceAlreadySetUpError } from '../instance.ts';
+import { logFailure } from '../logging.ts';
 import { type Auth, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './auth.ts';
 import { LOCAL_LEARNER_ID } from './index.ts';
 
@@ -129,6 +130,6 @@ async function rollback(claim: Claim, db: Db, removeAccount: boolean) {
 		if (removeAccount) await db.user.deleteMany({ where: { learnerId: LOCAL_LEARNER_ID } });
 		await claim.undo();
 	} catch (cleanupError) {
-		console.error('createFirstAdmin: rollback failed, the Instance stays multi-user', cleanupError);
+		logFailure('createFirstAdmin: rollback failed, the Instance stays multi-user:', cleanupError);
 	}
 }
