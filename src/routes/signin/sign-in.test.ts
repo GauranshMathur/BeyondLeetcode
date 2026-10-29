@@ -2,10 +2,9 @@ import { createHash } from 'node:crypto';
 import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuth } from '#lib/server/identity/auth.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
+import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import { createProviderStarts, createThrottle } from '#lib/server/identity/throttle.js';
-import { createFileTestDb } from '#lib/server/test-db.js';
 import { createSignIn, landing, providerNotice } from './sign-in';
 
 afterEach(() => vi.restoreAllMocks());
@@ -641,14 +640,8 @@ describe('with the real Better Auth', () => {
 	const password = 'correct horse battery';
 
 	async function real() {
-		const db = await createFileTestDb();
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret: 'test-secret-test-secret-test-secret-0123',
-			admitSignUp: () => ({})
-		});
-		await auth.api.signUpEmail({ body: { name: 'Ada', email: 'ada@example.com', password } });
+		const { db, auth, signUp } = await createTestAuth();
+		await signUp({ password });
 		const signIn = createSignIn(createThrottle());
 		const cookies = new Map<string, string>();
 		const jar = {
@@ -890,11 +883,7 @@ describe('what the page says about a refused provider sign-in', () => {
 
 describe('provider buttons with the real Better Auth', () => {
 	it('starts GitHub: the state cookie is set and the visitor goes to GitHub with the callback on this site', async () => {
-		const db = await createFileTestDb();
-		const auth = createAuth({
-			db,
-			origin: 'http://localhost:3000',
-			secret: 'test-secret-test-secret-test-secret-0123',
+		const { auth } = await createTestAuth({
 			socialProviders: { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } }
 		});
 		const jar = new Map<string, string>();
@@ -953,13 +942,9 @@ describe('a provider sign-in that completes gives its start back', () => {
 	}
 
 	async function world() {
-		const db = await createFileTestDb();
 		const starts = createProviderStarts();
-		const auth = createAuth({
-			db,
+		const { db, auth } = await createTestAuth({
 			origin,
-			secret: 'test-secret-test-secret-test-secret-0123',
-			admitSignUp: () => ({}),
 			socialProviders: { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } },
 			providerStarts: starts
 		});

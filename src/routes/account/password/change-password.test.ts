@@ -1,48 +1,37 @@
 import { createHmac } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
-import { createAuth } from '#lib/server/identity/auth.js';
+import { createTestAuth, TEST_SECRET } from '#lib/server/identity/test-auth.js';
 import { createThrottle } from '#lib/server/identity/throttle.js';
-import { createFileTestDb } from '#lib/server/test-db.js';
 import { createChangePassword } from './change-password';
-
-// Hashing a password is slow on purpose, and some tests change several.
-vi.setConfig({ testTimeout: 60_000 });
 
 // The Change password action through the real Better Auth: what it changes, what it ends, what it refuses.
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const oldPassword = 'correct horse battery staple';
 const newPassword = 'a brand new passphrase 42';
+type Auth = Awaited<ReturnType<typeof createTestAuth>>['auth'];
+
 const cookieOf = (headers: Headers) =>
 	headers
 		.getSetCookie()
 		.map((c) => c.split(';')[0])
 		.join('; ');
 
-type Auth = ReturnType<typeof createAuth>;
-
 async function setup() {
-	const db = await createFileTestDb();
-	const auth = createAuth({
-		db,
-		origin: 'http://localhost:3000',
-		secret,
-		admitSignUp: () => ({})
-	});
+	const { auth, db, signUp } = await createTestAuth();
 	let n = 0;
 	/** An Account with a session from its sign-up. `forced` sets the flag, as an admin's reset does. */
 	async function account(forced: boolean) {
 		n += 1;
 		const email = `user${n}@example.com`;
-		const signedUp = await auth.api.signUpEmail({
-			body: { name: `User ${n}`, email, password: oldPassword },
-			returnHeaders: true
+		const { id, cookie } = await signUp({
+			name: `User ${n}`,
+			email,
+			password: oldPassword
 		});
 		const { internalAdapter } = await auth.$context;
-		const id = signedUp.response.user.id;
 		if (forced) await internalAdapter.updateUser(id, { mustChangePassword: true });
-		return { id, email, cookie: cookieOf(signedUp.headers) };
+		return { id, email, cookie };
 	}
 	async function signIn(email: string, password: string) {
 		try {
@@ -76,7 +65,7 @@ async function setup() {
 				credentialGeneration: ''
 			}
 		});
-		const signature = createHmac('sha256', secret).update(token).digest('base64');
+		const signature = createHmac('sha256', TEST_SECRET).update(token).digest('base64');
 		return {
 			id: 'oz',
 			cookie: `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`

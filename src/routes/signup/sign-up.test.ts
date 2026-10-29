@@ -2,12 +2,11 @@ import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadCatalogue } from '#lib/server/content/catalogue.js';
-import { createAuth } from '#lib/server/identity/auth.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
+import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import { createThrottle } from '#lib/server/identity/throttle.js';
 import { createLearningCore } from '#lib/server/learning/core.js';
-import { createFileTestDb } from '#lib/server/test-db.js';
 import { createSignUp } from './sign-up';
 
 afterEach(() => vi.restoreAllMocks());
@@ -535,16 +534,14 @@ describe('the sign-up limit', () => {
 });
 
 describe('with Better Auth and the database', () => {
-	const secret = 'test-secret-test-secret-test-secret-0123';
 	const origin = 'http://localhost:3000';
 
 	async function real(registration: Registration) {
-		const db = await createFileTestDb();
 		const instance = {
 			mode: () => 'multi' as const,
 			registrationMode: () => registration
 		};
-		const auth = createAuth({ db, origin, secret, admitSignUp: createRegistration({ instance }) });
+		const { db, auth } = await createTestAuth({ admit: createRegistration({ instance }) });
 		const signUp = createSignUp(createThrottle());
 		const jar: Record<string, string> = {};
 		const cookies = {
