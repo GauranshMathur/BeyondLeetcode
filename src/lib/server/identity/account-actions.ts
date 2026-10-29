@@ -112,14 +112,18 @@ export interface AccountActions {
 		address: string;
 	}): Promise<(Cookies & { location: string }) | Refusal>;
 	/**
-	 * `name` and `email` as typed (trimmed here). With an `invite` token the sign-up counts against Accept
-	 * invite's limit and a 403 from the gate means the Invite does not work; without, against Sign up's and a
-	 * 403 means sign-up is closed.
+	 * Name and email as typed (trimmed here). The order is today's: charge, read the fields, the throttle's
+	 * refusal, then the check (`SIGN_UP_CLOSED` when the Registration Mode is closed; with an `invite` token,
+	 * `INVITE_INVALID` when it names no usable Invite), then the field checks. With an `invite` the sign-up
+	 * counts against Accept invite's limit and a 403 from the gate means the Invite does not work; without,
+	 * against Sign up's and a 403 means sign-up is closed.
 	 */
 	signUp(input: {
-		name: string;
-		email: string;
-		password: string;
+		/**
+		 * The typed fields, read after the attempt is counted (the routes read the body after charging): a
+		 * body that fails to parse is charged, and `fields` throws out of `signUp`.
+		 */
+		fields: () => Promise<{ name: string; email: string; password: string }>;
 		address: string;
 		invite?: string;
 	}): Promise<Cookies | Refusal>;
@@ -194,10 +198,16 @@ async function hasPassword(auth: Auth, userId: string) {
  */
 export function createAccountActions({
 	auth,
-	providerStarts
+	providerStarts,
+	registrationOpen,
+	inviteValid
 }: {
 	auth: Auth;
 	providerStarts: ProviderStarts;
+	/** Whether the Registration Mode lets anyone sign up; read on every Sign up. */
+	registrationOpen: () => boolean;
+	/** Whether the token names an Invite not used, expired or cancelled (`Invites.lookup`); read on every Accept invite. */
+	inviteValid: (token: string) => Promise<boolean>;
 }): AccountActions {
 	const signInThrottle: Throttle = createThrottle();
 	const signUpThrottle: Throttle = createThrottle();
@@ -285,15 +295,25 @@ export function createAccountActions({
 			return { cookies: headers.getSetCookie(), location: target };
 		},
 
-		async signUp({ name: typedName, email: typedEmail, password, address, invite }) {
+		async signUp({ fields, address, invite }) {
 			const throttle = invite === undefined ? signUpThrottle : acceptThrottle;
 			// Before anything else, so a flood of attempts of any kind is counted and none is free.
 			const turn = throttle.attempt({ address, accountId: null });
+			// After the charge, as the routes read the body: a body that fails to parse is charged and throws.
+			const { name: typedName, email: typedEmail, password } = await fields();
 			if (!turn.allowed) {
 				return {
 					...refuse('TOO_MANY_ATTEMPTS'),
 					retryAfterSeconds: Math.max(1, Math.ceil(turn.retryAfterMs / 1000))
 				};
+			}
+
+			// After the charge, so a closed or invalid attempt spends a count like any other. Sign up checks the
+			// Registration Mode; Accept invite checks the Invite (the registration gate checks both again).
+			if (invite === undefined) {
+				if (!registrationOpen()) return refuse('SIGN_UP_CLOSED');
+			} else if (!(await inviteValid(invite))) {
+				return refuse('INVITE_INVALID');
 			}
 
 			const name = typedName.trim();

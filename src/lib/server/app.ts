@@ -260,7 +260,12 @@ function buildAuth(
 		invites,
 		deleteLearner: (learnerId) => deleteLearner(db, learnerId),
 		auth,
-		accounts: createAccountActions({ auth, providerStarts })
+		accounts: createAccountActions({
+			auth,
+			providerStarts,
+			registrationOpen: () => instance.registrationMode() === 'open',
+			inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
+		})
 	};
 }
 

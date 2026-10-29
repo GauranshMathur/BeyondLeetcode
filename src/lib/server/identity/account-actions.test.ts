@@ -17,21 +17,42 @@ const GOOD = 'correct horse battery';
 const SECRETS = { github: { clientId: 'id', clientSecret: 'secret' } };
 const ADDRESS = '10.0.0.1';
 
-async function harness(options: Parameters<typeof createTestAuth>[0] = {}) {
-	const test = await createTestAuth(options);
+async function harness(
+	options: Parameters<typeof createTestAuth>[0] & {
+		registrationOpen?: () => boolean;
+		inviteValid?: (token: string) => Promise<boolean>;
+	} = {}
+) {
+	const { registrationOpen = () => true, inviteValid = async () => true, ...authOptions } = options;
+	const test = await createTestAuth(authOptions);
 	const providerStarts = createProviderStarts();
-	const accounts = createAccountActions({ auth: test.auth, providerStarts });
+	const accounts = createAccountActions({
+		auth: test.auth,
+		providerStarts,
+		registrationOpen,
+		inviteValid
+	});
 	const headersOf = (cookie: string) => new Headers({ cookie });
 	const cookieOf = (setCookies: string[]) => setCookies.map((c) => c.split(';')[0]).join('; ');
 	return { ...test, accounts, providerStarts, headersOf, cookieOf };
 }
 
-const signUpInput = (over: Partial<Parameters<AccountActions['signUp']>[0]> = {}) => ({
-	name: 'Ada',
-	email: 'ada@example.com',
-	password: GOOD,
-	address: ADDRESS,
-	...over
+const signUpInput = ({
+	name = 'Ada',
+	email = 'ada@example.com',
+	password = GOOD,
+	address = ADDRESS,
+	invite
+}: {
+	name?: string;
+	email?: string;
+	password?: string;
+	address?: string;
+	invite?: string;
+} = {}) => ({
+	fields: async () => ({ name, email, password }),
+	address,
+	invite
 });
 
 describe('ACCOUNT_LIMITS', () => {
@@ -161,6 +182,127 @@ describe('signUp', () => {
 		expect(await accounts.signUp(signUpInput({ name: '', invite: 't' }))).toMatchObject({
 			refused: 'NAME_REQUIRED'
 		});
+	});
+});
+
+describe('the checks before the field checks', () => {
+	it('answers SIGN_UP_CLOSED, never EMAIL_UNAVAILABLE, when closed, even for an email that has an Account', async () => {
+		const { accounts, signUp } = await harness({ registrationOpen: () => false });
+		await signUp();
+		expect(await accounts.signUp(signUpInput())).toEqual({ refused: 'SIGN_UP_CLOSED' });
+		expect(await accounts.signUp(signUpInput({ name: '' }))).toEqual({ refused: 'SIGN_UP_CLOSED' });
+	});
+
+	it('answers INVITE_INVALID, never EMAIL_UNAVAILABLE, for an Invite that does not work', async () => {
+		const looked: string[] = [];
+		const { accounts, signUp } = await harness({
+			inviteValid: async (token) => {
+				looked.push(token);
+				return false;
+			}
+		});
+		await signUp();
+		expect(await accounts.signUp(signUpInput({ invite: 'tok' }))).toEqual({
+			refused: 'INVITE_INVALID'
+		});
+		expect(looked).toEqual(['tok']);
+	});
+
+	it('checks the Registration Mode for Sign up only, and the Invite for Accept invite only', async () => {
+		const looked: string[] = [];
+		const { accounts } = await harness({
+			registrationOpen: () => false,
+			inviteValid: async (token) => {
+				looked.push(token);
+				return true;
+			},
+			admit: ({ inviteToken }) => ({ inviteToken }),
+			claimInvite: async () => true
+		});
+		// Closed registration does not stop an Invite that works.
+		expect(await accounts.signUp(signUpInput({ invite: 'tok' }))).toHaveProperty('cookies');
+		expect(looked).toEqual(['tok']);
+		const open = await harness({
+			inviteValid: async (token) => {
+				looked.push(`open:${token}`);
+				return false;
+			}
+		});
+		expect(await open.accounts.signUp(signUpInput())).toHaveProperty('cookies');
+		expect(looked).toEqual(['tok']);
+	});
+
+	it('charges a closed attempt, an invalid-Invite attempt and an unparseable one, and the throttle refusal wins', async () => {
+		const closed = await harness({ registrationOpen: () => false });
+		for (let i = 0; i < 20; i++) {
+			expect(await closed.accounts.signUp(signUpInput())).toEqual({ refused: 'SIGN_UP_CLOSED' });
+		}
+		expect(await closed.accounts.signUp(signUpInput())).toMatchObject({
+			refused: 'TOO_MANY_ATTEMPTS'
+		});
+
+		const invalid = await harness({ inviteValid: async () => false });
+		for (let i = 0; i < 20; i++) {
+			expect(await invalid.accounts.signUp(signUpInput({ invite: 'guess' }))).toEqual({
+				refused: 'INVITE_INVALID'
+			});
+		}
+		expect(await invalid.accounts.signUp(signUpInput({ invite: 'guess' }))).toMatchObject({
+			refused: 'TOO_MANY_ATTEMPTS'
+		});
+
+		const broken = await harness();
+		const unparseable = {
+			fields: async () => Promise.reject(new Error('bad body')),
+			address: ADDRESS
+		};
+		for (let i = 0; i < 20; i++) {
+			await expect(broken.accounts.signUp(unparseable)).rejects.toThrow('bad body');
+		}
+		// Charged, so the 21st is throttled; the body is still read first, so it throws, as the routes do.
+		await expect(broken.accounts.signUp(unparseable)).rejects.toThrow('bad body');
+		expect(await broken.accounts.signUp(signUpInput())).toMatchObject({
+			refused: 'TOO_MANY_ATTEMPTS'
+		});
+	});
+
+	it('does not read the Invite or the Registration Mode before the charge', async () => {
+		const order: string[] = [];
+		const { accounts } = await harness({
+			registrationOpen: () => {
+				order.push('mode');
+				return true;
+			}
+		});
+		await accounts.signUp({
+			fields: async () => {
+				order.push('fields');
+				return { name: '', email: '', password: '' };
+			},
+			address: ADDRESS
+		});
+		expect(order).toEqual(['fields', 'mode']);
+	});
+});
+
+describe('a banned or Learner-less Account counts as no session', () => {
+	it.each([
+		['banned', { banned: true }],
+		['without a Learner', { learnerId: '' }]
+	])('status and changePassword for an Account %s', async (_, data) => {
+		const { accounts, signUp, db, headersOf } = await harness();
+		const { cookie } = await signUp();
+		await db.user.updateMany({ data });
+		expect(await accounts.status(headersOf(cookie))).toBeNull();
+		expect(
+			await accounts.changePassword({
+				headers: headersOf(cookie),
+				current: GOOD,
+				next: 'brand new password',
+				confirm: 'brand new password',
+				address: ADDRESS
+			})
+		).toEqual({ refused: 'NOT_SIGNED_IN' });
 	});
 });
 
