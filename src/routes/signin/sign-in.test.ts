@@ -486,12 +486,26 @@ describe('provider buttons', () => {
 		]);
 	});
 
+	it('answers a start refused up front with 400 and a failure with 500, both with the failure text', async () => {
+		for (const [code, status] of [
+			['PROVIDER_REFUSED', 400],
+			['SIGN_IN_FAILED', 500]
+		] as const) {
+			const h = harness({ accounts: { startProvider: async () => refusal(code) } });
+
+			const result = await h.post({ provider: 'github' });
+
+			expect(result, code).toMatchObject({ status, data: { message: FAILED, wrong: false } });
+			expect(h.cookies.set).not.toHaveBeenCalled();
+		}
+	});
+
 	it('answers a refused start with the fixed failure text and no cookie', async () => {
-		const h = harness({ accounts: { startProvider: async () => refusal('SIGN_IN_FAILED') } });
+		const h = harness({ accounts: { startProvider: async () => refusal('PROVIDER_REFUSED') } });
 
 		const result = (await h.post({ provider: 'google' })) as { status: number; data: unknown };
 
-		expect(result.status).toBe(500);
+		expect(result.status).toBe(400);
 		expect(result.data).toMatchObject({ email: '', message: FAILED, wrong: false });
 		expect(h.cookies.set).not.toHaveBeenCalled();
 	});

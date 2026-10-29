@@ -77,11 +77,14 @@ export function landing(next: string | null): string {
 	return AUTH_PAGES.has(page) ? '/' : encoded;
 }
 
-/** The refusal a form shows: the one text for a wrong sign-in, a fixed failure for the rest. */
+/**
+ * The refusal a form shows: the one text for a wrong sign-in, a 400 with the failure text for a provider start
+ * refused up front (unknown, over its limit), and a 500 with the same text for every other failure.
+ */
 function refusedWith(refusal: Refusal, email: string) {
-	return refusal.refused === 'WRONG_SIGN_IN'
-		? wrongSignIn(email)
-		: refused(500, email, MESSAGES.failed);
+	if (refusal.refused === 'WRONG_SIGN_IN') return wrongSignIn(email);
+	if (refusal.refused === 'PROVIDER_REFUSED') return refused(400, email, MESSAGES.failed);
+	return refused(500, email, MESSAGES.failed);
 }
 
 /**

@@ -418,19 +418,19 @@ describe('startProvider', () => {
 		expect(providerStarts.size()).toBe(1);
 	});
 
-	it('refuses SIGN_IN_FAILED for a provider the Instance lacks', async () => {
+	it('refuses PROVIDER_REFUSED for a provider the Instance lacks', async () => {
 		const { accounts } = await harness({ socialProviders: SECRETS });
 		expect(
 			await accounts.startProvider({ provider: 'google', next: '/', address: ADDRESS })
 		).toEqual({
-			refused: 'SIGN_IN_FAILED'
+			refused: 'PROVIDER_REFUSED'
 		});
 		expect(await accounts.startProvider({ provider: '', next: '/', address: ADDRESS })).toEqual({
-			refused: 'SIGN_IN_FAILED'
+			refused: 'PROVIDER_REFUSED'
 		});
 	});
 
-	it('refuses SIGN_IN_FAILED past 20 starts from one address', async () => {
+	it('refuses PROVIDER_REFUSED past 20 starts from one address', async () => {
 		const { accounts } = await harness({ socialProviders: SECRETS });
 		for (let i = 0; i < 20; i++) {
 			await accounts.startProvider({ provider: 'github', next: '/', address: ADDRESS });
@@ -438,7 +438,7 @@ describe('startProvider', () => {
 		expect(
 			await accounts.startProvider({ provider: 'github', next: '/', address: ADDRESS })
 		).toEqual({
-			refused: 'SIGN_IN_FAILED'
+			refused: 'PROVIDER_REFUSED'
 		});
 	});
 
@@ -689,6 +689,7 @@ describe('REFUSAL_CODES', () => {
 		const covered: RefusalCode[] = [
 			'WRONG_SIGN_IN',
 			'SIGN_IN_FAILED',
+			'PROVIDER_REFUSED',
 			'SIGN_UP_FAILED',
 			'NAME_REQUIRED',
 			'NAME_TOO_LONG',
