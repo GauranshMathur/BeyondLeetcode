@@ -238,6 +238,33 @@ describe('Multi-user Mode', () => {
 		expect(asked.locals.invites).toBeUndefined();
 	});
 
+	it('sets Cache-Control and Referrer-Policy from the route-policy table, on the whole /users and /invite families', async () => {
+		const { handle, asking } = await multiSetup();
+		const headersOf = async (path: string, routeId: string) => {
+			const { event, resolve } = asking(path, routeId);
+			const response = await handle({ event, resolve });
+			return [response.headers.get('cache-control'), response.headers.get('referrer-policy')];
+		};
+
+		expect(await headersOf('/users', '/users')).toEqual(['no-store', null]);
+		expect(await headersOf('/invite/t', '/invite/[token]')).toEqual(['no-store', 'strict-origin']);
+		// Child routes of the families inherit them (none exists yet).
+		expect(await headersOf('/users/1', '/users/[id]')).toEqual(['no-store', null]);
+		expect(await headersOf('/invite/t/x', '/invite/[token]/x')).toEqual([
+			'no-store',
+			'strict-origin'
+		]);
+		// Everything else sets neither.
+		for (const [path, routeId] of [
+			['/', '/'],
+			['/signin', '/signin'],
+			['/account/password', '/account/password'],
+			['/api/auth/x', '/api/auth/[...all]']
+		] as const) {
+			expect(await headersOf(path, routeId)).toEqual([null, null]);
+		}
+	});
+
 	it('resolves the session cookie to its Account and binds the Learning core to its Learner', async () => {
 		const { handle, asking } = await multiSetup();
 		const { event, locals, resolve } = asking('/', '/');

@@ -4,12 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { App } from '#lib/server/app.js';
 import type { Db } from '#lib/server/db.js';
 import { createHandle } from '#lib/server/handle.js';
-import { createAuth } from '#lib/server/identity/auth.js';
 import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
 import { createInvites } from '#lib/server/identity/invites.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
 import { createFirstAdmin } from '#lib/server/identity/setup.js';
+import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import {
 	createInstance,
 	type Instance,
@@ -23,7 +23,6 @@ import { actions, load } from './+page.server';
 
 // The Users page, through the real hook and the real Better Auth: who is let in, and what they see.
 
-const secret = 'test-secret-test-secret-test-secret-0123';
 const password = 'correct horse battery staple';
 const cookieOf = (headers: Headers) =>
 	headers
@@ -32,16 +31,15 @@ const cookieOf = (headers: Headers) =>
 		.join('; ');
 
 async function setup() {
-	const db = await createFileTestDb();
-	const instance = await createInstance(db);
 	let open = false;
-	const registration = createRegistration({ instance });
-	const auth = createAuth({
+	let registration!: ReturnType<typeof createRegistration>;
+	const {
+		auth,
 		db,
-		origin: 'http://localhost:3000',
-		secret,
-		admitSignUp: (attempt) => (open ? {} : registration(attempt))
-	});
+		signUp: signUpAccount
+	} = await createTestAuth({ admit: (attempt) => (open ? {} : registration(attempt)) });
+	const instance = await createInstance(db);
+	registration = createRegistration({ instance });
 	const { headers } = await createFirstAdmin(
 		{ instance, auth, db },
 		{ name: 'Ada Admin', email: 'ada@example.com', password }
@@ -50,12 +48,9 @@ async function setup() {
 
 	async function learner(name: string, email: string) {
 		open = true;
-		const signedUp = await auth.api.signUpEmail({
-			body: { name, email, password },
-			returnHeaders: true
-		});
+		const { cookie } = await signUpAccount({ name, email, password });
 		open = false;
-		return cookieOf(signedUp.headers);
+		return cookie;
 	}
 
 	const invites = createInvites({ db, origin: 'http://localhost:3000' });
@@ -963,5 +958,81 @@ describe('Remove on the Users page', () => {
 		expect((await unknown.response.json()).confirmingRemove).toBeNull();
 		expect((await none.response.json()).confirmingRemove).toBeNull();
 		expect(open.response.headers.get('cache-control')).toBe('no-store');
+	});
+});
+
+describe('what the Users page logs when an action fails', () => {
+	const secret = 'lin@example.com tok_Zx9Qw3Rt7Yu1Io5Pa8Sd2Fg4Hj6Kl0Zx';
+	const failure = () => new TypeError(`write failed for ${secret}`);
+
+	/** Runs `act` with the console captured, and returns the one line it printed. */
+	async function logged(act: () => Promise<unknown>) {
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await act();
+			expect(quiet).toHaveBeenCalledTimes(1);
+			// One call with one plain string: an object argument could hide text behind its class.
+			expect(quiet.mock.calls[0]).toEqual([expect.any(String)]);
+			return quiet.mock.calls.flat().join(' ');
+		} finally {
+			quiet.mockRestore();
+		}
+	}
+
+	it('names the switch of the Registration Mode and the kind of error, never its message', async () => {
+		const { handle, admin, instance } = await setup();
+		vi.spyOn(instance, 'setRegistrationMode').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => submit(handle, admin, { registration: 'open' }));
+
+		expect(line).toBe('users: switch registration mode TypeError');
+		expect(line).not.toContain(secret);
+		expect(line).not.toContain('lin@example.com');
+	});
+
+	it('names creating an Invite and the kind of error, never its message', async () => {
+		const { handle, admin, invites } = await setup();
+		vi.spyOn(invites, 'create').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => post(handle, admin, 'invite'));
+
+		expect(line).toBe('users: create invite TypeError');
+		expect(line).not.toContain(secret);
+	});
+
+	it('names cancelling an Invite and the kind of error, never its message', async () => {
+		const { handle, admin, invites } = await setup();
+		vi.spyOn(invites, 'cancel').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => post(handle, admin, 'cancel', { id: 'some-invite' }));
+
+		expect(line).toBe('users: cancel invite TypeError');
+		expect(line).not.toContain(secret);
+	});
+
+	it('names resetting a password and the kind of error, never its message', async () => {
+		const { handle, admin, auth, learner, db } = await setup();
+		await learner('Lin Learner', 'lin@example.com');
+		const lin = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		vi.spyOn((await auth.$context).internalAdapter, 'deleteUserSessions').mockRejectedValueOnce(
+			failure()
+		);
+
+		const line = await logged(() => post(handle, admin, 'reset', { id: lin.id }));
+
+		expect(line).toBe('users: reset password TypeError');
+		expect(line).not.toContain(secret);
+	});
+
+	it('names removing an Account and the kind of error, never its message', async () => {
+		const { handle, admin, auth, learner, db } = await setup();
+		await learner('Lin Learner', 'lin@example.com');
+		const lin = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		vi.spyOn((await auth.$context).internalAdapter, 'deleteUser').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => post(handle, admin, 'remove', { id: lin.id }));
+
+		expect(line).toBe('users: remove account TypeError');
+		expect(line).not.toContain(secret);
 	});
 });
