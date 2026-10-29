@@ -3,11 +3,13 @@ import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { expect, it, vi } from 'vitest';
 import type { App } from '#lib/server/app.js';
 import { createHandle } from '#lib/server/handle.js';
+import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
 import { createInvites } from '#lib/server/identity/invites.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
 import { createTestAuth } from '#lib/server/identity/test-auth.js';
+import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import { createInstance } from '#lib/server/instance.js';
 
 // /signup is judged by the gate (gate.ts) before the page or its action runs. These tests pin what the
@@ -31,9 +33,16 @@ async function app(mode: 'local' | 'multi' | null) {
 	}
 	if (mode === 'multi') {
 		await instance.chooseMulti();
+		const invites = createInvites({ db, origin: 'http://localhost:3000' });
 		multiUser = {
 			auth,
-			invites: createInvites({ db, origin: 'http://localhost:3000' }),
+			accounts: createAccountActions({
+				auth,
+				providerStarts: createProviderStarts(),
+				registrationOpen: () => instance.registrationMode() === 'open',
+				inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
+			}),
+			invites,
 			deleteLearner: async () => {}
 		};
 	}
@@ -93,7 +102,7 @@ it.each(['GET', 'POST'] as const)(
 );
 
 it.each(['GET', 'POST'] as const)(
-	'a Multi-user Instance lets a signed-out visitor reach the page with Better Auth on locals (%s)',
+	'a Multi-user Instance lets a signed-out visitor reach the page with the account actions on locals (%s)',
 	async (method) => {
 		const handle = await app('multi');
 		const { event, locals, resolve } = visit(method);
@@ -102,7 +111,7 @@ it.each(['GET', 'POST'] as const)(
 
 		expect(response.status).toBe(200);
 		expect(resolve).toHaveBeenCalledOnce();
-		expect(locals.auth).toBeDefined();
+		expect((locals as { multiUser?: { accounts?: unknown } }).multiUser?.accounts).toBeDefined();
 		expect(locals.identity).toBeUndefined();
 	}
 );
