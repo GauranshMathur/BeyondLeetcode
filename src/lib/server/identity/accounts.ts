@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import { APIError } from 'better-auth/api';
 import type { Auth } from './auth.ts';
 import type { Identity, Role } from './index.ts';
+import { currentSession, passwordAccountWhere, roleOf } from './session-binding.ts';
 
 /** One Account as the Users page draws it. Nothing else of the user row leaves this module. */
 export interface AccountRow {
@@ -56,7 +57,7 @@ export async function listAccounts(
 				name: user.name,
 				email: user.email,
 				// The same rule as the Multi-user adapter: admin exactly, anything else is a learner.
-				role: user.role === 'admin' ? 'admin' : 'learner',
+				role: roleOf(user.role),
 				joined: new Date(user.createdAt).toISOString(),
 				you: (user as { learnerId?: string | null }).learnerId === who.learnerId
 			});
@@ -130,14 +131,15 @@ function oneTimePassword(): string {
 }
 
 /**
- * Gives an Account a random one-time password, ends every session it has and makes it set a new
+ * Gives an Account a random one-time password, cleans up every session it has (the credential
+ * generation, session-binding.ts, is what stops them resolving) and makes it set a new
  * password before anything else. The password is returned to the caller for the admin to see once;
  * it is stored only as a hash and must not be logged or kept.
  *
  * The plugin's own set-user-password does none of the product steps, so all three run here, through
- * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions, which are
- * attempted whatever the password step did. That is not a guarantee: a database failure or a kill after
- * the password changed can leave an old session alive, but it carries the flag, so the gate confines it
+ * `auth.api` (server-side, no HTTP): the flag, then the password, then the sessions' cleanup, which is
+ * attempted whatever the password step did. A database failure or a kill after the password changed can
+ * leave an old row, which cannot resolve (session-binding.ts) and carries the flag, so the gate confines it
  * to the password page, and no outcome leaves one alive with the flag unset. A failure part-way throws and no password
  * is returned: the admin tries again, and a retry redoes every step.
  *
@@ -162,11 +164,8 @@ export async function resetPassword(
 		// The plugin's admin check is the password step's, which now comes after the flag. Ask for the
 		// session first, so a session that ended a moment ago, or whose user is no longer the admin who
 		// asked (role changed, or a different Account), changes nothing at all.
-		const fresh = await auth.api.getSession({ headers });
-		const freshUser = fresh?.user as
-			| { role?: string | null; learnerId?: string | null }
-			| undefined;
-		if (freshUser?.role !== 'admin' || freshUser.learnerId !== who.learnerId) {
+		const fresh = await currentSession(auth, headers);
+		if (fresh?.identity.role !== 'admin' || fresh.identity.learnerId !== who.learnerId) {
 			throw new NotAdminError();
 		}
 		// Before the password, so the password never changes while the flag is unset.
@@ -174,8 +173,10 @@ export async function resetPassword(
 		try {
 			await auth.api.setUserPassword({ headers, body: { userId, newPassword: password } });
 		} finally {
-			// Attempted whatever the password step did (it may have changed the password and lost its answer):
-			// a session that outlives a failed revocation (or a kill) carries the flag, set before the password, so the gate confines it to the password page. Through the adapter,
+			// Cleanup, attempted whatever the password step did (it may have changed the password and lost its
+			// answer). The guarantee is the credential generation (session-binding.ts): a session from before
+			// the password write cannot resolve. A session that outlives a failed cleanup (or a kill) also
+			// carries the flag, set before the password, so the gate confines it to the password page. Through the adapter,
 			// not the plugin: the admin check has passed, and cleanup must not fail because the admin's own
 			// session ended in between. A database failure still throws.
 			await internalAdapter.deleteUserSessions(userId);
@@ -197,8 +198,8 @@ export async function resetPassword(
  * Returns null, having changed nothing, when no Account is an admin (role exactly `admin`, as everywhere
  * else). If several are, the oldest is reset. Same order as `resetPassword`: the flag, then the password
  * (hashed by Better Auth's own hasher, so sign-in accepts it), then the sessions in a `finally`, so no
- * outcome leaves a session from before the reset alive with the flag unset. Revocation is attempted, not
- * guaranteed: a database failure or a kill after the password change can leave old sessions alive, flagged
+ * outcome leaves a session from before the reset alive with the flag unset. The cleanup is attempted, and the
+ * guarantee is session-binding.ts: a database failure or a kill after the password change can leave old sessions alive, flagged
  * and so confined by the gate to the password page, as in `resetPassword`. A failure throws and no
  * password is returned: run the command again. The password is not logged or kept.
  */
@@ -224,16 +225,15 @@ export async function resetAdminPassword(
 			await internalAdapter.updatePassword(target.id, hashed);
 		} else {
 			await internalAdapter.createAccount({
-				userId: target.id,
-				providerId: 'credential',
-				accountId: target.id,
+				...passwordAccountWhere(target.id),
 				password: hashed
 			});
 		}
 	} finally {
-		// Attempted whatever the password step did. Not a guarantee: if this delete fails (a database error) or
-		// the process is killed after the password changed, an earlier session can survive. It carries the flag,
-		// set before the password, so the gate confines it to the password page.
+		// Cleanup, attempted whatever the password step did. The guarantee is the credential generation
+		// (session-binding.ts): a session from before the password write cannot resolve. If this delete fails
+		// (a database error) or the process is killed, the row can survive, and it carries the flag, set before
+		// the password, so the gate confines it to the password page.
 		await internalAdapter.deleteUserSessions(target.id);
 	}
 	return { email: target.email, password };
@@ -284,11 +284,8 @@ export async function removeAccount(
 	try {
 		// The plugin's admin check is the removal's own; ask for the session first so a session that ended a
 		// moment ago, or whose user is no longer the admin who asked, changes nothing at all.
-		const fresh = await auth.api.getSession({ headers });
-		const freshUser = fresh?.user as
-			| { role?: string | null; learnerId?: string | null }
-			| undefined;
-		if (freshUser?.role !== 'admin' || freshUser.learnerId !== who.learnerId) {
+		const fresh = await currentSession(auth, headers);
+		if (fresh?.identity.role !== 'admin' || fresh.identity.learnerId !== who.learnerId) {
 			throw new NotAdminError();
 		}
 		await auth.api.removeUser({ headers, body: { userId } });
