@@ -2,10 +2,11 @@ import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadCatalogue } from '#lib/server/content/catalogue.js';
+import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
 import { createTestAuth } from '#lib/server/identity/test-auth.js';
-import { createThrottle } from '#lib/server/identity/throttle.js';
+import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import { createLearningCore } from '#lib/server/learning/core.js';
 import { createSignUp } from './sign-up';
 
@@ -24,13 +25,22 @@ function formOf(values: Form) {
 	return body;
 }
 
-/** The request event the sign-up action reads; `locals.auth` is whatever the test passes. */
+/** The account actions over a stand-in Better Auth: the route is judged by what it makes of their answers. */
+const accountsOver = (auth: unknown, registrationOpen: () => boolean) =>
+	createAccountActions({
+		auth: auth as never,
+		providerStarts: createProviderStarts(),
+		registrationOpen,
+		inviteValid: async () => false
+	});
+
+/** The request event the sign-up action reads; `locals.multiUser.accounts` is built over whatever auth the test passes. */
 function harness(
 	options: {
 		auth?: unknown;
 		registration?: Registration;
 		identity?: unknown;
-		throttle?: ReturnType<typeof createThrottle>;
+		accounts?: unknown;
 		address?: string | (() => string);
 	} = {}
 ) {
@@ -40,13 +50,20 @@ function harness(
 		return { headers, response: {} };
 	});
 	const auth = 'auth' in options ? options.auth : { api: { signUpEmail } };
-	const signUp = createSignUp(options.throttle ?? createThrottle());
+	const signUp = createSignUp();
 	const cookies = { set: vi.fn() };
 	const setHeaders = vi.fn();
 	const address = options.address ?? '203.0.113.7';
+	const registrationMode = () => options.registration ?? 'open';
+	const accounts =
+		'accounts' in options
+			? options.accounts
+			: auth === undefined
+				? undefined
+				: accountsOver(auth, () => registrationMode() === 'open');
 	const locals = {
-		instance: { registrationMode: () => options.registration ?? 'open' },
-		auth,
+		instance: { registrationMode },
+		multiUser: accounts === undefined ? undefined : { accounts },
 		identity: options.identity
 	};
 	const event = (values: Form) => ({
@@ -233,11 +250,21 @@ describe('what is wrong with the form', () => {
 		});
 
 		it('counts the refused attempt against the limit like any other', async () => {
-			const throttled = harness({ throttle: createThrottle({ addressLimit: 2 }) });
-			await throttled.post({ ...ada, name: 'x'.repeat(101) });
-			await throttled.post({ ...ada, name: 'x'.repeat(101) });
+			const throttled = harness();
+			for (let i = 1; i <= 20; i++) {
+				expect(
+					await throttled.post({ ...ada, name: 'x'.repeat(101) }),
+					`attempt ${i}`
+				).toMatchObject({
+					status: 400,
+					data: { field: 'name' }
+				});
+			}
 
 			expect(await throttled.post(ada)).toMatchObject({ status: 429 });
+			expect(throttled.setHeaders).toHaveBeenCalledWith({
+				'retry-after': expect.stringMatching(/^[1-9]\d*$/)
+			});
 		});
 
 		it('maps Better Auth\u2019s own refusal of a blank name to the form\u2019s blank-name error', async () => {
@@ -462,12 +489,21 @@ describe('when Better Auth refuses', () => {
 });
 
 describe('the sign-up limit', () => {
-	const limited = (address: string | (() => string) = '203.0.113.7') =>
-		harness({ throttle: createThrottle({ addressLimit: 3 }), address });
+	/** Uses up the 20 attempts the throttle allows an address. */
+	const useUp = async (post: (values: Form) => Promise<unknown>) => {
+		for (let i = 1; i <= 20; i++) {
+			expect(await post({ ...ada, password: 'x' }), `attempt ${i}`).toMatchObject({
+				status: 400,
+				data: { field: 'password' }
+			});
+		}
+	};
 
 	it('refuses the attempt after the limit with the message and Retry-After, creating nothing', async () => {
-		const { post, signUpEmail, setHeaders } = limited();
-		for (let i = 0; i < 3; i++) await post(ada);
+		const { post, signUpEmail, setHeaders } = harness();
+		for (let i = 1; i <= 20; i++) {
+			expect(await post(ada), `attempt ${i}`).toMatchObject({ status: 303 });
+		}
 		signUpEmail.mockClear();
 
 		const result = await post(ada);
@@ -481,55 +517,94 @@ describe('the sign-up limit', () => {
 	});
 
 	it('counts every attempt: refused forms and a closed registration use up the limit too', async () => {
-		const { post, signUpEmail } = limited();
-		await post({ ...ada, password: 'short' });
-		await post({ ...ada, name: '' });
-		await post({ ...ada, email: 'nope' });
+		const { post, signUpEmail } = harness();
+		await useUp(post);
 
 		expect(await post(ada)).toMatchObject({ status: 429 });
 		expect(signUpEmail).not.toHaveBeenCalled();
 
-		const closed = harness({
-			throttle: createThrottle({ addressLimit: 2 }),
-			registration: 'invite'
-		});
-		await closed.post(ada);
-		await closed.post(ada);
+		const closed = harness({ registration: 'invite' });
+		for (let i = 1; i <= 20; i++) {
+			expect(await closed.post(ada), `attempt ${i}`).toMatchObject({ status: 403 });
+		}
 		expect(await closed.post(ada)).toMatchObject({ status: 429 });
 	});
 
 	it('is kept per client address, and one address can only use up its own', async () => {
-		const throttle = createThrottle({ addressLimit: 2 });
-		const first = harness({ throttle, address: '203.0.113.7' });
-		const second = harness({ throttle, address: '203.0.113.8' });
-		await first.post(ada);
-		await first.post(ada);
+		const first = harness({ address: '203.0.113.7' });
+		await useUp(first.post);
 
 		expect(await first.post(ada)).toMatchObject({ status: 429 });
-		expect(await second.post({ ...ada, email: 'grace@example.com' })).toMatchObject({
-			status: 303
-		});
+		// The same actions, another address.
+		const second = first.event({ ...ada, email: 'grace@example.com' });
+		second.getClientAddress = () => '203.0.113.8';
+		expect(
+			await first.signUp.action(second as never).catch((thrown) => {
+				if (isRedirect(thrown)) return thrown;
+				throw thrown;
+			})
+		).toMatchObject({ status: 303 });
 	});
 
 	it('still limits when the address cannot be read, in one shared bucket', async () => {
-		const throttle = createThrottle({ addressLimit: 2 });
 		const unreadable = () => {
 			throw new Error('no address');
 		};
-		const first = harness({ throttle, address: unreadable });
-		const second = harness({ throttle, address: unreadable });
-		await first.post(ada);
-		await second.post(ada);
+		// Two different requests, one set of account actions: neither names an address, so both count in one bucket.
+		const accounts = accountsOver(
+			{
+				api: {
+					signUpEmail: async () => ({ headers: new Headers(), response: {} })
+				}
+			},
+			() => true
+		);
+		const first = harness({ address: unreadable, accounts });
+		const second = harness({ address: unreadable, accounts });
+		for (let i = 1; i <= 10; i++) {
+			expect(await first.post({ ...ada, password: 'x' }), `first ${i}`).toMatchObject({
+				status: 400
+			});
+			expect(await second.post({ ...ada, password: 'x' }), `second ${i}`).toMatchObject({
+				status: 400
+			});
+		}
 
 		expect(await first.post(ada)).toMatchObject({ status: 429 });
+		expect(await second.post(ada)).toMatchObject({ status: 429 });
 	});
 
-	it('uses the throttle default of 20 attempts when none is tuned', async () => {
-		const { post } = harness();
-		for (let i = 0; i < 20; i++)
-			expect(await post({ ...ada, password: 'x' })).toMatchObject({ status: 400 });
+	it('answers a body that does not parse as the action does today: the error, after the attempt is counted', async () => {
+		const { signUp, event, signUpEmail } = harness();
+		const broken = {
+			...event(ada),
+			request: {
+				formData: async () => {
+					throw new TypeError('Failed to parse body');
+				}
+			}
+		};
 
-		expect(await post({ ...ada, password: 'x' })).toMatchObject({ status: 429 });
+		await expect(signUp.action(broken as never)).rejects.toThrow('Failed to parse body');
+		expect(signUpEmail).not.toHaveBeenCalled();
+	});
+
+	it('charges a body that does not parse: it and 19 parseable attempts use up the limit', async () => {
+		const { signUp, event, post } = harness();
+		const broken = {
+			...event(ada),
+			request: {
+				formData: async () => {
+					throw new TypeError('Failed to parse body');
+				}
+			}
+		};
+		await expect(signUp.action(broken as never)).rejects.toThrow('Failed to parse body');
+		for (let i = 1; i <= 19; i++) {
+			expect(await post({ ...ada, password: 'x' }), `attempt ${i}`).toMatchObject({ status: 400 });
+		}
+
+		expect(await post(ada)).toMatchObject({ status: 429 });
 	});
 });
 
@@ -542,7 +617,13 @@ describe('with Better Auth and the database', () => {
 			registrationMode: () => registration
 		};
 		const { db, auth } = await createTestAuth({ admit: createRegistration({ instance }) });
-		const signUp = createSignUp(createThrottle());
+		const signUp = createSignUp();
+		const accounts = createAccountActions({
+			auth,
+			providerStarts: createProviderStarts(),
+			registrationOpen: () => registration === 'open',
+			inviteValid: async () => false
+		});
 		const jar: Record<string, string> = {};
 		const cookies = {
 			set: (name: string, value: string) => {
@@ -552,7 +633,7 @@ describe('with Better Auth and the database', () => {
 		const post = async (values: Form) => {
 			const event = {
 				request: { formData: async () => formOf(values) },
-				locals: { instance, auth, identity: undefined },
+				locals: { instance, multiUser: { accounts }, identity: undefined },
 				cookies,
 				setHeaders: () => {},
 				getClientAddress: () => '203.0.113.7'
