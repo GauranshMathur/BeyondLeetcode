@@ -5,7 +5,7 @@ import type { App } from '#lib/server/app.js';
 import type { Db } from '#lib/server/db.js';
 import { createHandle } from '#lib/server/handle.js';
 import { createAuth } from '#lib/server/identity/auth.js';
-import { createLocalIdentity } from '#lib/server/identity/index.js';
+import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
 import { createInvites } from '#lib/server/identity/invites.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
@@ -63,11 +63,14 @@ async function setup() {
 	const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
 	const handle = createHandle({
 		instance,
-		identity: await createLocalIdentity(db),
+		identity: createIdentity({
+			instance,
+			local: await createLocalIdentity(db),
+			multi: createMultiUserIdentity(auth)
+		}),
 		core,
 		multiUser: {
 			auth,
-			identity: createMultiUserIdentity(auth),
 			invites,
 			deleteLearner: (id: string) => deleteLearner(db, id)
 		},
@@ -218,7 +221,7 @@ describe('the Users page in Local Mode', () => {
 		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 		const handle = createHandle({
 			instance,
-			identity,
+			identity: createIdentity({ instance, local: identity, multi: null }),
 			core,
 			multiUser: null,
 			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']
@@ -416,7 +419,7 @@ describe('the Registration switch', () => {
 		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 		const handle = createHandle({
 			instance,
-			identity,
+			identity: createIdentity({ instance, local: identity, multi: null }),
 			core,
 			multiUser: null,
 			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']
@@ -634,7 +637,7 @@ describe('Invites on the Users page', () => {
 		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 		const handle = createHandle({
 			instance,
-			identity,
+			identity: createIdentity({ instance, local: identity, multi: null }),
 			core,
 			multiUser: null,
 			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']

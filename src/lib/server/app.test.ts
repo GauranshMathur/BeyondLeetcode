@@ -152,10 +152,11 @@ describe('Multi-user', () => {
 			.getSetCookie()
 			.map((c) => c.split(';')[0])
 			.join('; ');
-		const who = await app.multiUser?.identity.resolve({
+		const answer = await app.identity.resolve({
 			cookies: { get: () => undefined },
 			request: { headers: new Headers({ cookie }) }
 		});
+		const who = answer.kind === 'resolved' ? answer.who : null;
 		expect(who).toMatchObject({ displayName: 'Ada', role: 'admin', learnerId: 'local' });
 		// Invite links carry the validated ORIGIN, the one Better Auth uses.
 		const made = await app.multiUser?.invites.create({ who: who as never, now: new Date() });
@@ -183,10 +184,11 @@ describe('Multi-user', () => {
 			.getSetCookie()
 			.map((c) => c.split(';')[0])
 			.join('; ');
-		const who = await app.multiUser?.identity.resolve({
+		const answer = await app.identity.resolve({
 			cookies: { get: () => undefined },
 			request: { headers: new Headers({ cookie }) }
 		});
+		const who = answer.kind === 'resolved' ? answer.who : null;
 		const made = await app.multiUser?.invites.create({ who: who as never, now: new Date() });
 		const signUp = async (email: string) => {
 			try {
@@ -233,10 +235,11 @@ describe('Multi-user', () => {
 			.getSetCookie()
 			.map((c) => c.split(';')[0])
 			.join('; ');
-		const who = await app.multiUser?.identity.resolve({
+		const answer = await app.identity.resolve({
 			cookies: { get: () => undefined },
 			request: { headers: new Headers({ cookie }) }
 		});
+		const who = answer.kind === 'resolved' ? answer.who : null;
 		expect(who).toMatchObject({ displayName: 'Ada', role: 'admin', learnerId: 'local' });
 		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 	}, 30_000);

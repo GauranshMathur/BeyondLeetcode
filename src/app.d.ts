@@ -1,4 +1,4 @@
-import type { Setup } from '#lib/server/app.js';
+import type { MultiUser, Setup } from '#lib/server/app.js';
 import type { Auth } from '#lib/server/identity/auth.js';
 import type { Identity } from '#lib/server/identity/index.js';
 import type { Invites } from '#lib/server/identity/invites.js';
@@ -18,6 +18,8 @@ declare global {
 			instance: Instance;
 			/** What the Setup screen needs: the Multi-user choice and creating the first admin. */
 			setup: Setup;
+			/** Better Auth, Invites and the Learner removal; set only in Multi-user Mode. C153 removes the three below. */
+			multiUser?: MultiUser;
 			/** Better Auth; set only in Multi-user Mode, where the auth route mounts its handler. */
 			auth?: Auth;
 			/** Invite links; set exactly when `auth` is (Multi-user Mode), so Local Mode never has them. */

@@ -1,5 +1,6 @@
 import { TEST_LEARNER_COOKIE } from '../../e2e-learner.ts';
 import type { Db } from '../db.ts';
+import type { Instance } from '../instance.ts';
 
 export type Role = 'admin' | 'learner';
 
@@ -64,6 +65,57 @@ export async function createLocalIdentity(
 				return { learnerId: asked, displayName: 'Local', role: 'learner' };
 			}
 			return { learnerId: LOCAL_LEARNER_ID, displayName: 'Local', role: 'admin' };
+		}
+	};
+}
+
+/** What the hook learns about a request, in every mode. */
+export type IdentityAnswer =
+	/** A Multi-user Instance with no adapter: the hook answers 503. */
+	| { kind: 'unavailable' }
+	| {
+			kind: 'resolved';
+			/** `null` means nobody: before Setup, or a Multi-user request with no valid session. */
+			who: Identity | null;
+			mustChangePassword: boolean;
+			/** `Set-Cookie` values for the response (an extended session). */
+			refreshedCookies: string[];
+	  };
+
+/** The one Identity the hook asks, once per request. */
+export interface InstanceIdentity {
+	resolve(event: ResolveEvent): Promise<IdentityAnswer>;
+}
+
+/**
+ * Reads the Instance mode and asks only the adapter it names: nobody before Setup, `local` in Local
+ * Mode (the Multi-user adapter, and the Local adapter's test cookie, are never consulted in the other),
+ * `multi` in Multi-user Mode. `multi` is null when the Instance has no Better Auth.
+ */
+export function createIdentity({
+	instance,
+	local,
+	multi
+}: {
+	instance: Pick<Instance, 'mode'>;
+	local: IdentityResolver;
+	multi: IdentityResolver | null;
+}): InstanceIdentity {
+	return {
+		resolve: async (event) => {
+			const mode = instance.mode();
+			if (mode === 'multi' && !multi) return { kind: 'unavailable' };
+			const adapter = mode === 'local' ? local : mode === 'multi' ? multi : null;
+			const found = adapter ? await adapter.resolve(event) : null;
+			if (!found)
+				return { kind: 'resolved', who: null, mustChangePassword: false, refreshedCookies: [] };
+			const { mustChangePassword, refreshedCookies, ...who } = found;
+			return {
+				kind: 'resolved',
+				who,
+				mustChangePassword: mustChangePassword ?? false,
+				refreshedCookies: refreshedCookies ?? []
+			};
 		}
 	};
 }

@@ -7,7 +7,7 @@ import {
 	MIN_SECRET_LENGTH,
 	socialProvidersFrom
 } from './identity/auth.ts';
-import { createLocalIdentity, type IdentityResolver } from './identity/index.ts';
+import { createIdentity, createLocalIdentity, type InstanceIdentity } from './identity/index.ts';
 import { createInvites, type Invites } from './identity/invites.ts';
 import {
 	createMultiUserIdentity,
@@ -48,20 +48,22 @@ export interface Setup {
 	createFirstAdmin(input: FirstAdminInput): Promise<{ headers: Headers }>;
 }
 
+/** Better Auth, Invites and the Learner removal: what the Multi-user routes use. */
+export interface MultiUser {
+	auth: Auth;
+	invites: Invites;
+	/** `deleteLearner` of the progress module, bound to the database. */
+	deleteLearner: (learnerId: string) => Promise<void>;
+}
+
 export interface App {
 	core: LearningCore;
-	/** Asked once per request in Local Mode: who is it? (Local Mode adapter.) */
-	identity: IdentityResolver;
+	/** Asked once per request: who is it? It reads the Instance mode and asks the one adapter that names. */
+	identity: InstanceIdentity;
 	/** The Instance's mode, read by the hook on every request. One per server: it caches the mode. */
 	instance: Instance;
 	/** Better Auth and the Multi-user adapter; null when the secret or the origin is not set. */
-	multiUser: {
-		auth: Auth;
-		identity: IdentityResolver;
-		invites: Invites;
-		/** `deleteLearner` of the progress module, bound to the database. */
-		deleteLearner: (learnerId: string) => Promise<void>;
-	} | null;
+	multiUser: MultiUser | null;
 	setup: Setup;
 }
 
@@ -126,20 +128,24 @@ export async function createApp(env: {
 		const swept = await sweepStaleSessions(db);
 		if (swept > 0) console.warn(`Multi-user startup repair: ${swept} unusable session(s) removed.`);
 	}
-	const identity = await createLocalIdentity(db, {
+	const local = await createLocalIdentity(db, {
 		testLearnerCookie: env.IDENTITY_TEST_LEARNER === '1'
 	});
 	// A fresh database stays empty until someone chooses; an already-Local one gets its Learner at boot.
-	if (instance.mode() === 'local') await identity.ensureLocalLearner();
+	if (instance.mode() === 'local') await local.ensureLocalLearner();
 	return {
 		instance: {
 			...instance,
 			async chooseLocal() {
 				await instance.chooseLocal();
-				await identity.ensureLocalLearner();
+				await local.ensureLocalLearner();
 			}
 		},
-		identity,
+		identity: createIdentity({
+			instance,
+			local,
+			multi: multiUser ? createMultiUserIdentity(multiUser.auth) : null
+		}),
 		multiUser,
 		setup: {
 			multiUser: choice(auth),
@@ -267,9 +273,8 @@ function providerEnvironment(
 	return out;
 }
 
-const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>) => ({
+const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>): MultiUser => ({
 	auth: built.auth,
-	identity: createMultiUserIdentity(built.auth),
 	invites: built.invites,
 	deleteLearner: built.deleteLearner
 });

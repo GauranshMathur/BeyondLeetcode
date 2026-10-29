@@ -2,7 +2,6 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import { parseTheme, THEME_COOKIE, withTheme } from '#lib/theme.js';
 import type { App } from './app.ts';
 import { gate } from './identity/gate.ts';
-import type { IdentityResolver } from './identity/index.ts';
 
 /**
  * Per request: refuse remote calls, read the Instance mode, resolve Identity with the adapter that mode
@@ -22,23 +21,23 @@ export function createHandle(
 		event.locals.instance = app.instance;
 		event.locals.setup = app.setup;
 		const mode = app.instance.mode();
-		// Before Setup nobody is resolved, so no Local Learner is made. Only the adapter the mode names is
-		// asked: in Multi-user the Local adapter, and its test cookie, is never consulted.
-		let who: Awaited<ReturnType<IdentityResolver['resolve']>> = null;
-		if (mode === 'local') who = await app.identity.resolve(event);
-		if (mode === 'multi') {
-			// Cannot happen at start (createApp refuses it); fail closed rather than serve nobody.
-			if (!app.multiUser) return refuseFraming(refusal(503));
+		// Asked once. Before Setup nobody is resolved, so no Local Learner is made; only the adapter the mode
+		// names is asked, so in Multi-user the Local adapter, and its test cookie, is never consulted.
+		const answer = await app.identity.resolve(event);
+		// Cannot happen at start (createApp refuses it); fail closed rather than serve nobody.
+		if (answer.kind === 'unavailable') return refuseFraming(refusal(503));
+		const { who, mustChangePassword } = answer;
+		if (mode === 'multi' && app.multiUser) {
+			event.locals.multiUser = app.multiUser;
 			event.locals.auth = app.multiUser.auth;
 			event.locals.invites = app.multiUser.invites;
 			event.locals.deleteLearner = app.multiUser.deleteLearner;
-			who = await app.multiUser.identity.resolve(event);
 		}
 		// An active session was extended: its new cookie goes out with whatever this request answers (a
 		// redirect or refusal included), or users are signed out after 7 days of use. Better Auth's own
 		// Set-Cookie line, unchanged. Never over a cookie of the same name that the response sets itself:
 		// a sign-in as someone else, a sign-out or a password change answers with the cookie that must win.
-		const refreshed = who?.refreshedCookies ?? [];
+		const refreshed = answer.refreshedCookies;
 		const finish = (response: Response) => {
 			const own = new Set(response.headers.getSetCookie().map(cookieName));
 			for (const cookie of refreshed) {
@@ -50,7 +49,7 @@ export function createHandle(
 		const verdict = gate({
 			mode,
 			who,
-			mustChangePassword: who?.mustChangePassword,
+			mustChangePassword,
 			routeId: event.route.id,
 			isDataRequest: event.isDataRequest,
 			method: request.method,
