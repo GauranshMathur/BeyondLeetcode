@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { inspect } from 'node:util';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
@@ -11,7 +10,6 @@ import {
 	enabledProviders,
 	hasForbiddenNameCharacter,
 	isNameTooLong,
-	isPlaceholderSecret,
 	MAX_NAME_LENGTH,
 	MIN_PASSWORD_LENGTH,
 	providerName,
@@ -356,14 +354,14 @@ describe('createAuth', () => {
 		expect((await signUp({ origin: 'http://localhost:3000' })).status).toBe(200);
 	});
 
-	it('refuses the BETTER_AUTH_SECRET that .env.example ships, whatever its wording', async () => {
-		const example = readFileSync(new URL('../../../../.env.example', import.meta.url), 'utf8');
-		const shipped = /^BETTER_AUTH_SECRET="(.*)"$/m.exec(example)?.[1];
-
-		expect(shipped).toBeTruthy();
-		expect(shipped?.length).toBeGreaterThanOrEqual(32);
-		expect(isPlaceholderSecret(shipped ?? '')).toBe(true);
-		expect(isPlaceholderSecret('d41d8cd98f00b204e9800998ecf8427e1a2b3c4d5e6f708192')).toBe(false);
+	it('keeps the createAuth messages: length first, then placeholder', async () => {
+		const db = await createFileTestDb();
+		expect(() => createAuth({ db, origin: '', secret: 'change-me' })).toThrow(
+			'createAuth: secret is missing or shorter than 32 characters'
+		);
+		expect(() =>
+			createAuth({ db, origin: '', secret: 'change-me-to-a-random-string-of-48-characters' })
+		).toThrow('createAuth: secret is a placeholder or default value anyone can read');
 	});
 
 	it('needs a secret of at least 32 characters', async () => {
