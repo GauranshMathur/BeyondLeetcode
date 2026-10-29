@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest';
 import type { App } from '#lib/server/app.js';
 import { createHandle } from '#lib/server/handle.js';
 import { createAuth } from '#lib/server/identity/auth.js';
-import { createLocalIdentity } from '#lib/server/identity/index.js';
+import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
 import { createInvites } from '#lib/server/identity/invites.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createRegistration } from '#lib/server/identity/registration.js';
@@ -35,14 +35,23 @@ async function app(mode: 'local' | 'multi' | null) {
 		});
 		multiUser = {
 			auth,
-			identity: createMultiUserIdentity(auth),
 			invites: createInvites({ db, origin: 'http://localhost:3000' }),
 			deleteLearner: async () => {}
 		};
 	}
 	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
 	const setup = { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup'];
-	return createHandle({ instance, identity, core, multiUser, setup });
+	return createHandle({
+		instance,
+		identity: createIdentity({
+			instance,
+			local: identity,
+			multi: multiUser ? createMultiUserIdentity(multiUser.auth) : null
+		}),
+		core,
+		multiUser,
+		setup
+	});
 }
 
 function visit(method: 'GET' | 'POST') {
