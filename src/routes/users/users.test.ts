@@ -960,3 +960,79 @@ describe('Remove on the Users page', () => {
 		expect(open.response.headers.get('cache-control')).toBe('no-store');
 	});
 });
+
+describe('what the Users page logs when an action fails', () => {
+	const secret = 'lin@example.com tok_Zx9Qw3Rt7Yu1Io5Pa8Sd2Fg4Hj6Kl0Zx';
+	const failure = () => new TypeError(`write failed for ${secret}`);
+
+	/** Runs `act` with the console captured, and returns the one line it printed. */
+	async function logged(act: () => Promise<unknown>) {
+		const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			await act();
+			expect(quiet).toHaveBeenCalledTimes(1);
+			// One call with one plain string: an object argument could hide text behind its class.
+			expect(quiet.mock.calls[0]).toEqual([expect.any(String)]);
+			return quiet.mock.calls.flat().join(' ');
+		} finally {
+			quiet.mockRestore();
+		}
+	}
+
+	it('names the switch of the Registration Mode and the kind of error, never its message', async () => {
+		const { handle, admin, instance } = await setup();
+		vi.spyOn(instance, 'setRegistrationMode').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => submit(handle, admin, { registration: 'open' }));
+
+		expect(line).toBe('users: switch registration mode TypeError');
+		expect(line).not.toContain(secret);
+		expect(line).not.toContain('lin@example.com');
+	});
+
+	it('names creating an Invite and the kind of error, never its message', async () => {
+		const { handle, admin, invites } = await setup();
+		vi.spyOn(invites, 'create').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => post(handle, admin, 'invite'));
+
+		expect(line).toBe('users: create invite TypeError');
+		expect(line).not.toContain(secret);
+	});
+
+	it('names cancelling an Invite and the kind of error, never its message', async () => {
+		const { handle, admin, invites } = await setup();
+		vi.spyOn(invites, 'cancel').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => post(handle, admin, 'cancel', { id: 'some-invite' }));
+
+		expect(line).toBe('users: cancel invite TypeError');
+		expect(line).not.toContain(secret);
+	});
+
+	it('names resetting a password and the kind of error, never its message', async () => {
+		const { handle, admin, auth, learner, db } = await setup();
+		await learner('Lin Learner', 'lin@example.com');
+		const lin = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		vi.spyOn((await auth.$context).internalAdapter, 'deleteUserSessions').mockRejectedValueOnce(
+			failure()
+		);
+
+		const line = await logged(() => post(handle, admin, 'reset', { id: lin.id }));
+
+		expect(line).toBe('users: reset password TypeError');
+		expect(line).not.toContain(secret);
+	});
+
+	it('names removing an Account and the kind of error, never its message', async () => {
+		const { handle, admin, auth, learner, db } = await setup();
+		await learner('Lin Learner', 'lin@example.com');
+		const lin = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		vi.spyOn((await auth.$context).internalAdapter, 'deleteUser').mockRejectedValueOnce(failure());
+
+		const line = await logged(() => post(handle, admin, 'remove', { id: lin.id }));
+
+		expect(line).toBe('users: remove account TypeError');
+		expect(line).not.toContain(secret);
+	});
+});
