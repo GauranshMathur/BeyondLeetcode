@@ -2,6 +2,7 @@ import type { Handle } from '@sveltejs/kit/hooks';
 import { parseTheme, THEME_COOKIE, withTheme } from '#lib/theme.js';
 import type { App } from './app.ts';
 import { gate } from './identity/gate.ts';
+import { policyOf } from './identity/route-policy.ts';
 
 /**
  * Per request: refuse remote calls, read the Instance mode, resolve Identity with the adapter that mode
@@ -82,15 +83,15 @@ export function createHandle(
 		const response = await resolve(event, {
 			transformPageChunk: ({ html }) => withTheme(html, parseTheme(event.cookies.get(THEME_COOKIE)))
 		});
-		// Users shows everyone's names and emails and the one-time Invite link: never cached, whatever
-		// answers (the page, a data request, an action result, an error). Set here, once, because a
-		// route that sets it in both its action and its load makes SvelteKit throw on a no-JS form post.
-		if (event.route.id === '/users') response.headers.set('Cache-Control', 'no-store');
-		// The Accept invite URL holds the token: never cached, and its path is never sent as a Referer (the page's own CSS and JS requests included). strict-origin, not no-referrer: a browser sends `Origin: null` on a form post under no-referrer, and SvelteKit refuses that as cross-site; strict-origin keeps the Origin and never sends the path. Same reason to set it here.
-		if (event.route.id === '/invite/[token]') {
-			response.headers.set('Cache-Control', 'no-store');
-			response.headers.set('Referrer-Policy', 'strict-origin');
-		}
+		// Headers come from the route-policy table, set here once on the resolved response (page, data
+		// request, action result or error): a route that sets them in both its action and its load makes
+		// SvelteKit throw on a no-JS form post. noStore: Users shows everyone's names and emails and the
+		// one-time Invite link, and the Accept invite URL holds the token. The referrer is strict-origin,
+		// not no-referrer: a browser sends `Origin: null` on a form post under no-referrer, and SvelteKit
+		// refuses that as cross-site; strict-origin keeps the Origin and never sends the path.
+		const policy = policyOf(event.route.id);
+		if (policy.noStore) response.headers.set('Cache-Control', 'no-store');
+		if (policy.referrer) response.headers.set('Referrer-Policy', policy.referrer);
 		return finish(response);
 	};
 }

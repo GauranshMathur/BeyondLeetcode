@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs';
+import { dirname, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { policyOf, type RoutePolicy } from './route-policy.ts';
 
@@ -42,25 +45,21 @@ describe('policyOf', () => {
 		expect('referrer' in policyOf('/')).toBe(false);
 	});
 
-	it('makes exactly /setup, /signin, /signup and /invite/[token] bare', () => {
+	it('makes exactly /setup, /signin, /signup and /invite/[token] bare, of every route under src/routes', () => {
+		const root = fileURLToPath(new URL('../../../routes', import.meta.url));
 		const ids = [
-			'/setup',
-			'/signin',
-			'/signup',
-			'/invite/[token]',
-			'/api/auth/[...all]',
-			'/users',
-			'/account/password',
-			'/',
-			'/settings',
-			'/problems/[problemId]',
-			null
-		];
+			...new Set(
+				readdirSync(root, { recursive: true, encoding: 'utf8' })
+					.filter((file) => /(^|[\\/])\+(page|server)(\.server)?\.ts$|\+page\.svelte$/.test(file))
+					.map((file) => `/${dirname(file).split(sep).join('/')}`.replace(/^\/\.$/, '/'))
+			)
+		].sort();
+		expect(ids).toContain('/invite/[token]');
 		expect(ids.filter((id) => policyOf(id).bare)).toEqual([
+			'/invite/[token]',
 			'/setup',
 			'/signin',
-			'/signup',
-			'/invite/[token]'
+			'/signup'
 		]);
 	});
 });
