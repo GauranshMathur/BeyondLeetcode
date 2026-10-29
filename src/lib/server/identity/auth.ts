@@ -282,7 +282,7 @@ export function createAuth({
 	providerStarts,
 	passwordHasher
 }: CreateAuthOptions) {
-	const problem = secretProblem(secret);
+	const problem = secretProblem(secret, { lengthFirst: true });
 	if (problem === 'placeholder') {
 		throw new Error('createAuth: secret is a placeholder or default value anyone can read');
 	}

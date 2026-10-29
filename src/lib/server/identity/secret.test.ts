@@ -23,4 +23,12 @@ describe('the Better Auth secret check', () => {
 		expect(secretProblem('a'.repeat(MIN_SECRET_LENGTH - 1))).toBe('short');
 		expect(secretProblem('a'.repeat(MIN_SECRET_LENGTH))).toBeNull();
 	});
+
+	it('can check length before the placeholder', () => {
+		expect(secretProblem('change-me', { lengthFirst: true })).toBe('short');
+		expect(secretProblem('', { lengthFirst: true })).toBe('missing');
+		expect(secretProblem('change-me'.padEnd(MIN_SECRET_LENGTH, 'x'), { lengthFirst: true })).toBe(
+			'placeholder'
+		);
+	});
 });

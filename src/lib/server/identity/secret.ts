@@ -15,10 +15,15 @@ export function isPlaceholderSecret(secret: string): boolean {
 
 /**
  * What is wrong with a Better Auth secret, or null when it is usable. Checked in the order the
- * app's .env messages use: nothing at all, then a placeholder, then too short.
+ * app's .env messages use: nothing at all, then a placeholder, then too short. `lengthFirst` checks
+ * length before the placeholder, the order `createAuth`'s two messages were written in.
  */
-export function secretProblem(secret: string): 'missing' | 'placeholder' | 'short' | null {
+export function secretProblem(
+	secret: string,
+	{ lengthFirst = false }: { lengthFirst?: boolean } = {}
+): 'missing' | 'placeholder' | 'short' | null {
 	if (secret === '') return 'missing';
+	if (lengthFirst && secret.length < MIN_SECRET_LENGTH) return 'short';
 	if (isPlaceholderSecret(secret)) return 'placeholder';
 	if (secret.length < MIN_SECRET_LENGTH) return 'short';
 	return null;

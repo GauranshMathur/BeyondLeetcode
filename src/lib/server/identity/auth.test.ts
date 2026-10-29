@@ -354,6 +354,16 @@ describe('createAuth', () => {
 		expect((await signUp({ origin: 'http://localhost:3000' })).status).toBe(200);
 	});
 
+	it('keeps the createAuth messages: length first, then placeholder', async () => {
+		const db = await createFileTestDb();
+		expect(() => createAuth({ db, origin: '', secret: 'change-me' })).toThrow(
+			'createAuth: secret is missing or shorter than 32 characters'
+		);
+		expect(() =>
+			createAuth({ db, origin: '', secret: 'change-me-to-a-random-string-of-48-characters' })
+		).toThrow('createAuth: secret is a placeholder or default value anyone can read');
+	});
+
 	it('needs a secret of at least 32 characters', async () => {
 		const db = await createFileTestDb();
 		expect(() => createAuth({ db, origin: '', secret: '' })).toThrow(/secret/i);
