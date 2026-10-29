@@ -88,17 +88,25 @@ export function gate(input: GateInput): GateResult {
 	return pass;
 }
 
+/**
+ * Whether a redirect target is, or normalizes to, a path starting with `//` or `/\\`, which a browser or a later
+ * step would take for another site. Dot segments are resolved first (`/.//evil.com` is `//evil.com`). The one rule
+ * for a safe redirect: `safeNext` and the provider callback's rewrite (`account-creation.ts`) both use it.
+ */
+export function isProtocolRelative(target: string): boolean {
+	if (/^\/[/\\]/.test(target)) return true;
+	try {
+		return /^\/[/\\]/.test(new URL(target, 'http://placeholder.invalid').pathname);
+	} catch {
+		return true;
+	}
+}
+
 /** A `next` value is followed only when it is a same-origin path, otherwise home. */
 export function safeNext(next: string | null): string {
 	if (next === null || !/^\/(?![/\\])/.test(next)) return '/';
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what this rejects
 	if (/[\u0000-\u001f\u007f]/.test(next)) return '/';
-	// Dot segments: `/.//evil.com`, `/./\\evil.com` and `/a/..//evil.com` are each `//evil.com` once a URL parser has
-	// normalized them, which is another site if anything later treats the result as a target.
-	try {
-		if (/^\/[/\\]/.test(new URL(next, 'http://placeholder.invalid').pathname)) return '/';
-	} catch {
-		return '/';
-	}
-	return next;
+	// Dot segments (`/.//evil.com`) are covered by the shared rule.
+	return isProtocolRelative(next) ? '/' : next;
 }
