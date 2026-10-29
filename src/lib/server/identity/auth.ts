@@ -621,6 +621,14 @@ export type CreateAuthOptions = {
 	 * start named by its `state`; without it nothing is given back.
 	 */
 	providerStarts?: { refund(state: string): void };
+	/**
+	 * Replaces Better Auth's password hashing. Tests pass a fast one (`test-auth.ts`); production code never does,
+	 * so the stored hash stays Better Auth's default (scrypt).
+	 */
+	passwordHasher?: {
+		hash(password: string): Promise<string>;
+		verify(input: { hash: string; password: string }): Promise<boolean>;
+	};
 };
 
 // Every admin plugin endpoint is switched off over HTTP, the four we use included (list-users,
@@ -750,7 +758,8 @@ export function createAuth({
 	claimInvite = async () => false,
 	socialProviders = {},
 	extraPlugins = [],
-	providerStarts
+	providerStarts,
+	passwordHasher
 }: CreateAuthOptions) {
 	if (secret.length < MIN_SECRET_LENGTH) {
 		throw new Error('createAuth: secret is missing or shorter than 32 characters');
@@ -848,7 +857,8 @@ export function createAuth({
 		emailAndPassword: {
 			enabled: true,
 			minPasswordLength: MIN_PASSWORD_LENGTH,
-			maxPasswordLength: MAX_PASSWORD_LENGTH
+			maxPasswordLength: MAX_PASSWORD_LENGTH,
+			...(passwordHasher ? { password: passwordHasher } : {})
 		},
 		// Emails are never verified, so an email must never join two Accounts: a provider sign-in whose email
 		// belongs to an existing Account is refused, never linked.
