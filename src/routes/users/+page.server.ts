@@ -10,6 +10,7 @@ import {
 	UnknownAccountError
 } from '#lib/server/identity/accounts.js';
 import { isRegistrationMode, RegistrationNotAvailableError } from '#lib/server/instance.js';
+import { logFailure } from '#lib/server/logging.js';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -65,11 +66,8 @@ export const actions: Actions = {
 			await instance.setRegistrationMode(choice);
 		} catch (thrown) {
 			if (thrown instanceof RegistrationNotAvailableError) error(404, 'Not found');
-			// Only the kind of failure is logged: an error's text may hold paths and query text.
-			console.error(
-				'Users: switching the Registration Mode failed:',
-				thrown instanceof Error ? thrown.name : typeof thrown
-			);
+			// Only the kind of failure is logged (logFailure): an error's text may hold paths and query text.
+			logFailure('users: switch registration mode', thrown);
 			return fail(500, { message: 'Registration could not be changed. Try again.' });
 		}
 		return { registration: choice };
@@ -88,10 +86,7 @@ export const actions: Actions = {
 			return { invite: { link: made.link, expiresAt: made.expiresAt } };
 		} catch (thrown) {
 			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
-			console.error(
-				'Users: creating an Invite failed:',
-				thrown instanceof Error ? thrown.name : typeof thrown
-			);
+			logFailure('users: create invite', thrown);
 			return fail(500, { inviteMessage: 'The invite could not be created. Try again.' });
 		}
 	},
@@ -107,10 +102,7 @@ export const actions: Actions = {
 			if (!cancelled) return fail(404, { cancelMessage: 'That invite is no longer pending.' });
 		} catch (thrown) {
 			if (thrown instanceof NotAdminError) error(403, 'Forbidden');
-			console.error(
-				'Users: cancelling an Invite failed:',
-				thrown instanceof Error ? thrown.name : typeof thrown
-			);
+			logFailure('users: cancel invite', thrown);
 			return fail(500, { cancelMessage: 'The invite could not be cancelled. Try again.' });
 		}
 		return { cancelled: true };
@@ -146,10 +138,7 @@ export const actions: Actions = {
 			if (thrown instanceof SelfResetError) {
 				return fail(400, { resetMessage: 'You cannot reset your own password here.', resetUserId });
 			}
-			console.error(
-				'Users: resetting a password failed:',
-				thrown instanceof Error ? thrown.name : typeof thrown
-			);
+			logFailure('users: reset password', thrown);
 			return fail(500, {
 				resetMessage: 'The password could not be reset. Try again.',
 				resetUserId
@@ -183,10 +172,7 @@ export const actions: Actions = {
 			if (thrown instanceof SelfRemoveError) {
 				return fail(400, { removeMessage: 'You cannot remove yourself.' });
 			}
-			console.error(
-				'Users: removing an Account failed:',
-				thrown instanceof Error ? thrown.name : typeof thrown
-			);
+			logFailure('users: remove account', thrown);
 			if (thrown instanceof ProgressNotRemovedError) {
 				return fail(500, {
 					removeMessage:
