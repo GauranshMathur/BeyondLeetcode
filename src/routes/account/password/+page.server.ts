@@ -1,10 +1,8 @@
-import { createThrottle } from '#lib/server/identity/throttle.js';
 import type { Actions, PageServerLoad } from './$types';
 import { createChangePassword } from './change-password';
 
-// One counter for the whole process: the current-password tries of every user, by client address and Account.
-// Its own instance, apart from Sign in's.
-const changePassword = createChangePassword(createThrottle());
+// The current-password tries of every user are counted by the account actions, once for the whole process.
+const changePassword = createChangePassword();
 
 export const load: PageServerLoad = changePassword.load;
 

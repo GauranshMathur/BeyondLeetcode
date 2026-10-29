@@ -1,12 +1,37 @@
 import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
 import { createTestAuth } from '#lib/server/identity/test-auth.js';
+import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import { actions, load } from './+page.server';
 
 afterEach(() => vi.restoreAllMocks());
 
 const CLEARED = 'better-auth.session_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax';
+
+/** Locals of a Multi-user Instance whose Better Auth is `auth` (a stub of the calls Sign out makes, or the real one). */
+function multi(auth: unknown) {
+	return {
+		multiUser: {
+			accounts: createAccountActions({
+				auth: auth as never,
+				providerStarts: createProviderStarts(),
+				registrationOpen: () => true,
+				inviteValid: async () => true
+			})
+		}
+	};
+}
+
+/** What Better Auth's get-session answers with `returnHeaders`: an Account that must, or need not, change. */
+const sessionOf = (mustChangePassword: boolean | null) => async () => ({
+	headers: new Headers(),
+	response:
+		mustChangePassword === null
+			? null
+			: { user: { id: 'u', name: 'Ada', learnerId: 'l', mustChangePassword } }
+});
 
 function event(locals: Record<string, unknown>, headers = new Headers({ cookie: 'a=b' })) {
 	const cookies = { set: vi.fn(), get: vi.fn(), delete: vi.fn() };
@@ -54,7 +79,7 @@ describe('the sign-out action', () => {
 		headers.append('set-cookie', CLEARED);
 		const signOut = vi.fn(async () => ({ headers, response: { success: true } }));
 		const sent = new Headers({ cookie: 'better-auth.session_token=abc' });
-		const e = event({ auth: { api: { signOut } } }, sent);
+		const e = event(multi({ api: { signOut } }), sent);
 
 		const result = await run(e);
 
@@ -83,8 +108,7 @@ describe('the sign-out action', () => {
 				code: 'SQLITE_BUSY'
 			});
 		};
-		const getSession = async () => ({ user: { mustChangePassword: false } });
-		const e = event({ auth: { api: { signOut, getSession } } });
+		const e = event(multi({ api: { signOut, getSession: sessionOf(false) } }));
 
 		const result = await run(e);
 
@@ -100,8 +124,8 @@ describe('the sign-out action', () => {
 
 describe('a failed sign-out for an Account that must change its password', () => {
 	it.each([
-		['a session that says so', async () => ({ user: { mustChangePassword: true } })],
-		['no session at all', async () => null],
+		['a session that says so', sessionOf(true)],
+		['no session at all', sessionOf(null)],
 		[
 			'a session that cannot be read',
 			async () => {
@@ -113,7 +137,7 @@ describe('a failed sign-out for an Account that must change its password', () =>
 		const signOut = async () => {
 			throw new Error('down');
 		};
-		const e = event({ auth: { api: { signOut, getSession } } });
+		const e = event(multi({ api: { signOut, getSession } }));
 
 		const result = await run(e);
 
@@ -146,7 +170,7 @@ describe('with the real Better Auth', () => {
 		expect(await who()).not.toBeNull();
 		// Sign-up made one session and sign-in another; only the one the cookie names ends.
 		expect(await db.session.count()).toBe(2);
-		const e = event({ auth }, new Headers({ cookie }));
+		const e = event(multi(auth), new Headers({ cookie }));
 
 		const result = await run(e);
 

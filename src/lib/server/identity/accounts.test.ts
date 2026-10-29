@@ -3,6 +3,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
 import { createChangePassword } from '../../../routes/account/password/change-password.ts';
 import { deleteLearner } from '../learning/progress.ts';
+import { createAccountActions } from './account-actions.ts';
 import {
 	type AccountRow,
 	listAccounts,
@@ -17,7 +18,7 @@ import {
 import type { Admission, Auth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
 import { createTestAuth, TEST_SECRET } from './test-auth.ts';
-import { createThrottle } from './throttle.ts';
+import { createProviderStarts } from './throttle.ts';
 
 const password = 'correct horse battery staple';
 
@@ -300,7 +301,7 @@ describe('resetPassword', () => {
 		});
 		const signature = createHmac('sha256', TEST_SECRET).update(token).digest('base64');
 		const cookie = `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`;
-		const { action } = createChangePassword(createThrottle());
+		const { action } = createChangePassword();
 		const ev = {
 			request: new Request('http://localhost/account/password', {
 				method: 'POST',
@@ -311,7 +312,17 @@ describe('resetPassword', () => {
 					confirm: 'a brand new passphrase 42'
 				})
 			}),
-			locals: { auth },
+			locals: {
+				multiUser: {
+					auth,
+					accounts: createAccountActions({
+						auth,
+						providerStarts: createProviderStarts(),
+						registrationOpen: () => true,
+						inviteValid: async () => true
+					})
+				}
+			},
 			cookies: { set: vi.fn() },
 			url: new URL('http://localhost/account/password'),
 			getClientAddress: () => '10.0.0.1'

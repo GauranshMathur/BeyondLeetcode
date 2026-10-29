@@ -1,8 +1,9 @@
 import { createHmac } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
+import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { createTestAuth, TEST_SECRET } from '#lib/server/identity/test-auth.js';
-import { createThrottle } from '#lib/server/identity/throttle.js';
+import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import { createChangePassword } from './change-password';
 
 // The Change password action through the real Better Auth: what it changes, what it ends, what it refuses.
@@ -74,7 +75,21 @@ async function setup() {
 	return { auth, db, account, providerOnly, signIn, sessionOf };
 }
 
-const throttleFor = () => createThrottle();
+/** One set of account actions per Auth, as the app builds one per process: the throttle outlasts a request. */
+const actionsOf = new WeakMap<object, ReturnType<typeof createAccountActions>>();
+function accountsFor(auth: Auth) {
+	let accounts = actionsOf.get(auth);
+	if (!accounts) {
+		accounts = createAccountActions({
+			auth,
+			providerStarts: createProviderStarts(),
+			registrationOpen: () => true,
+			inviteValid: async () => true
+		});
+		actionsOf.set(auth, accounts);
+	}
+	return accounts;
+}
 
 function event(
 	auth: Auth | undefined,
@@ -93,7 +108,7 @@ function event(
 			},
 			body: new URLSearchParams(fields)
 		}),
-		locals: { auth },
+		locals: { multiUser: auth ? { auth, accounts: accountsFor(auth) } : undefined },
 		cookies: { set },
 		url: new URL(`http://localhost/account/password${search}`),
 		getClientAddress: () => address
@@ -116,43 +131,33 @@ async function run(
 }
 
 describe('an Account with no password', () => {
-	it('is told so, and no throttle attempt is counted', async () => {
+	it('is told so, and the account actions are not asked to change anything', async () => {
 		const { auth, providerOnly } = await setup();
-		const throttle = createThrottle();
-		const attempt = vi.spyOn(throttle, 'attempt');
-		const { action } = createChangePassword(throttle);
+		const change = vi.spyOn(accountsFor(auth), 'changePassword');
+		const { action } = createChangePassword();
 		const me = await providerOnly();
 
-		const { result } = await run(
-			action,
-			event(auth, me.cookie, form('anything at all', newPassword)).ev
-		);
+		// Many tries: none reaches the throttle, which only the account actions' change counts against.
+		let result: unknown;
+		for (let i = 0; i < 25; i++) {
+			({ result } = await run(
+				action,
+				event(auth, me.cookie, form('anything at all', newPassword)).ev
+			));
+		}
 
 		expect(result).toMatchObject({
 			status: 400,
 			data: { field: null, message: expect.stringMatching(/has no password/) }
 		});
-		expect(attempt).not.toHaveBeenCalled();
-	});
-
-	it('keeps its budget: 25 tries leave the throttle unspent for a later password', async () => {
-		const { auth, providerOnly } = await setup();
-		const throttle = createThrottle();
-		const { action } = createChangePassword(throttle);
-		const me = await providerOnly();
-
-		for (let i = 0; i < 25; i++) {
-			await run(action, event(auth, me.cookie, form('anything at all', newPassword)).ev);
-		}
-
-		expect(throttle.attempt({ address: '10.0.0.1', accountId: me.id }).allowed).toBe(true);
+		expect(change).not.toHaveBeenCalled();
 	});
 });
 
 describe('changing a password', () => {
 	it('sets the new password, ends every other session, clears the flag and goes on', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(true);
 		const other = (await signIn(me.email, oldPassword)) as string;
 		// This session predates the change, as a sign-in that raced an admin's reset would.
@@ -178,7 +183,7 @@ describe('changing a password', () => {
 
 	it('for a user who need not change it: changes it, ends other sessions and shows the page again', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(false);
 		const other = (await signIn(me.email, oldPassword)) as string;
 
@@ -192,7 +197,7 @@ describe('changing a password', () => {
 
 	it('treats two spellings of one password as the same, so the one-time password cannot be kept', async () => {
 		const { auth, account, signIn } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(true);
 		// Fullwidth "c": Better Auth hashes the NFKC form, so this signs in as the old password does.
 		const spelled = `\uFF43${oldPassword.slice(1)}`;
@@ -210,7 +215,7 @@ describe('changing a password', () => {
 
 	it('if creating the new session fails inside the change: no earlier session survives and the user is told plainly', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(true);
 		const other = (await signIn(me.email, oldPassword)) as string;
 		const context = await auth.$context;
@@ -236,7 +241,7 @@ describe('changing a password', () => {
 	// the old password in place. The action then ends the sessions itself, which works here.
 	it('if deleting the sessions fails inside the change: the old password stays, every session is ended, the user is told plainly', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(true);
 		const other = (await signIn(me.email, oldPassword)) as string;
 		const context = await auth.$context;
@@ -261,7 +266,7 @@ describe('changing a password', () => {
 
 	it('if ending the sessions fails twice: the password is unchanged, and the message says other sessions may still be signed in', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(true);
 		const other = (await signIn(me.email, oldPassword)) as string;
 		const context = await auth.$context;
@@ -287,7 +292,7 @@ describe('changing a password', () => {
 
 	it('refuses a wrong current password with a fixed text, changing nothing', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(true);
 
 		const { result } = await run(
@@ -307,7 +312,7 @@ describe('changing a password', () => {
 
 	it('limits guesses of the current password per Account, and a right one does not get past the limit', async () => {
 		const { auth, account, signIn } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(false);
 
 		for (let i = 0; i < 5; i++) {
@@ -325,7 +330,7 @@ describe('changing a password', () => {
 
 	it('limits guesses per address across Accounts', async () => {
 		const { auth, account } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const accounts = [
 			await account(false),
 			await account(false),
@@ -353,7 +358,7 @@ describe('changing a password', () => {
 
 	it('a right password gives its count back, so changing many times is not limited', async () => {
 		const { auth, account } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(false);
 		let current = oldPassword;
 		let cookie = me.cookie;
@@ -388,7 +393,7 @@ describe('changing a password', () => {
 		'refuses a new password that is %s, with a fixed text',
 		async (_name, fields, field, message) => {
 			const { auth, account, signIn } = await setup();
-			const { action } = createChangePassword(throttleFor());
+			const { action } = createChangePassword();
 			const me = await account(true);
 
 			const { result } = await run(action, event(auth, me.cookie, fields).ev);
@@ -401,7 +406,7 @@ describe('changing a password', () => {
 
 	it('does not spend the budget on a new password it refuses before looking at the current one', async () => {
 		const { auth, account } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(false);
 		for (let i = 0; i < 10; i++)
 			await run(action, event(auth, me.cookie, form(oldPassword, 'short')).ev);
@@ -411,7 +416,7 @@ describe('changing a password', () => {
 
 	it('if clearing the flag fails: the password has changed, other sessions are gone, the new cookie went out, and a retry finishes', async () => {
 		const { auth, account, signIn, sessionOf } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(true);
 		const other = (await signIn(me.email, oldPassword)) as string;
 		const context = await auth.$context;
@@ -449,7 +454,7 @@ describe('changing a password', () => {
 
 	it('answers a failure of the library with a fixed text and logs only its kind', async () => {
 		const { auth, account } = await setup();
-		const { action } = createChangePassword(throttleFor());
+		const { action } = createChangePassword();
 		const me = await account(false);
 		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const broken = {
@@ -474,7 +479,7 @@ describe('changing a password', () => {
 
 	it('is 404 without Better Auth (Local Mode) and sends nobody to Sign in', async () => {
 		const { auth } = await setup();
-		const { action, load } = createChangePassword(throttleFor());
+		const { action, load } = createChangePassword();
 		expect(
 			(await run(action, event(undefined, '', form(oldPassword, newPassword)).ev)).thrown
 		).toMatchObject({ status: 404 });
@@ -490,7 +495,7 @@ describe('changing a password', () => {
 
 	it('load of a post that ended every session shows the page signed out instead of redirecting', async () => {
 		const { auth, account } = await setup();
-		const { load } = createChangePassword(throttleFor());
+		const { load } = createChangePassword();
 		const me = await account(false);
 		await (await auth.$context).internalAdapter.deleteUserSessions(me.id);
 		expect(await load(event(auth, me.cookie, {}).ev)).toMatchObject({ signedOut: true });
@@ -498,7 +503,7 @@ describe('changing a password', () => {
 
 	it('load says whether the user must change their password', async () => {
 		const { auth, account } = await setup();
-		const { load } = createChangePassword(throttleFor());
+		const { load } = createChangePassword();
 		const forced = await account(true);
 		const free = await account(false);
 		expect(await load(event(auth, forced.cookie, {}).ev)).toEqual({

@@ -82,7 +82,7 @@ it('a fresh Instance without the test switch: choose Multi-user, create the admi
 	const out = await outcome(() =>
 		settingsActions.signout({
 			request: { headers: new Headers({ cookie: first }) },
-			locals: { auth: app.multiUser?.auth },
+			locals: { multiUser: app.multiUser },
 			cookies
 		} as never)
 	);
