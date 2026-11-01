@@ -41,7 +41,7 @@ def shortest_path(graph, start, goal):
     return route[::-1]
 ```
 
-This is the Chapter's own code, not lockdep's. Each node enters the queue once and each out-edge is looked at once, so with adjacency lists it is O(V + E) in the **worst case**, where Boost's page puts a search over a matrix at O(V2) ([adjacency_matrix.html, lines 47 to 50](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/adjacency_matrix.html#L47-L50)). A depth-first search also touches each node and edge once: the same bound, read off the loops.
+This is the Chapter's own code, not lockdep's. Each node enters the queue once and each out-edge is looked at once, so with adjacency lists it is O(V + E) in the **worst case**, where Boost's page puts a search over a matrix at O(V²) ([adjacency_matrix.html, lines 47 to 50](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/adjacency_matrix.html#L47-L50)). A depth-first search also touches each node and edge once: the same bound, read off the loops.
 
 ## Real queues are bounded
 

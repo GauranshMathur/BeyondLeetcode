@@ -126,8 +126,8 @@ Leads that changed.
 
 ### Claim 4.5. Brent's version is about 36 percent faster than Floyd's on average, and has a worst-case bound of the same order.
 - Link: [Brent 1980, abstract and section 3](https://maths-people.anu.edu.au/~brent/pd/rpb051i.pdf)
-- Quote: "We describe a cycle-finding algorithm which is about 36 percent faster than Floyd's (on the average)". Section 3: "3 max (m, n) <= W_F < 3(m + n)" (3.2); for Q = 2 and u = 0, "W_2 <= 2 max(m,n) + n < W_F" (3.10), "Thus, in this case B_Q is never slower than Floyd's algorithm." (The text layer shows `~` for <= and `We` for W_2.)
-- Type 3. Status: sourced; symbols in the bounds need an eye on the PDF. The Chapter writes the bounds as 3(m + n) and 2 max(m, n) + n and cites sections 3.2 and 3.10.
+- Quote: "We describe a cycle-finding algorithm which is about 36 percent faster than Floyd's (on the average)". Section 3: "3 max (m, n) ≤ W_F ≤ 3(m + n)" (3.2); for ϱ = 2 and u = 0, "W_ϱ ≤ 2 max (m, n) + n ≤ W_F" (3.10), "Thus, in this case B_ϱ is never slower than Floyd's algorithm." Section 1 prints Floyd's loop as "x := x₀; y := x₀; j := 0; repeat j := j+1; x := f(x); y := f(f(y)) until x = y." over three lines.
+- Type 3. Status: sourced. The PDF is a scan whose OCR text layer misreads the symbols (`~` for ≤, `We` for W_ϱ, `Q` for ϱ). On 2026-11-01 an agent read the quotes above off the page images of pages 1, 3 and 4 instead; the Chapter's "Q = 2", taken from the text layer, now reads ϱ = 2. That is an agent's check, not a human's: the queue line stays open. The Chapter writes the bounds as 3(m + n) and 2 max(m, n) + n and cites sections 3.2 and 3.10.
 
 ### Claim 4.6. `safe-length` can return more than the number of distinct nodes for a circular list.
 - Links: [src/fns.c L163-L175](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/src/fns.c#L163-L175), [doc/lispref/lists.texi L398-L405](https://github.com/emacs-mirror/emacs/blob/emacs-30.2/doc/lispref/lists.texi#L398-L405)
