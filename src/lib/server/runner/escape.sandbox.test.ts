@@ -1,6 +1,6 @@
 import { type ChildProcess, execFileSync } from 'node:child_process';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { sandboxConfig } from './config';
+import { engineCallTimeoutMs, sandboxConfig } from './config';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import type { RunnerPort } from './port';
@@ -357,7 +357,12 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		);
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
-		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs + 5000);
+		// The container's own hard stop (`containerTimeoutMs`) starts only once Docker answers the
+		// create call, which may take up to `engineCallTimeoutMs` on a slow hosted runner; 5 s of slack
+		// covers the rest. A real hang runs past all three.
+		expect(Date.now() - started).toBeLessThan(
+			sandboxConfig.containerTimeoutMs + engineCallTimeoutMs + 5000
+		);
 		await healthy();
 	});
 });
