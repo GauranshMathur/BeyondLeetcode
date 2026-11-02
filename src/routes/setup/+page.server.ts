@@ -5,7 +5,7 @@ import {
 	type RefusalCode,
 	refusalOf
 } from '#lib/server/identity/account-actions.js';
-import { hasForbiddenNameCharacter, isNameTooLong } from '#lib/server/identity/auth.js';
+import { hasForbiddenNameCharacter, isNameTooLong } from '#lib/server/identity/account-creation.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { InvalidFirstAdminError, MultiUserNotAvailableError } from '#lib/server/identity/setup.js';
 import { AccountsExistError, InstanceAlreadySetUpError } from '#lib/server/instance.js';

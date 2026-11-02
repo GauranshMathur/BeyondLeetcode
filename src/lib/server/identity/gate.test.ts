@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type GateInput, gate, safeNext } from './gate.ts';
+import { type GateInput, gate, isProtocolRelative, safeNext } from './gate.ts';
 
 const admin = { learnerId: 'a', displayName: 'Ada', role: 'admin' as const };
 const learner = { learnerId: 'l', displayName: 'Lee', role: 'learner' as const };
@@ -357,5 +357,19 @@ describe('safeNext', () => {
 
 	it.each(cases)('%j -> %j', (input, expected) => {
 		expect(safeNext(input)).toBe(expected);
+	});
+});
+
+describe('isProtocolRelative', () => {
+	it.each([
+		['//evil.com', true],
+		['/\\evil.com', true],
+		['/.//evil.example/x', true],
+		['/a/..//evil.example', true],
+		['/signin?error=SIGN_UP_CLOSED', false],
+		['/a/../b', false],
+		['/%2F/evil.com', false]
+	])('%j -> %j', (target, expected) => {
+		expect(isProtocolRelative(target)).toBe(expected);
 	});
 });
