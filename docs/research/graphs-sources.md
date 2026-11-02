@@ -49,8 +49,8 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 ### Claim 1.1. The deciding property of a graph is sparsity; E close to V squared is dense.
 - Link: [doc/graph_theory_review.html (Boost 1.85.0), lines 196 to 199](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/graph_theory_review.html#L196-L199)
 - Quote: "The primary property of a graph to consider when deciding which data structure to use is sparsity, the number of edges relative to the number of vertices in the graph."
-- Quote: "A graph where E is close to V2 is a dense graph"
-- Type 2. Status: sourced. The page italicises "sparsity" and "dense"; the quotes drop the markup. V2 in the page is V squared (a superscript).
+- Quote: "A graph where E is close to V² is a dense graph"
+- Type 2. Status: sourced. The page italicises "sparsity" and "dense"; the quotes drop the markup. The page writes V squared with a superscript, quoted here as V².
 
 ### Claim 1.2. Dense graphs suit the adjacency matrix, sparse graphs the adjacency list.
 - Link: [doc/graph_theory_review.html (Boost 1.85.0), lines 201 to 204](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/graph_theory_review.html#L201-L204)
@@ -63,12 +63,12 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 - Quote: "stores a Boolean value saying whether the edge (u,v) is in the graph."
 - Type 2. Status: sourced. The sub- and superscripts of the page's markup are dropped.
 
-### Claim 1.4. Any edge of a matrix is accessed, added or removed in O(1); adding a vertex is O(V2).
+### Claim 1.4. Any edge of a matrix is accessed, added or removed in O(1); adding a vertex is O(V²).
 - Link: [doc/graph_theory_review.html (Boost 1.85.0), lines 219 to 220](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/graph_theory_review.html#L219-L220)
 - Quote: "Any edge can be accessed, added, or removed in O(1) time."
 - Link: [doc/graph_theory_review.html (Boost 1.85.0), lines 220 to 222](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/graph_theory_review.html#L220-L222)
-- Quote: "To add or remove a vertex requires reallocating and copying the whole graph, an O(V2) operation."
-- Type 2. Status: sourced. Rendered text: V2 is V squared.
+- Quote: "To add or remove a vertex requires reallocating and copying the whole graph, an O(V²) operation."
+- Type 2. Status: sourced. The page writes V squared with a superscript, quoted here as V².
 
 ### Claim 1.5. adjacency_matrix sizes its array V x V (directed) or V(V+1)/2 (undirected), and finds a cell with u and v swapped so v is not greater.
 - Link: [include/boost/graph/adjacency_matrix.hpp (Boost 1.85.0), lines 561 to 562](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/include/boost/graph/adjacency_matrix.hpp#L561-L562)
@@ -86,10 +86,10 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 - Quote: "Edge insertion is O(1), though accessing any given edge is O(alpha), where alpha is the sparsity factor of the matrix (which is equal to the maximum number of out-edges for any vertex in the graph)."
 - Type 2. Status: sourced. The page italicises "alpha"; the words are the page's.
 
-### Claim 1.8. A matrix makes a search that traverses all out-edges O(V2) where a list makes it O(V + E).
+### Claim 1.8. A matrix makes a search that traverses all out-edges O(V²) where a list makes it O(V + E).
 - Link: [doc/adjacency_matrix.html (Boost 1.85.0), lines 47 to 50](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/adjacency_matrix.html#L47-L50)
-- Quote: "The second is that operations that traverse all the out-edges of each vertex (such as breadth-first search) run in O(V2) time instead of O(V + E) time for the adjacency list."
-- Type 2. Status: sourced. Rendered text: V2 is V squared.
+- Quote: "The second is that operations that traverse all the out-edges of each vertex (such as breadth-first search) run in O(V²) time instead of O(V + E) time for the adjacency list."
+- Type 2. Status: sourced. The page writes V squared with a superscript, quoted here as V².
 
 ### Claim 1.9. adjacency_list takes a selector for each vertex's edge container; setS and hash_setS disallow parallel edges; adding a repeat to such a graph adds nothing.
 - Link: [doc/adjacency_list.html (Boost 1.85.0), lines 101 to 102](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/adjacency_list.html#L101-L102)
@@ -162,7 +162,7 @@ Method. Code and documentation files in repositories were fetched with `curl` fr
 
 ### Claim 2.10. Breadth-first search is O(V + E) over a list.
 - Link: [doc/adjacency_matrix.html (Boost 1.85.0), lines 47 to 50](https://github.com/boostorg/graph/blob/a649be53bd90ab3365c6c0c44414c80907cfd8a1/doc/adjacency_matrix.html#L47-L50)
-- Quote: "The second is that operations that traverse all the out-edges of each vertex (such as breadth-first search) run in O(V2) time instead of O(V + E) time for the adjacency list."
+- Quote: "The second is that operations that traverse all the out-edges of each vertex (such as breadth-first search) run in O(V²) time instead of O(V + E) time for the adjacency list."
 - Type 2. Status: sourced. The O(V + E) for a depth-first search is the Chapter's own reading of the loops, said so in the text.
 
 ### Claim 2.11. lockdep's queue is bounded; the search can fail with BFS_EQUEUEFULL; only the first entry of a list is queued.
