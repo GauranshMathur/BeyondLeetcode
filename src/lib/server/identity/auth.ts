@@ -10,14 +10,6 @@ import { INVITE_LOG_PATTERNS } from './invites.ts';
 import { secretProblem } from './secret.ts';
 import { createSessionBinding } from './session-binding.ts';
 
-// The name rules live with account creation; the routes that import them from here keep working.
-export {
-	hasForbiddenNameCharacter,
-	isNameTooLong,
-	MAX_NAME_LENGTH,
-	providerName
-} from './account-creation.ts';
-
 /** Admitted: which Learner the new Account owns (default a fresh one) and its role (default learner). */
 export interface Admission {
 	learnerId?: string;

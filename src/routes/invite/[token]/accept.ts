@@ -1,10 +1,7 @@
 import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import type { AccountField, Refusal, RefusalCode } from '#lib/server/identity/account-actions.js';
-import {
-	MAX_NAME_LENGTH,
-	MAX_PASSWORD_LENGTH,
-	MIN_PASSWORD_LENGTH
-} from '#lib/server/identity/auth.js';
+import { MAX_NAME_LENGTH } from '#lib/server/identity/account-creation.js';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '#lib/server/identity/auth.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { clientAddress } from '#lib/server/identity/client-address.js';
 import { INVITE_COOKIE, INVITE_COOKIE_PATH } from '#lib/server/identity/invites.js';
