@@ -5,15 +5,10 @@ import type { BuildRef, Learner } from '#lib/server/learning/core.js';
 import { refuse, withLearningErrors } from '#lib/server/learning-http.js';
 import { signedIn } from '#lib/server/signed-in.js';
 import type { Actions, PageServerLoad } from './$types';
-
-/** The tabs of the left pane; the Problem is the default and has no `?tab`. */
-export type Tab = 'problem' | 'hints' | 'solution';
-
-const tabOf = (value: string | null): Tab =>
-	value === 'hints' || value === 'solution' ? value : 'problem';
+import { sectionOf } from './view';
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {
-	const tab = tabOf(url.searchParams.get('tab'));
+	const tab = sectionOf(url.searchParams.get('tab'));
 	return {
 		tab,
 		problem: await withLearningErrors(() => signedIn(locals).learning.problem(params.problemId)),
