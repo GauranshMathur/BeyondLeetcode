@@ -437,6 +437,72 @@ Release `R v1.19.1: Sprint 14 · Identity`, version 1.19.1 (patch, because no ca
 - `gh issue view` shows #226, #227, #228, #229, #230, #231 and #172 closed.
 - The orchestrator cuts 1.19.1 from the release PR and records the cut in `docs/releasing.md`. Releases stay `1.x`.
 
+**Status (2026-11-04):** exit met.
+- **Cards:** all 26 Sprint 14 cards are Done. The planned 24 grew by two, both in Release 1.19.1:
+  - C197, filed after C137's merge left two of `auth.ts`'s new imports out of the image;
+  - C202, the maintainer's card for `notify.yml`.
+
+  C131 joined the sprint and went back to Sprint 16 unmerged, with C201 filed for it (see below).
+- **CI:** `ci` is green on `main` at ad0ecaa, the last card's merge.
+- **Checks:**
+  - `auth.ts` is 324 lines, and its grep prints 0.
+  - `getSession(` appears only in `session-binding.ts`.
+  - The route greps for Better Auth, `console.error`, the test secret and route lists print nothing.
+  - signin.multi.e2e.ts asserts `frame-ancestors 'none'` and `X-Frame-Options: DENY` on the `/settings/__data.json` redirect.
+  - #226, #227, #228, #229, #230, #231 and #172 are closed.
+- **Release:** this card's merge carries `Release-As: 1.19.1`. The orchestrator then cuts 1.19.1 from the release PR and records the cut in `docs/releasing.md`.
+- **Reviews:** 22 cards had the two-reader security review (Fable and Codex) before merge: the 21 planned, plus C202. C197 is a test of the image's file list and had none. Several went back to their workers before merge, among them:
+  - C137: two of `auth.ts`'s new imports were missing from the image.
+  - C140: closed or invalid sign-up attempts were not charged to the throttle.
+  - C145: a provider's refusal answered 500 instead of 400, and a test had lost coverage.
+  - C146: tests that had lost coverage.
+  - C148: the secret check's message order.
+  - C202: a fork branch named `main` could pass the `workflow_run` filter, and signing failures were silent.
+
+| Card | PR | What landed |
+|---|---|---|
+| C132 | #411 | One Better Auth test harness (`createTestAuth`) with a fast hasher. |
+| C133 | #412 | `src/lib/server/logging.ts`: the redaction engine, the console patcher, `formatServerError` and `logFailure`, outside Identity. |
+| C134 | #410 | One route-policy table that the gate reads. |
+| C135 | #413 | One Local Learner id. |
+| C136 | #414 | One `currentSession` that applies every session rule. |
+| C137 | #416 | auth.ts and the hook use the logging module; Invites owns the invite patterns. |
+| C138 | #417 | `createIdentity` chooses the adapter, and the hook asks it once. |
+| C139 | #415 | Identity tests on the harness; test databases skip fsync. |
+| C140 | #423 | The account actions: one interface for signing in, signing up, changing a password and signing out. |
+| C141 | #421 | The credential generation moves from `createAuth` to session binding. |
+| C142 | #418 | Response headers come from the route-policy table. |
+| C143 | #419 | Route tests on the harness. |
+| C144 | #424 | The Multi-user adapter and the Users page checks read `currentSession`; the sweep joins session binding. |
+| C145 | #427 | Sign in signs in through the account actions. |
+| C146 | #426 | Sign up and Accept invite sign up through the account actions. |
+| C147 | #438 | A data request's gate redirect is answered in SvelteKit's JSON form, through `finish`, so it keeps the anti-framing headers and an extended session's cookie. |
+| C148 | #428 | One check for Better Auth's secret (`secret.ts`). |
+| C149 | #429 | Change password and Sign out go through the account actions. |
+| C150 | #425 | Setup uses the shared refusal map and limits, and logs failures by kind only. |
+| C151 | #422 | The Users page logs failures by kind only. |
+| C152 | #431 | Account creation leaves `createAuth`, which is wiring only. |
+| C153 | #430 | Locals carries one `multiUser` object; no route holds Better Auth's instance. |
+| C154 | #436 | One class-name rule for logs, and `name` and `code` read once, inside a guard that never throws. |
+| C155 | this PR | Exit check and `Release-As: 1.19.1`. |
+| C197 | #420 | A test that every module the image runs from source is copied into it. |
+| C202 | #437 | `.github/workflows/notify.yml`: one signed POST to the maintainer's Hermes host per push, merged PR, issue opened or closed, failed `ci` run on main, and a 30-minute tick. |
+
+Decided along the way:
+- **The maintainer's two questions:** the maintainer asked the orchestrator on 2026-11-04 to take the recommended option on any question that is not a hard call. Both are recorded on their cards and issues:
+  - #172: the JSON redirect form;
+  - #229: the stricter rule, `^[A-Za-z][A-Za-z0-9]{0,39}$`. An attacker-chosen name that fits the rule still prints; that is accepted.
+- **Chain order:** the `handle.ts` chain ran C138, C142, C153, C147, so C153 did not wait on the #172 question.
+- **C131:** the `sandbox-security-reviewer` failed widening the fork-bomb test's bound (#435, closed unmerged). The overrun is in the container's teardown, not its creation, and a wider bound would hide it.
+  - C131 went back to Sprint 16, re-specified to time the container's own lifetime.
+  - C201 (Sprint 16) investigates where the teardown time goes.
+- **C202's fork PRs:** a merged fork PR's run gets no secrets, so it sends no `pull_request` line. That is accepted; the merge's push still notifies.
+- **GraphQL budget:** the orchestrator, its workers and `RELEASE_PAT` share one account's GraphQL limit. Polling bursts failed release-please on main twice (runs 40842014062 and 41415985305); both passed on a re-run. CI is now watched over REST, and C200 (Sprint 15) makes release-please try once more after a rate-limit failure.
+
+For the maintainer:
+- **GitGuardian:** incidents 39252375 (the test harness's hasher) and 39260283 (a `password:` key in `setup/+page.server.ts`) are false positives. They reappear on merge commits from update-branch. Please mark them.
+- **The fork-bomb overrun** (C201) still flakes `sandbox` now and then. A re-run passes.
+
 **Not in the sprint:**
 - sign-in.ts's `AUTH_PAGES` (the pages a sign-in never returns to) stays a list of pathnames. #230's Direction names only the gate and the header step as readers of the table.
 - The layout's `BARE` list stays until Sprint 15's #246.
