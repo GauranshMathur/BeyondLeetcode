@@ -16,7 +16,6 @@ const saveRead: SubmitFunction =
 		if (result.type === 'success' && !navigating.to) await update();
 	};
 
-let article = $state<HTMLElement>();
 let endForm = $state<HTMLFormElement>();
 let sentinel = $state<HTMLElement>();
 
@@ -34,28 +33,6 @@ $effect(() => {
 	});
 	observer.observe(sentinel);
 	return () => observer.disconnect();
-});
-
-// Code, tables and figures scroll sideways inside their own box on a phone, so the box takes the
-// keyboard focus and has a name. The Chapter's Markdown carries neither; idempotent, so a re-run is harmless.
-$effect(() => {
-	void chapter.bodyHtml;
-	if (!article) return;
-	const label = (el: Element, name: string) => {
-		el.setAttribute('tabindex', '0');
-		el.setAttribute('role', 'group');
-		el.setAttribute('aria-label', name);
-	};
-	for (const pre of article.querySelectorAll('pre')) label(pre, 'Code block');
-	for (const figure of article.querySelectorAll('figure')) label(figure, 'Figure');
-	for (const table of article.querySelectorAll('table')) {
-		if (table.parentElement?.classList.contains('scrollbox')) continue;
-		const box = document.createElement('div');
-		box.className = 'scrollbox';
-		label(box, 'Table');
-		table.before(box);
-		box.append(table);
-	}
 });
 </script>
 
@@ -89,7 +66,7 @@ $effect(() => {
 			<h1>{chapter.title}</h1>
 		</header>
 
-		<article class="prose" bind:this={article}>{@html chapter.bodyHtml}</article>
+		<article class="prose">{@html chapter.bodyHtml}</article>
 
 		<div bind:this={sentinel} aria-hidden="true"></div>
 		<form method="POST" action="?/reachEnd" use:enhance={saveRead} bind:this={endForm} hidden></form>
