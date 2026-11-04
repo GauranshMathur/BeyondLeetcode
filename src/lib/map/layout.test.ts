@@ -1,5 +1,5 @@
-import { expect, it } from 'vitest';
-import { layoutMap, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
+import { describe, expect, it } from 'vitest';
+import { BAR_WIDTH, fillWidth, layoutMap, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
 
 const topic = (id: string, prerequisites: string[] = []) => ({
 	id,
@@ -47,4 +47,19 @@ it('ignores a Prerequisite that is not in the map rather than crashing', () => {
 	const { nodes, edges } = layoutMap([topic('a', ['ghost'])]);
 	expect(nodes[0].level).toBe(0);
 	expect(edges).toEqual([]);
+});
+
+describe('fillWidth', () => {
+	it('is empty with no Core Problems solved', () => {
+		expect(fillWidth({ coreSolved: 0, coreTotal: 4 })).toBe(0);
+	});
+	it('is the solved share of the bar with some solved', () => {
+		expect(fillWidth({ coreSolved: 1, coreTotal: 4 })).toBe(BAR_WIDTH / 4);
+	});
+	it('fills the bar with all solved', () => {
+		expect(fillWidth({ coreSolved: 4, coreTotal: 4 })).toBe(BAR_WIDTH);
+	});
+	it('is empty for a Topic with no Core Problems', () => {
+		expect(fillWidth({ coreSolved: 0, coreTotal: 0 })).toBe(0);
+	});
 });
