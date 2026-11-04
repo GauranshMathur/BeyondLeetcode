@@ -88,3 +88,11 @@ export function layoutMap(topics: readonly MapTopic[]): MapLayout {
 		height: MARGIN_Y * 2 + (maxLevel + 1) * NODE_HEIGHT + maxLevel * LEVEL_GAP
 	};
 }
+
+/** Width in px of a Topic's progress bar, as drawn on the Map and in the phone column. */
+export const BAR_WIDTH = 112;
+
+/** Width in px of the filled part of a Topic's bar: its Core Problems solved, out of its Core total. */
+export function fillWidth(topic: Pick<MapTopic, 'coreSolved' | 'coreTotal'>): number {
+	return topic.coreTotal ? (BAR_WIDTH * topic.coreSolved) / topic.coreTotal : 0;
+}
