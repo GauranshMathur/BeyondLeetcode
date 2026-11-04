@@ -190,7 +190,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 	}
-	@media (min-width: 901px), (max-width: 767.98px) {
+	@media (width > 900px), (max-width: 767.98px) {
 		.left {
 			display: flex;
 			flex-direction: column;

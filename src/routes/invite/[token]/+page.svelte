@@ -270,14 +270,23 @@ const describedBy = (field: 'name' | 'email' | 'password') =>
 		color: var(--ink);
 		white-space: nowrap;
 	}
+	/* Below 1100px the 600px form column would leave the side panel too narrow for its content: the two share the width. */
+	@media (max-width: 1100px) {
+		main {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.figure {
+			padding: 48px 32px;
+		}
+	}
 	/* Mobile follows the Sign in board: one column, no side panel, a stretched button and the link under a rule. */
-	@media (max-width: 900px) {
+	@media (max-width: 767.98px) {
 		main {
 			grid-template-columns: minmax(0, 1fr);
 			min-height: 0;
 		}
 		.left {
-			padding: 32px 20px 0;
+			padding: 32px var(--size-gutter) 0;
 		}
 		.block {
 			margin: 0;
@@ -288,8 +297,8 @@ const describedBy = (field: 'name' | 'email' | 'password') =>
 			padding-bottom: 4px;
 		}
 		h1 {
-			font-size: 40px;
-			line-height: 1.08;
+			font-size: var(--size-h1-phone);
+			line-height: var(--leading-h1-phone);
 			letter-spacing: -0.01em;
 		}
 		.lede {
@@ -299,7 +308,7 @@ const describedBy = (field: 'name' | 'email' | 'password') =>
 		input,
 		button,
 		.outline {
-			height: 48px;
+			height: var(--size-field);
 		}
 		input {
 			font-size: 18px;

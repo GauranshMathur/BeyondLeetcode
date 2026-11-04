@@ -113,7 +113,7 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		border-top: 1px solid var(--ink);
 	}
 	/* Wide screens: a long result takes at most half the pane and scrolls inside the console. */
-	@media (min-width: 901px) {
+	@media (width > 900px) {
 		.console {
 			max-height: 50%;
 			min-height: 0;
