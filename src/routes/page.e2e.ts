@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
+import { expectBarHeight, expectNoSidewaysScroll, expectTargets, phone } from '../lib/e2e-phone.ts';
 import { gotoHydrated } from '../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
@@ -36,8 +37,8 @@ test('an Unlocked Topic can be reached with the keyboard', async ({ page }) => {
 	await expect(stacks).toBeFocused();
 });
 
-test.describe('on a phone', () => {
-	test.use({ viewport: { width: 390, height: 844 } });
+test.describe('the Map on a phone', () => {
+	test.use(phone);
 
 	test('the Map is one column of Topics in build order, each with its state and its prerequisites', async ({
 		page
@@ -80,25 +81,17 @@ test.describe('on a phone', () => {
 		page
 	}) => {
 		await gotoHydrated(page, '/');
-		const overflow = await page.evaluate(
-			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-		);
-		expect(overflow).toBeLessThanOrEqual(0);
+		await expectNoSidewaysScroll(page);
 
-		const heights = await page
-			.getByRole('link')
-			.evaluateAll((els) =>
-				els.filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect().height)
-			);
-		expect(heights.length).toBeGreaterThan(0);
-		for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
+		await expect(page.getByRole('link').first()).toBeVisible();
+		await expectTargets(page, 44);
 	});
 	test('the Local header is the 56 px bar: BLC to the Map and one Settings link, nothing sideways', async ({
 		page
 	}) => {
 		await gotoHydrated(page, '/');
 		const header = page.locator('header');
-		expect((await header.boundingBox())?.height).toBe(56); // the 56 px bar, rule included
+		await expectBarHeight(header, 56); // the 56 px bar, rule included
 
 		const nav = page.getByRole('navigation', { name: 'Primary' });
 		await expect(page.getByRole('link', { name: 'BLC' })).toHaveAttribute('href', '/');
@@ -111,13 +104,8 @@ test.describe('on a phone', () => {
 		);
 		await expect(nav.getByRole('button', { name: 'Sign out' })).toBeHidden();
 
-		for (const link of await header.getByRole('link').all()) {
-			expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-		}
-		const overflow = await page.evaluate(
-			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-		);
-		expect(overflow).toBeLessThanOrEqual(0);
+		await expectTargets(header, 44);
+		await expectNoSidewaysScroll(page);
 
 		// On Settings the one link is marked.
 		await nav.getByRole('link', { name: 'Settings' }).click();
@@ -132,7 +120,7 @@ test.describe('on a phone', () => {
 // C51: the Sprint 5 exit. Tests tagged @mobile run again in the "mobile" project (playwright.config.ts) at 390 x 844.
 // Its own Learner, so it never meets another file's leftovers.
 test.describe('the Map on a phone, as a flow', () => {
-	test.use({ storageState: asLearner('e2e-page-flow'), viewport: { width: 390, height: 844 } });
+	test.use({ storageState: asLearner('e2e-page-flow') });
 
 	test('Map to an Unlocked Topic by tapping it', { tag: '@mobile' }, async ({ page }) => {
 		await gotoHydrated(page, '/');
