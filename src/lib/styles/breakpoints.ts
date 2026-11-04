@@ -21,7 +21,8 @@ export const ANYWHERE = [PHONE] as const;
 
 /** A query tied to the only files that may use it. */
 export const TIED: Record<string, readonly string[]> = {
-	[PROBLEM_MIDDLE]: PROBLEM,
+	// The Problem screen's bar lives in AppHeader since C167, with its middle-width rules.
+	[PROBLEM_MIDDLE]: [...PROBLEM, 'src/lib/header/AppHeader.svelte'],
 	[PROBLEM_WIDE]: PROBLEM,
 	[NARROW_900]: ['src/routes/setup/+page.svelte', 'src/routes/problems/[problemId]/+page.svelte'],
 	[NARROW_800]: [
