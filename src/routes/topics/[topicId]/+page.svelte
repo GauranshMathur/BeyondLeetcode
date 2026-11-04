@@ -1,4 +1,5 @@
 <script lang="ts">
+import ProblemTable from '#lib/problems/ProblemTable.svelte';
 import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();
@@ -66,56 +67,24 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 				</div>
 
 				{#if chapter.problems.length > 0}
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">problem</th>
-								<th scope="col">set</th>
-								<th scope="col" class="status">status</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each chapter.problems as problem (problem.id)}
-								<tr>
-									<td class="title"><a class="ptitle" href="/problems/{problem.id}">{problem.title}</a></td>
-									<td>
-										{#if problem.kind === 'Core'}
-											<span class="core">core</span>
-										{:else}
-											<span class="muted upper">extra</span>
-											{#if problem.parentProblemId}
-												<span class="muted">· off {titles.get(problem.parentProblemId) ?? problem.parentProblemId}</span>
-											{/if}
-										{/if}
-									</td>
-									<td class="status muted">{problem.status === 'Untouched' ? '—' : problem.status.toLowerCase()}</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-					<ol class="rows">
-						{#each chapter.problems as problem, j (problem.id)}
-							<li>
-								<a href="/problems/{problem.id}">
-									<span class="muted">{i + 1}.{j + 1}</span>
-									<span class="cell">
-										<span class="rtitle">{problem.title}</span>
-										<span class="mark">
-											{#if problem.kind === 'Core'}
-												<span class="core">core</span><span class="step">· step {steps.get(problem.id)}</span>
-											{:else}
-												<span class="muted upper">extra</span>
-												{#if problem.parentProblemId}
-													<span class="muted step">· off step {steps.get(problem.parentProblemId)}</span>
-												{/if}
-											{/if}
-										</span>
-									</span>
-									<span class="muted">{problem.status === 'Untouched' ? '—' : problem.status.toLowerCase()}</span>
-								</a>
-							</li>
-						{/each}
-					</ol>
+					<ProblemTable
+						problems={chapter.problems}
+						labels={{ problem: 'problem', set: 'set', status: 'status' }}
+						setText={(p) =>
+							p.kind === 'Core'
+								? 'core'
+								: p.parentProblemId
+									? `extra · off ${titles.get(p.parentProblemId) ?? p.parentProblemId}`
+									: 'extra'}
+						phoneSetText={(p) =>
+							p.kind === 'Core'
+								? `core · step ${steps.get(p.id)}`
+								: p.parentProblemId
+									? `extra · off step ${steps.get(p.parentProblemId)}`
+									: 'extra'}
+						numberText={(_, j) => `${i + 1}.${j + 1}`}
+						statusText={(p) => (p.status === 'Untouched' ? '—' : p.status.toLowerCase())}
+					/>
 				{/if}
 			</div>
 		</section>
@@ -129,8 +98,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 	.mono,
 	.eyebrow,
 	.crumbs,
-	aside,
-	table {
+	aside {
 		font-family: var(--font-mono);
 	}
 	.muted {
@@ -267,8 +235,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		color: var(--ink);
 		text-decoration: none;
 	}
-	h2 a:hover,
-	.ptitle:hover {
+	h2 a:hover {
 		text-decoration: underline;
 		text-decoration-color: var(--accent);
 		text-underline-offset: 6px;
@@ -289,48 +256,6 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 	.marker.filled {
 		background: var(--ink);
 	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 13px;
-	}
-	th {
-		text-align: left;
-		padding: 0 16px 12px 0;
-		font-weight: 500;
-		color: var(--muted);
-		border-bottom: 1px solid var(--ink);
-	}
-	td {
-		padding: 20px 16px 20px 0;
-		border-bottom: 1px solid var(--rule);
-	}
-	tr:last-child td {
-		border-bottom-color: var(--ink);
-	}
-	td.title {
-		padding-top: 10px;
-		padding-bottom: 10px;
-	}
-	.status {
-		text-align: right;
-		padding-right: 0;
-	}
-	.ptitle {
-		color: var(--ink);
-		font-family: var(--font-serif);
-		font-size: 21px;
-		text-decoration: none;
-		display: inline-block;
-		padding: 10px 0;
-	}
-	.core {
-		font-weight: 500;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		border-bottom: 2px solid var(--ink);
-		padding-bottom: 2px;
-	}
 	.crumbs a {
 		/* 44px target without growing the row. */
 		display: inline-block;
@@ -338,11 +263,6 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		margin: -12px 0;
 		line-height: 20px;
 	}
-	.upper {
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-	.rows,
 	.only-mobile {
 		display: none;
 	}
@@ -382,8 +302,7 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		.chapter {
 			padding-top: 56px;
 		}
-		.num,
-		table {
+		.num {
 			display: none;
 		}
 		.only-mobile {
@@ -410,48 +329,6 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 		.rule-note {
 			font-size: 16px;
 			line-height: 1.5;
-		}
-		.rows {
-			display: block;
-			list-style: none;
-			margin: 0;
-			padding: 0;
-			border-top: 1px solid var(--ink);
-			font-family: var(--font-mono);
-			font-size: 13px;
-		}
-		.rows li {
-			border-bottom: 1px solid var(--rule);
-		}
-		.rows li:last-child {
-			border-bottom-color: var(--ink);
-		}
-		.rows a {
-			display: grid;
-			grid-template-columns: 36px minmax(0, 1fr) auto;
-			column-gap: 12px;
-			align-items: baseline;
-			box-sizing: border-box;
-			min-height: 44px;
-			padding: 16px 0;
-			color: var(--ink);
-			text-decoration: none;
-		}
-		.cell {
-			display: flex;
-			flex-direction: column;
-			gap: 8px;
-		}
-		.rtitle {
-			font-family: var(--font-serif);
-			font-size: 20px;
-			line-height: 1.3;
-		}
-		.mark {
-			font-size: 12px;
-		}
-		.mark .step {
-			padding-left: 10px;
 		}
 	}
 </style>

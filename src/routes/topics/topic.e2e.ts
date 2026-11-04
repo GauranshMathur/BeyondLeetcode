@@ -56,14 +56,15 @@ test.describe('the Topic on a phone', () => {
 		await expect(page.getByText('not read', { exact: true })).toHaveCount(1);
 		await expect(page.locator('.read', { hasText: /^\s*read\s*$/ })).toHaveCount(1);
 
-		const rows = page.locator('.rows a');
+		const rows = page.locator('table.problems tbody tr');
 		expect(await rows.count()).toBeGreaterThan(1);
-		await expect(rows.first()).toContainText('core');
-		await expect(rows.first()).toContainText('step 01');
-		await expect(page.locator('.rows').getByText('extra').first()).toBeVisible();
+		await expect(rows.first()).toContainText('1.1');
+		await expect(rows.first()).toContainText('core · step 01');
+		await expect(page.locator('table.problems').getByText('extra · off step').first()).toBeVisible();
 		await expect(rows.first()).toContainText('—');
+		await expect(rows.first().getByRole('link')).toHaveText('Push and size');
 
-		await expectTargets(page.locator('.rows'), 44);
+		await expectTargets(page.locator('table.problems'), 44);
 		await expectNoSidewaysScroll(page);
 	});
 });
