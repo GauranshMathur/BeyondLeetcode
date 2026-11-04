@@ -2,7 +2,14 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { ANYWHERE, breakpointProblems, PHONE, PROBLEM_MIDDLE, PROBLEM_WIDE, TIED } from './breakpoints';
+import {
+	ANYWHERE,
+	breakpointProblems,
+	PHONE,
+	PROBLEM_MIDDLE,
+	PROBLEM_WIDE,
+	TIED
+} from './breakpoints';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 
@@ -23,9 +30,12 @@ describe('the media queries', () => {
 	});
 
 	it('refuses a screen that writes 768px', () => {
-		expect(breakpointProblems('src/routes/x/+page.svelte', '<style>@media (max-width: 768px) { a {} }</style>')).toEqual([
-			'src/routes/x/+page.svelte: "(max-width: 768px)" is not a named breakpoint'
-		]);
+		expect(
+			breakpointProblems(
+				'src/routes/x/+page.svelte',
+				'<style>@media (max-width: 768px) { a {} }</style>'
+			)
+		).toEqual(['src/routes/x/+page.svelte: "(max-width: 768px)" is not a named breakpoint']);
 	});
 
 	it('refuses a tied query outside its files', () => {
@@ -38,12 +48,20 @@ describe('the media queries', () => {
 		const file = 'src/routes/problems/[problemId]/+page.svelte';
 		expect(breakpointProblems('src/routes/x/+page.svelte', `@media ${PHONE} {`)).toEqual([]);
 		expect(breakpointProblems(file, '@media (width > 900px), (max-width: 767.98px) {')).toEqual([]);
-		expect(breakpointProblems('src/routes/x/+page.svelte', '@media (width > 900px), (max-width: 767.98px) {')).toHaveLength(1);
+		expect(
+			breakpointProblems(
+				'src/routes/x/+page.svelte',
+				'@media (width > 900px), (max-width: 767.98px) {'
+			)
+		).toHaveLength(1);
 	});
 
 	it('every named query is used by each file it is tied to, or at least one', () => {
-		const sources = styleFiles(join(root, 'src')).map((f) => readFileSync(join(root, f), 'utf8')).join('\n');
-		for (const query of [...ANYWHERE, ...Object.keys(TIED)]) expect(sources, query).toContain(query);
+		const sources = styleFiles(join(root, 'src'))
+			.map((f) => readFileSync(join(root, f), 'utf8'))
+			.join('\n');
+		for (const query of [...ANYWHERE, ...Object.keys(TIED)])
+			expect(sources, query).toContain(query);
 	});
 });
 
@@ -65,8 +83,8 @@ describe('the Problem screen breakpoints', () => {
 			expect(css).not.toMatch(/min-width:\s*90\d/);
 			expect(css, file).toContain(PROBLEM_WIDE);
 		}
-		expect(readFileSync(join(root, 'src/routes/problems/[problemId]/ProblemWorkspace.svelte'), 'utf8')).toContain(
-			PROBLEM_MIDDLE
-		);
+		expect(
+			readFileSync(join(root, 'src/routes/problems/[problemId]/ProblemWorkspace.svelte'), 'utf8')
+		).toContain(PROBLEM_MIDDLE);
 	});
 });

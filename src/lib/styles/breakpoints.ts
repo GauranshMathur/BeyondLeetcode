@@ -53,7 +53,8 @@ export function breakpointProblems(file: string, source: string): string[] {
 			if ((ANYWHERE as readonly string[]).includes(query)) continue;
 			const files = TIED[query];
 			if (!files) problems.push(`${file}: "${query}" is not a named breakpoint`);
-			else if (!files.includes(file)) problems.push(`${file}: "${query}" is tied to ${files.join(', ')}`);
+			else if (!files.includes(file))
+				problems.push(`${file}: "${query}" is tied to ${files.join(', ')}`);
 		}
 	}
 	return problems;
