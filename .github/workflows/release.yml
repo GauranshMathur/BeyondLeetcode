@@ -19,17 +19,38 @@ jobs:
   release-please:
     runs-on: ubuntu-24.04
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      # From the second attempt when it ran, else from the first. The second runs only after the
+      # first failed (and so had no outputs), and a second failure fails the job.
+      release_created: ${{ steps.retry.outcome == 'skipped' && steps.release.outputs.release_created || steps.retry.outputs.release_created }}
+      tag_name: ${{ steps.retry.outcome == 'skipped' && steps.release.outputs.tag_name || steps.retry.outputs.tag_name }}
     steps:
       # Accumulates conventional commits into a release PR and keeps it fresh. Nothing merges it:
       # the orchestrator cuts each release by merging the PR by hand (docs/releasing.md). That
       # push runs this step again, which tags the release and writes CHANGELOG.md.
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
+        # A failure here is retried once below; the job still fails if the retry fails.
+        continue-on-error: true
         with:
           # Opened with RELEASE_PAT, not the built-in token: workflows do not run on PRs the
           # built-in token creates, and the main ruleset requires those checks.
+          token: ${{ secrets.RELEASE_PAT }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # The failures seen (runs 40842014062, 41415985305) were "API rate limit already exceeded for
+      # user ID ..." after a few seconds: RELEASE_PAT's hourly budget is shared with the
+      # orchestrator and its workers. Both passed on a manual re-run minutes later, so wait 10
+      # minutes (long enough for load to ease, short enough to cost little) and run it once more.
+      - name: Wait before retrying release-please
+        if: steps.release.outcome == 'failure'
+        run: |
+          echo "::warning::release-please failed; retrying once in 10 minutes"
+          sleep 600
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: retry
+        if: steps.release.outcome == 'failure'
+        with:
           token: ${{ secrets.RELEASE_PAT }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
