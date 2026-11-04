@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import { renderMarkdown } from '../../lib/server/markdown.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
@@ -88,7 +89,8 @@ test.describe('a link clicked while the Chapter is being marked Read', () => {
 });
 
 // C47: the Chapter below 768 px. The fixture Chapters carry no code, table or margin note, so the
-// document is served with a code block and a table added to the body; the rest is the real page.
+// document is served with a code block and a table added to the body, built by renderMarkdown, so the test checks
+// what the server sends; the rest is the real page.
 test.describe('the Chapter on a phone', () => {
 	test.use({
 		storageState: asLearner('e2e-chapter-mobile'),
@@ -96,7 +98,12 @@ test.describe('the Chapter on a phone', () => {
 	});
 
 	const longLine = `bisect.insort(self.scores, (score, player))${'  # O(n) shift'.repeat(8)}`;
-	const extra = `<pre><code>${longLine}</code></pre><table><thead><tr><th>operation</th><th>sorted array</th><th>balanced BST</th><th>skip list</th></tr></thead><tbody><tr><td>update with a long label to force width</td><td>O(n)</td><td>O(log n)</td><td>O(log n) expected</td></tr></tbody></table>`;
+	const table = [
+		'| operation | sorted array | balanced BST | skip list |',
+		'| --- | --- | --- | --- |',
+		'| update with a long label to force width | O(n) | O(log n) | O(log n) expected |'
+	].join('\n');
+	const extra = renderMarkdown(`\`\`\`python\n${longLine}\n\`\`\`\n\n${table}\n`);
 
 	test.beforeEach(async ({ page }) => {
 		await page.route('**/chapters/stacks-undo-log', async (route) => {
