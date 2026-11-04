@@ -21,4 +21,19 @@ describe('the Problem screen breakpoints', () => {
 		expect(css).toContain('@media (max-width: 767.98px)');
 		expect(css).toContain('@media (width > 767.98px) and (width <= 900px)');
 	});
+
+	it('the wide layout starts exactly where the middle layout ends, at 900px', () => {
+		for (const file of files) {
+			const css = readFileSync(new URL(file, import.meta.url), 'utf8');
+			expect(css).not.toContain('901px');
+			expect(css).not.toMatch(/min-width:\s*90\d/);
+		}
+		const wide = (file: string) =>
+			readFileSync(new URL(file, import.meta.url), 'utf8').match(
+				/@media[^{]*\(width > 900px\)[^{]*/g
+			);
+		for (const file of files) expect(wide(file), file).not.toBeNull();
+		const css = readFileSync(new URL('ProblemWorkspace.svelte', import.meta.url), 'utf8');
+		expect(css).toContain('(width <= 900px)');
+	});
 });
