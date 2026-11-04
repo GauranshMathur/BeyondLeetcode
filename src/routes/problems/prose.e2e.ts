@@ -14,7 +14,7 @@ const longLine = `bisect.insort(self.scores, (score, player))${'  # O(n) shift'.
 const table = [
 	'| operation | sorted array | balanced BST | skip list |',
 	'| --- | --- | --- | --- |',
-	'| update with a long label to force width | O(n) | O(log n) | O(log n) expected |'
+	'| update_with_an_unbreakable_label_that_forces_the_table_wider_than_a_phone | O(n) | O(log n) | O(log n) expected |'
 ].join('\n');
 const extra = renderMarkdown(`\`\`\`python\n${longLine}\n\`\`\`\n\n${table}\n`);
 
