@@ -1,5 +1,6 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
+import { expectNoSidewaysScroll, phone } from '../../lib/e2e-phone.ts';
 import { createDb } from '../../lib/server/db.ts';
 import { gotoHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
 import { type FreshServer, startFreshServer } from './fresh-server.ts';
@@ -200,12 +201,8 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 	);
 });
 
-/** True when the page is wider than the window: the sideways scroll the phone layout must not have. */
-const scrollsSideways = (page: Page) =>
-	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-
-onOpen.describe('Sign in on a phone (390 x 844)', () => {
-	onOpen.use({ viewport: { width: 390, height: 844 } });
+onOpen.describe('Sign in on a phone', () => {
+	onOpen.use(phone);
 
 	onOpen(
 		'is one column of 48 px fields and full-width buttons, without the figure or sideways scroll',
@@ -230,7 +227,7 @@ onOpen.describe('Sign in on a phone (390 x 844)', () => {
 			const signup = await page.getByRole('link', { name: 'Create an account' }).boundingBox();
 			expect(forgot?.y).toBeGreaterThanOrEqual((button?.y ?? 0) + (button?.height ?? 0));
 			expect(signup?.y).toBeGreaterThan(forgot?.y ?? 0);
-			expect(await scrollsSideways(page)).toBe(false);
+			await expectNoSidewaysScroll(page);
 		}
 	);
 
@@ -258,7 +255,7 @@ onOpen.describe('Sign in on a phone (390 x 844)', () => {
 			const button = await page.getByRole('button', { name: 'Sign in →' }).boundingBox();
 			expect(shown?.y).toBeGreaterThanOrEqual((password?.y ?? 0) + (password?.height ?? 0));
 			expect(shown?.y).toBeLessThan(button?.y ?? 0);
-			expect(await scrollsSideways(page)).toBe(false);
+			await expectNoSidewaysScroll(page);
 
 			await signInWith(page, people.narrow.email, PASSWORD);
 			await expect(page).toHaveURL('/');
@@ -267,8 +264,6 @@ onOpen.describe('Sign in on a phone (390 x 844)', () => {
 });
 
 base.describe('Sign in on a phone, on an Instance with GitHub and Google', () => {
-	base.use({ viewport: { width: 390, height: 844 } });
-
 	base('stacks a full-width button per provider, with no sideways scroll', async ({ browser }) => {
 		base.setTimeout(120_000);
 		// The fresh server inherits this process's environment; the variables are set only while it starts.
@@ -286,7 +281,7 @@ base.describe('Sign in on a phone, on an Instance with GitHub and Google', () =>
 			for (const name of names) delete process.env[name];
 		}
 		try {
-			const context = await browser.newContext({ baseURL: server.url });
+			const context = await browser.newContext({ baseURL: server.url, ...phone });
 			const page = await context.newPage();
 			await gotoHydrated(page, '/signin');
 
@@ -296,7 +291,7 @@ base.describe('Sign in on a phone, on an Instance with GitHub and Google', () =>
 				expect(box?.height, name).toBe(48);
 				expect(box?.width, name).toBe(form?.width);
 			}
-			expect(await scrollsSideways(page)).toBe(false);
+			await expectNoSidewaysScroll(page);
 			await context.close();
 		} finally {
 			await server.stop();
@@ -432,7 +427,7 @@ onOpen.describe('a signed-in user', () => {
 		await gotoHydrated(page, '/signin');
 		await signInWith(page, people.phone.email, PASSWORD);
 		await expect(page).toHaveURL('/');
-		await page.setViewportSize({ width: 390, height: 844 });
+		await page.setViewportSize(phone.viewport);
 
 		await gotoHydrated(page, '/');
 		await expect(page.getByRole('navigation', { name: NAV })).toContainText(people.phone.name);
@@ -578,9 +573,7 @@ base.describe('a fresh Instance started like a released one, with no test switch
 
 // C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts). It uses the
 // Multi-user server on 4174 and its admin, like the tests above; the project depends on "setup-multi" for that.
-base.describe('signing in on a phone, as a flow', () => {
-	base.use({ baseURL: 'http://localhost:4174', viewport: { width: 390, height: 844 } });
-
+base.describe('Sign in on a phone, as a flow', () => {
 	base(
 		'the admin signs in, is taken to the page they asked for, and signs out',
 		{ tag: '@mobile' },
