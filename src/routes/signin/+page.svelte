@@ -3,6 +3,11 @@ import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
 
+// Bound to state seeded from the server's value, so what a visitor types before hydration is kept and a
+// no-JS or failed POST still repopulates from `form`.
+// svelte-ignore state_referenced_locally
+let email = $state(form?.email ?? '');
+
 // A wrong sign-in marks both fields and puts its one message under the password, as the board draws it.
 // Any other failure has nothing to do with the fields, so its message goes above the button.
 const wrong = $derived(form?.wrong === true);
@@ -28,7 +33,7 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 					name="email"
 					autocomplete="email"
 					required
-					value={form?.email ?? ''}
+					bind:value={email}
 					aria-invalid={wrong ? 'true' : undefined}
 					aria-describedby={wrong ? 'si-err' : undefined}
 				/>
