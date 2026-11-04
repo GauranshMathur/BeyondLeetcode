@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { phone } from './src/lib/e2e-phone';
 
 // Two servers, each on a fresh temp database, migrated here: the app never migrates on start (C8a owns that).
 // The content is the catalogue fixture. The Runner is scripted (no Docker): real execution is covered by the
@@ -96,21 +97,23 @@ export default defineConfig({
 			use: { baseURL: 'http://localhost:4174' },
 			dependencies: ['setup-multi']
 		},
-		// C51: a phone (390 x 844, touch) walks one flow on each of the Map, Topic, Chapter, Problem and Sign in
-		// screens: the tests tagged @mobile in their files. Each has its own Learner, so none meets another's
-		// leftovers. The Sign in flow uses the Multi-user server (4174) and its admin, hence "setup-multi".
+		// A phone (src/lib/e2e-phone.ts) walks the tests tagged @mobile, wherever they are: Local files on the
+		// first server, Multi-user files on the second. Each has its own Learner, so none meets another's leftovers.
 		{
 			name: 'mobile',
-			testMatch: [
-				'**/routes/page.e2e.ts',
-				'**/topics/topic.e2e.ts',
-				'**/chapters/chapter.e2e.ts',
-				'**/problems/problem.e2e.ts',
-				'**/signin/signin.multi.e2e.ts'
-			],
+			testMatch: '**/*.e2e.{ts,js}',
+			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts', '**/convert.e2e.ts'],
 			grep: /@mobile/,
-			use: { viewport: { width: 390, height: 844 }, hasTouch: true },
-			dependencies: ['setup', 'setup-multi']
+			use: phone,
+			dependencies: ['setup']
+		},
+		{
+			name: 'mobile-multi',
+			testMatch: '**/*.multi.e2e.ts',
+			testIgnore: '**/setup.multi.e2e.ts',
+			grep: /@mobile/,
+			use: { ...phone, baseURL: 'http://localhost:4174' },
+			dependencies: ['setup-multi']
 		}
 	]
 });
