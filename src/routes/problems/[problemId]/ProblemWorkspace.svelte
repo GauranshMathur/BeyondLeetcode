@@ -1,11 +1,13 @@
 <script lang="ts">
 import { onDestroy, type Snippet, untrack } from 'svelte';
 import CodeEditor from '#lib/editor/CodeEditor.svelte';
+import AppHeader from '#lib/header/AppHeader.svelte';
 import { LANGUAGES, type Language, languageById } from '#lib/languages.js';
 import { filesDigest, type Reply, toReply } from '#lib/problem-wire.js';
 import type { ProblemView, SolutionView } from '#lib/server/learning/core.js';
 import { type ActionResult, deserialize } from '$app/forms';
 import { refreshAll } from '$app/navigation';
+import { page } from '$app/state';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
 import { afterOutcome, PANES, type ViewState } from './view';
@@ -165,16 +167,14 @@ const label: Record<SaveState, string> = {
 	<button type="button" class="run submit mono" disabled={busy} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
 {/snippet}
 
+{#snippet crumbs()}
+	<nav class="crumbs" aria-label="Breadcrumb">
+		<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
+	</nav>
+{/snippet}
+
 <div class="page" data-tab={view.pane}>
-	<header class="workspace-bar">
-		<div class="lead">
-			<a class="brand" href="/">BLC</a>
-			<nav class="crumbs" aria-label="Breadcrumb">
-				<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
-			</nav>
-		</div>
-		<div class="actions bar-actions">{@render runAndSubmit()}</div>
-	</header>
+	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
 	<div class="grid">
 		<div data-pane="problem">{@render statement()}</div>
@@ -259,32 +259,6 @@ const label: Record<SaveState, string> = {
 		display: flex;
 		flex-direction: column;
 		min-height: 100vh;
-	}
-	.workspace-bar {
-		height: 64px;
-		flex-shrink: 0;
-		box-sizing: border-box;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		/* The 1px top padding offsets the bottom border so the 44px buttons clear the 64px bar by 10px each side. */
-		padding: 1px 32px 0;
-		border-bottom: 1px solid var(--ink);
-	}
-	.lead {
-		display: flex;
-		gap: 28px;
-		align-items: center;
-	}
-	.brand {
-		color: var(--ink);
-		font-family: var(--font-sans);
-		font-weight: 600;
-		font-size: 18px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		text-decoration: none;
-		padding: 10px 0;
 	}
 	.crumbs {
 		display: flex;
@@ -489,13 +463,6 @@ const label: Record<SaveState, string> = {
 		}
 	}
 	@media (width > 767.98px) and (width <= 900px) {
-		.workspace-bar {
-			height: auto;
-			min-height: 64px;
-			flex-wrap: wrap;
-			gap: 0 16px;
-			padding: 1px 16px 0;
-		}
 		.grid {
 			grid-template-columns: minmax(0, 1fr);
 		}
@@ -507,20 +474,6 @@ const label: Record<SaveState, string> = {
 			min-height: 0;
 			overflow: hidden;
 		}
-		.workspace-bar {
-			height: var(--size-bar);
-			min-height: 0;
-			flex-wrap: nowrap;
-			padding: 0 var(--size-gutter);
-		}
-		.workspace-bar .lead {
-			flex-grow: 1;
-			justify-content: space-between;
-			gap: 16px;
-		}
-		.brand {
-			padding: 12px 0;
-		}
 		.crumbs {
 			align-items: center;
 			gap: 8px;
@@ -530,9 +483,6 @@ const label: Record<SaveState, string> = {
 		.crumbs :global(a),
 		.crumbs span {
 			padding: 12px 0;
-		}
-		.bar-actions {
-			display: none;
 		}
 		.grid {
 			grid-template-columns: minmax(0, 1fr);

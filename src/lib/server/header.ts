@@ -16,6 +16,8 @@ export interface Header {
 	wordmark: { href: string; label: string; phoneLabel: string };
 	/** The wordmark alone, with no links: before the Instance is set up or anyone is signed in. */
 	bare: boolean;
+	/** The route's own screen draws the bar (through AppHeader's snippets), so the layout does not. */
+	inPage: boolean;
 	links: HeaderLink[];
 	signOut: boolean;
 }
@@ -30,9 +32,12 @@ export interface HeaderInput {
 
 const WORDMARK = { href: '/', label: 'Beyond Leetcode', phoneLabel: 'BLC' } as const;
 
+/** The Problem screen draws its own bar: crumbs and Run/Submit sit in it. */
+const PROBLEM_ROUTE = '/problems/[problemId]';
+
 export function headerFor({ identity, mode, routeId, pathname }: HeaderInput): Header {
 	if (policyOf(routeId).bare) {
-		return { wordmark: WORDMARK, bare: true, links: [], signOut: false };
+		return { wordmark: WORDMARK, bare: true, inPage: false, links: [], signOut: false };
 	}
 	const multi = mode === 'multi';
 	const link = (
@@ -55,5 +60,11 @@ export function headerFor({ identity, mode, routeId, pathname }: HeaderInput): H
 		)
 	);
 	// Only a signed-in Account has a session to end. Local Mode has no accounts, so no Sign out.
-	return { wordmark: WORDMARK, bare: false, links, signOut: multi && identity !== undefined };
+	return {
+		wordmark: WORDMARK,
+		bare: false,
+		inPage: routeId === PROBLEM_ROUTE,
+		links,
+		signOut: multi && identity !== undefined
+	};
 }
