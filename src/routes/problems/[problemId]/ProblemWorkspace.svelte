@@ -457,9 +457,7 @@ const label: Record<SaveState, string> = {
 			flex-direction: column;
 			flex: 1 1 auto;
 			min-height: 0;
-		}
-		.editor-slot > :global(:last-child) {
-			min-height: 0;
+			--editor-min: 0;
 		}
 	}
 	@media (width > 767.98px) and (width <= 900px) {
