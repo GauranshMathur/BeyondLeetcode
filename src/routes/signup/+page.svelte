@@ -3,6 +3,13 @@ import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
 
+// Bound to state seeded from the server's value, so what a visitor types before hydration is kept and a
+// no-JS or failed POST still repopulates from `form`.
+// svelte-ignore state_referenced_locally
+let name = $state(form?.name ?? '');
+// svelte-ignore state_referenced_locally
+let email = $state(form?.email ?? '');
+
 // A refusal on one field goes under that field; any other goes above the button.
 const fieldError = (field: 'name' | 'email' | 'password') =>
 	form?.field === field ? form.message : undefined;
@@ -47,7 +54,7 @@ const keeps = [
 						name="name"
 						autocomplete="name"
 						required
-						value={form?.name ?? ''}
+						bind:value={name}
 						aria-invalid={fieldError('name') ? 'true' : undefined}
 						aria-describedby={describedBy('name')}
 					/>
@@ -61,7 +68,7 @@ const keeps = [
 						name="email"
 						autocomplete="email"
 						required
-						value={form?.email ?? ''}
+						bind:value={email}
 						aria-invalid={fieldError('email') ? 'true' : undefined}
 						aria-describedby={describedBy('email')}
 					/>

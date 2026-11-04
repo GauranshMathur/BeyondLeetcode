@@ -3,6 +3,13 @@ import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
 
+// Bound to state seeded from the server's value, so what a visitor types before hydration is kept and a
+// no-JS or failed POST still repopulates from `form`.
+// svelte-ignore state_referenced_locally
+let name = $state(form?.name ?? '');
+// svelte-ignore state_referenced_locally
+let email = $state(form?.email ?? '');
+
 // Refused after the page loaded (used, expired or cancelled meanwhile) shows the same state as a dead link.
 const valid = $derived(data.valid && !form?.invalid);
 
@@ -36,7 +43,7 @@ const describedBy = (field: 'name' | 'email' | 'password') =>
 						name="name"
 						autocomplete="name"
 						required
-						value={form?.name ?? ''}
+						bind:value={name}
 						aria-invalid={fieldError('name') ? 'true' : undefined}
 						aria-describedby={describedBy('name')}
 					/>
@@ -50,7 +57,7 @@ const describedBy = (field: 'name' | 'email' | 'password') =>
 						name="email"
 						autocomplete="email"
 						required
-						value={form?.email ?? ''}
+						bind:value={email}
 						aria-invalid={fieldError('email') ? 'true' : undefined}
 						aria-describedby={describedBy('email')}
 					/>
