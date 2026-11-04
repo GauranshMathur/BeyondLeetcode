@@ -322,7 +322,7 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 			min-height: 0;
 		}
 		.left {
-			padding: 32px 20px 0;
+			padding: 32px var(--size-gutter) 0;
 		}
 		.block {
 			margin: 0;
@@ -333,8 +333,8 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 			padding-bottom: 4px;
 		}
 		h1 {
-			font-size: 40px;
-			line-height: 1.08;
+			font-size: var(--size-h1-phone);
+			line-height: var(--leading-h1-phone);
 			letter-spacing: -0.01em;
 		}
 		.lede {
@@ -355,7 +355,7 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 		}
 		input,
 		button {
-			height: 48px;
+			height: var(--size-field);
 		}
 		input {
 			font-size: 18px;

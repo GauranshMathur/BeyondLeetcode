@@ -1,25 +1,30 @@
 <script lang="ts">
 import { onDestroy, type Snippet, untrack } from 'svelte';
 import CodeEditor from '#lib/editor/CodeEditor.svelte';
+import AppHeader from '#lib/header/AppHeader.svelte';
 import { LANGUAGES, type Language, languageById } from '#lib/languages.js';
 import { filesDigest, type Reply, toReply } from '#lib/problem-wire.js';
 import type { ProblemView, SolutionView } from '#lib/server/learning/core.js';
 import { type ActionResult, deserialize } from '$app/forms';
 import { refreshAll } from '$app/navigation';
+import { page } from '$app/state';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
+import { afterOutcome, PANES, type ViewState } from './view';
 import { begin, type Event, isBusy, type Request, type SaveState, transition } from './workspace';
 
 let {
 	problem,
 	statement,
-	tab = $bindable('problem'),
+	view,
+	onview,
 	solution
 }: {
 	problem: ProblemView;
 	statement: Snippet;
-	/** The phone tab, held by the page so it survives the remount a language switch causes. */
-	tab?: (typeof TABS)[number]['id'];
+	/** The screen's view state, held by the page so the pane survives the remount a language switch causes. */
+	view: ViewState;
+	onview: (view: ViewState) => void;
 	/** While set, the Reference Code replaces the editor. The editor stays mounted, so the Learner's code and any pending save are untouched. */
 	solution?: SolutionView;
 } = $props();
@@ -32,7 +37,10 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 
 function dispatch(event: Event) {
 	const step = transition(session, event);
+	const seenOutcome = session.outcome;
 	session = step.state;
+	// When a Run or Submit answer arrives, show it. Compared by identity so edits and other session changes leave the pane alone.
+	if (session.outcome !== seenOutcome) onview(afterOutcome(view, session.outcome));
 	if (step.timer) {
 		clearTimeout(timer);
 		if (step.timer !== 'cancel')
@@ -94,21 +102,9 @@ async function post(request: Request): Promise<Reply> {
 	}
 }
 
-// Below 768px (767.98px and under) the workspace shows one pane at a time. The current tab is view state only: every pane stays
+// Below 768px (767.98px and under) the workspace shows one pane at a time. The current pane is view state only: every pane stays
 // mounted (the editor is hidden by CSS, never destroyed), so unsaved code and the state machine are untouched.
-const TABS = [
-	{ id: 'problem', name: 'Problem' },
-	{ id: 'code', name: 'Code' },
-	{ id: 'tests', name: 'Tests' }
-] as const;
-// When a Run or Submit answer arrives, show it. Compared by identity so edits and other session changes leave the tab alone.
-let seenOutcome = untrack(() => session.outcome);
-$effect(() => {
-	const outcome = session.outcome;
-	if (outcome === seenOutcome) return;
-	seenOutcome = outcome;
-	if (outcome && outcome.kind !== 'running' && outcome.kind !== 'submitting') tab = 'tests';
-});
+const NAMES = { problem: 'Problem', code: 'Code', tests: 'Tests' } as const;
 
 const busy = $derived(isBusy(session));
 const paths = $derived(Object.keys(problem.files));
@@ -158,34 +154,41 @@ const label: Record<SaveState, string> = {
 
 <svelte:window onpagehide={() => dispatch({ type: 'flush', final: false })} onkeydowncapture={onkeydown} />
 
+{#snippet saveNotice(part: 'status' | 'signedOut')}
+	{#if part === 'status'}
+		<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'} role="status">{label[session.save]}</span>
+	{:else if session.save === 'signedOut'}
+		<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
+	{/if}
+{/snippet}
+
 {#snippet runAndSubmit()}
 	<button type="button" class="run mono" disabled={busy} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
 	<button type="button" class="run submit mono" disabled={busy} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
 {/snippet}
 
-<div class="page" data-tab={tab}>
-	<header class="workspace-bar">
-		<div class="left">
-			<a class="brand" href="/">BLC</a>
-			<nav class="crumbs" aria-label="Breadcrumb">
-				<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
-			</nav>
-		</div>
-		<div class="actions bar-actions">{@render runAndSubmit()}</div>
-	</header>
+{#snippet crumbs()}
+	<nav class="crumbs" aria-label="Breadcrumb">
+		<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
+	</nav>
+{/snippet}
+
+<div class="page" data-tab={view.pane}>
+	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
 	<div class="grid">
-		{@render statement()}
+		<div data-pane="problem">{@render statement()}</div>
 
 		<div class="pane">
 			{#if solution}
-				<SolutionCode {solution} startLanguage={problem.build.language} />
+				<div data-pane="code"><SolutionCode {solution} startLanguage={problem.build.language} /></div>
 			{/if}
 			<div class="build" class:off={solution !== undefined}>
+				<div data-pane="code">
 				<div class="bar">
 					<span class="mono file">{paths.length === 1 ? paths[0] : 'Build'}</span>
 					<div class="bar-right">
-						<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'} role="status">{label[session.save]}</span>
+						{@render saveNotice('status')}
 						<label class="mono picker">build language
 							<select value={choice} onchange={(e) => (picked = e.currentTarget.value as Language)} aria-describedby={confirming ? 'switch-note' : undefined} disabled={session.switching}>
 								{#each LANGUAGES as language (language.id)}
@@ -207,9 +210,7 @@ const label: Record<SaveState, string> = {
 						</div>
 					</div>
 				{/if}
-				{#if session.save === 'signedOut'}
-					<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
-				{/if}
+				{@render saveNotice('signedOut')}
 				<div class="reference">
 					<span id="ref-help" class="mono help">Replaces your code for this step with the known-good build after the previous Problem (empty on a Topic's first Problem). Your submissions are kept.{session.restartFailed ? ' It did not go through; try again.' : ''}</span>
 					<button type="button" class="run mono" aria-describedby="ref-help" disabled={restartLocked || confirmingRestart} onclick={() => (confirmingRestart = true)}>Start from reference code</button>
@@ -226,17 +227,20 @@ const label: Record<SaveState, string> = {
 						</div>
 					</div>
 				{/if}
-				{#key session.restarts}
-					<CodeEditor files={session.files} {onchange} readonly={session.save === 'conflict' || session.switching || session.restarting} />
-				{/key}
-				<!-- Phones only, on the Tests tab: the save status and sign-in notice that the hidden Code-tab bar would show. -->
-				<div class="tests-notice">
-					<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'} role="status">{label[session.save]}</span>
-					{#if session.save === 'signedOut'}
-						<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
-					{/if}
+				<div class="editor-slot">
+					{#key session.restarts}
+						<CodeEditor files={session.files} {onchange} readonly={session.save === 'conflict' || session.switching || session.restarting} />
+					{/key}
 				</div>
-				<ResultsPanel outcome={session.outcome} />
+				</div>
+				<div data-pane="tests">
+					<!-- Phones only, on the Tests tab: the save status and sign-in notice that the hidden Code-tab bar would show. -->
+					<div class="tests-notice">
+						{@render saveNotice('status')}
+						{@render saveNotice('signedOut')}
+					</div>
+					<ResultsPanel outcome={session.outcome} />
+				</div>
 			</div>
 		</div>
 	</div>
@@ -244,8 +248,8 @@ const label: Record<SaveState, string> = {
 	<!-- Phones only: the same Run and Submit, above the tab bar. -->
 	<div class="actions strip">{@render runAndSubmit()}</div>
 	<nav class="tabbar mono" aria-label="Workspace">
-		{#each TABS as t (t.id)}
-			<button type="button" aria-pressed={tab === t.id} onclick={() => (tab = t.id)}>{t.name}</button>
+		{#each PANES as pane (pane)}
+			<button type="button" aria-pressed={view.pane === pane} onclick={() => onview({ ...view, pane })}>{NAMES[pane]}</button>
 		{/each}
 	</nav>
 </div>
@@ -255,32 +259,6 @@ const label: Record<SaveState, string> = {
 		display: flex;
 		flex-direction: column;
 		min-height: 100vh;
-	}
-	.workspace-bar {
-		height: 64px;
-		flex-shrink: 0;
-		box-sizing: border-box;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		/* The 1px top padding offsets the bottom border so the 44px buttons clear the 64px bar by 10px each side. */
-		padding: 1px 32px 0;
-		border-bottom: 1px solid var(--ink);
-	}
-	.left {
-		display: flex;
-		gap: 28px;
-		align-items: center;
-	}
-	.brand {
-		color: var(--ink);
-		font-family: var(--font-sans);
-		font-weight: 600;
-		font-size: 18px;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		text-decoration: none;
-		padding: 10px 0;
 	}
 	.crumbs {
 		display: flex;
@@ -313,6 +291,11 @@ const label: Record<SaveState, string> = {
 	}
 	.build.off {
 		display: none;
+	}
+	/* Each pane's wrapper takes no box of its own, so the layout is the same as if its contents sat in the grid or the build. */
+	[data-pane],
+	.editor-slot {
+		display: contents;
 	}
 	.bar {
 		display: flex;
@@ -455,7 +438,7 @@ const label: Record<SaveState, string> = {
 		display: none;
 	}
 	/* Wide screens: the workspace is exactly one screen tall and each pane scrolls on its own. */
-	@media (min-width: 901px) {
+	@media (width > 900px) {
 		.page {
 			height: 100dvh;
 			min-height: 0;
@@ -469,18 +452,17 @@ const label: Record<SaveState, string> = {
 			overflow: hidden;
 		}
 		/* The editor takes what the rows around it leave; CodeMirror's scroller does the scrolling. */
-		.pane :global(.editor) {
+		.editor-slot {
+			display: flex;
+			flex-direction: column;
+			flex: 1 1 auto;
+			min-height: 0;
+		}
+		.editor-slot > :global(:last-child) {
 			min-height: 0;
 		}
 	}
 	@media (width > 767.98px) and (width <= 900px) {
-		.workspace-bar {
-			height: auto;
-			min-height: 64px;
-			flex-wrap: wrap;
-			gap: 0 16px;
-			padding: 1px 16px 0;
-		}
 		.grid {
 			grid-template-columns: minmax(0, 1fr);
 		}
@@ -492,20 +474,6 @@ const label: Record<SaveState, string> = {
 			min-height: 0;
 			overflow: hidden;
 		}
-		.workspace-bar {
-			height: 56px;
-			min-height: 0;
-			flex-wrap: nowrap;
-			padding: 0 20px;
-		}
-		.workspace-bar .left {
-			flex-grow: 1;
-			justify-content: space-between;
-			gap: 16px;
-		}
-		.brand {
-			padding: 12px 0;
-		}
 		.crumbs {
 			align-items: center;
 			gap: 8px;
@@ -515,9 +483,6 @@ const label: Record<SaveState, string> = {
 		.crumbs :global(a),
 		.crumbs span {
 			padding: 12px 0;
-		}
-		.bar-actions {
-			display: none;
 		}
 		.grid {
 			grid-template-columns: minmax(0, 1fr);
@@ -529,17 +494,18 @@ const label: Record<SaveState, string> = {
 		.build {
 			overflow-y: auto;
 		}
-		.pane :global(.editor) {
-			min-height: 320px;
-		}
-		/* Hide, never destroy: the editor keeps its state while another tab shows. */
-		.page:not([data-tab='problem']) .grid > :global(.left),
-		.page[data-tab='problem'] .pane {
+		/* Hide, never destroy: the editor keeps its state while another pane shows. */
+		.page:not([data-tab='problem']) [data-pane='problem'],
+		.page[data-tab='problem'] .pane,
+		.page[data-tab='tests'] [data-pane='code'],
+		.page[data-tab='code'] [data-pane='tests'] {
 			display: none;
 		}
-		.page[data-tab='tests'] .build > :global(:not(.console, .tests-notice)),
-		.page[data-tab='code'] .build > :global(.console) {
-			display: none;
+		.page[data-tab='tests'] [data-pane='tests'] {
+			display: flex;
+			flex-direction: column;
+			flex: 1 1 0;
+			min-height: 0;
 		}
 		.page[data-tab='tests'] .tests-notice {
 			display: block;
@@ -548,7 +514,7 @@ const label: Record<SaveState, string> = {
 		}
 		.page[data-tab='tests'] .tests-notice .status {
 			display: block;
-			padding: 12px 20px;
+			padding: 12px var(--size-gutter);
 		}
 		.page[data-tab='tests'] .tests-notice .signed-out {
 			border-bottom: 0;
@@ -556,25 +522,16 @@ const label: Record<SaveState, string> = {
 		.page[data-tab='tests'] .build {
 			overflow: hidden;
 		}
-		/* While the Solution is open the editor is off; the Tests tab still shows the console, and only it. */
-		.page[data-tab='tests'] .pane > :global(:not(.build)) {
-			display: none;
-		}
+		/* While the Solution is open the editor is off; the Tests pane still shows, and only it. */
 		.page[data-tab='tests'] .build.off {
 			display: flex;
-		}
-		.page[data-tab='tests'] .build > :global(.console) {
-			flex: 1 1 0;
-			max-height: none;
-			border-top: 0;
-			min-height: 0;
 		}
 		.bar {
 			flex-direction: column;
 			align-items: stretch;
 			gap: 16px;
 			height: auto;
-			padding: 16px 20px;
+			padding: 16px var(--size-gutter);
 		}
 		.bar-right {
 			flex-direction: column;
@@ -605,13 +562,13 @@ const label: Record<SaveState, string> = {
 			flex-direction: column;
 			align-items: stretch;
 			gap: 12px;
-			padding: 16px 20px;
+			padding: 16px var(--size-gutter);
 		}
 		.confirm-actions {
 			justify-content: space-between;
 		}
 		.cancel {
-			min-height: 44px;
+			min-height: var(--size-target);
 			padding: 12px 8px;
 		}
 		.strip {
@@ -619,7 +576,7 @@ const label: Record<SaveState, string> = {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			column-gap: 12px;
 			flex-shrink: 0;
-			padding: 12px 20px;
+			padding: 12px var(--size-gutter);
 			border-top: 1px solid var(--rule);
 		}
 		.strip .run {
@@ -633,7 +590,7 @@ const label: Record<SaveState, string> = {
 			font-size: 13px;
 		}
 		.tabbar button {
-			height: 56px;
+			height: var(--size-bar);
 			box-sizing: border-box;
 			background: transparent;
 			border: 0;

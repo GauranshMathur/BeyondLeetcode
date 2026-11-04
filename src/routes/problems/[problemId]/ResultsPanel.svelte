@@ -113,7 +113,7 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 		border-top: 1px solid var(--ink);
 	}
 	/* Wide screens: a long result takes at most half the pane and scrolls inside the console. */
-	@media (min-width: 901px) {
+	@media (width > 900px) {
 		.console {
 			max-height: 50%;
 			min-height: 0;
@@ -223,13 +223,20 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 	}
 	/* Phones: the Tests tab gives the console the whole pane; 20px margins, a full-width Next button. */
 	@media (max-width: 767.98px) {
+		/* The console is only on screen on the Tests tab, where it fills the pane. */
+		.console {
+			flex: 1 1 0;
+			max-height: none;
+			border-top: 0;
+			min-height: 0;
+		}
 		.head {
-			padding: 0 20px;
+			padding: 0 var(--size-gutter);
 		}
 		.body {
 			flex-grow: 1;
 			min-height: 0;
-			padding: 0 20px 24px;
+			padding: 0 var(--size-gutter) 24px;
 		}
 		.next {
 			width: 100%;
