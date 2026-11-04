@@ -4,6 +4,7 @@ import {
 	onAnotherProblem,
 	onLanguageSwitch,
 	onSectionChange,
+	PANES,
 	sectionOf,
 	type ViewState,
 	viewOf
@@ -21,6 +22,11 @@ describe('the Problem screen view state', () => {
 		expect(sectionOf(null)).toBe('problem');
 		expect(sectionOf('nonsense')).toBe('problem');
 		expect(viewOf('hints')).toEqual(at('hints', 'problem'));
+	});
+
+	it('a Problem starts on the first pane, the statement', () => {
+		expect(PANES[0]).toBe('problem');
+		expect(viewOf(null).pane).toBe(PANES[0]);
 	});
 
 	it('a Run or Submit outcome that is not running or submitting opens tests', () => {
