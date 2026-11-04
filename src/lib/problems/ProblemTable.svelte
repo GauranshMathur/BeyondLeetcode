@@ -3,7 +3,7 @@ export type ProblemTableRow = { id: string; title: string; kind: string; status:
 export type ProblemTableLabels = { problem: string; set: string; status: string };
 </script>
 
-<script lang="ts">
+<script lang="ts" generics="T extends ProblemTableRow">
 // A list of Problems, each drawn once: a table on a desktop, numbered rows on a phone whose
 // title link covers the row. The caller owns the wording (column labels and the set and
 // status texts), so a page keeps its own words at each width.
@@ -15,14 +15,14 @@ let {
 	phoneSetText,
 	numberText
 }: {
-	problems: readonly ProblemTableRow[];
+	problems: readonly T[];
 	labels: ProblemTableLabels;
-	setText: (problem: ProblemTableRow) => string;
-	statusText: (problem: ProblemTableRow) => string;
+	setText: (problem: T) => string;
+	statusText: (problem: T) => string;
 	/** A phone's own wording for the set column; without it the phone reads `setText` too. */
-	phoneSetText?: (problem: ProblemTableRow) => string;
+	phoneSetText?: (problem: T) => string;
 	/** A phone's own row number (the Topic's "1.1"); without it rows count 01, 02 and so on. */
-	numberText?: (problem: ProblemTableRow, index: number) => string;
+	numberText?: (problem: T, index: number) => string;
 } = $props();
 </script>
 

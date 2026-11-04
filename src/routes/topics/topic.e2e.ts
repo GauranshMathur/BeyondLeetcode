@@ -60,7 +60,9 @@ test.describe('the Topic on a phone', () => {
 		expect(await rows.count()).toBeGreaterThan(1);
 		await expect(rows.first()).toContainText('1.1');
 		await expect(rows.first()).toContainText('core · step 01');
-		await expect(page.locator('table.problems').getByText('extra · off step').first()).toBeVisible();
+		await expect(
+			page.locator('table.problems').getByText('extra · off step').first()
+		).toBeVisible();
 		await expect(rows.first()).toContainText('—');
 		await expect(rows.first().getByRole('link')).toHaveText('Push and size');
 
