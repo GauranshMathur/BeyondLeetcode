@@ -2,6 +2,7 @@
 import { reportIssueUrl } from '#lib/issue-link.js';
 import type { PageProps } from './$types';
 import HintsTab from './HintsTab.svelte';
+import ProblemHead from './ProblemHead.svelte';
 import ProblemWorkspace from './ProblemWorkspace.svelte';
 import SolutionTab from './SolutionTab.svelte';
 import { PANES, type Pane, type ViewState } from './view';
@@ -41,10 +42,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 					<SolutionTab {problem} solution={data.solution} />
 				{:else}
 					<section class="statement" aria-label="Problem">
-						<div class="head">
-							<span class="mono muted">{problem.kind === 'Core' ? 'core' : 'extra'} · {problem.topicTitle}</span>
-							<h1>{problem.title}</h1>
-						</div>
+						<ProblemHead {problem} title={problem.title} />
 						<div class="prose">{@html problem.statementHtml}</div>
 
 						{#each problem.exampleTests as test, i (test.name)}
@@ -103,18 +101,6 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 	}
 	.muted {
 		color: var(--muted);
-	}
-	.head {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		font-size: 13px;
-	}
-	h1 {
-		margin: 0;
-		font-weight: 400;
-		font-size: 38px;
-		line-height: 1.12;
 	}
 	.prose {
 		font-size: 19px;
@@ -235,7 +221,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		.statement {
 			padding: 24px var(--size-gutter);
 		}
-		h1 {
+		.statement :global(h1) {
 			font-size: 30px;
 		}
 		.prose {
