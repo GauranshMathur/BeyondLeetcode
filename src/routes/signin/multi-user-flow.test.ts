@@ -99,7 +99,7 @@ it('a fresh Instance without the test switch: choose Multi-user, create the admi
 	const back = await outcome(() =>
 		signIn.action({
 			request: { formData: async () => form },
-			locals: { auth: app.multiUser?.auth, multiUser: app.multiUser, instance: app.instance },
+			locals: { multiUser: app.multiUser, instance: app.instance },
 			cookies,
 			url: new URL('http://localhost:3000/signin?next=%2Ftopics%2Fstacks'),
 			getClientAddress: () => '203.0.113.7'
