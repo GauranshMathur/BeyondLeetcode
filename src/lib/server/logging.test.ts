@@ -795,4 +795,19 @@ describe('logFailure', () => {
 			'w object'
 		]);
 	});
+
+	it('reads a plain object code once and does not throw when the console does', () => {
+		let reads = 0;
+		const object = {
+			get code() {
+				return ++reads === 1 ? 'EPIPE' : 'CALLER_TEXT';
+			}
+		};
+		expect(loggable(object)).toBe('code=EPIPE');
+		expect(reads).toBe(1);
+		vi.spyOn(console, 'error').mockImplementation(() => {
+			throw new Error('closed stream');
+		});
+		expect(() => logFailure('w', new Error('x'))).not.toThrow();
+	});
 });

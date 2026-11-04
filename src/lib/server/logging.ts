@@ -424,11 +424,12 @@ export function loggable(arg: unknown): unknown {
 	const { name, code: errorCode } = describeThrown(arg);
 	if (name !== null) return errorCode ? `${name} ${errorCode}` : name;
 	if (typeof arg === 'object') {
+		// `code` was read once by `describeThrown`; only `error` is read here.
 		const field = (key: string) => {
 			const value = readOnce(() => (arg as Record<string, unknown>)[key]);
 			return isKnownCode(value) ? value : undefined;
 		};
-		const code = field('code') ?? field('error');
+		const code = errorCode ?? field('error');
 		return code ? `code=${code}` : '[object omitted]';
 	}
 	return '[value omitted]';
@@ -489,5 +490,9 @@ export function formatServerError(
 export function logFailure(where: string, error: unknown): void {
 	const { name, code } = describeThrown(error);
 	const kind = name ?? typeof error;
-	console.error(`${where.replace(LOG_CONTROLS, ' ')} ${kind}${code ? ` ${code}` : ''}`);
+	try {
+		console.error(`${where.replace(LOG_CONTROLS, ' ')} ${kind}${code ? ` ${code}` : ''}`);
+	} catch {
+		// A logger that cannot print must not turn an action's form error into a 500.
+	}
 }
