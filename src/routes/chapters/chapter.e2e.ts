@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import { expectNoSidewaysScroll, expectTargets, phone, readToEnd } from '../../lib/e2e-phone.ts';
 import { renderMarkdown } from '../../lib/server/markdown.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
@@ -92,10 +93,7 @@ test.describe('a link clicked while the Chapter is being marked Read', () => {
 // document is served with a code block and a table added to the body, built by renderMarkdown, so the test checks
 // what the server sends; the rest is the real page.
 test.describe('the Chapter on a phone', () => {
-	test.use({
-		storageState: asLearner('e2e-chapter-mobile'),
-		viewport: { width: 390, height: 844 }
-	});
+	test.use({ ...phone, storageState: asLearner('e2e-chapter-mobile') });
 
 	const longLine = `bisect.insort(self.scores, (score, player))${'  # O(n) shift'.repeat(8)}`;
 	const table = [
@@ -133,13 +131,8 @@ test.describe('the Chapter on a phone', () => {
 			el.scrollLeft = 200;
 		});
 		expect(await code.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
-		const page_ = await page.evaluate(() => ({
-			scroll: document.documentElement.scrollWidth,
-			client: document.documentElement.clientWidth,
-			x: window.scrollX
-		}));
-		expect(page_.scroll).toBeLessThanOrEqual(page_.client);
-		expect(page_.x).toBe(0);
+		await expectNoSidewaysScroll(page);
+		expect(await page.evaluate(() => window.scrollX)).toBe(0);
 	});
 
 	test('rows and end links are at least 44 px tall, end links come last', async ({ page }) => {
@@ -168,9 +161,7 @@ test.describe('the Chapter on a phone', () => {
 			}
 		);
 		expect(cornerHitsLink).toBe(true);
-		expect(topicBox?.height).toBeGreaterThanOrEqual(44);
-		expect(nextBox?.height).toBeGreaterThanOrEqual(44);
-		expect(reportBox?.height).toBeGreaterThanOrEqual(44);
+		await expectTargets(page, 44);
 		// Problems, then the end links, then the report-an-issue line.
 		expect(topicBox?.y).toBeGreaterThan((rowBox?.y ?? 0) + (rowBox?.height ?? 0));
 		expect(reportBox?.y).toBeGreaterThan((nextBox?.y ?? 0) + (nextBox?.height ?? 0));
@@ -181,10 +172,7 @@ test.describe('the Chapter on a phone', () => {
 		test.use({ storageState: asLearner('e2e-chapter-mobile-read') });
 
 		test('scrolling to the end marks the Chapter Read', async ({ page }) => {
-			const marked = page.waitForResponse(/\?\/reachEnd/);
-			await gotoHydrated(page, '/chapters/stacks-undo-log');
-			await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-			expect((await marked).ok()).toBe(true);
+			await readToEnd(page, () => gotoHydrated(page, '/chapters/stacks-undo-log'));
 			await gotoHydrated(page, '/topics/stacks');
 			const chapterRow = page.locator('section.chapter', {
 				has: page.getByRole('link', { name: 'An undo log' })
@@ -196,8 +184,8 @@ test.describe('the Chapter on a phone', () => {
 });
 
 // C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
-test.describe('reading a Chapter on a phone, as a flow', () => {
-	test.use({ storageState: asLearner('e2e-chapter-flow'), viewport: { width: 390, height: 844 } });
+test.describe('the Chapter on a phone, as a flow', () => {
+	test.use({ storageState: asLearner('e2e-chapter-flow') });
 
 	test('opening a Chapter from its Topic and reading to the end marks it Read', {
 		tag: '@mobile'
@@ -208,13 +196,8 @@ test.describe('reading a Chapter on a phone, as a flow', () => {
 		});
 		await expect(chapterRow).toContainText('not read');
 
-		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved. The Chapter is
-		// short, so its end is in view on load and the post goes out during the load: register the wait first.
-		const marked = page.waitForResponse(/\?\/reachEnd/);
-		await page.getByRole('link', { name: 'An undo log' }).tap();
+		await readToEnd(page, () => page.getByRole('link', { name: 'An undo log' }).tap());
 		await expect(page).toHaveURL('/chapters/stacks-undo-log');
-		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
-		expect((await marked).ok()).toBe(true);
 
 		await page.getByRole('link', { name: '↑ Stacks' }).tap();
 		await expect(page).toHaveURL('/topics/stacks');

@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import {
+	expectBarHeight,
+	expectNoSidewaysScroll,
+	expectTargets,
+	phone,
+	workspaceTab
+} from '../../lib/e2e-phone.ts';
 import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
@@ -503,21 +510,18 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 	await expect(page.locator('.bar .status')).toHaveText('saved');
 });
 
-test.describe('on a phone', () => {
-	test.use({ viewport: { width: 390, height: 844 } });
+test.describe('the Problem on a phone', () => {
+	test.use(phone);
 
 	const tabBar = (page: Page) => page.getByRole('navigation', { name: 'Workspace' });
-	const tab = (page: Page, name: string) => tabBar(page).getByRole('button', { name });
 
 	async function expectNoPageScroll(page: Page) {
 		const doc = await page.evaluate(() => ({
 			scrollHeight: document.documentElement.scrollHeight,
-			innerHeight: window.innerHeight,
-			scrollWidth: document.documentElement.scrollWidth,
-			innerWidth: window.innerWidth
+			innerHeight: window.innerHeight
 		}));
 		expect(doc.scrollHeight).toBe(doc.innerHeight);
-		expect(doc.scrollWidth).toBe(doc.innerWidth);
+		await expectNoSidewaysScroll(page);
 	}
 
 	test('three tabs switch one pane at a time; Run and Submit land on Tests; typed code survives; every target is 44px', async ({
@@ -527,11 +531,11 @@ test.describe('on a phone', () => {
 
 		// The bar is the 56px one: brand left, breadcrumb right, no Run or Submit in it.
 		const bar = page.getByRole('banner');
-		expect((await bar.boundingBox())?.height).toBe(56);
+		await expectBarHeight(bar, 56);
 		await expect(bar.getByRole('button')).toHaveCount(0);
 
 		// Problem tab first: the statement shows, the editor and the console do not.
-		await expect(tab(page, 'Problem')).toHaveAttribute('aria-pressed', 'true');
+		await expect(workspaceTab(page, 'Problem')).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 		await expect(page.getByLabel('Code: main.py')).toBeHidden();
 		await expect(page.getByLabel('Console')).toBeHidden();
@@ -544,13 +548,13 @@ test.describe('on a phone', () => {
 			const bar = await tabBar(page).boundingBox();
 			if (!run || !bar) throw new Error('missing boxes');
 			expect(run.y + run.height).toBeLessThanOrEqual(bar.y);
-			expect((await tab(page, 'Tests').boundingBox())?.height).toBe(56);
+			await expectBarHeight(workspaceTab(page, 'Tests'), 56);
 		};
 		await strip();
 		await expectNoPageScroll(page);
 
-		await tab(page, 'Code').click();
-		await expect(tab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
+		await workspaceTab(page, 'Code').click();
+		await expect(workspaceTab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByRole('heading', { level: 1 })).toBeHidden();
 		await expect(page.getByLabel('Console')).toBeHidden();
 		await strip();
@@ -565,13 +569,13 @@ test.describe('on a phone', () => {
 		// The result arrives and the Tests tab opens by itself.
 		const row = page.getByRole('listitem', { name: 'Example Test 01' });
 		await expect(row).toContainText('fail · wrong answer', { timeout: 60_000 });
-		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(workspaceTab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByLabel('Code: main.py')).toBeHidden();
 		await strip();
 		await expectNoPageScroll(page);
 
 		// Back to Code: the typed code is still there, unsaved edits and all.
-		await tab(page, 'Code').click();
+		await workspaceTab(page, 'Code').click();
 		await expect(page.getByLabel('Code: main.py')).toContainText('print(99)');
 
 		await setCode(page, correct);
@@ -579,31 +583,26 @@ test.describe('on a phone', () => {
 		await expect(page.getByLabel('Verdict')).toContainText('Accepted', {
 			timeout: 60_000
 		});
-		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(workspaceTab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByLabel('Accepted panel')).toBeVisible();
 		await expectNoPageScroll(page);
 
 		// Every tab and button on the screen is at least 44px tall.
 		for (const name of ['Problem', 'Code', 'Tests']) {
-			await tab(page, name).click();
-			const targets = page.locator('a:visible, button:visible, select:visible');
-			for (const handle of await targets.all()) {
-				const box = await handle.boundingBox();
-				const label = await handle.evaluate((el) => `${name}: ${el.outerHTML.slice(0, 80)}`);
-				expect(box?.height ?? 0, label).toBeGreaterThanOrEqual(44);
-			}
+			await workspaceTab(page, name).click();
+			await expectTargets(page, 44);
 		}
 	});
 
 	test('switching language on the Code tab stays on the Code tab', async ({ page }) => {
 		await gotoHydrated(page, '/problems/stacks-push');
-		await tab(page, 'Code').click();
+		await workspaceTab(page, 'Code').click();
 		const picker = page.getByLabel('build language');
 		try {
 			await picker.selectOption('typescript');
 			await page.getByRole('button', { name: 'Switch language' }).click();
 			await expect(page.getByLabel('Code: main.ts')).toBeVisible();
-			await expect(tab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
+			await expect(workspaceTab(page, 'Code')).toHaveAttribute('aria-pressed', 'true');
 		} finally {
 			await page.getByLabel('build language').selectOption('python');
 			await page.getByRole('button', { name: 'Switch language' }).click();
@@ -613,15 +612,15 @@ test.describe('on a phone', () => {
 
 	test('the tabs work from the keyboard', async ({ page }) => {
 		await gotoHydrated(page, '/problems/stacks-push');
-		await tab(page, 'Tests').focus();
+		await workspaceTab(page, 'Tests').focus();
 		await page.keyboard.press('Enter');
-		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		await expect(workspaceTab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
 		await expect(page.getByRole('region', { name: 'Test results' })).toBeVisible();
 	});
 
 	test('with the Solution open, the Tests tab still shows the console', async ({ page }) => {
 		await gotoHydrated(page, '/problems/stacks-push?tab=solution');
-		await tab(page, 'Tests').click();
+		await workspaceTab(page, 'Tests').click();
 		await expect(page.getByLabel('Console')).toBeVisible();
 		await expect(page.locator('.cm-content:visible')).toHaveCount(0);
 		await expectNoPageScroll(page);
@@ -629,34 +628,25 @@ test.describe('on a phone', () => {
 });
 
 // C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
-test.describe('solving a Problem on a phone, as a flow', () => {
-	test.use({
-		storageState: asLearner('e2e-problem-flow'),
-		viewport: { width: 390, height: 844 }
-	});
+test.describe('the Problem on a phone, as a flow', () => {
+	test.use({ storageState: asLearner('e2e-problem-flow') });
 
 	test('type code, Run it, fix it, Submit and reach Accepted', { tag: '@mobile' }, async ({
 		page
 	}) => {
-		const tab = (name: string) =>
-			page.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name });
 		await gotoHydrated(page, '/topics/stacks');
 		await page.getByRole('link', { name: 'Push and size' }).tap();
 		await expect(page).toHaveURL('/problems/stacks-push');
 
-		await tab('Code').tap();
-		await page.getByLabel('Code: main.py').tap();
-		await expect(page.getByLabel('Code: main.py')).toBeFocused();
-		await page.keyboard.press('ControlOrMeta+a');
-		await page.keyboard.press('Backspace');
-		await page.keyboard.type('print(99)', { delay: 25 });
+		await workspaceTab(page, 'Code').tap();
+		await setCode(page, 'print(99)');
 		await page.getByRole('button', { name: 'Run' }).tap();
 		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText(
 			'fail · wrong answer',
 			{ timeout: 60_000 }
 		);
 
-		await tab('Code').tap();
+		await workspaceTab(page, 'Code').tap();
 		await setCode(page, correct);
 		await page.getByRole('button', { name: 'Submit' }).tap();
 		await expect(page.getByLabel('Verdict')).toContainText('Accepted', {
@@ -667,35 +657,30 @@ test.describe('solving a Problem on a phone, as a flow', () => {
 		await gotoHydrated(page, '/topics/stacks');
 		await expect(page.getByRole('link', { name: /^1.1 Push and size/ })).toContainText('solved');
 	});
-});
 
-// C61: a refused Run says why on the Tests tab, where the Learner already is.
-test.describe('a refused Run on a phone', () => {
-	test.use({
-		storageState: asLearner('e2e-problem-refused'),
-		viewport: { width: 390, height: 844 }
-	});
+	// C61: a refused Run says why on the Tests tab, where the Learner already is.
+	test.describe('a refused Run', () => {
+		test.use({ storageState: asLearner('e2e-problem-refused') });
 
-	test('says "edited elsewhere — reload" on the Tests tab without switching tabs', {
-		tag: '@mobile'
-	}, async ({ page, context }) => {
-		const tab = (p: Page, name: string) =>
-			p.getByRole('navigation', { name: 'Workspace' }).getByRole('button', { name });
-		await gotoHydrated(page, '/problems/stacks-pop');
-		const other = await context.newPage();
-		await gotoHydrated(other, '/problems/stacks-pop');
-		await tab(other, 'Code').tap();
-		await typeInEditor(other, '# saved elsewhere');
-		await expect(other.getByRole('status')).toHaveText('saved');
+		test('says "edited elsewhere — reload" on the Tests tab without switching tabs', {
+			tag: '@mobile'
+		}, async ({ page, context }) => {
+			await gotoHydrated(page, '/problems/stacks-pop');
+			const other = await context.newPage();
+			await gotoHydrated(other, '/problems/stacks-pop');
+			await workspaceTab(other, 'Code').tap();
+			await typeInEditor(other, '# saved elsewhere');
+			await expect(other.getByRole('status')).toHaveText('saved');
 
-		// This page still holds the old revision; its own edit is what the Run must send.
-		await tab(page, 'Code').tap();
-		await typeInEditor(page, '# mine');
-		await tab(page, 'Tests').tap();
-		await page.getByRole('button', { name: 'Run' }).tap();
-		await expect(page.locator('.tests-notice [role=status]')).toHaveText(
-			'edited elsewhere — reload'
-		);
-		await expect(tab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+			// This page still holds the old revision; its own edit is what the Run must send.
+			await workspaceTab(page, 'Code').tap();
+			await typeInEditor(page, '# mine');
+			await workspaceTab(page, 'Tests').tap();
+			await page.getByRole('button', { name: 'Run' }).tap();
+			await expect(page.locator('.tests-notice [role=status]')).toHaveText(
+				'edited elsewhere — reload'
+			);
+			await expect(workspaceTab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
+		});
 	});
 });

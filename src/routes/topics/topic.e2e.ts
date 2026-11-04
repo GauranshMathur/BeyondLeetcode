@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
+import { expectNoSidewaysScroll, expectTargets, phone, readToEnd } from '../../lib/e2e-phone.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
@@ -43,17 +44,12 @@ test('an unknown Topic returns 404', async ({ page }) => {
 	expect(response?.status()).toBe(404);
 });
 
-test.describe('mobile layout', () => {
-	test.use({ viewport: { width: 390, height: 844 } });
+test.describe('the Topic on a phone', () => {
+	test.use(phone);
 
 	test('shows progress, read state, Problem rows and no sideways scroll', async ({ page }) => {
 		// Read the first Chapter to its end, so the Topic shows one read and one unread Chapter.
-		// Below 768 px the Chapter hides its read marker, so wait for the mark itself to be saved. The Chapter is
-		// short, so its end is in view on load and the post goes out during the load: register the wait first.
-		const marked = page.waitForResponse(/\?\/reachEnd/);
-		await gotoHydrated(page, '/chapters/stacks-undo-log');
-		await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
-		await marked;
+		await readToEnd(page, () => gotoHydrated(page, '/chapters/stacks-undo-log'));
 		await gotoHydrated(page, '/topics/stacks');
 		await expect(page.getByLabel('Topic progress')).toContainText('chapters read');
 		await expect(page.getByLabel('Topic progress')).toContainText('extra solved · not counted');
@@ -67,20 +63,14 @@ test.describe('mobile layout', () => {
 		await expect(page.locator('.rows').getByText('extra').first()).toBeVisible();
 		await expect(rows.first()).toContainText('—');
 
-		for (const row of await rows.all()) {
-			const box = await row.boundingBox();
-			expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
-		}
-		const overflow = await page.evaluate(
-			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-		);
-		expect(overflow).toBeLessThanOrEqual(0);
+		await expectTargets(page.locator('.rows'), 44);
+		await expectNoSidewaysScroll(page);
 	});
 });
 
 // C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
 test.describe('the Topic on a phone, as a flow', () => {
-	test.use({ storageState: asLearner('e2e-topic-flow'), viewport: { width: 390, height: 844 } });
+	test.use({ storageState: asLearner('e2e-topic-flow') });
 
 	test('a Chapter and a Problem are reached by tapping their rows', { tag: '@mobile' }, async ({
 		page
