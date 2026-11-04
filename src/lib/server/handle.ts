@@ -52,6 +52,9 @@ export function createHandle(
 			pathname: url.pathname,
 			search: url.search
 		});
+		if (verdict.kind === 'redirect' && event.isDataRequest) {
+			return finish(dataRedirect(verdict.status, verdict.location));
+		}
 		if (verdict.kind === 'redirect') {
 			return finish(
 				new Response(null, {
@@ -93,6 +96,18 @@ export function createHandle(
 
 /** The name of a `Set-Cookie` line: what comes before the first `=`. */
 const cookieName = (setCookie: string) => setCookie.slice(0, setCookie.indexOf('=')).trim();
+
+/**
+ * A redirect answered to a data request (`/x/__data.json`), in the form SvelteKit gives one (respond.js
+ * replaces a 3xx from the hook with it, dropping our headers and cookie): status 200, JSON, never cached.
+ * Answered here, it goes through `finish` like every other response. The client follows `location`.
+ */
+function dataRedirect(status: number, location: string): Response {
+	return new Response(JSON.stringify({ type: 'redirect', status, location }), {
+		status: 200,
+		headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' }
+	});
+}
 
 /** A gate decision depends on the Instance state, so it is never cached. */
 function refusal(status: 403 | 404 | 503): Response {
