@@ -4,16 +4,18 @@ import type { PageProps } from './$types';
 import HintsTab from './HintsTab.svelte';
 import ProblemWorkspace from './ProblemWorkspace.svelte';
 import SolutionTab from './SolutionTab.svelte';
+import { PANES, type Pane, type ViewState } from './view';
 
 let { data }: PageProps = $props();
 const problem = $derived(data.problem);
-// The phone tab lives above the key, so a language switch (which remounts the workspace) keeps it; another Problem starts on Problem.
-let phoneTab = $state<'problem' | 'code' | 'tests'>('problem');
 const problemId = $derived(data.problem.id); // a derived id only notifies when the id itself changes
-$effect.pre(() => {
+// The phone's pane lives here, above the key, so a language switch (which remounts the workspace) keeps it. It is
+// derived from the Problem's id, so another Problem starts on its statement; picking a pane overrides it until then.
+let pane = $derived.by((): Pane => {
 	problemId;
-	phoneTab = 'problem';
+	return PANES[0];
 });
+const view = $derived<ViewState>({ section: data.tab, pane });
 const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Solution' } as const;
 </script>
 
@@ -22,20 +24,20 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 </svelte:head>
 
 {#key `${problem.id}:${problem.build.language}`}
-	<ProblemWorkspace {problem} bind:tab={phoneTab} solution={data.tab === 'solution' ? data.solution : undefined}>
+	<ProblemWorkspace {problem} {view} onview={(next) => (pane = next.pane)} solution={view.section === 'solution' ? data.solution : undefined}>
 		{#snippet statement()}
 			<div class="left">
 				<nav class="tabs mono" aria-label="Problem sections">
-					<a href="/problems/{problem.id}" data-sveltekit-noscroll aria-current={data.tab === 'problem' ? 'page' : undefined}>Problem</a>
-					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-noscroll aria-current={data.tab === 'hints' ? 'page' : undefined}>Hints</a>
-					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-noscroll data-sveltekit-preload-data="off" aria-current={data.tab === 'solution' ? 'page' : undefined}>Solution</a>
+					<a href="/problems/{problem.id}" data-sveltekit-noscroll aria-current={view.section === 'problem' ? 'page' : undefined}>Problem</a>
+					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-noscroll aria-current={view.section === 'hints' ? 'page' : undefined}>Hints</a>
+					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-noscroll data-sveltekit-preload-data="off" aria-current={view.section === 'solution' ? 'page' : undefined}>Solution</a>
 				</nav>
 				<!-- The pane scrolls on its own; tabindex lets the keyboard reach it. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-				<div class="scroll" role="region" aria-label={paneLabel[data.tab]} tabindex="0">
-				{#if data.tab === 'hints' && data.hints}
+				<div class="scroll" role="region" aria-label={paneLabel[view.section]} tabindex="0">
+				{#if view.section === 'hints' && data.hints}
 					<HintsTab {problem} hints={data.hints} />
-				{:else if data.tab === 'solution' && data.solution}
+				{:else if view.section === 'solution' && data.solution}
 					<SolutionTab {problem} solution={data.solution} />
 				{:else}
 					<section class="statement" aria-label="Problem">
@@ -219,19 +221,19 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		}
 		.tabs {
 			gap: 24px;
-			padding: 0 20px;
+			padding: 0 var(--size-gutter);
 			overflow-x: auto;
 		}
 		.tabs a {
 			flex-shrink: 0;
 			white-space: nowrap;
 			box-sizing: border-box;
-			min-height: 44px;
+			min-height: var(--size-target);
 			padding: 12px 0 10px;
 			line-height: 20px;
 		}
 		.statement {
-			padding: 24px 20px;
+			padding: 24px var(--size-gutter);
 		}
 		h1 {
 			font-size: 30px;
@@ -241,7 +243,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		}
 		.report {
 			padding: 12px 0;
-			min-height: 44px;
+			min-height: var(--size-target);
 			box-sizing: border-box;
 		}
 	}
