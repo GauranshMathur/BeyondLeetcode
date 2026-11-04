@@ -31,7 +31,7 @@ The `sprint-planner` adds a row for each sprint it plans.
 | Sprint | Release option | Version | State |
 | --- | --- | --- | --- |
 | 13 · Foundations | `R v1.19.0: Sprint 13 · Foundations` | 1.19.0 | cut 2026-10-28 |
-| 14 · Identity | `R v1.19.1: Sprint 14 · Identity` | 1.19.1 | planned |
+| 14 · Identity | `R v1.19.1: Sprint 14 · Identity` | 1.19.1 | cut 2026-11-04 |
 | 15 · Screens and phones | `R v1.19.2: Sprint 15 · Screens and phones` | 1.19.2 | planned |
 | 16 · Languages and the Learning core | `R v1.19.3: Sprint 16 · Languages and the Learning core` | 1.19.3 | planned |
 
@@ -86,6 +86,8 @@ Only when every card in the sprint is Done, the last card included, and `ci` is 
    ```
 
    The image `ghcr.io/gauranshmathur/beyondleetcode` is then published as `vX.Y.Z` and `latest`. The webhook step is non-fatal, so also read its log for a `::warning::`.
+
+   If `release-please` fails with `API rate limit already exceeded`, that is GitHub's GraphQL limit, not the release. `RELEASE_PAT` shares the limit with the orchestrator and its workers. Wait for the limit to reset, re-run only the failed job (`gh run rerun <run-id> --failed`), and watch again. Until the cut is done, watch CI over REST (`gh run watch`, the `check-runs` endpoint) rather than polling `gh pr checks`, which spends the same budget.
 8. **Set the same notes on the GitHub release.** release-please writes the release from the PR body, not from `CHANGELOG.md`, and never edits a release it created, so this sticks:
 
    ```sh
@@ -99,3 +101,4 @@ Only when every card in the sprint is Done, the last card included, and `ci` is 
 | Version | Release | Date | Release PR | Completing commit | Notes |
 | --- | --- | --- | --- | --- | --- |
 | 1.19.0 | `R v1.19.0: Sprint 13 · Foundations` | 2026-10-28 | #403 | 65e6080 (C130, #405), with `Release-As: 1.19.0` | The first release merged by hand. The merge's `release` run tagged `v1.19.0`, passed `release-gate`, published the image as `v1.19.0` and `latest` (one digest), and the webhook answered `delivered`. Notes set from the template. Cut under the old per-feature-set rule, before the changelog went into `CHANGELOG.md`. |
+| 1.19.1 | `R v1.19.1: Sprint 14 · Identity` | 2026-11-04 | #407 | 8d4f4ad (C155, #439), with `Release-As: 1.19.1` | The first release with its changelog in `CHANGELOG.md`: the notes went into the release PR as `docs(beyondleetcode): 1.19.1 changelog` (71f96af), were reviewed in the diff, and the PR merged pinned to that head (dfda408). Its `release` run (41888165424) tagged `v1.19.1`, passed `release-gate`, published the image as `v1.19.1` and `latest` (one digest, sha256:93acfb58…), and the webhook answered `delivered`. The same notes are set on the GitHub release. |
