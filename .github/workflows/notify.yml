@@ -1,0 +1,96 @@
+name: notify
+
+# Pings the maintainer's Hermes instance over Tailscale, one signed POST per
+# GitHub event (the same way release.yml's "Notify release webhook" step does for
+# releases; there is deliberately no `release` trigger here). The runner joins the
+# tailnet just for this job (ephemeral node). Titles and messages are chosen by
+# whoever opens an issue or writes a commit, so every event value reaches the
+# script through `env:` and the body is built with `jq -n`; no `${{ }}` appears
+# inside a `run:` script.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [closed]
+  issues:
+    types: [opened, closed]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "*/30 * * * *"
+
+permissions:
+  contents: read
+
+# Ticks share one group (at most one running and one waiting, so they never queue
+# up). Every other event gets its own group, so a tick never replaces it.
+concurrency:
+  group: ${{ github.event_name == 'schedule' && 'notify-tick' || format('notify-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # A PR closed without merging sends nothing; a ci run sends only on failure.
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.merged == true) &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'failure')
+    steps:
+      - name: Join tailnet
+        id: tailnet
+        continue-on-error: true
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
+        with:
+          oauth-client-id: ""
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          tags: tag:ci
+      - name: Warn when the tailnet join failed
+        if: steps.tailnet.outcome == 'failure'
+        run: echo "::warning::Tailnet join failed, event not sent (non-fatal)"
+      - name: Notify events webhook
+        if: steps.tailnet.outcome == 'success'
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          REF: ${{ github.ref }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          ISSUE_ACTION: ${{ github.event.action }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          RUN_WORKFLOW: ${{ github.event.workflow_run.name }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_TITLE: ${{ github.event.workflow_run.display_title }}
+        run: |
+          case "$EVENT_NAME" in
+            push)
+              PAYLOAD=$(jq -n --arg ref "$REF" --arg msg "$HEAD_MESSAGE" --arg actor "$ACTOR" \
+                '{kind:"push", ref:$ref, title:($msg | split("\n")[0]), actor:$actor}') ;;
+            pull_request)
+              PAYLOAD=$(jq -n --argjson number "$PR_NUMBER" --arg title "$PR_TITLE" --arg actor "$ACTOR" \
+                '{kind:"pull_request", number:$number, title:$title, actor:$actor}') ;;
+            issues)
+              PAYLOAD=$(jq -n --arg action "$ISSUE_ACTION" --argjson number "$ISSUE_NUMBER" --arg title "$ISSUE_TITLE" \
+                '{kind:"issues", action:$action, number:$number, title:$title}') ;;
+            workflow_run)
+              PAYLOAD=$(jq -n --arg workflow "$RUN_WORKFLOW" --arg conclusion "$RUN_CONCLUSION" --arg title "$RUN_TITLE" \
+                '{kind:"workflow_run", workflow:$workflow, conclusion:$conclusion, title:$title}') ;;
+            schedule)
+              EVENT_NAME=tick
+              PAYLOAD=$(jq -n '{kind:"tick"}') ;;
+            *)
+              echo "::warning::Unexpected event $EVENT_NAME, nothing sent"
+              exit 0 ;;
+          esac
+          SIG="sha256=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* //')"
+          curl -sf -X POST "http://100.103.185.100:8644/webhooks/beyondleetcode-events" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Event: $EVENT_NAME" \
+            -H "X-Hub-Signature-256: $SIG" \
+            --data-binary "$PAYLOAD" || echo "::warning::Events webhook notify failed (non-fatal)"
