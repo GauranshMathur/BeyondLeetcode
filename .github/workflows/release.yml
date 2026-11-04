@@ -21,8 +21,8 @@ jobs:
     outputs:
       # From the second attempt when it ran, else from the first. The second runs only after the
       # first failed (and so had no outputs), and a second failure fails the job.
-      release_created: ${{ steps.retry.outputs.release_created || steps.release.outputs.release_created }}
-      tag_name: ${{ steps.retry.outputs.tag_name || steps.release.outputs.tag_name }}
+      release_created: ${{ steps.retry.outcome == 'skipped' && steps.release.outputs.release_created || steps.retry.outputs.release_created }}
+      tag_name: ${{ steps.retry.outcome == 'skipped' && steps.release.outputs.tag_name || steps.retry.outputs.tag_name }}
     steps:
       # Accumulates conventional commits into a release PR and keeps it fresh. Nothing merges it:
       # the orchestrator cuts each release by merging the PR by hand (docs/releasing.md). That
