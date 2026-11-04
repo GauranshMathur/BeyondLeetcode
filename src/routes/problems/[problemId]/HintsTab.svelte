@@ -2,6 +2,7 @@
 import type { ReplyData } from '#lib/problem-wire.js';
 import type { HintsView, ProblemView } from '#lib/server/learning/core.js';
 import { enhance } from '$app/forms';
+import ProblemHead from './ProblemHead.svelte';
 
 let { problem, hints }: { problem: ProblemView; hints: HintsView } = $props();
 
@@ -17,11 +18,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 </script>
 
 <section class="hints" aria-label="Hints">
-	<div class="head">
-		<span class="mono muted">{problem.kind === 'Core' ? 'core' : 'extra'} · {problem.topicTitle}</span>
-		<h1>Hints</h1>
-		<p class="intro">Hints are free. Reveal one at a time, in order. Each links back to the chapter behind the idea.</p>
-	</div>
+	<ProblemHead {problem} title="Hints" intro="Hints are free. Reveal one at a time, in order. Each links back to the chapter behind the idea." />
 
 	{#if view.total === 0}
 		<p class="none">No hints for this problem.</p>
@@ -85,24 +82,6 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 	}
 	.muted {
 		color: var(--muted);
-	}
-	.head {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		font-size: 13px;
-	}
-	h1 {
-		margin: 0;
-		font-weight: 400;
-		font-size: 38px;
-		line-height: 1.12;
-	}
-	.intro {
-		margin: 0;
-		font-size: 17px;
-		line-height: 1.5;
-		color: var(--body);
 	}
 	.none {
 		margin: 0;
