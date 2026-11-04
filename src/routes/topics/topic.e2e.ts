@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
-import { expectNoSidewaysScroll, expectTargets, phone, readToEnd } from '../../lib/e2e-phone.ts';
+import { expectNoSidewaysScroll, phone, readToEnd } from '../../lib/e2e-phone.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
@@ -56,14 +56,29 @@ test.describe('the Topic on a phone', () => {
 		await expect(page.getByText('not read', { exact: true })).toHaveCount(1);
 		await expect(page.locator('.read', { hasText: /^\s*read\s*$/ })).toHaveCount(1);
 
-		const rows = page.locator('.rows a');
+		const rows = page.locator('table.problems tbody tr');
 		expect(await rows.count()).toBeGreaterThan(1);
-		await expect(rows.first()).toContainText('core');
-		await expect(rows.first()).toContainText('step 01');
-		await expect(page.locator('.rows').getByText('extra').first()).toBeVisible();
+		await expect(rows.first()).toContainText('1.1');
+		await expect(rows.first()).toContainText('core · step 01');
+		await expect(
+			page.locator('table.problems').getByText('extra · off step').first()
+		).toBeVisible();
 		await expect(rows.first()).toContainText('—');
+		await expect(rows.first().getByRole('link')).toHaveText('Push and size');
 
-		await expectTargets(page.locator('.rows'), 44);
+		// The whole row is the link, as on a Chapter: every row is 44 px tall and its corner hits its link.
+		for (const row of await rows.all()) {
+			await row.scrollIntoViewIfNeeded();
+			const box = await row.boundingBox();
+			expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+			const hits = await row
+				.getByRole('link')
+				.evaluate((el, p) => document.elementFromPoint(p.x, p.y)?.closest('a') === el, {
+					x: (box?.x ?? 0) + (box?.width ?? 0) - 4,
+					y: (box?.y ?? 0) + (box?.height ?? 0) - 4
+				});
+			expect(hits).toBe(true);
+		}
 		await expectNoSidewaysScroll(page);
 	});
 });
