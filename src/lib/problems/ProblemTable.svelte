@@ -1,6 +1,6 @@
 <script lang="ts" module>
-	export type ProblemTableRow = { id: string; title: string; kind: string; status: string };
-	export type ProblemTableLabels = { problem: string; set: string; status: string };
+export type ProblemTableRow = { id: string; title: string; kind: string; status: string };
+export type ProblemTableLabels = { problem: string; set: string; status: string };
 </script>
 
 <script lang="ts">
@@ -13,7 +13,7 @@ let {
 	setText,
 	statusText
 }: {
-	problems: ProblemTableRow[];
+	problems: readonly ProblemTableRow[];
 	labels: ProblemTableLabels;
 	setText: (problem: ProblemTableRow) => string;
 	statusText: (problem: ProblemTableRow) => string;
