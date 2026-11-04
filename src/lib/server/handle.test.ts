@@ -3,12 +3,14 @@ import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { describe, expect, it, vi } from 'vitest';
 import type { App } from './app.ts';
 import { createHandle } from './handle.ts';
+import { createAccountActions } from './identity/account-actions.ts';
 import { createIdentity, createLocalIdentity } from './identity/index.ts';
 import { createInvites } from './identity/invites.ts';
 import { createMultiUserIdentity } from './identity/multi-user.ts';
 import { createRegistration } from './identity/registration.ts';
 import { createFirstAdmin } from './identity/setup.ts';
 import { createTestAuth } from './identity/test-auth.ts';
+import { createProviderStarts } from './identity/throttle.ts';
 import { createInstance } from './instance.ts';
 import { createTestDb } from './test-db.ts';
 
@@ -200,9 +202,16 @@ describe('Multi-user Mode', () => {
 			.join('; ');
 		const identity = await createLocalIdentity(db, options);
 		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
+		const invites = createInvites({ db, origin: 'http://localhost:3000' });
 		const multiUser = {
 			auth,
-			invites: createInvites({ db, origin: 'http://localhost:3000' }),
+			accounts: createAccountActions({
+				auth,
+				providerStarts: createProviderStarts(),
+				registrationOpen: () => instance.registrationMode() === 'open',
+				inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
+			}),
+			invites,
 			deleteLearner: async () => {}
 		};
 		const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
@@ -226,16 +235,24 @@ describe('Multi-user Mode', () => {
 		};
 	}
 
-	it('puts the Invites on locals in Multi-user Mode, and never in Local Mode', async () => {
+	it('puts the one Multi-user object on locals in Multi-user Mode, and never in Local Mode', async () => {
 		const { handle, asking } = await multiSetup();
 		const { event, locals, resolve } = asking('/', '/');
 		await handle({ event, resolve });
-		expect(locals.invites).toBeDefined();
+		expect(locals.multiUser).toMatchObject({
+			auth: expect.anything(),
+			accounts: expect.anything(),
+			invites: expect.anything(),
+			deleteLearner: expect.any(Function)
+		});
+		expect(locals).not.toHaveProperty('auth');
+		expect(locals).not.toHaveProperty('invites');
+		expect(locals).not.toHaveProperty('deleteLearner');
 
 		const local = await setup({ local: true });
 		const asked = request('/', '/');
 		await local.handle({ event: asked.event, resolve: asked.resolve });
-		expect(asked.locals.invites).toBeUndefined();
+		expect(asked.locals.multiUser).toBeUndefined();
 	});
 
 	it('sets Cache-Control and Referrer-Policy from the route-policy table, on the whole /users and /invite families', async () => {
@@ -300,7 +317,7 @@ describe('Multi-user Mode', () => {
 		}
 	});
 
-	it('lets the auth route through to a signed-out visitor, with the Better Auth instance on locals', async () => {
+	it('lets the auth route through to a signed-out visitor, with the Multi-user object on locals', async () => {
 		const { handle, asking, auth } = await multiSetup();
 		const { event, locals, resolve } = asking('/api/auth/get-session', '/api/auth/[...all]', '');
 
@@ -308,7 +325,7 @@ describe('Multi-user Mode', () => {
 
 		expect(response.status).toBe(200);
 		expect(Object.fromEntries(response.headers)).toMatchObject(framing);
-		expect(locals.auth).toBe(auth);
+		expect((locals.multiUser as { auth?: unknown } | undefined)?.auth).toBe(auth);
 		expect(locals.identity).toBeUndefined();
 	});
 

@@ -46,10 +46,9 @@ export interface MultiUser {
 	auth: Auth;
 	/**
 	 * Sign in, sign up, change password and sign out, built once so each form's throttle is the process's.
-	 * Always set by `createApp`; optional only until the test stubs in `handle.test.ts`, `signup-gate.test.ts`
-	 * and `users.test.ts` (other lanes' files) build one, and then it becomes required.
+	 * Always set by `createApp`.
 	 */
-	accounts?: AccountActions;
+	accounts: AccountActions;
 	invites: Invites;
 	/** `deleteLearner` of the progress module, bound to the database. */
 	deleteLearner: (learnerId: string) => Promise<void>;
