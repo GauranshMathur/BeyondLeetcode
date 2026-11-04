@@ -320,6 +320,15 @@ const failure = $derived(form && !form.wrong ? form.message : undefined);
 		color: var(--ink);
 		white-space: nowrap;
 	}
+	/* Below 1100px the 600px form column would leave the side panel too narrow for its content: the two share the width. */
+	@media (max-width: 1100px) {
+		main {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+		.figure {
+			padding: 48px 32px;
+		}
+	}
 	/* Mobile follows the Sign in board: one column, no side panel, a stretched button and the link under a rule. */
 	@media (max-width: 767.98px) {
 		main {
