@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
-import { gotoHydrated, reloadHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
+import {
+	gotoHydrated,
+	reloadHydrated,
+	submitHydrated,
+	waitHydrated
+} from '../../lib/test/hydrated.ts';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -34,12 +39,35 @@ test('a fresh Instance shows Setup everywhere; Multi-user needs the admin form, 
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create the admin.');
 	await gotoHydrated(page, '/setup');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Set up this instance.');
-	await page.getByLabel('Multi-user').check();
-	await submitHydrated(page.getByRole('button', { name: 'Continue →' }));
 
-	// A short password is refused on the form, keeping what was typed.
+	// C172 (#325, option 2): the page's `/_app/` scripts are held back, so Continue is a plain POST and the
+	// admin form arrives without them. What is typed into the name and email before hydration is still there
+	// once the scripts load.
+	let release: () => void = () => {};
+	const gate = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	await page.route('**/_app/**', async (route) => {
+		await gate;
+		await route.continue();
+	});
+	// 'commit': the document is there, its module scripts are not.
+	await page.goto('/setup', { waitUntil: 'commit' });
+	// The held stylesheet blocks rendering, so there are no frames for Playwright's visible-and-stable wait: the
+	// clicks are dispatched on the elements instead.
+	await page.getByLabel('Multi-user').dispatchEvent('click');
+	await page.getByRole('button', { name: 'Continue →' }).dispatchEvent('click');
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Create the admin.');
 	await page.getByLabel('Name').fill(E2E_ADMIN.name);
 	await page.getByLabel('Email').fill(E2E_ADMIN.email);
+	await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
+	release();
+	await waitHydrated(page);
+	await page.unroute('**/_app/**');
+	await expect(page.getByLabel('Name'), 'Name after hydration').toHaveValue(E2E_ADMIN.name);
+	await expect(page.getByLabel('Email'), 'Email after hydration').toHaveValue(E2E_ADMIN.email);
+
+	// A short password is refused on the form, keeping what was typed.
 	await page.getByLabel('Password').fill('short');
 	await submitHydrated(page.getByRole('button', { name: 'Create admin account →' }));
 	await expect(page.getByText('Use 12 to 128 characters.')).toBeVisible();

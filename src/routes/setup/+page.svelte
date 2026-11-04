@@ -3,6 +3,13 @@ import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
 
+// Bound to state seeded from the server's value, so what a visitor types before hydration is kept and a
+// no-JS or failed POST still repopulates from `form`.
+// svelte-ignore state_referenced_locally
+let name = $state(form?.step === 'admin' ? form.name : '');
+// svelte-ignore state_referenced_locally
+let email = $state(form?.step === 'admin' ? form.email : '');
+
 const multi = $derived(data.multiUser);
 // Converting a Local Instance (from Settings) starts at the admin form: the mode is already Local.
 const converting = $derived(data.converting);
@@ -47,7 +54,7 @@ const formError = $derived(
 						name="name"
 						autocomplete="name"
 						required
-						value={form?.step === 'admin' ? form.name : ''}
+						bind:value={name}
 						aria-invalid={fieldError('name') ? 'true' : undefined}
 						aria-describedby={fieldError('name') ? 'name-error' : undefined}
 					/>
@@ -60,7 +67,7 @@ const formError = $derived(
 						name="email"
 						autocomplete="email"
 						required
-						value={form?.step === 'admin' ? form.email : ''}
+						bind:value={email}
 						aria-invalid={fieldError('email') ? 'true' : undefined}
 						aria-describedby={fieldError('email') ? 'email-error' : undefined}
 					/>
