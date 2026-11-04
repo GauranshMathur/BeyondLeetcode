@@ -122,6 +122,10 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		border-bottom: 1px solid var(--ink);
 		overflow-x: auto;
 	}
+	.prose :global(.scrollbox) {
+		overflow-x: auto;
+		margin: 0 0 1em;
+	}
 	.example {
 		display: flex;
 		flex-direction: column;
