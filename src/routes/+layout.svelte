@@ -17,7 +17,7 @@ onMount(() => {
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{#if !(page.route.id === '/problems/[problemId]' && !page.error)}
+{#if !data.header.inPage || page.error}
 <AppHeader header={data.header} />
 {/if}
 
