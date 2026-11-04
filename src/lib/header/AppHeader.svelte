@@ -12,14 +12,14 @@ let { header, crumbs, actions }: { header: Header; crumbs?: Snippet; actions?: S
 {#if crumbs}
 <header class="workspace-bar">
 	<div class="lead">
-		<a class="brand" href={header.wordmark.href}>{header.wordmark.phoneLabel}</a>
+		<a class="brand" href={header.wordmark.href}>{header.wordmark.phoneLabel}<span class="sr-only">, Beyond Leetcode Map</span></a>
 		{@render crumbs()}
 	</div>
 	{#if actions}<div class="bar-actions">{@render actions()}</div>{/if}
 </header>
 {:else}
 <header>
-	<a class="brand" href={header.wordmark.href}><span class="wide">{header.wordmark.label}</span><span class="narrow">{header.wordmark.phoneLabel}</span></a>
+	<a class="brand" href={header.wordmark.href}><span class="wide">{header.wordmark.label}</span><span class="narrow">{header.wordmark.phoneLabel}<span class="sr-only">, Beyond Leetcode Map</span></span></a>
 	{#if !header.bare}
 	<nav aria-label="Primary">
 		<!-- Below 768px the wordmark is the link to the Map, so the Map link is hidden there (F.10f). -->
@@ -87,6 +87,12 @@ let { header, crumbs, actions }: { header: Header; crumbs?: Snippet; actions?: S
 	}
 	.narrow {
 		display: none;
+	}
+	/* Text for screen readers only, after "BLC" in the wordmark link's name. It stays inline, so the name
+	   reads "BLC, Beyond Leetcode Map" (a block or absolutely placed span would add a space before the comma). */
+	.sr-only {
+		font-size: 0;
+		line-height: 0;
 	}
 	/* The Problem screen's bar: 64px, "BLC" and the crumbs left, Run and Submit right. The 1px top padding
 	   offsets the bottom border so the 44px buttons clear the bar by 10px each side. */
