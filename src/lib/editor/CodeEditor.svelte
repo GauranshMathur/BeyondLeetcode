@@ -115,7 +115,7 @@ $effect(() => {
 <style>
 	.editor {
 		flex-grow: 1;
-		min-height: 320px;
+		min-height: var(--editor-min, 320px);
 		overflow: hidden;
 		background: var(--panel);
 	}
