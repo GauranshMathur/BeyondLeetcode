@@ -161,7 +161,9 @@ test.describe('the Chapter on a phone', () => {
 			}
 		);
 		expect(cornerHitsLink).toBe(true);
-		await expectTargets(page, 44);
+		// The Problem row is checked above as a whole row; its link's own box is the text line.
+		await expectTargets(page.getByRole('navigation', { name: 'More in this Topic' }), 44);
+		await expectTargets(page.locator('.reportrow'), 44);
 		// Problems, then the end links, then the report-an-issue line.
 		expect(topicBox?.y).toBeGreaterThan((rowBox?.y ?? 0) + (rowBox?.height ?? 0));
 		expect(reportBox?.y).toBeGreaterThan((nextBox?.y ?? 0) + (nextBox?.height ?? 0));
