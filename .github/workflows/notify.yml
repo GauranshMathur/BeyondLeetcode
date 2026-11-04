@@ -11,6 +11,8 @@ name: notify
 on:
   push:
     branches: [main]
+  # A merged fork PR's run gets no secrets, so it sends no pull_request line; that
+  # is accepted (not pull_request_target), the merge's push to main still notifies.
   pull_request:
     types: [closed]
   issues:
@@ -38,21 +40,28 @@ jobs:
     # A PR closed without merging sends nothing; a ci run sends only on failure.
     if: >-
       (github.event_name != 'pull_request' || github.event.pull_request.merged == true) &&
-      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'failure')
+      (github.event_name != 'workflow_run' || (
+        github.event.workflow_run.conclusion == 'failure' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch == 'main'))
     steps:
       - name: Join tailnet
         id: tailnet
         continue-on-error: true
+        timeout-minutes: 2
         uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
         with:
           oauth-client-id: ""
           authkey: ${{ secrets.TS_AUTHKEY }}
           tags: tag:ci
+          timeout: 30s
       - name: Warn when the tailnet join failed
         if: steps.tailnet.outcome == 'failure'
         run: echo "::warning::Tailnet join failed, event not sent (non-fatal)"
       - name: Notify events webhook
         if: steps.tailnet.outcome == 'success'
+        shell: bash
         env:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
           EVENT_NAME: ${{ github.event_name }}
@@ -69,11 +78,16 @@ jobs:
           RUN_TITLE: ${{ github.event.workflow_run.display_title }}
         run: |
           # Any failure below (jq, openssl, curl) is a warning, never a failed job.
-          trap 'echo "::warning::Events webhook notify failed (non-fatal)"; exit 0' ERR
+          PHASE=body
+          trap 'echo "::warning::Events webhook notify failed in phase $PHASE (non-fatal)"; exit 0' ERR
+          if [ -z "$WEBHOOK_SECRET" ]; then
+            echo "::warning::WEBHOOK_SECRET is empty, nothing sent (non-fatal)"
+            exit 0
+          fi
           case "$EVENT_NAME" in
             push)
               PAYLOAD=$(jq -n --arg ref "$REF" --arg msg "$HEAD_MESSAGE" --arg actor "$ACTOR" \
-                '{kind:"push", ref:$ref, title:($msg | split("\n")[0]), actor:$actor}') ;;
+                '{kind:"push", ref:$ref, title:($msg | split("\n")[0] | rtrimstr("\r")), actor:$actor}') ;;
             pull_request)
               PAYLOAD=$(jq -n --argjson number "$PR_NUMBER" --arg title "$PR_TITLE" --arg actor "$ACTOR" \
                 '{kind:"pull_request", number:$number, title:$title, actor:$actor}') ;;
@@ -90,9 +104,14 @@ jobs:
               echo "::warning::Unexpected event $EVENT_NAME, nothing sent"
               exit 0 ;;
           esac
+          PHASE=sign
           SIG="sha256=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* //')"
-          curl -sf -X POST "http://100.103.185.100:8644/webhooks/beyondleetcode-events" \
+          PHASE=post
+          STATUS=$(curl -sS -f --connect-timeout 10 --max-time 30 -o /dev/null -w '%{http_code}' -X POST "http://100.103.185.100:8644/webhooks/beyondleetcode-events" \
             -H "Content-Type: application/json" \
             -H "X-GitHub-Event: $EVENT_NAME" \
             -H "X-Hub-Signature-256: $SIG" \
-            --data-binary "$PAYLOAD"
+            --data-binary "$PAYLOAD") || {
+              echo "::warning::Events webhook POST failed, http status ${STATUS:-none} (non-fatal)"
+              exit 0
+            }
