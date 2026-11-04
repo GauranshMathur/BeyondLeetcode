@@ -1,15 +1,12 @@
 <script lang="ts">
 import type { ProblemView, SolutionView } from '#lib/server/learning/core.js';
+import ProblemHead from './ProblemHead.svelte';
 
 let { problem, solution }: { problem: ProblemView; solution: SolutionView } = $props();
 </script>
 
 <section class="solution" aria-label="Solution">
-	<div class="head">
-		<span class="mono muted">{problem.kind === 'Core' ? 'core' : 'extra'} · {problem.topicTitle}</span>
-		<h1>Solution</h1>
-		<p class="intro">Open to read at any time. Nothing is locked.</p>
-	</div>
+	<ProblemHead {problem} title="Solution" intro="Open to read at any time. Nothing is locked." />
 	<div class="approach">
 		<h2 class="mono label">Approach</h2>
 		<div class="prose">{@html solution.explanationHtml}</div>
@@ -27,27 +24,6 @@ let { problem, solution }: { problem: ProblemView; solution: SolutionView } = $p
 	}
 	.mono {
 		font-family: var(--font-mono);
-	}
-	.muted {
-		color: var(--muted);
-	}
-	.head {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		font-size: 13px;
-	}
-	h1 {
-		margin: 0;
-		font-weight: 400;
-		font-size: 38px;
-		line-height: 1.12;
-	}
-	.intro {
-		margin: 0;
-		font-size: 17px;
-		line-height: 1.5;
-		color: var(--body);
 	}
 	.approach {
 		display: flex;
