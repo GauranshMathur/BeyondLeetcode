@@ -1,11 +1,11 @@
 <script lang="ts">
+import { BAR_WIDTH, fillWidth } from '#lib/map/layout.js';
 import TopicMap from '#lib/map/TopicMap.svelte';
 import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();
 const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTopicId));
 const titleById = $derived(new Map(data.map.topics.map((t) => [t.id, t.title])));
-const BAR_WIDTH = 112;
 
 function after(prerequisites: readonly string[]): string {
 	return prerequisites.map((id) => titleById.get(id) ?? id).join(', ');
@@ -48,10 +48,10 @@ function stateText(t: (typeof data.map.topics)[number]): string {
 						<span class="state">locked</span>
 					{:else}
 						<span class="state">
-							<span class="bar" aria-hidden="true">
+							<span class="bar" aria-hidden="true" style:width="{BAR_WIDTH}px">
 								<span
 									class="fill"
-									style:width="{t.coreTotal ? (BAR_WIDTH * t.coreSolved) / t.coreTotal : 0}px"
+									style:width="{fillWidth(t)}px"
 								></span>
 							</span>
 							{stateText(t)}
@@ -181,7 +181,7 @@ function stateText(t: (typeof data.map.topics)[number]): string {
 	}
 	@media (max-width: 767.98px) {
 		main {
-			padding: 24px 20px 32px;
+			padding: 24px var(--size-gutter) 32px;
 		}
 		.intro {
 			grid-template-columns: minmax(0, 1fr);
@@ -205,7 +205,7 @@ function stateText(t: (typeof data.map.topics)[number]): string {
 		.current {
 			padding: 20px;
 			gap: 10px;
-			min-height: 44px;
+			min-height: var(--size-target);
 		}
 		.name {
 			line-height: 1.15;
@@ -233,7 +233,7 @@ function stateText(t: (typeof data.map.topics)[number]): string {
 			flex-direction: column;
 			gap: 6px;
 			box-sizing: border-box;
-			min-height: 44px;
+			min-height: var(--size-target);
 			padding: 14px 16px;
 			border: 1px solid var(--ink);
 			background: var(--paper);
@@ -256,7 +256,6 @@ function stateText(t: (typeof data.map.topics)[number]): string {
 		.bar {
 			flex-shrink: 0;
 			box-sizing: border-box;
-			width: 112px;
 			height: 6px;
 			border: 1px solid var(--ink);
 			border-radius: 2px;
