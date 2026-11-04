@@ -12,6 +12,12 @@
 	--rule: light-dark(#d9cfbe, #3a352e);
 	--on-ink: light-dark(#f3eee4, #171512);
 	--accent: light-dark(#b4421f, #e0704a);
+	--size-target: 44px;
+	--size-bar: 56px;
+	--size-gutter: 20px;
+	--size-field: 48px;
+	--size-h1-phone: 40px;
+	--leading-h1-phone: 1.08;
 	--font-serif: Georgia, "Times New Roman", serif;
 	--font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
