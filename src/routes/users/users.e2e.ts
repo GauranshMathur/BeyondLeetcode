@@ -8,7 +8,7 @@ import { gotoHydrated } from '../../lib/test/hydrated.ts';
 test('Local Mode has no Users: no link in the nav, and the page is not found', async ({ page }) => {
 	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
-	await expect(nav.getByRole('link')).toHaveText(['Map', 'Local']);
+	await expect(nav.getByRole('link')).toHaveText(['Map', 'Local'], { useInnerText: true });
 	await expect(nav.getByRole('link', { name: 'Users' })).toHaveCount(0);
 
 	const response = await page.goto('/users');
