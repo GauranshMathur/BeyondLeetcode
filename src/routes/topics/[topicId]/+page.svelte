@@ -71,16 +71,14 @@ const pct = (n: number, total: number) => (total ? Math.round((100 * n) / total)
 						problems={chapter.problems}
 						labels={{ problem: 'problem', set: 'set', status: 'status' }}
 						setText={(p) =>
-							p.kind === 'Core'
-								? 'core'
-								: p.parentProblemId
-									? `extra · off ${titles.get(p.parentProblemId) ?? p.parentProblemId}`
-									: 'extra'}
+							p.kind === 'Core' || !p.parentProblemId
+								? p.kind.toLowerCase()
+								: { main: 'extra', note: `· off ${titles.get(p.parentProblemId) ?? p.parentProblemId}` }}
 						phoneSetText={(p) =>
 							p.kind === 'Core'
-								? `core · step ${steps.get(p.id)}`
+								? { main: 'core', note: `· step ${steps.get(p.id)}` }
 								: p.parentProblemId
-									? `extra · off step ${steps.get(p.parentProblemId)}`
+									? { main: 'extra', note: `· off step ${steps.get(p.parentProblemId)}` }
 									: 'extra'}
 						numberText={(_, j) => `${i + 1}.${j + 1}`}
 						statusText={(p) => (p.status === 'Untouched' ? '—' : p.status.toLowerCase())}

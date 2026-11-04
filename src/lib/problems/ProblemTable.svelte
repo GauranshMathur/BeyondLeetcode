@@ -1,5 +1,7 @@
 <script lang="ts" module>
 export type ProblemTableRow = { id: string; title: string; kind: string; status: string };
+/** The set column's text: the set word, and an optional note after it ("· off Push and size") that keeps its own style. */
+export type ProblemTableSet = string | { main: string; note: string };
 export type ProblemTableLabels = { problem: string; set: string; status: string };
 </script>
 
@@ -17,13 +19,16 @@ let {
 }: {
 	problems: readonly T[];
 	labels: ProblemTableLabels;
-	setText: (problem: T) => string;
+	setText: (problem: T) => ProblemTableSet;
 	statusText: (problem: T) => string;
 	/** A phone's own wording for the set column; without it the phone reads `setText` too. */
-	phoneSetText?: (problem: T) => string;
+	phoneSetText?: (problem: T) => ProblemTableSet;
 	/** A phone's own row number (the Topic's "1.1"); without it rows count 01, 02 and so on. */
 	numberText?: (problem: T, index: number) => string;
 } = $props();
+
+const main = (set: ProblemTableSet) => (typeof set === 'string' ? set : set.main);
+const note = (set: ProblemTableSet) => (typeof set === 'string' ? '' : set.note);
 </script>
 
 <table class="problems" class:numbered={!!numberText}>
@@ -42,12 +47,13 @@ let {
 					<a class="ptitle" href="/problems/{problem.id}">{problem.title}</a>
 				</td>
 				<td>
-					{#if phoneSetText}
-						<span class="{problem.kind === 'Core' ? 'core' : 'muted upper'} wide">{setText(problem)}</span>
-						<span class="{problem.kind === 'Core' ? 'core' : 'muted upper'} narrow">{phoneSetText(problem)}</span>
-					{:else}
-						<span class={problem.kind === 'Core' ? 'core' : 'muted upper'}>{setText(problem)}</span>
-					{/if}
+					{#each phoneSetText ? [['wide', setText], ['narrow', phoneSetText]] as const : [['', setText]] as const as [width, text] (width)}
+						{@const set = text(problem)}
+						<span class={width}>
+							<span class={problem.kind === 'Core' ? 'core' : 'muted upper'}>{main(set)}</span>
+							{#if note(set)}<span class="muted">{note(set)}</span>{/if}
+						</span>
+					{/each}
 				</td>
 				<td class="status muted">{statusText(problem)}</td>
 			</tr>
