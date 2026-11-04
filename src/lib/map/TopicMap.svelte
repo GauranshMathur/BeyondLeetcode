@@ -1,12 +1,11 @@
 <script lang="ts">
 import type { MapView } from '#lib/server/learning/core.js';
-import { layoutMap, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
+import { BAR_WIDTH, fillWidth, layoutMap, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
 
 let { map }: { map: MapView } = $props();
 
 const layout = $derived(layoutMap(map.topics));
 const stateById = $derived(new Map(map.topics.map((t) => [t.id, t.state])));
-const BAR_WIDTH = 112;
 
 /** Elbow line from a Prerequisite down to its Topic, as on the canvas. */
 function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
@@ -54,7 +53,7 @@ function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
 						class="fill {topic.state}"
 						x={x + 16.5}
 						y={y + 44.5}
-						width={topic.coreTotal ? (BAR_WIDTH * topic.coreSolved) / topic.coreTotal : 0}
+						width={fillWidth(topic)}
 						height="6"
 						rx="2"
 					/>

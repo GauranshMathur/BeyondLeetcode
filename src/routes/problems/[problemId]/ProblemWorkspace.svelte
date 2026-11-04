@@ -455,7 +455,7 @@ const label: Record<SaveState, string> = {
 		display: none;
 	}
 	/* Wide screens: the workspace is exactly one screen tall and each pane scrolls on its own. */
-	@media (min-width: 901px) {
+	@media (width > 900px) {
 		.page {
 			height: 100dvh;
 			min-height: 0;
