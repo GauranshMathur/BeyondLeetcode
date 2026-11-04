@@ -1,5 +1,6 @@
 <script lang="ts">
 import { reportIssueUrl } from '#lib/issue-link.js';
+import ProblemTable from '#lib/problems/ProblemTable.svelte';
 import { enhance, type SubmitFunction } from '$app/forms';
 import { navigating } from '$app/state';
 import type { PageProps } from './$types';
@@ -74,24 +75,12 @@ $effect(() => {
 		{#if chapter.problems.length > 0}
 			<section aria-labelledby="problems">
 				<h2 id="problems">Problems</h2>
-				<table class="problems">
-					<thead>
-						<tr>
-							<th scope="col">problem</th>
-							<th scope="col">set</th>
-							<th scope="col" class="status">status</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each chapter.problems as problem (problem.id)}
-							<tr>
-								<td class="title"><a class="ptitle" href="/problems/{problem.id}">{problem.title}</a></td>
-								<td><span class={problem.kind === 'Core' ? 'core' : 'muted upper'}>{problem.kind.toLowerCase()}</span></td>
-								<td class="status muted">{problem.status === 'Untouched' ? '—' : problem.status.toLowerCase()}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
+				<ProblemTable
+					problems={chapter.problems}
+					labels={{ problem: 'problem', set: 'set', status: 'status' }}
+					setText={(p) => p.kind.toLowerCase()}
+					statusText={(p) => (p.status === 'Untouched' ? '—' : p.status.toLowerCase())}
+				/>
 			</section>
 		{/if}
 
@@ -114,8 +103,7 @@ $effect(() => {
 		min-height: calc(100vh - 93px);
 	}
 	.mono,
-	.crumbs,
-	table {
+	.crumbs {
 		font-family: var(--font-mono);
 	}
 	.muted {
@@ -288,57 +276,6 @@ $effect(() => {
 		font-size: 36px;
 		line-height: 1.15;
 	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 13px;
-	}
-	th {
-		text-align: left;
-		padding: 0 16px 12px 0;
-		font-weight: 500;
-		color: var(--muted);
-		border-bottom: 1px solid var(--ink);
-	}
-	td {
-		padding: 20px 16px 20px 0;
-		border-bottom: 1px solid var(--rule);
-	}
-	tr:last-child td {
-		border-bottom-color: var(--ink);
-	}
-	td.title {
-		padding-top: 10px;
-		padding-bottom: 10px;
-	}
-	.status {
-		text-align: right;
-		padding-right: 0;
-	}
-	.ptitle {
-		color: var(--ink);
-		font-family: var(--font-serif);
-		font-size: 21px;
-		text-decoration: none;
-		display: inline-block;
-		padding: 10px 0;
-	}
-	.ptitle:hover {
-		text-decoration: underline;
-		text-decoration-color: var(--accent);
-		text-underline-offset: 6px;
-	}
-	.core {
-		font-weight: 500;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		border-bottom: 2px solid var(--ink);
-		padding-bottom: 2px;
-	}
-	.upper {
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
 	.endlinks {
 		display: none;
 	}
@@ -381,7 +318,7 @@ $effect(() => {
 		}
 		aside {
 			width: auto;
-			padding: 0 20px;
+			padding: 0 var(--size-gutter);
 			background: transparent;
 			border-right: 0;
 			border-bottom: 1px solid var(--rule);
@@ -399,7 +336,7 @@ $effect(() => {
 			display: none;
 		}
 		main {
-			padding: 32px 20px 48px;
+			padding: 32px var(--size-gutter) 48px;
 			gap: 40px;
 		}
 		header {
@@ -411,8 +348,8 @@ $effect(() => {
 			text-transform: uppercase;
 		}
 		h1 {
-			font-size: 40px;
-			line-height: 1.08;
+			font-size: var(--size-h1-phone);
+			line-height: var(--leading-h1-phone);
 			letter-spacing: -0.01em;
 		}
 		.prose {
@@ -442,80 +379,6 @@ $effect(() => {
 		section {
 			gap: 20px;
 		}
-		table.problems,
-		table.problems tbody {
-			display: block;
-		}
-		table.problems {
-			border-top: 1px solid var(--ink);
-			counter-reset: row;
-		}
-		table.problems thead {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip: rect(0 0 0 0);
-		}
-		table.problems tr {
-			position: relative;
-			display: grid;
-			grid-template-columns: 40px auto minmax(0, 1fr);
-			column-gap: 0;
-			align-items: baseline;
-			padding: 16px 0;
-			border-bottom: 1px solid var(--rule);
-		}
-		table.problems tbody tr {
-			counter-increment: row;
-		}
-		table.problems tr:last-child {
-			border-bottom-color: var(--ink);
-		}
-		table.problems td,
-		table.problems td.title {
-			padding: 0;
-			border: 0;
-			font-size: 13px;
-			color: var(--muted);
-		}
-		table.problems td.title {
-			grid-column: 1 / -1;
-			display: grid;
-			grid-template-columns: 40px minmax(0, 1fr);
-			column-gap: 0;
-			align-items: baseline;
-			padding-bottom: 6px;
-		}
-		table.problems td.title::before {
-			content: counter(row, decimal-leading-zero);
-			font-size: 14px;
-			color: var(--muted);
-		}
-		table.problems td:nth-child(2) {
-			grid-column: 2;
-		}
-		table.problems td.status {
-			grid-column: 3;
-			text-align: left;
-		}
-		table.problems td.status::before {
-			content: '·';
-			padding: 0 8px;
-		}
-		.ptitle {
-			padding: 0;
-			line-height: 1.25;
-		}
-		/* The whole row is the link. */
-		.ptitle::after {
-			content: '';
-			position: absolute;
-			inset: 0;
-		}
-		.core {
-			color: var(--ink);
-		}
 		.endlinks {
 			display: flex;
 			flex-direction: column;
@@ -525,12 +388,12 @@ $effect(() => {
 		}
 		.report {
 			box-sizing: border-box;
-			min-height: 44px;
+			min-height: var(--size-target);
 		}
 		.endlinks a {
 			display: flex;
 			align-items: center;
-			min-height: 44px;
+			min-height: var(--size-target);
 			color: var(--ink);
 			text-decoration: none;
 		}
