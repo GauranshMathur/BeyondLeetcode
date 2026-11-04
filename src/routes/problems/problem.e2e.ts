@@ -655,7 +655,9 @@ test.describe('the Problem on a phone, as a flow', () => {
 		await expect(page.getByLabel('Accepted panel')).toBeVisible();
 
 		await gotoHydrated(page, '/topics/stacks');
-		await expect(page.getByRole('link', { name: /^1.1 Push and size/ })).toContainText('solved');
+		await expect(
+			page.locator('tr', { has: page.getByRole('link', { name: 'Push and size', exact: true }) })
+		).toContainText('solved');
 	});
 
 	// C61: a refused Run says why on the Tests tab, where the Learner already is.
