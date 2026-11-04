@@ -669,6 +669,7 @@ describe('CONTROL_OR_BIDI', () => {
 });
 
 describe('logFailure', () => {
+	const evt = { request: { method: 'GET' }, route: { id: '/r' } };
 	it('prints where, the class name and a known code only', () => {
 		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const cause = new Error('inner CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc');
@@ -685,5 +686,128 @@ describe('logFailure', () => {
 			['sign-in string'],
 			['bad where object']
 		]);
+	});
+
+	it('prints no class name that breaks the one rule, in the same way as the server hook', () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const named = (name: string) => Object.assign(new Error('x'), { name });
+		for (const name of ['My_Error', 'My.Error', 'My-Error', '1Error', 'E'.repeat(41), '']) {
+			logFailure('w', named(name));
+			expect(formatServerError(500, named(name), evt)).toBe('[500] GET /r Error');
+		}
+		logFailure('w', named('E'.repeat(40)));
+		expect(error.mock.calls).toEqual([
+			...Array.from({ length: 6 }, () => ['w Error']),
+			[`w ${'E'.repeat(40)}`]
+		]);
+	});
+
+	it('reads name and code once each, so a getter cannot pass the check and then print something else', () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		let nameReads = 0;
+		let codeReads = 0;
+		const hostile = new Error('x');
+		Object.defineProperty(hostile, 'name', {
+			get: () => (++nameReads === 1 ? 'Fine' : 'Evil\nforged line'),
+			configurable: true
+		});
+		Object.defineProperty(hostile, 'code', {
+			get: () => (++codeReads === 1 ? 'EPIPE' : 'CALLER_TEXT'),
+			configurable: true
+		});
+		logFailure('w', hostile);
+		expect(error.mock.calls).toEqual([['w Fine EPIPE']]);
+		expect([nameReads, codeReads]).toEqual([1, 1]);
+		nameReads = 0;
+		codeReads = 0;
+		expect(formatServerError(500, hostile, evt)).toBe('[500] GET /r Fine EPIPE');
+		expect([nameReads, codeReads]).toEqual([1, 1]);
+		nameReads = 0;
+		codeReads = 0;
+		expect(loggable(hostile)).toBe('Fine EPIPE');
+		expect([nameReads, codeReads]).toEqual([1, 1]);
+	});
+
+	it('never throws on a throwing getter, a hostile Proxy, a boxed string or a throw that is not an Error', () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const throwingCode = Object.defineProperty(new TypeError('x'), 'code', {
+			get: () => {
+				throw new Error('code getter');
+			}
+		});
+		const throwingName = Object.defineProperty(new Error('x'), 'name', {
+			get: () => {
+				throw new Error('name getter');
+			}
+		});
+		const proxy = new Proxy(new Error('x'), {
+			get() {
+				throw new Error('trap');
+			},
+			getPrototypeOf() {
+				throw new Error('trap');
+			}
+		});
+		const throwingField = {
+			get code(): string {
+				throw new Error('field getter');
+			}
+		};
+		expect(logFailure('w', throwingCode)).toBeUndefined();
+		expect(logFailure('w', throwingName)).toBeUndefined();
+		expect(logFailure('w', proxy)).toBeUndefined();
+		logFailure('w', new String('boxed'));
+		expect(error.mock.calls.map((c) => c[0])).toEqual([
+			'w TypeError',
+			'w Error',
+			'w object',
+			'w object'
+		]);
+		expect(formatServerError(500, throwingCode, evt)).toBe('[500] GET /r TypeError');
+		expect(formatServerError(500, proxy, evt)).toBe('[500] GET /r object');
+		expect(loggable(throwingCode)).toBe('TypeError');
+		expect(loggable(throwingName)).toBe('Error');
+		expect(loggable(throwingField)).toBe('[object omitted]');
+		expect(loggable(proxy)).toBe('[object omitted]');
+	});
+
+	it('prints the type of a throw that is not an Error', () => {
+		const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+		for (const thrown of [
+			'text',
+			42,
+			null,
+			undefined,
+			{ message: 'm', name: 'Fake' },
+			new String('s')
+		]) {
+			logFailure('w', thrown);
+			expect(formatServerError(500, thrown, evt)).toMatch(
+				/^\[500\] GET \/r (string|number|object|undefined)$/
+			);
+		}
+		expect(error.mock.calls.map((c) => c[0])).toEqual([
+			'w string',
+			'w number',
+			'w object',
+			'w undefined',
+			'w object',
+			'w object'
+		]);
+	});
+
+	it('reads a plain object code once and does not throw when the console does', () => {
+		let reads = 0;
+		const object = {
+			get code() {
+				return ++reads === 1 ? 'EPIPE' : 'CALLER_TEXT';
+			}
+		};
+		expect(loggable(object)).toBe('code=EPIPE');
+		expect(reads).toBe(1);
+		vi.spyOn(console, 'error').mockImplementation(() => {
+			throw new Error('closed stream');
+		});
+		expect(() => logFailure('w', new Error('x'))).not.toThrow();
 	});
 });

@@ -304,8 +304,45 @@ function redactedMember(value: unknown, patterns: LogPatterns): unknown {
 	return redactedLine([value], patterns);
 }
 
-/** A short token: what an Error's class name looks like. */
-const SAFE_TOKEN = /^[A-Za-z0-9_.-]{1,64}$/;
+/**
+ * The one rule for an error's class name in a log line: a letter, then letters and digits, 40 characters at most.
+ * Anything else is logged as `Error`. A class name is checked by its form, not against a list, so an
+ * attacker-chosen name that fits the rule still prints. That is accepted: such a name is at most 40 ASCII
+ * letters and digits, so it can mislead a reader but cannot break or forge a log line.
+ */
+const SAFE_NAME = /^[A-Za-z][A-Za-z0-9]{0,39}$/;
+
+/** Reads a property once and never throws: a getter that throws reads as `undefined`. */
+const readOnce = (read: () => unknown): unknown => {
+	try {
+		return read();
+	} catch {
+		return undefined;
+	}
+};
+
+/**
+ * What a log line says about a thrown value, from one read of `name` and one of `code`, none of which can
+ * throw: `name` is the class name of an Error that fits `SAFE_NAME` (else `Error`) and is null for a value that
+ * is not an Error; `code` is a known code or undefined. A getter that answers differently on a second read
+ * cannot change what was checked.
+ */
+function describeThrown(value: unknown): { name: string | null; code: string | undefined } {
+	const isError = readOnce(() => value instanceof Error) === true;
+	const rawName = isError ? readOnce(() => (value as Error).name) : undefined;
+	const rawCode =
+		typeof value === 'object' && value !== null
+			? readOnce(() => (value as { code?: unknown }).code)
+			: undefined;
+	return {
+		name: isError
+			? typeof rawName === 'string' && SAFE_NAME.test(rawName)
+				? rawName
+				: 'Error'
+			: null,
+		code: isKnownCode(rawCode) ? rawCode : undefined
+	};
+}
 
 /** The one control-and-bidi class: C0 and C1 controls (U+0000-U+001F, U+007F-U+009F) and the bidi controls (U+202A-U+202E, U+2066-U+2069). */
 const CONTROL_OR_BIDI_CLASS = '\\p{Cc}\\u202A-\\u202E\\u2066-\\u2069';
@@ -384,17 +421,15 @@ export function loggable(arg: unknown): unknown {
 	if (arg === null || arg === undefined) return arg;
 	if (typeof arg === 'number' || typeof arg === 'boolean') return arg;
 	if (typeof arg === 'string') return isKnownCode(arg) ? arg : '[text omitted]';
-	const field = (key: string) => {
-		const value = (arg as Record<string, unknown>)[key];
-		return isKnownCode(value) ? value : undefined;
-	};
-	if (arg instanceof Error) {
-		const code = field('code');
-		const name = SAFE_TOKEN.test(arg.name) ? arg.name : 'Error';
-		return code ? `${name} ${code}` : name;
-	}
+	const { name, code: errorCode } = describeThrown(arg);
+	if (name !== null) return errorCode ? `${name} ${errorCode}` : name;
 	if (typeof arg === 'object') {
-		const code = field('code') ?? field('error');
+		// `code` was read once by `describeThrown`; only `error` is read here.
+		const field = (key: string) => {
+			const value = readOnce(() => (arg as Record<string, unknown>)[key]);
+			return isKnownCode(value) ? value : undefined;
+		};
+		const code = errorCode ?? field('error');
 		return code ? `code=${code}` : '[object omitted]';
 	}
 	return '[value omitted]';
@@ -427,9 +462,6 @@ export const redactingLogger = (patterns: LogPatterns) => ({
 	}
 });
 
-/** A short identifier: what an error's class name looks like. Anything else is logged as `Error`. */
-const SAFE_NAME = /^[A-Za-z][A-Za-z0-9]{0,39}$/;
-
 /**
  * What an unexpected error prints. SvelteKit's default prints `[status] METHOD pathname` and the stack, and
  * the pathname of the Accept invite page holds the invite token. This prints the route id (`/invite/[token]`)
@@ -443,13 +475,10 @@ export function formatServerError(
 ): string {
 	const head = `[${status}] ${event.request.method} ${event.route.id ?? '(no route)'}`;
 	if (status === 404) return head;
-	const name = error instanceof Error && SAFE_NAME.test(error.name) ? error.name : 'Error';
-	const kind = error instanceof Error ? name : typeof error;
 	// The code only if it is one of the known codes (the list `redactingLogger` uses): a token-shaped string, such as
 	// an invite token, is not.
-	const rawCode =
-		error !== null && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
-	const code = isKnownCode(rawCode) ? rawCode : undefined;
+	const { name, code } = describeThrown(error);
+	const kind = name ?? typeof error;
 	return `${head} ${kind}${code ? ` ${code}` : ''}`;
 }
 
@@ -459,10 +488,11 @@ export function formatServerError(
  * cause, which can hold what a request or a provider sent.
  */
 export function logFailure(where: string, error: unknown): void {
-	const name = error instanceof Error && SAFE_NAME.test(error.name) ? error.name : 'Error';
-	const kind = error instanceof Error ? name : typeof error;
-	const rawCode =
-		error !== null && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
-	const code = isKnownCode(rawCode) ? rawCode : undefined;
-	console.error(`${where.replace(LOG_CONTROLS, ' ')} ${kind}${code ? ` ${code}` : ''}`);
+	const { name, code } = describeThrown(error);
+	const kind = name ?? typeof error;
+	try {
+		console.error(`${where.replace(LOG_CONTROLS, ' ')} ${kind}${code ? ` ${code}` : ''}`);
+	} catch {
+		// A logger that cannot print must not turn an action's form error into a 500.
+	}
 }
