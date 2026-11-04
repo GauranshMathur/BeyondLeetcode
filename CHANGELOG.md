@@ -2,55 +2,54 @@
 
 ## [1.19.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.0...v1.19.1) (2026-11-04)
 
+### Highlights
 
-### Fixes
+- **Accounts rebuilt underneath, same on screen.** On a multi-user server, signing in, signing up, invites, sessions and the server log now each go through one shared part of the code instead of several copies. Nothing you see changes.
+- **Two security fixes.** Redirects to Sign in keep the anti-framing headers, and the Users page stops writing error text to the server log.
+- **Eleven Chapters corrected.** Their quotations and line citations were checked against the sources, and the ones that did not hold are fixed.
 
-* **beyondleetcode:** C147 A data request's gate redirect keeps the anti-framing headers ([#438](https://github.com/GauranshMathur/BeyondLeetcode/issues/438)) ([fb30c5d](https://github.com/GauranshMathur/BeyondLeetcode/commit/fb30c5d5befc18b4ad1f326510b016d523f39441))
-* **beyondleetcode:** C150 Setup: the shared refusal map, the shared limits, and failures logged by kind only ([#425](https://github.com/GauranshMathur/BeyondLeetcode/issues/425)) ([b9a3ab9](https://github.com/GauranshMathur/BeyondLeetcode/commit/b9a3ab9d32607af11eb3c2b22389cfe27e3c7321))
-* **beyondleetcode:** C151 Users failures are logged by kind only ([#422](https://github.com/GauranshMathur/BeyondLeetcode/issues/422)) ([0317165](https://github.com/GauranshMathur/BeyondLeetcode/commit/0317165deabb1e97f7ca79ea6f3ecbdc25610f5e))
-* **beyondleetcode:** C154 Logging: one rule for an error's class name ([#436](https://github.com/GauranshMathur/BeyondLeetcode/issues/436)) ([878e425](https://github.com/GauranshMathur/BeyondLeetcode/commit/878e4251666a3755c06470e016a17e11bfe39a5f))
-* **beyondleetcode:** Sprint 12 source-quote audit fixes ([#434](https://github.com/GauranshMathur/BeyondLeetcode/issues/434)) ([b0bda7a](https://github.com/GauranshMathur/BeyondLeetcode/commit/b0bda7aa1cc068bb3f040c093687630dc178cc7a))
+### Added
 
+Nothing new to use in this release.
 
-### Refactoring
+### Fixed
 
-* **beyondleetcode:** C133 one logging module, outside Identity ([#412](https://github.com/GauranshMathur/BeyondLeetcode/issues/412)) ([503bce7](https://github.com/GauranshMathur/BeyondLeetcode/commit/503bce7d6d31e6c6cb931806cbe12fcf9eaa2579))
-* **beyondleetcode:** C134 one route-policy table the gate reads ([#410](https://github.com/GauranshMathur/BeyondLeetcode/issues/410)) ([9e7c708](https://github.com/GauranshMathur/BeyondLeetcode/commit/9e7c708badfac36ed2a45494493d1070b2ab0ec6))
-* **beyondleetcode:** C135 one Local Learner id ([#413](https://github.com/GauranshMathur/BeyondLeetcode/issues/413)) ([5032207](https://github.com/GauranshMathur/BeyondLeetcode/commit/5032207995b0e3bd938888efb1a30ef3b7d2d6ff))
-* **beyondleetcode:** C136 one currentSession that applies every session rule ([#414](https://github.com/GauranshMathur/BeyondLeetcode/issues/414)) ([6bf515c](https://github.com/GauranshMathur/BeyondLeetcode/commit/6bf515cc75523d27b0d32fa1f5e3c4e1a7f13a84))
-* **beyondleetcode:** C137 auth.ts and the hook use the logging module; Invites owns the invite patterns ([#416](https://github.com/GauranshMathur/BeyondLeetcode/issues/416)) ([b006c9e](https://github.com/GauranshMathur/BeyondLeetcode/commit/b006c9e8f1eb72b10d0768917501e0a1d0e6289f))
-* **beyondleetcode:** C138 createIdentity chooses the adapter, the hook asks it once ([#417](https://github.com/GauranshMathur/BeyondLeetcode/issues/417)) ([8e2d09f](https://github.com/GauranshMathur/BeyondLeetcode/commit/8e2d09f07e83638fcdf0763f48281963ffbe5b58))
-* **beyondleetcode:** C140 Identity account actions: one interface for signing in, signing up, changing a password and signing out ([#423](https://github.com/GauranshMathur/BeyondLeetcode/issues/423)) ([190213d](https://github.com/GauranshMathur/BeyondLeetcode/commit/190213d2d62a357ca15981a7b949db17f9048330))
-* **beyondleetcode:** C141 the credential generation moves from createAuth to session binding ([#421](https://github.com/GauranshMathur/BeyondLeetcode/issues/421)) ([bca9b2f](https://github.com/GauranshMathur/BeyondLeetcode/commit/bca9b2f826ff47599890e3a6b4beeef079726328))
-* **beyondleetcode:** C142 response headers come from the route-policy table ([#418](https://github.com/GauranshMathur/BeyondLeetcode/issues/418)) ([315737b](https://github.com/GauranshMathur/BeyondLeetcode/commit/315737b7b7e4f5ae7797695c842145bdfad69939))
-* **beyondleetcode:** C144 Multi-user adapter and Users page checks read currentSession; the sweep joins session binding ([#424](https://github.com/GauranshMathur/BeyondLeetcode/issues/424)) ([0ad3788](https://github.com/GauranshMathur/BeyondLeetcode/commit/0ad378849ef6df1437aa29132e982d10647e36e2))
-* **beyondleetcode:** C145 Sign in: the page signs in through the account actions ([#427](https://github.com/GauranshMathur/BeyondLeetcode/issues/427)) ([5ba2a23](https://github.com/GauranshMathur/BeyondLeetcode/commit/5ba2a238a8d595c647ec5327ef81b076d86d7ce6))
-* **beyondleetcode:** C146 Sign up and Accept invite both sign up through the account actions ([#426](https://github.com/GauranshMathur/BeyondLeetcode/issues/426)) ([7f9a73b](https://github.com/GauranshMathur/BeyondLeetcode/commit/7f9a73bf3410f1bf53cc727e104339cd1574085a))
-* **beyondleetcode:** C148 Identity: one check for Better Auth's secret ([#428](https://github.com/GauranshMathur/BeyondLeetcode/issues/428)) ([2526356](https://github.com/GauranshMathur/BeyondLeetcode/commit/252635639c501f370ccd65dc44f4d45c6f7f7feb))
-* **beyondleetcode:** C149 Change password and Sign out go through the account actions ([#429](https://github.com/GauranshMathur/BeyondLeetcode/issues/429)) ([e6e8d5f](https://github.com/GauranshMathur/BeyondLeetcode/commit/e6e8d5fd8f4f761cdc8caebe405e1fa20fc38712))
-* **beyondleetcode:** C152 Identity: account creation leaves createAuth, which is wiring only ([#431](https://github.com/GauranshMathur/BeyondLeetcode/issues/431)) ([6772058](https://github.com/GauranshMathur/BeyondLeetcode/commit/6772058bb0ffb9ebe98abc9a6782aca47aec16ba))
-* **beyondleetcode:** C153 Locals carries one Multi-user object, and no route holds Better Auth's instance ([#430](https://github.com/GauranshMathur/BeyondLeetcode/issues/430)) ([6bae28a](https://github.com/GauranshMathur/BeyondLeetcode/commit/6bae28a89752de8cc8f95f80185cd7161fa7ebcc))
+No bug fixes in this release.
 
+### Changed
 
-### Documentation
+- Each release now matches one sprint and comes with a changelog under fixed headings (#408).
 
-* **beyondleetcode:** backlog plan, Sprints 14 to 16 ([#409](https://github.com/GauranshMathur/BeyondLeetcode/issues/409)) ([4824a13](https://github.com/GauranshMathur/BeyondLeetcode/commit/4824a138adc47987f9fbcbbf929329bc4f3f42c4))
-* **beyondleetcode:** C155 Sprint 14 status, exit met ([#439](https://github.com/GauranshMathur/BeyondLeetcode/issues/439)) ([8d4f4ad](https://github.com/GauranshMathur/BeyondLeetcode/commit/8d4f4ada5b13f6790a84dd790ee8f4afc86610fd))
-* **beyondleetcode:** one release per sprint, and longer sprints ([#408](https://github.com/GauranshMathur/BeyondLeetcode/issues/408)) ([ccafda5](https://github.com/GauranshMathur/BeyondLeetcode/commit/ccafda51bbd2a829b617deca213b75aa31149957))
-* **beyondleetcode:** Sprint 13 status, exit met, and the 1.19.0 cut ([#406](https://github.com/GauranshMathur/BeyondLeetcode/issues/406)) ([a7a83c6](https://github.com/GauranshMathur/BeyondLeetcode/commit/a7a83c6745b197906ee122c38cf50eea8a9671aa))
+### Content
 
+Quotations and line citations corrected against their sources (#434). Every link is still waiting for a human reviewer in `docs/research/human-review-queue.md`.
+- **Two pointers.**
+  - *Emacs: noticing that a list never ends*: the paper's parameter is ϱ = 2, not "Q = 2".
+- **Graphs.**
+  - *Boost.Graph: a matrix or a list*: V² and O(V²), where the quotes read "V2".
+  - *Linux lockdep: the shortest way round a cycle*: the same fix.
+- **Backtracking.**
+  - *pip: pick the newest, go back when it conflicts*: the loop is cited at its own line.
+  - *CPython's regex engine: try an alternative, undo it, try the next*: the Chapter's own words are no longer set in quotation marks.
+- **Trees.**
+  - *Binary search trees: why the kernel balances them*: the example's loop is cited from its first line.
+  - *Flat trees and common ancestors: the device tree and git*: the Chapter's own words are no longer set in quotation marks.
+- **2-D dynamic programming.**
+  - *liblqr: the cheapest seam down an image*: the quoted line now matches the source exactly.
+- **1-D dynamic programming.**
+  - *git: keeping only the rows the recurrence reads*: the Chapter's own words are no longer set in quotation marks.
+  - *SentencePiece: one lattice, the best path or the sum over paths*: the same fix.
+- **Bit manipulation.**
+  - *Linux: reading a field as a signed number*: the same fix.
 
-### Tests
+### Security
 
-* **beyondleetcode:** C132 one Better Auth test harness with a fast hasher ([#411](https://github.com/GauranshMathur/BeyondLeetcode/issues/411)) ([38d1627](https://github.com/GauranshMathur/BeyondLeetcode/commit/38d1627bf8b608dbd55ac03d511290d3de274775))
-* **beyondleetcode:** C139 Identity tests use the Better Auth harness; test databases skip fsync ([#415](https://github.com/GauranshMathur/BeyondLeetcode/issues/415)) ([9a4813d](https://github.com/GauranshMathur/BeyondLeetcode/commit/9a4813dd7c3aad49b2891f3c9ba7eedb65fee5ee))
-* **beyondleetcode:** C143 route tests use the Better Auth harness ([#419](https://github.com/GauranshMathur/BeyondLeetcode/issues/419)) ([37f87ed](https://github.com/GauranshMathur/BeyondLeetcode/commit/37f87ed26ac12c5af4f599c6dce0f99b62f9dde8))
-* **beyondleetcode:** C197 every module the image runs from source is copied into it ([#420](https://github.com/GauranshMathur/BeyondLeetcode/issues/420)) ([f87df2b](https://github.com/GauranshMathur/BeyondLeetcode/commit/f87df2bed58199143cdb152be93bd6bf227a2a52))
+- Redirects to Sign in now keep the anti-framing headers when the app fetches page data. They also keep an extended session's cookie (C147, #438).
+- The Users page no longer prints error messages, which can hold an email or token, to the server log (C151, #422).
 
+### Upgrade notes
 
-### CI
-
-* **beyondleetcode:** C202 notify.yml pings Hermes on GitHub events ([#437](https://github.com/GauranshMathur/BeyondLeetcode/issues/437)) ([ad0ecaa](https://github.com/GauranshMathur/BeyondLeetcode/commit/ad0ecaa68a804a8c25e63fdd074a58258e9e0961))
+Nothing to do. Pull `v1.19.1` or `latest`.
 
 ## [1.19.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.18.0...v1.19.0) (2026-10-28)
 
