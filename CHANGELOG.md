@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.19.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.0...v1.19.1) (2026-11-04)
+
+### Highlights
+
+- **Accounts rebuilt underneath, same on screen.** On a multi-user server, signing in, signing up, invites, sessions and the server log now each go through one shared part of the code instead of several copies. Nothing you see changes.
+- **Two security fixes.** Redirects to Sign in keep the anti-framing headers, and the Users page stops writing error text to the server log.
+- **Eleven Chapters corrected.** Their quotations and line citations were checked against the sources, and the ones that did not hold are fixed.
+
+### Added
+
+Nothing new to use in this release.
+
+### Fixed
+
+No bug fixes in this release.
+
+### Changed
+
+- Each release now matches one sprint and comes with a changelog under fixed headings (#408).
+
+### Content
+
+Quotations and line citations corrected against their sources (#434). Every link is still waiting for a human reviewer in `docs/research/human-review-queue.md`.
+- **Two pointers.**
+  - *Emacs: noticing that a list never ends*: the paper's parameter is ϱ = 2, not "Q = 2".
+- **Graphs.**
+  - *Boost.Graph: a matrix or a list*: V² and O(V²), where the quotes read "V2".
+  - *Linux lockdep: the shortest way round a cycle*: the same fix.
+- **Backtracking.**
+  - *pip: pick the newest, go back when it conflicts*: the loop is cited at its own line.
+  - *CPython's regex engine: try an alternative, undo it, try the next*: the Chapter's own words are no longer set in quotation marks.
+- **Trees.**
+  - *Binary search trees: why the kernel balances them*: the example's loop is cited from its first line.
+  - *Flat trees and common ancestors: the device tree and git*: the Chapter's own words are no longer set in quotation marks.
+- **2-D dynamic programming.**
+  - *liblqr: the cheapest seam down an image*: the quoted line now matches the source exactly.
+- **1-D dynamic programming.**
+  - *git: keeping only the rows the recurrence reads*: the Chapter's own words are no longer set in quotation marks.
+  - *SentencePiece: one lattice, the best path or the sum over paths*: the same fix.
+- **Bit manipulation.**
+  - *Linux: reading a field as a signed number*: the same fix.
+
+### Security
+
+- Redirects to Sign in now keep the anti-framing headers when the app fetches page data. They also keep an extended session's cookie (C147, #438).
+- The Users page no longer prints error messages, which can hold an email or token, to the server log (C151, #422).
+
+### Upgrade notes
+
+Nothing to do. Pull `v1.19.1` or `latest`.
+
 ## [1.19.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.18.0...v1.19.0) (2026-10-28)
 
 
