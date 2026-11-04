@@ -133,6 +133,10 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 		border-bottom: 1px solid var(--ink);
 		overflow-x: auto;
 	}
+	.prose :global(.scrollbox) {
+		overflow-x: auto;
+		margin: 0 0 1em;
+	}
 	.chapter {
 		display: inline-flex;
 		gap: 10px;

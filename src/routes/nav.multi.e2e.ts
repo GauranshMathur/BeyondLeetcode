@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { E2E_ADMIN } from '../lib/e2e-admin.ts';
+import { expectBarHeight, expectNoSidewaysScroll, expectTargets, phone } from '../lib/e2e-phone.ts';
 import { gotoHydrated } from '../lib/test/hydrated.ts';
 import { LEARNER_PASSWORD, openMultiUserDatabase, type Session } from './users/multi-fixture.ts';
 
 // The phone header (F.10f) on the Multi-user server: 390 x 844, a learner and the admin.
 
-test.use({ viewport: { width: 390, height: 844 } });
+test.use(phone);
 
 const LIN = { name: 'Lin Learner', email: 'lin.nav@example.com' };
 const LONG = {
@@ -33,14 +34,9 @@ test.afterAll(async () => {
 
 async function expectBarFits(page: import('@playwright/test').Page) {
 	const header = page.locator('header');
-	expect((await header.boundingBox())?.height).toBe(56); // the 56 px bar, rule included
-	for (const link of await header.getByRole('link').all()) {
-		expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44);
-	}
-	const overflow = await page.evaluate(
-		() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-	);
-	expect(overflow).toBeLessThanOrEqual(0);
+	await expectBarHeight(header, 56); // the 56 px bar, rule included
+	await expectTargets(header, 44);
+	await expectNoSidewaysScroll(page);
 	// Sign out is not in the bar; it stays on Settings.
 	await expect(header.getByRole('button', { name: 'Sign out' })).toBeHidden();
 }

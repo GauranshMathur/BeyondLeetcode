@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import { expectNoSidewaysScroll, phone } from '../../lib/e2e-phone.ts';
 import { gotoHydrated, reloadHydrated, submitHydrated } from '../../lib/test/hydrated.ts';
 import { startFreshServer } from '../signin/fresh-server.ts';
 
@@ -249,16 +250,13 @@ test.describe('registration open', () => {
 		browser,
 		open
 	}) => {
-		const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+		const context = await browser.newContext({ ...phone });
 		const page = await context.newPage();
 		await gotoHydrated(page, `${open.url}/signup`);
 
 		await expect(page.getByRole('button', { name: 'Create account →' })).toBeVisible();
 		await expect(page.getByText('What an account keeps')).toBeHidden();
-		const overflow = await page.evaluate(
-			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-		);
-		expect(overflow).toBeLessThanOrEqual(0);
+		await expectNoSidewaysScroll(page);
 		await context.close();
 
 		const wide = await browser.newContext({ viewport: { width: 1440, height: 900 } });
