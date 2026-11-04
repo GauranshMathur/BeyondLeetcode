@@ -213,7 +213,7 @@ test('Run and Submit sit in the 64px workspace bar with 10px clearance at 1440x1
 		expect(box.y - barBox.y).toBeGreaterThanOrEqual(10);
 		expect(barBox.y + barBox.height - (box.y + box.height)).toBeGreaterThanOrEqual(10);
 	}
-	await expect(bar.getByRole('link', { name: 'map' })).toBeVisible();
+	await expect(bar.getByRole('link', { name: 'map', exact: true })).toBeVisible();
 });
 
 test('the Problem page stays one screen tall: the statement, the editor and the console scroll on their own', async ({
