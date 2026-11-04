@@ -1,9 +1,23 @@
 <script lang="ts">
+import type { Snippet } from 'svelte';
 import type { Header } from '#lib/server/header.js';
 
-let { header }: { header: Header } = $props();
+/**
+ * With `crumbs`, the bar is the Problem screen's: "BLC", the crumbs, and `actions` (Run and Submit,
+ * hidden on a phone, which has them in a strip), with no nav links. Without, it is the app bar.
+ */
+let { header, crumbs, actions }: { header: Header; crumbs?: Snippet; actions?: Snippet } = $props();
 </script>
 
+{#if crumbs}
+<header class="workspace-bar">
+	<div class="lead">
+		<a class="brand" href={header.wordmark.href}>{header.wordmark.phoneLabel}</a>
+		{@render crumbs()}
+	</div>
+	{#if actions}<div class="bar-actions">{@render actions()}</div>{/if}
+</header>
+{:else}
 <header>
 	<a class="brand" href={header.wordmark.href}><span class="wide">{header.wordmark.label}</span><span class="narrow">{header.wordmark.phoneLabel}</span></a>
 	{#if !header.bare}
@@ -21,6 +35,7 @@ let { header }: { header: Header } = $props();
 	</nav>
 	{/if}
 </header>
+{/if}
 
 <style>
 	header {
@@ -73,11 +88,42 @@ let { header }: { header: Header } = $props();
 	.narrow {
 		display: none;
 	}
+	/* The Problem screen's bar: 64px, "BLC" and the crumbs left, Run and Submit right. The 1px top padding
+	   offsets the bottom border so the 44px buttons clear the bar by 10px each side. */
+	.workspace-bar {
+		height: 64px;
+		flex-shrink: 0;
+		box-sizing: border-box;
+		padding: 1px 32px 0;
+	}
+	.workspace-bar .lead {
+		display: flex;
+		gap: 28px;
+		align-items: center;
+	}
+	.workspace-bar .brand {
+		font-size: 18px;
+		line-height: normal;
+	}
+	.bar-actions {
+		display: flex;
+		gap: 12px;
+	}
 	nav a[aria-current='page'] {
 		text-decoration: underline;
 		text-decoration-color: var(--accent);
 		text-decoration-thickness: 2px;
 		text-underline-offset: 8px;
+	}
+
+	@media (width > 767.98px) and (width <= 900px) {
+		.workspace-bar {
+			height: auto;
+			min-height: 64px;
+			flex-wrap: wrap;
+			gap: 0 16px;
+			padding: 1px 16px 0;
+		}
 	}
 
 	/* Below 768px (F.10f): a bar, BLC left, at most two target-sized links right, Sign out only on Settings.
@@ -104,6 +150,23 @@ let { header }: { header: Header } = $props();
 		nav {
 			min-width: 0;
 			gap: 24px;
+		}
+		.workspace-bar {
+			height: var(--size-bar);
+			min-height: 0;
+			flex-wrap: nowrap;
+			padding: 0 var(--size-gutter);
+		}
+		.workspace-bar .lead {
+			flex-grow: 1;
+			justify-content: space-between;
+			gap: 16px;
+		}
+		.workspace-bar .brand {
+			line-height: 20px;
+		}
+		.bar-actions {
+			display: none;
 		}
 		.signout,
 		.map {

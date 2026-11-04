@@ -14,6 +14,7 @@ describe('headerFor', () => {
 		expect(headerFor({ identity: local, mode: 'local', routeId: '/', pathname: '/' })).toEqual({
 			wordmark,
 			bare: false,
+			inPage: false,
 			links: [
 				{ key: 'map', href: '/', label: 'Map', phoneLabel: 'Map', current: true },
 				{
@@ -79,6 +80,14 @@ describe('headerFor', () => {
 		).toBe(false);
 	});
 
+	it('puts the Problem route in the page: its screen draws the bar', () => {
+		const at = (routeId: string | null) =>
+			headerFor({ identity: learner, mode: 'multi', routeId, pathname: '/x' }).inPage;
+		expect(at('/problems/[problemId]')).toBe(true);
+		for (const routeId of ['/', '/topics/[topicId]', '/chapters/[chapterId]', '/settings', null])
+			expect([routeId, at(routeId)]).toEqual([routeId, false]);
+	});
+
 	// Today's layout listed exactly these four; the route-policy table must give the same answers.
 	it.each(['/setup', '/signin', '/signup', '/invite/[token]'])(
 		'%s is bare: the wordmark alone',
@@ -92,6 +101,7 @@ describe('headerFor', () => {
 				expect(headerFor({ identity, mode, routeId, pathname: '/x' })).toEqual({
 					wordmark,
 					bare: true,
+					inPage: false,
 					links: [],
 					signOut: false
 				});
