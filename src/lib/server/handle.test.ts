@@ -522,8 +522,40 @@ describe('Multi-user Mode', () => {
 
 		const response = await handle({ event, resolve });
 
-		expect(response.status).toBe(303);
-		expect(response.headers.get('location')).toBe('/account/password');
+		// A data request's redirect is SvelteKit's JSON form (a 303 here would be replaced by respond.js).
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			type: 'redirect',
+			status: 303,
+			location: '/account/password'
+		});
+		expect(resolve).not.toHaveBeenCalled();
+	});
+
+	it('answers the gate redirect of a data request in SvelteKit\u2019s JSON form, with the anti-framing headers and the extended cookie', async () => {
+		const { handle, db, cookie } = await multiSetup();
+		await db.session.updateMany({
+			data: { expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000) }
+		});
+		await db.user.updateMany({ data: { mustChangePassword: true } });
+		const { event, resolve } = request('/settings', '/settings', 'GET', new Headers({ cookie }));
+		(event as { isDataRequest: boolean }).isDataRequest = true;
+
+		const response = await handle({ event, resolve });
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toBe('application/json');
+		expect(response.headers.get('cache-control')).toBe('private, no-store');
+		expect(await response.json()).toEqual({
+			type: 'redirect',
+			status: 303,
+			location: '/account/password'
+		});
+		expect(response.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
+		expect(response.headers.get('x-frame-options')).toBe('DENY');
+		expect(response.headers.getSetCookie()).toEqual([
+			expect.stringMatching(/^better-auth\.session_token=.*HttpOnly/i)
+		]);
 		expect(resolve).not.toHaveBeenCalled();
 	});
 

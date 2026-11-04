@@ -90,6 +90,33 @@ onOpen.describe('a signed-out visitor, on an Instance where anyone may sign up',
 		}
 	);
 
+	onOpen(
+		'is redirected from a page\u2019s data request in SvelteKit\u2019s JSON form, still refusing framing',
+		async ({ page }) => {
+			const response = await page.request.get('/settings/__data.json', { maxRedirects: 0 });
+
+			expect(response.status()).toBe(200);
+			expect(response.headers()['content-type']).toContain('application/json');
+			expect(response.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+			expect(response.headers()['x-frame-options']).toBe('DENY');
+			const body = await response.json();
+			expect(body).toMatchObject({ type: 'redirect', status: 303 });
+			expect(body.location).toMatch(/^\/signin\?next=%2Fsettings/);
+
+			// The app follows it: a client-side navigation to Settings (a link SvelteKit handles) lands on Sign in.
+			await gotoHydrated(page, '/signin');
+			await page.evaluate(() => {
+				const link = document.createElement('a');
+				link.href = '/settings';
+				link.id = 'to-settings';
+				link.textContent = 'to settings';
+				document.body.append(link);
+			});
+			await page.locator('#to-settings').click();
+			await expect(page).toHaveURL('/signin?next=%2Fsettings');
+		}
+	);
+
 	onOpen('sees the board, with a way to create an account', async ({ page }) => {
 		await gotoHydrated(page, '/signin');
 
