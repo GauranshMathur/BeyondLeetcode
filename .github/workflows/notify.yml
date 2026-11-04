@@ -68,6 +68,8 @@ jobs:
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           RUN_TITLE: ${{ github.event.workflow_run.display_title }}
         run: |
+          # Any failure below (jq, openssl, curl) is a warning, never a failed job.
+          trap 'echo "::warning::Events webhook notify failed (non-fatal)"; exit 0' ERR
           case "$EVENT_NAME" in
             push)
               PAYLOAD=$(jq -n --arg ref "$REF" --arg msg "$HEAD_MESSAGE" --arg actor "$ACTOR" \
@@ -93,4 +95,4 @@ jobs:
             -H "Content-Type: application/json" \
             -H "X-GitHub-Event: $EVENT_NAME" \
             -H "X-Hub-Signature-256: $SIG" \
-            --data-binary "$PAYLOAD" || echo "::warning::Events webhook notify failed (non-fatal)"
+            --data-binary "$PAYLOAD"
