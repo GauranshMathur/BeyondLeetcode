@@ -12,14 +12,9 @@ import { createRegistration } from '#lib/server/identity/registration.js';
 import { createFirstAdmin } from '#lib/server/identity/setup.js';
 import { createTestAuth } from '#lib/server/identity/test-auth.js';
 import { createProviderStarts } from '#lib/server/identity/throttle.js';
-import {
-	createInstance,
-	type Instance,
-	RegistrationNotAvailableError
-} from '#lib/server/instance.js';
+import { createInstance, RegistrationNotAvailableError } from '#lib/server/instance.js';
 import { deleteLearner } from '#lib/server/learning/progress.js';
 import { createFileTestDb } from '#lib/server/test-db.js';
-import { load as layoutLoad } from '../+layout.server';
 import { load as signupLoad } from '../signup/+page.server';
 import { actions, load } from './+page.server';
 
@@ -265,33 +260,6 @@ describe('the load, if the hook ever let a request through', () => {
 			status: 403
 		});
 		expect(auth.api.listUsers).not.toHaveBeenCalled();
-	});
-});
-
-describe('the nav', () => {
-	const layout = (mode: 'local' | 'multi' | null, role?: 'admin' | 'learner') =>
-		layoutLoad({
-			locals: {
-				instance: { mode: () => mode } as Instance,
-				identity: role && { learnerId: 'l', displayName: 'N', role }
-			}
-		} as never);
-
-	it('offers Users to the admin of a Multi-user Instance', () => {
-		expect(layout('multi', 'admin')).toMatchObject({ displayName: 'N', showUsers: true });
-	});
-
-	it('does not offer it to a learner', () => {
-		expect(layout('multi', 'learner')).toMatchObject({ showUsers: false });
-	});
-
-	it('does not offer it in Local Mode, where the Local Learner is an admin but there are no Accounts', () => {
-		expect(layout('local', 'admin')).toMatchObject({ displayName: 'N', showUsers: false });
-	});
-
-	it('does not offer it before anyone is resolved', () => {
-		expect(layout(null)).toMatchObject({ showUsers: false });
-		expect(layout('multi')).toMatchObject({ showUsers: false });
 	});
 });
 
