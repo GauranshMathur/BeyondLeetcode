@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.19.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.2...v1.19.3) (2026-11-05)
+
+
+### Fixes
+
+* **beyondleetcode:** C198 Runner engine: a removal's poll never starts with no time left ([#484](https://github.com/GauranshMathur/BeyondLeetcode/issues/484)) ([93d345b](https://github.com/GauranshMathur/BeyondLeetcode/commit/93d345b2ee6170a087b35530ab44fd9daae6eaa4))
+
+
+### Refactoring
+
+* **beyondleetcode:** C178 Content catalogue: each Problem's place on the Main Line, and Test names ([#469](https://github.com/GauranshMathur/BeyondLeetcode/issues/469)) ([6aaaacd](https://github.com/GauranshMathur/BeyondLeetcode/commit/6aaaacdffd047b0093d5743c46c8bf6ec6c3ab8f))
+* **beyondleetcode:** C181 Languages: each Language's file extension, editor highlighting keyed by Language ([#470](https://github.com/GauranshMathur/BeyondLeetcode/issues/470)) ([d39060b](https://github.com/GauranshMathur/BeyondLeetcode/commit/d39060b04f089da79f0597532b759301dbfb9948))
+* **beyondleetcode:** C184 Runner: the harness moves to harness.py ([#468](https://github.com/GauranshMathur/BeyondLeetcode/issues/468)) ([c67ffa0](https://github.com/GauranshMathur/BeyondLeetcode/commit/c67ffa01f7c6e02be8d9fcfb11ec4941d5ccd72c))
+* **beyondleetcode:** C185 Runner port: one schema for each shape ([#480](https://github.com/GauranshMathur/BeyondLeetcode/issues/480)) ([4d97d97](https://github.com/GauranshMathur/BeyondLeetcode/commit/4d97d97880da3f9335ae22cd3470d0ee1eba91b6))
+* **beyondleetcode:** C186 Learning rules: the Main Line and Test names come from the catalogue ([#483](https://github.com/GauranshMathur/BeyondLeetcode/issues/483)) ([7883768](https://github.com/GauranshMathur/BeyondLeetcode/commit/788376855d509c3fa03e9d074dce450cf9b3fe7c))
+* **beyondleetcode:** C187 Languages: one list named LANGUAGES ([#485](https://github.com/GauranshMathur/BeyondLeetcode/issues/485)) ([07eabf6](https://github.com/GauranshMathur/BeyondLeetcode/commit/07eabf62ab1683cae89d46dddf1902c292e9ee56))
+* **beyondleetcode:** C188 Runner: harness.py's per-Language rules as one table ([#478](https://github.com/GauranshMathur/BeyondLeetcode/issues/478)) ([3bf4717](https://github.com/GauranshMathur/BeyondLeetcode/commit/3bf47173f7476fbb972f331db2b074999cb0403b))
+* **beyondleetcode:** C189 Runner: the harness protocol written in one place ([#479](https://github.com/GauranshMathur/BeyondLeetcode/issues/479)) ([9aca911](https://github.com/GauranshMathur/BeyondLeetcode/commit/9aca911722d1885512e90187b68422fe687651b2))
+* **beyondleetcode:** C190 Learning core: "may this Learner open it?" as one named rule ([#487](https://github.com/GauranshMathur/BeyondLeetcode/issues/487)) ([37c60c5](https://github.com/GauranshMathur/BeyondLeetcode/commit/37c60c541ff55c3d7289a745b90d448359c6832e))
+* **beyondleetcode:** C193 Learner state: revealed Hints and the Language per Topic stored through progress.ts ([#489](https://github.com/GauranshMathur/BeyondLeetcode/issues/489)) ([7fea32c](https://github.com/GauranshMathur/BeyondLeetcode/commit/7fea32cae50e40d899fc90fa242e49548a53b086))
+* **beyondleetcode:** C194 Content and Learning: the Submit plan in a module both import ([#492](https://github.com/GauranshMathur/BeyondLeetcode/issues/492)) ([207db9b](https://github.com/GauranshMathur/BeyondLeetcode/commit/207db9bda0635780f358238f5de930afe24eda99))
+* **beyondleetcode:** C195 Learner state: Build steps stored through progress.ts ([#493](https://github.com/GauranshMathur/BeyondLeetcode/issues/493)) ([4132858](https://github.com/GauranshMathur/BeyondLeetcode/commit/41328586144a04d59703647b6a06f5a3635e9676))
+
+
+### Documentation
+
+* **beyondleetcode:** C196 Sprint 16 exit check ([#497](https://github.com/GauranshMathur/BeyondLeetcode/issues/497)) ([d56692a](https://github.com/GauranshMathur/BeyondLeetcode/commit/d56692ae98fe1c2d854c930d51ebe7f8298d33c3))
+* **beyondleetcode:** C199 research: where a TypeScript Submit late on a long Main Line spends its time ([#490](https://github.com/GauranshMathur/BeyondLeetcode/issues/490)) ([90685d5](https://github.com/GauranshMathur/BeyondLeetcode/commit/90685d579895f5e57715a8111924e2e28d6eed8e))
+* **beyondleetcode:** C201 research: why a fork-bombed container's forced remove hangs past its hard stop ([#474](https://github.com/GauranshMathur/BeyondLeetcode/issues/474)) ([9456c59](https://github.com/GauranshMathur/BeyondLeetcode/commit/9456c59e21bc721272adde35764f07c831fcdf16))
+* **beyondleetcode:** record the 1.19.2 cut, and the host's resource rule ([#477](https://github.com/GauranshMathur/BeyondLeetcode/issues/477)) ([67707a3](https://github.com/GauranshMathur/BeyondLeetcode/commit/67707a3f1d40572b9f7a6c0e7eb5686ef29f5a85))
+
+
+### Tests
+
+* **beyondleetcode:** C131 Runner: the fork-bomb teardown is logged, and its test bounded by the design ([#486](https://github.com/GauranshMathur/BeyondLeetcode/issues/486)) ([80026aa](https://github.com/GauranshMathur/BeyondLeetcode/commit/80026aa0c3345754ecacb0a430c05da51b8cf85e))
+* **beyondleetcode:** C179 Learning rules tests: table tests for judge, submitPlan, problemView and validateBuild ([#475](https://github.com/GauranshMathur/BeyondLeetcode/issues/475)) ([0831c5a](https://github.com/GauranshMathur/BeyondLeetcode/commit/0831c5a0ed01c5a3697b3e30bc4e3717122d506a))
+* **beyondleetcode:** C180 Learning core tests: one setup in core.test.ts ([#471](https://github.com/GauranshMathur/BeyondLeetcode/issues/471)) ([0b79c1f](https://github.com/GauranshMathur/BeyondLeetcode/commit/0b79c1f7f7d8fceab30dfa8a970b5e4d3beae068))
+* **beyondleetcode:** C182 Smoke test: reads the Language list ([#472](https://github.com/GauranshMathur/BeyondLeetcode/issues/472)) ([50d3d51](https://github.com/GauranshMathur/BeyondLeetcode/commit/50d3d513a11c586e59e062434b95fb01fe44ef22))
+* **beyondleetcode:** C191 Runner tests: the compile-error rules as a table test, without Docker ([#488](https://github.com/GauranshMathur/BeyondLeetcode/issues/488)) ([3c1ae94](https://github.com/GauranshMathur/BeyondLeetcode/commit/3c1ae94557933e434318d652e33e59fad5eafbd3))
+* **beyondleetcode:** C192 Runner tests: one Runner start for the sandbox tests ([#494](https://github.com/GauranshMathur/BeyondLeetcode/issues/494)) ([4fa5b9d](https://github.com/GauranshMathur/BeyondLeetcode/commit/4fa5b9d6a0761b862f60fe67b98723d1854f42e5))
+
+
+### CI
+
+* **beyondleetcode:** C183 CI: the Sandbox images listed once, read from config.ts ([#473](https://github.com/GauranshMathur/BeyondLeetcode/issues/473)) ([4b72d8d](https://github.com/GauranshMathur/BeyondLeetcode/commit/4b72d8d186ce5de59b390c6d7940b4d12a0b2c9a))
+
 ## [1.19.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.1...v1.19.2) (2026-11-05)
 
 ### Highlights
