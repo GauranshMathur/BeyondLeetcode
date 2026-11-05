@@ -1,12 +1,12 @@
 /**
- * The Languages a Learner can build in: the one list. Browser-safe on purpose (id, display name and
- * entry file only); the Sandbox image of each lives server-side in `server/runner/config.ts`, keyed
+ * The Languages a Learner can build in: the one list. Browser-safe on purpose (id, display name,
+ * entry file and file extension only); the Sandbox image of each lives server-side in `server/runner/config.ts`, keyed
  * by `Language`.
  */
 export const LANGUAGES = [
-	{ id: 'python', name: 'Python', entryFile: 'main.py' },
-	{ id: 'typescript', name: 'TypeScript', entryFile: 'main.ts' },
-	{ id: 'go', name: 'Go', entryFile: 'main.go' }
+	{ id: 'python', extension: '.py', name: 'Python', entryFile: 'main.py' },
+	{ id: 'typescript', extension: '.ts', name: 'TypeScript', entryFile: 'main.ts' },
+	{ id: 'go', extension: '.go', name: 'Go', entryFile: 'main.go' }
 ] as const;
 
 export type Language = (typeof LANGUAGES)[number]['id'];
