@@ -23,7 +23,10 @@ export async function waitUntilHealthy(
 	const deadline = Date.now() + healthBudgetMs;
 	while (Date.now() < deadline) {
 		try {
-			const res = await fetch(`${url}/health`, { headers: { Authorization: `Bearer ${token}` } });
+			const res = await fetch(`${url}/health`, {
+				headers: { Authorization: `Bearer ${token}` },
+				signal: AbortSignal.timeout(5_000)
+			});
 			seen.push(res.status);
 			if (res.status === 200) {
 				const body = (await res.json()) as { languages?: string[] };
@@ -37,6 +40,15 @@ export async function waitUntilHealthy(
 	throw new Error(`Runner process did not become healthy within ${healthBudgetMs / 1000} s`);
 }
 
+/** Every Runner this module has spawned and not yet stopped, so a `beforeAll` that times out cannot orphan one. */
+const spawned = new Set<ChildProcess>();
+
+/** Kills every Runner process `startRunnerProcess` spawned. Call it in `afterAll`. */
+export function stopTestRunners(): void {
+	for (const child of spawned) child.kill();
+	spawned.clear();
+}
+
 /**
  * Starts the Runner process on a free port and reads its instance id from the `Runner <id> listening on` line it logs at start-up.
  * Its output is forwarded to this process's stdout. Does not wait for `/health`.
@@ -47,9 +59,16 @@ export async function startRunnerProcess(
 ): Promise<{ process: ChildProcess; url: string; instanceId: string }> {
 	const port = await freePort();
 	const child = spawn('bun', ['src/lib/server/runner/main.ts'], {
-		env: { ...process.env, RUNNER_PORT: String(port), RUNNER_TOKEN: token, DOCKER_SOCKET: socket },
+		env: {
+			...process.env,
+			RUNNER_HOST: '127.0.0.1',
+			RUNNER_PORT: String(port),
+			RUNNER_TOKEN: token,
+			DOCKER_SOCKET: socket
+		},
 		stdio: ['inherit', 'pipe', 'inherit']
 	});
+	spawned.add(child);
 	const stdout = child.stdout;
 	if (!stdout) throw new Error('Runner process has no stdout');
 	const instanceId = await new Promise<string>((resolve, reject) => {
@@ -79,8 +98,8 @@ export async function startRunnerProcess(
 /**
  * The one start every sandbox test file shares: starts the Runner process, waits until it is
  * healthy, then makes and removes one container from each of `images` (default: every Sandbox
- * image) so the first test does not pay for a pull. `runner` is the HTTP adapter. The caller kills
- * `process` in its `afterAll`.
+ * image) to warm the engine, so the first test does not pay for it. `engine.create` never pulls.
+ * `runner` is the HTTP adapter. The caller calls `stopTestRunners()` in its `afterAll`.
  */
 export async function startTestRunner(
 	token: string,
@@ -92,7 +111,9 @@ export async function startTestRunner(
 		await waitUntilHealthy(started.url, token);
 		const engine = createEngine(socket);
 		for (const image of images) {
-			await engine.create(image, {}).then((id) => engine.remove(id));
+			await engine
+				.create(image, { Labels: { [containerLabel]: started.instanceId } })
+				.then((id) => engine.remove(id));
 		}
 	} catch (error) {
 		started.process.kill();

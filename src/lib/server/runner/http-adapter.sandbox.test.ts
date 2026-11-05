@@ -1,4 +1,3 @@
-import type { ChildProcess } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sandboxConfig } from './config';
 import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
@@ -7,28 +6,26 @@ import { harnessInput } from './harness';
 import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
-import { containersOwnedBy, startTestRunner } from './wait-healthy.testutil';
+import { containersOwnedBy, startTestRunner, stopTestRunners } from './wait-healthy.testutil';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
 const token = 'sandbox-test-token-0123456789-abcdef';
 const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
 const engine = createEngine(socket);
-let runnerProcess: ChildProcess;
 let url: string;
 let instanceId: string;
 let runner: RunnerPort;
 
 beforeAll(async () => {
 	const started = await startTestRunner(token);
-	runnerProcess = started.process;
 	url = started.url;
 	instanceId = started.instanceId;
 	runner = started.runner;
 }, 120_000);
 
 afterAll(() => {
-	runnerProcess?.kill();
+	stopTestRunners();
 });
 
 const programs: Record<Exclude<ProgramKind, 'unavailable'>, string> = {

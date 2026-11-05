@@ -1,10 +1,10 @@
-import { type ChildProcess, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { containerLabel, sandboxConfig } from './config';
 import { createEngine } from './engine';
 import type { RunnerPort } from './port';
 import { removeAttemptTimeoutMs } from './sandbox';
-import { containersOwnedBy, startTestRunner } from './wait-healthy.testutil';
+import { containersOwnedBy, startTestRunner, stopTestRunners } from './wait-healthy.testutil';
 
 /**
  * Seam 2, adversarial: real learner Python through the HTTP adapter and a real Runner process,
@@ -14,19 +14,17 @@ import { containersOwnedBy, startTestRunner } from './wait-healthy.testutil';
 const token = 'escape-test-token-0123456789-abcdef';
 const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
 const engine = createEngine(socket);
-let runnerProcess: ChildProcess;
 let runner: RunnerPort;
 let instanceId: string;
 
 beforeAll(async () => {
 	const started = await startTestRunner(token, { images: [sandboxConfig.pythonImage] });
-	runnerProcess = started.process;
 	instanceId = started.instanceId;
 	runner = started.runner;
 }, 120_000);
 
 afterAll(() => {
-	runnerProcess?.kill();
+	stopTestRunners();
 });
 
 afterEach(async () => {
