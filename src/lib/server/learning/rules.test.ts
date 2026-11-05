@@ -622,6 +622,7 @@ describe('Fixture rules', () => {
 							? [
 									{
 										id: 'stacks-peek/hidden/01',
+										name: '01',
 										kind: 'hidden' as const,
 										input: 'in',
 										expected: 'out'
