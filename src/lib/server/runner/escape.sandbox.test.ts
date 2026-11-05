@@ -2,10 +2,9 @@ import { type ChildProcess, execFileSync } from 'node:child_process';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { containerLabel, sandboxConfig } from './config';
 import { createEngine } from './engine';
-import { createHttpRunner } from './http-adapter';
 import type { RunnerPort } from './port';
 import { removeAttemptTimeoutMs } from './sandbox';
-import { containersOwnedBy, startRunnerProcess, waitUntilHealthy } from './wait-healthy.testutil';
+import { containersOwnedBy, startTestRunner } from './wait-healthy.testutil';
 
 /**
  * Seam 2, adversarial: real learner Python through the HTTP adapter and a real Runner process,
@@ -17,18 +16,13 @@ const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
 const engine = createEngine(socket);
 let runnerProcess: ChildProcess;
 let runner: RunnerPort;
-let url: string;
 let instanceId: string;
 
 beforeAll(async () => {
-	const started = await startRunnerProcess(token, socket);
+	const started = await startTestRunner(token, { images: [sandboxConfig.pythonImage] });
 	runnerProcess = started.process;
-	url = started.url;
 	instanceId = started.instanceId;
-	await waitUntilHealthy(url, token);
-	runner = createHttpRunner({ url, token });
-	// Pull the image now so the first test does not pay for it.
-	await engine.create(sandboxConfig.pythonImage, {}).then((id) => engine.remove(id));
+	runner = started.runner;
 }, 120_000);
 
 afterAll(() => {

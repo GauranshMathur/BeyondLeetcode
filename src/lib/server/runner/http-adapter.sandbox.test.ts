@@ -7,7 +7,7 @@ import { harnessInput } from './harness';
 import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
-import { containersOwnedBy, startRunnerProcess, waitUntilHealthy } from './wait-healthy.testutil';
+import { containersOwnedBy, startTestRunner } from './wait-healthy.testutil';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
@@ -20,16 +20,11 @@ let instanceId: string;
 let runner: RunnerPort;
 
 beforeAll(async () => {
-	const started = await startRunnerProcess(token, socket);
+	const started = await startTestRunner(token);
 	runnerProcess = started.process;
 	url = started.url;
 	instanceId = started.instanceId;
-	await waitUntilHealthy(url, token);
-	runner = createHttpRunner({ url, token });
-	// Pull the image now so the first test does not pay for it.
-	for (const image of Object.values(sandboxConfig.images)) {
-		await engine.create(image, {}).then((id) => engine.remove(id));
-	}
+	runner = started.runner;
 }, 120_000);
 
 afterAll(() => {

@@ -1,7 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { freePort } from '../../test/free-port.ts';
 import { containerLabel, sandboxConfig } from './config';
-import type { createEngine } from './engine';
+import { createEngine } from './engine';
+import { createHttpRunner } from './http-adapter';
+import type { RunnerPort } from './port';
 
 /** Test-only helpers shared by the sandbox tests: start a Runner process, wait for it to answer `/health` 200, and tell its containers from another Runner's. */
 
@@ -72,6 +74,31 @@ export async function startRunnerProcess(
 		});
 	});
 	return { process: child, url: `http://127.0.0.1:${port}`, instanceId };
+}
+
+/**
+ * The one start every sandbox test file shares: starts the Runner process, waits until it is
+ * healthy, then makes and removes one container from each of `images` (default: every Sandbox
+ * image) so the first test does not pay for a pull. `runner` is the HTTP adapter. The caller kills
+ * `process` in its `afterAll`.
+ */
+export async function startTestRunner(
+	token: string,
+	{ images = Object.values(sandboxConfig.images) }: { images?: string[] } = {}
+): Promise<{ process: ChildProcess; url: string; instanceId: string; runner: RunnerPort }> {
+	const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
+	const started = await startRunnerProcess(token, socket);
+	try {
+		await waitUntilHealthy(started.url, token);
+		const engine = createEngine(socket);
+		for (const image of images) {
+			await engine.create(image, {}).then((id) => engine.remove(id));
+		}
+	} catch (error) {
+		started.process.kill();
+		throw error;
+	}
+	return { ...started, runner: createHttpRunner({ url: started.url, token }) };
 }
 
 /** Ids of the containers labelled with `instanceId` as their owner, ignoring any other Runner's on the same Docker. */
