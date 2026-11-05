@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { MAX_BUILD_BYTES, submitPlan } from '../learning/rules.ts';
 import { sandboxConfig } from '../runner/config.ts';
-import { type Catalogue, ContentError, loadCatalogue } from './catalogue.ts';
+import { type Catalogue, ContentError, loadCatalogue, type MainLinePlace } from './catalogue.ts';
 
 const fixtureDir = fileURLToPath(new URL('./fixture', import.meta.url));
 
@@ -66,6 +66,7 @@ describe('fixture content', () => {
 			{
 				id: 'stacks-pop/example/01',
 				kind: 'example',
+				name: '01',
 				input: 'push 1\npush 2\npop\nsize\n',
 				expected: '2\n1\n'
 			}
@@ -82,7 +83,13 @@ describe('fixture content', () => {
 
 		expect(JSON.stringify(catalogue.problem('stacks-pop'))).not.toContain('push 5');
 		expect(catalogue.hiddenTests('stacks-pop')).toEqual([
-			{ id: 'stacks-pop/hidden/01', kind: 'hidden', input: 'push 5\npop\n', expected: '5\n' }
+			{
+				id: 'stacks-pop/hidden/01',
+				kind: 'hidden',
+				name: '01',
+				input: 'push 5\npop\n',
+				expected: '5\n'
+			}
 		]);
 		expect(catalogue.hiddenTests('stacks-peek')).toEqual([]);
 	});
@@ -113,6 +120,72 @@ describe('fixture content', () => {
 			hints.push('extra');
 		}).toThrow(TypeError);
 		expect(catalogue.problem('stacks-pop')?.hints).toHaveLength(2);
+	});
+});
+
+describe('Main Line places and Test names', () => {
+	const copies: string[] = [];
+	afterAll(() => Promise.all(copies.map((d) => rm(d, { recursive: true, force: true }))));
+
+	/** The fixture with a third Core Problem, stacks-mid, between stacks-push and stacks-pop. */
+	async function loadThreeCore(): Promise<Catalogue> {
+		const dir = await mkdtemp(join(tmpdir(), 'content-'));
+		copies.push(dir);
+		await cp(fixtureDir, dir, { recursive: true });
+		const chapters = join(dir, 'topics/stacks/chapters');
+		await cp(
+			join(chapters, 'stacks-call-frames/problems/stacks-pop'),
+			join(chapters, 'stacks-undo-log/problems/stacks-mid'),
+			{ recursive: true }
+		);
+		const manifest = join(chapters, 'stacks-undo-log/chapter.json');
+		const json = JSON.parse(await readFile(manifest, 'utf8'));
+		json.problems = ['stacks-push', 'stacks-mid', 'stacks-peek'];
+		await writeFile(manifest, JSON.stringify(json));
+		return loadCatalogue(dir);
+	}
+
+	it.each<[string, string, MainLinePlace | undefined]>([
+		[
+			'a Topic first Core Problem',
+			'stacks-push',
+			{ anchor: 'stacks-push', earlier: [], next: 'stacks-mid' }
+		],
+		[
+			'a middle Core Problem',
+			'stacks-mid',
+			{ anchor: 'stacks-mid', earlier: ['stacks-push'], next: 'stacks-pop' }
+		],
+		[
+			'a Topic last Core Problem',
+			'stacks-pop',
+			{ anchor: 'stacks-pop', earlier: ['stacks-push', 'stacks-mid'] }
+		],
+		[
+			'an Extra, placed by its parent',
+			'stacks-peek',
+			{ anchor: 'stacks-push', earlier: [], next: 'stacks-mid' }
+		],
+		['an unknown id', 'nope', undefined]
+	])('places %s', async (_name, problemId, place) => {
+		const catalogue = await loadThreeCore();
+
+		expect(catalogue.mainLinePlace(problemId)).toEqual(place);
+	});
+
+	it('names every Test the last part of its id', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const tests = catalogue
+			.topicMap()
+			.flatMap((t) => catalogue.topic(t.id)?.chapters ?? [])
+			.flatMap((c) => c.problems)
+			.flatMap((p) => [
+				...(catalogue.problem(p.id)?.exampleTests ?? []),
+				...(catalogue.hiddenTests(p.id) ?? [])
+			]);
+
+		expect(tests.length).toBeGreaterThan(0);
+		for (const test of tests) expect(test.name).toBe(test.id.split('/').at(-1));
 	});
 });
 
