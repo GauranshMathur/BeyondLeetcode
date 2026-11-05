@@ -1,15 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
+import { LANGUAGES } from '../lib/languages';
 
 // The Reference Code is read from the content folder on disk (the image ships the same folder), not copied here.
 const problemDir =
 	'content/topics/dynamic-arrays/chapters/dynamic-arrays-cpython-list/problems/dynamic-arrays-append';
-
-const languages = [
-	{ id: 'python', label: 'Python', file: 'main.py' },
-	{ id: 'typescript', label: 'TypeScript', file: 'main.ts' },
-	{ id: 'go', label: 'Go', file: 'main.go' }
-] as const;
 
 async function setCode(page: Page, code: string, file: string) {
 	const editor = page.getByLabel(`Code: ${file}`);
@@ -43,17 +38,21 @@ test('Map to Topic to Chapter (Read) to Problem, then Run and Submit once per La
 	await page.getByRole('link', { name: 'Append, get and length' }).click();
 	await expect(page).toHaveURL('/problems/dynamic-arrays-append');
 
-	for (const language of languages) {
-		if (language.id !== 'python') {
+	for (const [index, language] of LANGUAGES.entries()) {
+		// The first Language is the Build's default; each later one is switched to.
+		if (index > 0) {
 			await page.getByLabel('build language').selectOption(language.id);
 			const confirm = page.getByRole('group', { name: 'Switch build language' });
-			await expect(confirm).toContainText(`Switch to ${language.label}?`);
+			await expect(confirm).toContainText(`Switch to ${language.name}?`);
 			await confirm.getByRole('button', { name: 'Switch language' }).click();
-			await expect(page.getByLabel(`Code: ${language.file}`)).toBeVisible();
+			await expect(page.getByLabel(`Code: ${language.entryFile}`)).toBeVisible();
 		}
 
-		const code = readFileSync(`${problemDir}/reference/${language.id}/${language.file}`, 'utf8');
-		await setCode(page, code, language.file);
+		const code = readFileSync(
+			`${problemDir}/reference/${language.id}/${language.entryFile}`,
+			'utf8'
+		);
+		await setCode(page, code, language.entryFile);
 
 		await page.getByRole('button', { name: 'Run' }).click();
 		await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toContainText(
