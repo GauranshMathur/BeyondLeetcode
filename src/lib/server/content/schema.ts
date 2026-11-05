@@ -1,10 +1,6 @@
 import { z } from 'zod';
-import { LANGUAGE_IDS } from '../../languages';
 
 /** The on-disk manifests of a content folder. The format is described in README.md. */
-
-/** Every Language the Runner supports (`LANGUAGES` in src/lib/languages.ts, the one list). */
-export const LANGUAGES = LANGUAGE_IDS;
 
 const id = z
 	.string()

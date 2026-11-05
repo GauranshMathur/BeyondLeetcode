@@ -1,6 +1,6 @@
+import { LANGUAGE_IDS } from '../../languages.ts';
 import { filesDigest } from '../../problem-wire.ts';
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
-import { LANGUAGES } from '../content/schema.ts';
 import type { Db } from '../db.ts';
 import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
@@ -157,7 +157,7 @@ export interface Learner {
 }
 
 /** A Topic is built in Python until the Learner switches it. */
-const DEFAULT_LANGUAGE: Language = LANGUAGES[0];
+const DEFAULT_LANGUAGE: Language = LANGUAGE_IDS[0];
 
 export interface LearningCore {
 	/** Every call on the returned Learner acts for this one Learner. */
@@ -360,7 +360,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						await loadProgress(deps.catalogue, deps.db, learnerId),
 						topicId
 					); // TopicLocked
-					if (!LANGUAGES.includes(language)) throw new LearningError('InvalidBuild');
+					if (!LANGUAGE_IDS.includes(language)) throw new LearningError('InvalidBuild');
 					await deps.db.topicLanguage.upsert({
 						where: { learnerId_topicId: { learnerId, topicId } },
 						create: { learnerId, topicId, language },
@@ -452,7 +452,7 @@ async function loadLanguage(db: Db, learnerId: string, topicId: string): Promise
 	const row = await db.topicLanguage.findUnique({
 		where: { learnerId_topicId: { learnerId, topicId } }
 	});
-	return LANGUAGES.find((l) => l === row?.language) ?? DEFAULT_LANGUAGE;
+	return LANGUAGE_IDS.find((l) => l === row?.language) ?? DEFAULT_LANGUAGE;
 }
 
 /** The Learner's stored code for one step in one Language, if it was ever saved. */
@@ -487,7 +487,7 @@ async function languagesSaved(
 		where: { learnerId, topicId, problemId },
 		select: { language: true }
 	});
-	return LANGUAGES.filter((l) => rows.some((r) => r.language === l));
+	return LANGUAGE_IDS.filter((l) => rows.some((r) => r.language === l));
 }
 
 /** How many of a Problem's Hints the Learner has revealed. */
