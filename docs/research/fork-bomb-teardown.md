@@ -44,7 +44,7 @@ The hard stop fired only when many bombs competed, which starves each harness of
 | 8 | All `timeout`, remove called at 5.9-7.3 s, no hard stop |
 | 20 (two runs) | Hard stop (`kill` called) at 10.4-12.1 s for 17-19 of 20; `kill` resolves 1.4-3.1 s later; `remove` was called 0-15 ms after `kill`, resolves 50-130 ms after the container's `die` |
 
-**The 20-container runs were taken under host memory pressure** (and the second of them preceded an out-of-memory kill of the host, 04:17 UTC on 2026-11-05). Use them only for the shape of the teardown, not for the cause or the magnitudes. Per-container, from `docker events`, for the 20-way run with events captured: first `kill` event to `die` event was 1.15 to 2.75 s (median about 1.4 s); every container received exactly one `kill` event from the Runner's `engine.kill` and a second from the forced remove (`DELETE ?force=true` also sends `SIGKILL`); every container exited 137. No `oom` event appeared in any of them (the bombs never grew fast enough), which is the point: this is the starved ending.
+**The 20-container runs were taken under host memory pressure**. Use them only for the shape of the teardown, not for the cause or the magnitudes. Per-container, from `docker events`, for the 20-way run with events captured: first `kill` event to `die` event was 1.15 to 2.75 s (median about 1.4 s); every container that got a hard stop received one `kill` event from the Runner's `engine.kill` and a second from the forced remove (`DELETE ?force=true` also sends `SIGKILL`), and exited 137 (two that finished early exited 0). No `oom` event appeared in any of them (the bombs never grew fast enough), which is the point: this is the starved ending.
 
 ### Reading the timeline
 
@@ -87,6 +87,6 @@ Cost: two small edits in `sandbox.ts` (a log line and a label) and a looser boun
 
 ## Limits of this study
 
-- Single-container runs at the Runner's real limits (`--memory 256m`, swap equal, 64 pids, 1 CPU) never reached the hard stop on this host. Runs that did (4, 8, 20 at once) are shaped by host contention. The 20-way runs were taken under memory pressure and with a larger memory limit in one auxiliary raw-container run (`2g`, which was the cause of the host's out-of-memory kill and was discarded). They show the mechanism, not CI's 9 s.
+- Single-container runs at the Runner's real limits (`--memory 256m`, swap equal, 64 pids, 1 CPU) never reached the hard stop on this host. Runs that did (4, 8, 20 at once) are shaped by host contention. The 20-way runs were taken under memory pressure. They show the mechanism, not CI's 9 s. (The raw-container run with `--memory 2g` and 20 bombs that also hit the host's out-of-memory kill at 04:17 UTC on 2026-11-05 is not used for any number here, beyond one 1.4-1.6 s kill latency it printed.)
 - The host is not CI's runner: kernel, CPU count and Docker daemon differ.
 - No tests, Runner code, flags or limits were changed in this card; the patched engine proxy and scripts stay outside the repository.
