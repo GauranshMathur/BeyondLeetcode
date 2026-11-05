@@ -282,21 +282,23 @@ export interface SavedStep {
 	readonly revision: number;
 }
 
-type ProblemCatalogue = Pick<Catalogue, 'topicMap' | 'topic' | 'chapter' | 'problem'>;
+type ProblemCatalogue = Pick<
+	Catalogue,
+	'topicMap' | 'topic' | 'chapter' | 'problem' | 'mainLinePlace'
+>;
 
 /**
  * The Problem whose Build a step starts from: the previous Core Problem on the Main Line, or
  * for an Extra its parent Core Problem. None for a Topic's first Problem (an empty Build).
  */
 export function seedSourceOf(
-	catalogue: Pick<Catalogue, 'topic' | 'problem'>,
+	catalogue: Pick<Catalogue, 'mainLinePlace'>,
 	problemId: string
 ): string | undefined {
-	const problem = catalogue.problem(problemId);
-	if (!problem) throw new LearningError('NotFound');
-	if (problem.kind === 'extra') return problem.parent;
-	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
-	return mainLine[mainLine.indexOf(problemId) - 1];
+	const place = catalogue.mainLinePlace(problemId);
+	if (!place) throw new LearningError('NotFound');
+	// An Extra seeds from its anchor (its parent); a Core Problem from the last earlier one.
+	return place.anchor !== problemId ? place.anchor : place.earlier.at(-1);
 }
 
 /** What a new Build of a step starts from, in the order the rule tries them. */
@@ -323,7 +325,7 @@ const SEED_NOTES: Readonly<Record<SeedKind, string>> = {
  * `language`; an empty Build (the entry file) before a Topic's first Problem.
  */
 export function referenceStartOf(
-	catalogue: Pick<Catalogue, 'topic' | 'problem'>,
+	catalogue: Pick<Catalogue, 'mainLinePlace' | 'problem'>,
 	problemId: string,
 	language: Language
 ): BuildFiles {
@@ -367,7 +369,7 @@ export function problemView(
 		...(problem.parent !== undefined && { parentProblemId: problem.parent }),
 		statementHtml: renderMarkdown(problem.statement),
 		exampleTests: problem.exampleTests.map((t) => ({
-			name: t.id.slice(t.id.lastIndexOf('/') + 1),
+			name: t.name,
 			input: t.input,
 			expected: t.expected
 		})),
@@ -504,7 +506,7 @@ export function normaliseOutput(output: string): string {
  * wins over the comparison. A Runner answer that misses a Test is a failed Runner.
  */
 export function runView(
-	tests: readonly { id: string; input: string; expected: string }[],
+	tests: readonly { id: string; name: string; input: string; expected: string }[],
 	result: ExecuteResult,
 	revision: number
 ): RunView {
@@ -523,7 +525,7 @@ export function runView(
 						: 'wrongAnswer'
 					: raw.status;
 			return {
-				name: test.id.slice(test.id.lastIndexOf('/') + 1),
+				name: test.name,
 				input: test.input,
 				expected: test.expected,
 				actual: raw.stdout,
@@ -553,6 +555,8 @@ const VERDICT_PRECEDENCE: readonly Exclude<Verdict, 'Accepted'>[] = [
 /** One Test of a Submission, with what only the server may know. */
 export interface SubmitTest {
 	readonly id: string;
+	/** The `<name>` part of the id, as the Learner sees it. */
+	readonly name: string;
 	readonly input: string;
 	readonly expected: string;
 	/** The Problem this Test belongs to. */
@@ -606,16 +610,15 @@ export interface AcceptedView {
  * an unknown Problem.
  */
 export function acceptedDiff(
-	catalogue: Pick<Catalogue, 'topicMap' | 'topic' | 'problem'>,
+	catalogue: Pick<Catalogue, 'topicMap' | 'topic' | 'problem' | 'mainLinePlace'>,
 	before: Progress,
 	after: Progress,
 	problemId: string
 ): AcceptedView {
 	const problem = catalogue.problem(problemId);
-	if (!problem) throw new LearningError('NotFound');
-	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
-	const anchor = problem.kind === 'extra' ? (problem.parent ?? problemId) : problemId;
-	const next = mainLine[mainLine.indexOf(anchor) + 1];
+	const place = catalogue.mainLinePlace(problemId);
+	if (!problem || !place) throw new LearningError('NotFound');
+	const next = place.next;
 
 	const stateBefore = new Map(mapView(catalogue, before).topics.map((t) => [t.id, t.state]));
 	const topicsAfter = mapView(catalogue, after).topics;
@@ -630,7 +633,7 @@ export function acceptedDiff(
 	};
 }
 
-type SubmitCatalogue = Pick<Catalogue, 'topic' | 'problem' | 'hiddenTests'>;
+type SubmitCatalogue = Pick<Catalogue, 'mainLinePlace' | 'problem' | 'hiddenTests'>;
 
 /** The Tests of a Submission, split by what the Runner may do with them. */
 export interface SubmitPlan {
@@ -663,17 +666,17 @@ export function submitPlan(
 		);
 	}
 	const size = maxBatchTests;
-	const problem = catalogue.problem(problemId);
-	if (!problem) throw new LearningError('NotFound');
-	const mainLine = catalogue.topic(problem.topicId)?.mainLine ?? [];
-	const anchor = problem.kind === 'extra' ? (problem.parent ?? problemId) : problemId;
-	const scope = mainLine.slice(0, mainLine.indexOf(anchor) + 1);
-	if (problem.kind === 'extra') scope.push(problemId);
+	const place = catalogue.mainLinePlace(problemId);
+	if (!place) throw new LearningError('NotFound');
+	// The Core Problems before the anchor, the anchor, then an Extra itself.
+	const scope = [...place.earlier, place.anchor];
+	if (place.anchor !== problemId) scope.push(problemId);
 	const testsOf = (id: string, kind: SubmitTest['kind']): SubmitTest[] =>
 		(
 			(kind === 'example' ? catalogue.problem(id)?.exampleTests : catalogue.hiddenTests(id)) ?? []
-		).map(({ id: testId, input, expected }) => ({
+		).map(({ id: testId, name, input, expected }) => ({
 			id: testId,
+			name,
 			input,
 			expected,
 			problemId: id,
@@ -767,7 +770,7 @@ export function judge(
 					? { kind: 'hidden', problemId }
 					: {
 							kind: 'example',
-							name: test.id.slice(test.id.lastIndexOf('/') + 1),
+							name: test.name,
 							input: test.input,
 							expected: test.expected,
 							actual: raw.stdout,

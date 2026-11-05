@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	type Catalogue,
 	loadCatalogue,
+	type MainLinePlace,
 	type Topic,
 	type TopicSummary
 } from '../content/catalogue.ts';
@@ -44,6 +45,19 @@ function topic(
 		chapters: chapters.map((c) => ({ id: `${id}-${c}`, title: c, problems: [] })),
 		mainLine: core.map((p) => `${id}-${p}`)
 	};
+}
+
+/** What the catalogue works out for a Problem: its anchor, the Core Problems before it, the one after. */
+function placeOf(
+	mainLine: readonly string[],
+	problemId: string,
+	parent?: string
+): MainLinePlace | undefined {
+	const anchor = parent ?? problemId;
+	const at = mainLine.indexOf(anchor);
+	if (at < 0) return undefined;
+	const next = mainLine[at + 1];
+	return { anchor, earlier: mainLine.slice(0, at), ...(next !== undefined && { next }) };
 }
 
 function catalogueOf(topics: Topic[]): Pick<Catalogue, 'topicMap' | 'topic' | 'chapter'> {
@@ -322,8 +336,8 @@ describe('normaliseOutput()', () => {
 
 describe('runView()', () => {
 	const tests = [
-		{ id: 'p/example/01', input: 'in1', expected: '2\n' },
-		{ id: 'p/example/02', input: 'in2', expected: '5\n' }
+		{ id: 'p/example/01', name: '01', input: 'in1', expected: '2\n' },
+		{ id: 'p/example/02', name: '02', input: 'in2', expected: '5\n' }
 	];
 	const ok = (id: string, stdout: string, stderr = '') => ({
 		id,
@@ -413,7 +427,13 @@ describe('acceptedDiff()', () => {
 			return topics.some((t) => t.mainLine.includes(id))
 				? ({ id, topicId, kind: 'core' } as never)
 				: undefined;
-		}
+		},
+		mainLinePlace: (id: string) =>
+			placeOf(
+				topics.find((t) => t.id === id.split('-')[0])?.mainLine ?? [],
+				id,
+				id === 'a-x' ? 'a-p1' : undefined
+			)
 	};
 	const solvedP1 = progress(['a-c'], ['a-p1']);
 	const solvedBoth = progress(['a-c'], ['a-p1', 'a-p2']);
@@ -491,7 +511,14 @@ describe('judge()', () => {
 	const test = (
 		id: string,
 		{ problemId = 'p', kind = 'example' as SubmitTest['kind'] } = {}
-	): SubmitTest => ({ id, input: `in ${id}`, expected: 'ok\n', problemId, kind });
+	): SubmitTest => ({
+		id,
+		name: id.slice(id.lastIndexOf('/') + 1),
+		input: `in ${id}`,
+		expected: 'ok\n',
+		problemId,
+		kind
+	});
 	const raw = (id: string, status: TestResult['status'], stdout = 'ok\n'): TestResult => ({
 		id,
 		status,
@@ -605,8 +632,14 @@ describe('Fixture rules', () => {
 			const pop = catalogue.problem('stacks-pop');
 			const topic = catalogue.topic('stacks');
 			if (!pop || !topic) throw new Error('fixture changed');
+			const mainLine = ['stacks-push', 'stacks-mid', 'stacks-pop'];
 			return {
-				topic: () => ({ ...topic, mainLine: ['stacks-push', 'stacks-mid', 'stacks-pop'] }),
+				mainLinePlace: (id: string) =>
+					placeOf(
+						mainLine,
+						id,
+						catalogue.problem(id)?.kind === 'extra' ? 'stacks-push' : undefined
+					),
 				problem: (id: string) =>
 					id === 'stacks-mid'
 						? {
