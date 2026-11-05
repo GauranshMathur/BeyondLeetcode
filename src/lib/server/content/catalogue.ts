@@ -2,8 +2,8 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { LANGUAGE_IDS, type Language } from '../../languages.ts';
-import { MAX_BUILD_BYTES, submitPlan } from '../learning/rules.ts';
 import { sandboxConfig } from '../runner/config.ts';
+import { MAX_BUILD_BYTES, submitPlan } from '../submit-plan.ts';
 import { chapterManifest, contentManifest, problemManifest, topicManifest } from './schema.ts';
 
 export type { Language };
@@ -337,11 +337,9 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	// Only a complete catalogue has Submit batches worth measuring.
 	if (issues.length === 0) {
 		for (const [problemId, problemDir] of problemDirs) {
-			for (const message of checkSubmitBatches(
-				submitPlan(catalogue, problemId, sandboxConfig.hiddenBatchTests)
-			)) {
-				report(problemDir, message);
-			}
+			const plan = submitPlan(catalogue, problemId, sandboxConfig.hiddenBatchTests);
+			if (!plan) continue; // every Problem here is in the catalogue, so it has a place
+			for (const message of checkSubmitBatches(plan)) report(problemDir, message);
 		}
 	}
 

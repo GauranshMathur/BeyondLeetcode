@@ -1,7 +1,15 @@
 import { entryFileOf, LANGUAGES } from '../../languages';
 import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import { buildPathsIssue, type ExecuteResult } from '../runner/port.ts';
+import {
+	MAX_BUILD_BYTES,
+	submitPlan as planSubmission,
+	type SubmitPlan,
+	type SubmitTest
+} from '../submit-plan.ts';
 import { LearningError } from './errors.ts';
+
+export { MAX_BUILD_BYTES, type SubmitPlan, type SubmitTest };
 
 /** What a Learner has done: Read marks and Solved Problems, by stable content id. */
 export interface Progress {
@@ -456,9 +464,6 @@ export function solutionView(
 	};
 }
 
-/** The most code one Build may hold, in UTF-8 bytes of paths and contents together. */
-export const MAX_BUILD_BYTES = 256 * 1024;
-
 /**
  * Checks a Build the Learner sends: the Runner port's path rule (the Runner would refuse it
  * otherwise), string contents, and the size limit.
@@ -567,18 +572,6 @@ const VERDICT_PRECEDENCE: readonly Exclude<Verdict, 'Accepted'>[] = [
 	'Wrong Answer'
 ];
 
-/** One Test of a Submission, with what only the server may know. */
-export interface SubmitTest {
-	readonly id: string;
-	/** The `<name>` part of the id, as the Learner sees it. */
-	readonly name: string;
-	readonly input: string;
-	readonly expected: string;
-	/** The Problem this Test belongs to. */
-	readonly problemId: string;
-	readonly kind: 'example' | 'hidden';
-}
-
 /**
  * Why a Submission was not Accepted, as much as the Learner may see: an Example Test of this
  * Problem shows everything, a Hidden Test only that it failed, an earlier step only which one.
@@ -650,60 +643,15 @@ export function acceptedDiff(
 
 type SubmitCatalogue = Pick<Catalogue, 'mainLinePlace' | 'problem' | 'hiddenTests'>;
 
-/** The Tests of a Submission, split by what the Runner may do with them. */
-export interface SubmitPlan {
-	/** This Problem's Example Tests: the only Tests whose output is ever shown. Run in their own container. */
-	readonly visible: readonly SubmitTest[];
-	/**
-	 * Every other Test, in order, in containers of at most the batch size each; only per-Test
-	 * outcomes are read from them, never their output.
-	 */
-	readonly hidden: readonly (readonly SubmitTest[])[];
-}
-
-/**
- * The Tests a Submission runs. A Core Problem runs every earlier Core Problem's Tests then its
- * own; an Extra runs the Core Problems up to and including its parent, then its own. This
- * Problem's Example Tests go in `visible`, everything else in `hidden`, cut in order into batches
- * of at most `maxBatchTests`, so no Hidden input ever shares a container with a Test whose
- * output is shown, and no container runs more Tests than fit its time limit. Throws NotFound for
- * an unknown Problem.
- */
+/** The Tests a Submission runs (see the leaf module); throws NotFound for an unknown Problem. */
 export function submitPlan(
 	catalogue: SubmitCatalogue,
 	problemId: string,
 	maxBatchTests: number
 ): SubmitPlan {
-	// A NaN or fractional size would slice every hidden Test away: an Accepted on the Examples alone.
-	if (!Number.isInteger(maxBatchTests) || maxBatchTests < 1) {
-		throw new RangeError(
-			`maxBatchTests must be a whole number of at least 1, got ${maxBatchTests}`
-		);
-	}
-	const size = maxBatchTests;
-	const place = catalogue.mainLinePlace(problemId);
-	if (!place) throw new LearningError('NotFound');
-	// The Core Problems before the anchor, the anchor, then an Extra itself.
-	const scope = [...place.earlier, place.anchor];
-	if (place.anchor !== problemId) scope.push(problemId);
-	const testsOf = (id: string, kind: SubmitTest['kind']): SubmitTest[] =>
-		(
-			(kind === 'example' ? catalogue.problem(id)?.exampleTests : catalogue.hiddenTests(id)) ?? []
-		).map(({ id: testId, name, input, expected }) => ({
-			id: testId,
-			name,
-			input,
-			expected,
-			problemId: id,
-			kind
-		}));
-	const hidden = scope.flatMap((id) => [
-		...(id === problemId ? [] : testsOf(id, 'example')),
-		...testsOf(id, 'hidden')
-	]);
-	const batches: SubmitTest[][] = [];
-	for (let i = 0; i < hidden.length; i += size) batches.push(hidden.slice(i, i + size));
-	return { visible: testsOf(problemId, 'example'), hidden: batches };
+	const plan = planSubmission(catalogue, problemId, maxBatchTests);
+	if (!plan) throw new LearningError('NotFound');
+	return plan;
 }
 
 /** Whether one of the batch's own Tests timed out, matched by id as `judge` does. */

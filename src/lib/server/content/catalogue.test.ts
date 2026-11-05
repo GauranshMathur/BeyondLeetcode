@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { MAX_BUILD_BYTES, submitPlan } from '../learning/rules.ts';
 import { sandboxConfig } from '../runner/config.ts';
+import { MAX_BUILD_BYTES, submitPlan } from '../submit-plan.ts';
 import { type Catalogue, ContentError, loadCatalogue, type MainLinePlace } from './catalogue.ts';
 
 const fixtureDir = fileURLToPath(new URL('./fixture', import.meta.url));
@@ -532,7 +532,7 @@ describe('malformed content', () => {
 		const headroom = async () => {
 			const catalogue = await loadCatalogue(fixtureDir);
 			const most = ['stacks-push', 'stacks-peek', 'stacks-pop'].map(
-				(id) => submitPlan(catalogue, id, sandboxConfig.hiddenBatchTests).hidden.flat().length
+				(id) => submitPlan(catalogue, id, sandboxConfig.hiddenBatchTests)?.hidden.flat().length ?? 0
 			);
 			return (
 				(sandboxConfig.maxSubmitCalls - 1) * sandboxConfig.hiddenBatchTests - Math.max(...most)
@@ -551,8 +551,8 @@ describe('malformed content', () => {
 			await addHidden(dir, await headroom(), 0);
 			const catalogue = await loadCatalogue(dir);
 			const plan = submitPlan(catalogue, 'stacks-pop', sandboxConfig.hiddenBatchTests);
-			expect(plan.hidden.length).toBeGreaterThan(1);
-			expect(plan.hidden.every((b) => b.length <= sandboxConfig.hiddenBatchTests)).toBe(true);
+			expect(plan?.hidden.length).toBeGreaterThan(1);
+			expect(plan?.hidden.every((b) => b.length <= sandboxConfig.hiddenBatchTests)).toBe(true);
 		});
 
 		it('measures the request body per batch, so Tests that fit as several batches load', async () => {
@@ -607,7 +607,7 @@ describe('malformed content', () => {
 				'stacks-pop',
 				sandboxConfig.hiddenBatchTests
 			);
-			expect(1 + plan.hidden.length).toBe(sandboxConfig.maxSubmitCalls);
+			expect(1 + (plan?.hidden.length ?? 0)).toBe(sandboxConfig.maxSubmitCalls);
 		});
 
 		it('counts the earlier Core Problems that a later Problem runs with its own', async () => {

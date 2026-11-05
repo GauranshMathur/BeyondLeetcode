@@ -19,7 +19,7 @@ const nobody = '65534:65534';
 const mib = 1024 * 1024;
 const removeAttempts = 3;
 /** Three attempts at this each, plus the pauses between them, keep the whole cleanup under about 30 s. */
-const removeAttemptTimeoutMs = 9_000;
+export const removeAttemptTimeoutMs = 9_000;
 
 /** The Sandbox image for a Language, or undefined where the Runner has none yet. */
 function imageFor(language: Language): string | undefined {
@@ -129,7 +129,19 @@ async function execute(
 	// The wall clock covers attach and start-up too: it starts as soon as the container exists.
 	const hardStop = setTimeout(() => {
 		timedOut = true;
-		engine.kill(id).catch(() => {});
+		// Not awaited and never throws, but not silent: a kill that fails or takes seconds is what
+		// holds up the forced remove (docs/research/fork-bomb-teardown.md).
+		const killStarted = performance.now();
+		engine
+			.kill(id)
+			.then(
+				() =>
+					console.warn(
+						`Kill of container ${id} answered after ${Math.round(performance.now() - killStarted)} ms`
+					),
+				(error) => console.error(`Could not kill container ${id}`, error)
+			)
+			.catch(() => {});
 		attached?.destroy();
 	}, sandboxConfig.containerTimeoutMs);
 	try {
@@ -165,7 +177,11 @@ async function execute(
 		if (!overflow && !timedOut) {
 			// The harness only exits non-zero when something went wrong inside it (or learner code
 			// got to it): whatever it printed cannot be trusted.
-			const code = await within(exitStatus, sandboxConfig.exitStatusTimeoutMs);
+			const code = await within(
+				exitStatus,
+				sandboxConfig.exitStatusTimeoutMs,
+				'Timed out waiting for the Sandbox exit'
+			);
 			if (code !== 0) {
 				throw new Error(`Sandbox harness exited with status ${code}: ${harnessStderr}`);
 			}
@@ -199,9 +215,10 @@ async function execute(
 	return { results };
 }
 
-function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+/** Settles with `promise`, or rejects with `message` after `ms`. */
+function within<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
 	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => reject(new Error('Timed out waiting for the Sandbox exit')), ms);
+		const timer = setTimeout(() => reject(new Error(message)), ms);
 		promise.then(
 			(value) => {
 				clearTimeout(timer);
@@ -219,7 +236,7 @@ function within<T>(promise: Promise<T>, ms: number): Promise<T> {
 async function removeContainer(engine: Engine, id: string): Promise<void> {
 	for (let attempt = 1; attempt <= removeAttempts; attempt++) {
 		try {
-			await within(engine.remove(id), removeAttemptTimeoutMs);
+			await within(engine.remove(id), removeAttemptTimeoutMs, `Docker remove of ${id} timed out`);
 			return;
 		} catch (error) {
 			console.error(
@@ -260,7 +277,13 @@ async function removeCreatedByName(engine: Engine, name: string): Promise<void> 
 		left = removeByNameTotalMs - (performance.now() - started);
 		if (left <= 0) break;
 		try {
-			if ((await within(engine.remove(name), Math.min(removeByNameAttemptMs, left))) !== false)
+			if (
+				(await within(
+					engine.remove(name),
+					Math.min(removeByNameAttemptMs, left),
+					`Docker remove of ${name} timed out`
+				)) !== false
+			)
 				return;
 		} catch (error) {
 			// A stalled or failing daemon (likely why the create timed out) will not answer a retry

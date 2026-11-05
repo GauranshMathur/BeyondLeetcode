@@ -27,6 +27,7 @@ function fakeEngine(options: {
 	exitCode?: number;
 	attach?: () => Promise<never>;
 	removeFails?: boolean;
+	killFails?: boolean;
 	neverEnds?: boolean;
 }) {
 	const calls: string[] = [];
@@ -48,7 +49,10 @@ function fakeEngine(options: {
 					destroy: end
 				}),
 		start: async () => {},
-		kill: async (id: string) => void calls.push(`kill ${id}`),
+		kill: async (id: string) => {
+			calls.push(`kill ${id}`);
+			if (options.killFails) throw new Error('daemon down');
+		},
 		remove: vi.fn(async (id: string) => {
 			calls.push(`remove ${id}`);
 			if (options.removeFails) throw new Error('daemon down');
@@ -87,6 +91,25 @@ describe('Sandbox runner: harness exit status', () => {
 			expect(result.results).toEqual([{ id: 'a', status: 'timeout', stdout: '', stderr: '' }]);
 			expect(calls).toContain('kill c1');
 		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('still ends as a timeout, removes the container and logs when the kill is rejected', async () => {
+		vi.useFakeTimers();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const { engine, calls } = fakeEngine({ neverEnds: true, exitCode: 137, killFails: true });
+			const pending = createSandboxRunner(engine, 'test-instance').execute(request);
+
+			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
+			const result = await pending;
+
+			expect(result.results).toEqual([{ id: 'a', status: 'timeout', stdout: '', stderr: '' }]);
+			expect(calls).toContain('remove c1');
+			expect(logged).toHaveBeenCalledWith('Could not kill container c1', expect.any(Error));
+		} finally {
+			logged.mockRestore();
 			vi.useRealTimers();
 		}
 	});
