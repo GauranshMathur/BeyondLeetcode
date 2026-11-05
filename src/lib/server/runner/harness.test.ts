@@ -138,6 +138,14 @@ const rows: Row[] = [
 		compileError: 'diagnostics'
 	},
 	{
+		name: 'typescript: a strict-check error beside a permissive tsconfig.json',
+		language: 'typescript',
+		code: 2,
+		stdout:
+			"main.ts(2,9): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.\n",
+		compileError: 'diagnostics'
+	},
+	{
 		name: "typescript: exit 1 (a bad option) is the Runner's",
 		language: 'typescript',
 		code: 1,
