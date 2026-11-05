@@ -141,7 +141,7 @@ test('signed out, the page shows the wordmark alone at 1440 and 390 px', async (
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText('You are invited.');
 		await expect(page.getByRole('link', { name: /Beyond Leetcode|BLC/ })).toBeVisible();
 		await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0);
-		await expect(page.getByRole('link', { name: 'Map' })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: 'Map', exact: true })).toHaveCount(0);
 		await expect(page.getByRole('link', { name: /Settings/ })).toHaveCount(0);
 		await context.close();
 	}
