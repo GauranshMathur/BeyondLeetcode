@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.19.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.2...v1.19.3) (2026-11-05)
+
+### Highlights
+
+- **An internal release: nothing a Learner sees changes.** Each Language is now described once and read from there, and the Sandbox harness is a real Python file whose per-Language rules are one tested table. The Learning core's Main Line navigation, a Learner's stored state, the access check and the boundary with the Content catalogue each have one home.
+- **For operators:** when the Runner hard-stops a Sandbox, its log now says whether the kill was answered and how long it took. A slow container remove logs its own message, instead of "Timed out waiting for the Sandbox exit".
+
+### Added
+
+Nothing new to use in this release.
+
+### Fixed
+
+No bug fixes in this release.
+
+### Changed
+
+Nothing changed in how it works.
+
+### Content
+
+No content changes in this release.
+
+### Security
+
+No security changes in this release.
+
+### Upgrade notes
+
+Nothing to do. Pull `v1.19.3` or `latest`.
+
 ## [1.19.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.1...v1.19.2) (2026-11-05)
 
 ### Highlights
