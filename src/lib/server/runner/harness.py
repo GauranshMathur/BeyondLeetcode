@@ -2,30 +2,25 @@
 
 import ctypes, io, json, os, re, shutil, signal, stat, subprocess, sys, tarfile, threading, time, traceback
 
-# Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
-# read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
-ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)
-signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-LANGUAGE = os.environ["RUNNER_LANGUAGE"]
-COUNT = int(os.environ["RUNNER_TEST_COUNT"])
-TIMEOUT = int(os.environ["RUNNER_TEST_TIMEOUT_MS"]) / 1000
-CAP = int(os.environ["RUNNER_OUTPUT_CAP"])
-TOTAL_CAP = int(os.environ["RUNNER_TOTAL_OUTPUT_CAP"])
-DEADLINE = int(os.environ["RUNNER_DEADLINE_S"])
+# Set by main() from the RUNNER_* variables. Importing this file runs nothing.
+LANGUAGE = ""
+COUNT = 0
+TIMEOUT = 0.0
+CAP = 0
+TOTAL_CAP = 0
+DEADLINE = 0
+INPUTS = []
+BUILD_FILES = []
+EXEC_BINARY = b""
 WORK = "/work"
+BUILD = WORK + "/build"
+EXEC = "/exec"
+EXEC_BINARY_PATH = EXEC + "/main"
 MARK = "\n[output truncated]"
 
 
 def deadline():
     os._exit(124)
-
-
-# Backstop if the Runner dies: PID 1 leaves on its own. A timer thread, not a signal, so learner
-# code cannot trip it early with os.kill(1, ...).
-watchdog = threading.Timer(DEADLINE, deadline)
-watchdog.daemon = True
-watchdog.start()
 
 
 def emit(obj):
@@ -39,31 +34,33 @@ def text(data, over):
     return data.decode("utf-8", "replace") + (MARK if over else "")
 
 
-size = int(sys.stdin.buffer.readline())
-archive = bytearray()
-while len(archive) < size:
-    chunk = sys.stdin.buffer.read(size - len(archive))
-    if not chunk:
-        sys.exit("stdin ended before the archive did")
-    archive += chunk
-with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
-    tar.extractall(WORK, filter="data")
-del archive
+def receive():
+    # Reads the archive from stdin, extracts it, and keeps the Test inputs and the Build in memory.
+    global INPUTS, BUILD_FILES
+    size = int(sys.stdin.buffer.readline())
+    archive = bytearray()
+    while len(archive) < size:
+        chunk = sys.stdin.buffer.read(size - len(archive))
+        if not chunk:
+            sys.exit("stdin ended before the archive did")
+        archive += chunk
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
+        tar.extractall(WORK, filter="data")
+    del archive
 
-BUILD = WORK + "/build"
-INPUTS = []
-for n in range(COUNT):
-    with open("%s/tests/%d.in" % (WORK, n), "rb") as f:
-        INPUTS.append(f.read())
-# Learner code shares our uid and must never see the Test inputs: they only live in our memory now.
-if os.path.isdir(WORK + "/tests"):  # absent when there are no Tests
-    shutil.rmtree(WORK + "/tests")
-BUILD_FILES = []
-for root, _, names in os.walk(BUILD):
-    for name in names:
-        path = os.path.join(root, name)
-        with open(path, "rb") as f:
-            BUILD_FILES.append((os.path.relpath(path, BUILD), f.read()))
+    INPUTS = []
+    for n in range(COUNT):
+        with open("%s/tests/%d.in" % (WORK, n), "rb") as f:
+            INPUTS.append(f.read())
+    # Learner code shares our uid and must never see the Test inputs: they only live in our memory now.
+    if os.path.isdir(WORK + "/tests"):  # absent when there are no Tests
+        shutil.rmtree(WORK + "/tests")
+    BUILD_FILES = []
+    for root, _, names in os.walk(BUILD):
+        for name in names:
+            path = os.path.join(root, name)
+            with open(path, "rb") as f:
+                BUILD_FILES.append((os.path.relpath(path, BUILD), f.read()))
 
 
 def wipe_children(root):
@@ -85,9 +82,6 @@ def wipe_children(root):
         os.rmdir(path)
 
 
-LIBC = ctypes.CDLL(None, use_errno=True)
-
-
 def removed(result):
     if result == -1:
         raise OSError(ctypes.get_errno(), "could not remove an IPC object")
@@ -97,10 +91,11 @@ def clear_ipc():
     # System V queues, semaphores and shared memory, and POSIX queues, outlive the process that
     # made them: kill(-1) does not touch them, so a Test could pass data to a later one through
     # them. Learner code shares our uid, so every object is ours to remove.
+    libc = ctypes.CDLL(None, use_errno=True)
     for table, remove in (
-        ("msg", lambda i: removed(LIBC.msgctl(i, 0, None))),
-        ("sem", lambda i: removed(LIBC.semctl(i, 0, 0, ctypes.c_int(0)))),
-        ("shm", lambda i: removed(LIBC.shmctl(i, 0, None))),
+        ("msg", lambda i: removed(libc.msgctl(i, 0, None))),
+        ("sem", lambda i: removed(libc.semctl(i, 0, 0, ctypes.c_int(0)))),
+        ("shm", lambda i: removed(libc.shmctl(i, 0, None))),
     ):
         try:
             with open("/proc/sysvipc/" + table) as f:
@@ -128,15 +123,15 @@ def fresh_build():
         with open(target, "wb") as f:
             f.write(data)
     os.utime(WORK, (0, 0))
-    if LANGUAGE == "go":
+    if LANGUAGES[LANGUAGE]["exec"]:
         # /exec is the second tmpfs (exec allowed) holding the compiled binary. Same treatment as /work:
         # emptied, metadata reset, binary restored from memory, so nothing a Test wrote there survives.
         wipe_children(EXEC)
         for attr in os.listxattr(EXEC):
             os.removexattr(EXEC, attr)
-        with open(GO_BINARY_PATH, "wb") as f:
-            f.write(GO_BINARY)
-        os.chmod(GO_BINARY_PATH, 0o700)
+        with open(EXEC_BINARY_PATH, "wb") as f:
+            f.write(EXEC_BINARY)
+        os.chmod(EXEC_BINARY_PATH, 0o700)
         os.utime(EXEC, (0, 0))
 
 
@@ -153,50 +148,59 @@ GO_COMPILE_ERROR = re.compile(
     rb"|^package \S+: build constraints exclude all Go files",
     re.M,
 )
-CHILD_ENV = {"PATH": os.environ.get("PATH", "")}
-EXEC = "/exec"
-GO_BINARY_PATH = EXEC + "/main"
-GO_BINARY = b""
 GO_CACHE_SEED = "/opt/gocache"
 
-# The two places the Language matters: how the Build is checked, and how a Test is run.
-# Everything else (isolation, cleanup, caps, the watchdog) is shared.
-if LANGUAGE == "python":
-    RUN_ARGV = [sys.executable, "main.py"]
+
+class NoSources(Exception):
+    pass
+
+
+def child_env():
+    return {"PATH": os.environ.get("PATH", "")}
+
+
+# The compile steps. Each returns (argv, cwd, env), or None when the Build has nothing to check.
+
+def compile_python():
     sources = []
     for root, _, names in os.walk(BUILD):
         sources += [os.path.join(root, n) for n in names if n.endswith(".py")]
-    compile_argv = [sys.executable, "-I", "-m", "py_compile"] + sorted(sources) if sources else None
-    compile_cwd = None
-elif LANGUAGE == "typescript":
-    RUN_ARGV = ["node", "main.ts"]
+    if not sources:
+        return None
+    return [sys.executable, "-I", "-m", "py_compile"] + sorted(sources), None, child_env()
+
+
+def compile_typescript():
     sources = []
     for root, _, names in os.walk(BUILD):
         sources += ["./" + os.path.relpath(os.path.join(root, n), BUILD) for n in names if n.endswith(".ts")]
+    if not sources:
+        return None
     # Type errors are Compile Errors, as in a normal TypeScript project. erasableSyntaxOnly makes
     # enums and runtime namespaces (which Node's type stripping cannot run) fail here too.
     # --ignoreConfig: a learner tsconfig.json or jsconfig.json is never read (TS 6 exits 1 with TS5112 when files and a config coexist).
     # allowImportingTsExtensions: Node needs "./util.ts" in imports, and tsc only allows that with it.
-    compile_argv = [
+    argv = [
         "tsc", "--ignoreConfig", "--noEmit", "--pretty", "false", "--strict", "--target", "ES2023", "--lib", "ES2023",
         "--module", "nodenext", "--erasableSyntaxOnly", "--allowImportingTsExtensions", "--skipLibCheck",
         "--typeRoots", "/opt/ts/node_modules/@types", "--types", "node",
-    ] + sorted(sources) if sources else None
-    compile_cwd = BUILD
-elif LANGUAGE == "go":
-    RUN_ARGV = [GO_BINARY_PATH]
+    ] + sorted(sources)
+    return argv, BUILD, child_env()
+
+
+def compile_go():
     # Go never touches the network or fetches a toolchain: GOPROXY=off, GOTOOLCHAIN=local. The build
     # cache and temp dir live in /work (tmpfs, wiped before every Test). The cache is a farm of symlinks
     # into the image's pre-warmed, read-only /opt/gocache (see Dockerfile.sandbox-go; GOFLAGS must match
     # it, -trimpath is part of every cache key), so the standard packages are never recompiled and
     # the cache costs no memory. No cgo: the image has no C compiler.
-    GO_ENV = {
+    env = {
         "PATH": os.environ.get("PATH", ""), "GOCACHE": WORK + "/gocache", "GOTMPDIR": WORK + "/gotmp",
         "GOPATH": WORK + "/gopath", "GOFLAGS": "-trimpath", "CGO_ENABLED": "0", "GOTOOLCHAIN": "local",
         "GOPROXY": "off", "GOENV": "off", "GOWORK": "off", "GOSUMDB": "off",
     }
-    MODULE = WORK + "/gomod"
-    os.makedirs(GO_ENV["GOTMPDIR"])
+    module = WORK + "/gomod"
+    os.makedirs(env["GOTMPDIR"])
     for here, _, names in os.walk(GO_CACHE_SEED):
         mirror = WORK + "/gocache" + here[len(GO_CACHE_SEED):]
         os.makedirs(mirror, exist_ok=True)
@@ -205,58 +209,72 @@ elif LANGUAGE == "go":
     # A temporary module the harness writes itself: a learner go.mod, go.sum or go.work never reaches
     # the toolchain, so it cannot pick another Go version or ask for a dependency. A Build is the
     # top-level .go files, all package main.
-    os.makedirs(MODULE)
+    os.makedirs(module)
     sources = [n for n in sorted(os.listdir(BUILD)) if n.endswith(".go") and os.path.isfile(os.path.join(BUILD, n))]
     for name in sources:
-        shutil.copyfile(os.path.join(BUILD, name), os.path.join(MODULE, name))
+        shutil.copyfile(os.path.join(BUILD, name), os.path.join(module, name))
     version = subprocess.run(
-        ["go", "env", "GOVERSION"], stdin=subprocess.DEVNULL, capture_output=True, env=GO_ENV, check=True,
+        ["go", "env", "GOVERSION"], stdin=subprocess.DEVNULL, capture_output=True, env=env, check=True,
     ).stdout.decode().strip()  # "go1.27.1"
-    with open(MODULE + "/go.mod", "w") as f:
+    with open(module + "/go.mod", "w") as f:
         f.write("module solution\n\ngo %s\n" % ".".join(version[2:].split(".")[:2]))
     # -buildmode=exe: a package that is not main is an error, never a library written as the binary.
     if not sources:
-        emit({"compileError": "No .go file in the Build (expected main.go)"})
-        sys.exit(0)
-    compile_argv = ["go", "build", "-buildmode=exe", "-ldflags=-s -w", "-o", GO_BINARY_PATH, "."]
-    compile_cwd = MODULE
-else:
-    sys.exit("unknown language " + LANGUAGE)
+        raise NoSources("No .go file in the Build (expected main.go)")
+    return ["go", "build", "-buildmode=exe", "-ldflags=-s -w", "-o", EXEC_BINARY_PATH, "."], module, env
 
-compiled = None
-if compile_argv:
-    compiled = subprocess.run(
-        compile_argv, stdin=subprocess.DEVNULL, capture_output=True,
-        env=GO_ENV if LANGUAGE == "go" else CHILD_ENV, cwd=compile_cwd,
-    )
-if compiled and compiled.returncode != 0:
-    # A Compile Error is the compiler saying the code is wrong. Anything else (a signal, OOM 137,
-    # another code) is not the Learner's code being wrong: exit non-zero without a result and the
-    # Runner reports its own failure.
-    if LANGUAGE == "python":
-        # py_compile exits 1 with a syntax-style exception line on stderr ("SyntaxError: ...",
-        # "Sorry: IndentationError: ...", "ValueError: source code string cannot contain null bytes").
-        diagnostics = compiled.stderr
-        is_compile_error = compiled.returncode == 1 and SYNTAX_LINE.search(diagnostics)
-    elif LANGUAGE == "go":
-        # go build exits 1 for every failure; stderr tells the Learner's mistakes (GO_COMPILE_ERROR) from
-        # the toolchain's (no space, cache failures, a killed compiler). Another exit code never is a
-        # Compile Error, and an exit 1 matching nothing known fails closed to a Runner error.
-        diagnostics = compiled.stderr
-        is_compile_error = compiled.returncode == 1 and GO_COMPILE_ERROR.search(diagnostics)
-    else:
-        # tsc exits 2 when it found errors, and prints "error TS<n>" diagnostics to stdout. Exit 1 is
-        # a bad option or other failure of ours, so it is not the Learner's fault.
-        diagnostics = compiled.stdout
-        is_compile_error = compiled.returncode == 2 and TSC_DIAGNOSTIC.search(diagnostics)
-    if not is_compile_error:
-        sys.exit("compile step failed with status %d" % compiled.returncode)
-    emit({"compileError": text(diagnostics[:CAP], len(diagnostics) > CAP)})
-    sys.exit(0)
-if LANGUAGE == "go":
-    # The binary is kept in memory and put back before every Test (fresh_build).
-    with open(GO_BINARY_PATH, "rb") as f:
-        GO_BINARY = f.read()
+
+# py_compile exits 1 with a syntax-style exception line on stderr ("SyntaxError: ...",
+# "Sorry: IndentationError: ...", "ValueError: source code string cannot contain null bytes").
+SYNTAX_LINE = re.compile(rb"^(?:Sorry: )?(?:SyntaxError|IndentationError|TabError|ValueError)\b", re.M)
+# tsc exits 2 when it found errors, and prints "error TS<n>" diagnostics to stdout. Exit 1 is
+# a bad option or other failure of ours, so it is not the Learner's fault.
+TSC_DIAGNOSTIC = re.compile(rb"error TS\d+")
+# What go build prints, with exit 1, when the Learner's code is wrong: a compiler diagnostic, a
+# linker error under its "# pkg" header (a missing main), a package that is not main (or a Build
+# mixing packages), and cgo-only files (cgo is off). Anything else on exit 1 is the toolchain's.
+# go build exits 1 for every failure; stderr tells the Learner's mistakes from the toolchain's (no
+# space, cache failures, a killed compiler). An exit 1 matching nothing known fails closed.
+GO_COMPILE_ERROR = re.compile(
+    rb"^\S+\.go:\d+:\d+: "
+    rb"|^# \S+\n(?:.*\n)*?[^\n]*function main is undeclared in the main package"
+    rb"|^-buildmode=exe requires exactly one main package"
+    rb"|^found packages \S+ \(\S+\) and \S+ \(\S+\) in "
+    rb"|^package \S+: build constraints exclude all Go files",
+    re.M,
+)
+
+# The two places the Language matters: how the Build is checked, and how a Test is run. Everything
+# else (isolation, cleanup, caps, the watchdog) is shared. Per Language:
+#   run      argv of a Test, run in the Build directory
+#   compile  function returning (argv, cwd, env) of the compile step, or None to skip it
+#   error    the compile-error rule: the compiler's `exit` code, the `stream` it reports on and
+#            the `pattern` its diagnostics match. Anything else (a signal, OOM 137, another code)
+#            is not the Learner's code being wrong: the Runner reports its own failure.
+#   exec     whether the compiled binary lives in /exec (the second tmpfs, exec allowed)
+LANGUAGES = {
+    "python": {
+        "run": [sys.executable, "main.py"], "compile": compile_python,
+        "error": {"exit": 1, "stream": "stderr", "pattern": SYNTAX_LINE}, "exec": False,
+    },
+    "typescript": {
+        "run": ["node", "main.ts"], "compile": compile_typescript,
+        "error": {"exit": 2, "stream": "stdout", "pattern": TSC_DIAGNOSTIC}, "exec": False,
+    },
+    "go": {
+        "run": [EXEC_BINARY_PATH], "compile": compile_go,
+        "error": {"exit": 1, "stream": "stderr", "pattern": GO_COMPILE_ERROR}, "exec": True,
+    },
+}
+
+
+def classify_compile(language, returncode, stdout, stderr):
+    # The diagnostics of a Compile Error, or None when the failure is the Runner's.
+    rule = LANGUAGES[language]["error"]
+    diagnostics = stderr if rule["stream"] == "stderr" else stdout
+    if returncode == rule["exit"] and rule["pattern"].search(diagnostics):
+        return diagnostics
+    return None
 
 
 def drain(fd, box, cap):
@@ -311,9 +329,9 @@ def run_tests():
         cap = CAP if spent < TOTAL_CAP else 0
         fresh_build()
         proc = subprocess.Popen(
-            RUN_ARGV,
+            LANGUAGES[LANGUAGE]["run"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            bufsize=0, start_new_session=True, env=CHILD_ENV, cwd=BUILD,
+            bufsize=0, start_new_session=True, env=child_env(), cwd=BUILD,
         )
         out, err = [], []
         threads = [
@@ -343,8 +361,56 @@ def run_tests():
         spent += emit({"i": i, "status": status, "stdout": text(o, o_over), "stderr": text(e, e_over)})
 
 
-try:
-    run_tests()
-except BaseException:
-    traceback.print_exc()
-    os._exit(1)
+def main():
+    global LANGUAGE, COUNT, TIMEOUT, CAP, TOTAL_CAP, DEADLINE, EXEC_BINARY
+    # Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
+    # read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
+    ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    LANGUAGE = os.environ["RUNNER_LANGUAGE"]
+    COUNT = int(os.environ["RUNNER_TEST_COUNT"])
+    TIMEOUT = int(os.environ["RUNNER_TEST_TIMEOUT_MS"]) / 1000
+    CAP = int(os.environ["RUNNER_OUTPUT_CAP"])
+    TOTAL_CAP = int(os.environ["RUNNER_TOTAL_OUTPUT_CAP"])
+    DEADLINE = int(os.environ["RUNNER_DEADLINE_S"])
+    if LANGUAGE not in LANGUAGES:
+        sys.exit("unknown language " + LANGUAGE)
+    language = LANGUAGES[LANGUAGE]
+
+    # Backstop if the Runner dies: PID 1 leaves on its own. A timer thread, not a signal, so learner
+    # code cannot trip it early with os.kill(1, ...).
+    watchdog = threading.Timer(DEADLINE, deadline)
+    watchdog.daemon = True
+    watchdog.start()
+
+    receive()
+
+    try:
+        step = language["compile"]()
+    except NoSources as e:
+        emit({"compileError": str(e)})
+        sys.exit(0)
+    if step:
+        argv, cwd, env = step
+        compiled = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, env=env, cwd=cwd)
+        if compiled.returncode != 0:
+            diagnostics = classify_compile(LANGUAGE, compiled.returncode, compiled.stdout, compiled.stderr)
+            if diagnostics is None:
+                sys.exit("compile step failed with status %d" % compiled.returncode)
+            emit({"compileError": text(diagnostics[:CAP], len(diagnostics) > CAP)})
+            sys.exit(0)
+    if language["exec"]:
+        # The binary is kept in memory and put back before every Test (fresh_build).
+        with open(EXEC_BINARY_PATH, "rb") as f:
+            EXEC_BINARY = f.read()
+
+    try:
+        run_tests()
+    except BaseException:
+        traceback.print_exc()
+        os._exit(1)
+
+
+if __name__ == "__main__":
+    main()
