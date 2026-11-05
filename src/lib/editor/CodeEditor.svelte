@@ -3,11 +3,12 @@ import { go } from '@codemirror/lang-go';
 import { javascript } from '@codemirror/lang-javascript';
 import { python } from '@codemirror/lang-python';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
-import { Compartment, EditorState } from '@codemirror/state';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { onMount } from 'svelte';
+import { LANGUAGES, type Language } from '../languages';
 
 interface Props {
 	/** The Build: path to content. The editor owns the text from here on and reports every edit. */
@@ -53,12 +54,17 @@ const highlight = HighlightStyle.define([
 	{ tag: [tags.string, tags.number], color: 'var(--accent)' }
 ]);
 
-/** Highlighting by file extension; any other file is plain text. */
-function syntaxFor(path: string) {
-	if (path.endsWith('.py')) return [python()];
-	if (path.endsWith('.ts')) return [javascript({ typescript: true })];
-	if (path.endsWith('.go')) return [go()];
-	return [];
+/** One highlighter per Language: a Language added to the list without one fails the type check. */
+const highlighters: Record<Language, () => Extension> = {
+	python: () => python(),
+	typescript: () => javascript({ typescript: true }),
+	go: () => go()
+};
+
+/** Highlighting by the Language whose extension ends the path; any other file is plain text. */
+function syntaxFor(path: string): Extension[] {
+	const language = LANGUAGES.find((l) => path.endsWith(l.extension));
+	return language ? [highlighters[language.id]()] : [];
 }
 
 function stateFor(path: string, doc: string) {

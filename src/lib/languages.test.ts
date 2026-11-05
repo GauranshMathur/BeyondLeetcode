@@ -19,6 +19,11 @@ describe('LANGUAGES', () => {
 		expect(Object.keys(sandboxConfig.images).sort()).toEqual([...LANGUAGE_IDS].sort());
 	});
 
+	it('ends each entry file with its own extension, and no two Languages share one', () => {
+		for (const l of LANGUAGES) expect(l.entryFile.endsWith(l.extension)).toBe(true);
+		expect(new Set(LANGUAGES.map((l) => l.extension)).size).toBe(LANGUAGES.length);
+	});
+
 	it('looks a Language up by id', () => {
 		expect(languageById('go')?.name).toBe('Go');
 		expect(languageById('rust')).toBeUndefined();
