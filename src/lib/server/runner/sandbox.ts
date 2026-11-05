@@ -132,13 +132,16 @@ async function execute(
 		// Not awaited and never throws, but not silent: a kill that fails or takes seconds is what
 		// holds up the forced remove (docs/research/fork-bomb-teardown.md).
 		const killStarted = performance.now();
-		engine.kill(id).then(
-			() =>
-				console.error(
-					`Killed container ${id} after ${Math.round(performance.now() - killStarted)} ms`
-				),
-			(error) => console.error(`Could not kill container ${id}`, error)
-		);
+		engine
+			.kill(id)
+			.then(
+				() =>
+					console.error(
+						`Killed container ${id} after ${Math.round(performance.now() - killStarted)} ms`
+					),
+				(error) => console.error(`Could not kill container ${id}`, error)
+			)
+			.catch(() => {});
 		attached?.destroy();
 	}, sandboxConfig.containerTimeoutMs);
 	try {

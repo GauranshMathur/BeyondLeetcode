@@ -84,17 +84,19 @@ function containerLifetimeMs(sinceMs: number): number | undefined {
 				'--filter',
 				`label=${containerLabel}=${instanceId}`,
 				'--format',
-				'{{.Action}} {{.TimeNano}}'
+				'{{.Action}} {{.ID}} {{.TimeNano}}'
 			],
 			{ encoding: 'utf8', timeout: 20_000 }
 		);
 	} catch {
 		return undefined;
 	}
-	// The bomb's container is the last this instance made.
+	// The bomb's container is the last this instance made; pair its create with its own die.
+	const events = lines(out).map((l) => l.split(' '));
+	const bombId = events.findLast(([action]) => action === 'create')?.[1];
 	const at = (action: string) => {
-		const line = lines(out).findLast((l) => l.startsWith(`${action} `));
-		return line ? Number(BigInt(line.split(' ')[1])) / 1e6 : undefined;
+		const event = events.find(([a, id]) => a === action && id === bombId);
+		return event ? Number(BigInt(event[2])) / 1e6 : undefined;
 	};
 	const created = at('create');
 	const died = at('die');
