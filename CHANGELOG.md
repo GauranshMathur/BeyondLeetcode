@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.4](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.3...v1.19.4) (2026-11-05)
+
+
+### Documentation
+
+* **beyondleetcode:** record the 1.19.3 cut ([#498](https://github.com/GauranshMathur/BeyondLeetcode/issues/498)) ([fb6d786](https://github.com/GauranshMathur/BeyondLeetcode/commit/fb6d786dcffbf137f481f5751766ee031ee75218))
+
 ## [1.19.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.2...v1.19.3) (2026-11-05)
 
 ### Highlights
