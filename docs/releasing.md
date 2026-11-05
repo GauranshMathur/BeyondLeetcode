@@ -32,7 +32,7 @@ The `sprint-planner` adds a row for each sprint it plans.
 | --- | --- | --- | --- |
 | 13 · Foundations | `R v1.19.0: Sprint 13 · Foundations` | 1.19.0 | cut 2026-10-28 |
 | 14 · Identity | `R v1.19.1: Sprint 14 · Identity` | 1.19.1 | cut 2026-11-04 |
-| 15 · Screens and phones | `R v1.19.2: Sprint 15 · Screens and phones` | 1.19.2 | planned |
+| 15 · Screens and phones | `R v1.19.2: Sprint 15 · Screens and phones` | 1.19.2 | cut 2026-11-05 |
 | 16 · Languages and the Learning core | `R v1.19.3: Sprint 16 · Languages and the Learning core` | 1.19.3 | planned |
 
 ## The last card
@@ -102,3 +102,4 @@ Only when every card in the sprint is Done, the last card included, and `ci` is 
 | --- | --- | --- | --- | --- | --- |
 | 1.19.0 | `R v1.19.0: Sprint 13 · Foundations` | 2026-10-28 | #403 | 65e6080 (C130, #405), with `Release-As: 1.19.0` | The first release merged by hand. The merge's `release` run tagged `v1.19.0`, passed `release-gate`, published the image as `v1.19.0` and `latest` (one digest), and the webhook answered `delivered`. Notes set from the template. Cut under the old per-feature-set rule, before the changelog went into `CHANGELOG.md`. |
 | 1.19.1 | `R v1.19.1: Sprint 14 · Identity` | 2026-11-04 | #407 | 8d4f4ad (C155, #439), with `Release-As: 1.19.1` | The first release with its changelog in `CHANGELOG.md`: the notes went into the release PR as `docs(beyondleetcode): 1.19.1 changelog` (71f96af), were reviewed in the diff, and the PR merged pinned to that head (dfda408). Its `release` run (41888165424) tagged `v1.19.1`, passed `release-gate`, published the image as `v1.19.1` and `latest` (one digest, sha256:93acfb58…), and the webhook answered `delivered`. The same notes are set on the GitHub release. |
+| 1.19.2 | `R v1.19.2: Sprint 15 · Screens and phones` | 2026-11-05 | #446 | 73d3cb1 (C177, #467), with `Release-As: 1.19.2` | The notes went into the release PR as `docs(beyondleetcode): 1.19.2 changelog` (d4e9c4e), were reviewed in the diff, and the PR merged pinned to that head (21355c0). Its `release` run (41976170071) tagged `v1.19.2`, passed `release-gate`, published the image as `v1.19.2` and `latest` (one digest, sha256:c35668d9…), and the webhook answered `delivered`. The same notes are set on the GitHub release. Sprint 16's round 1 started before the cut, with every merge held until the tag existed. |

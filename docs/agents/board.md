@@ -103,7 +103,21 @@ gh project item-create 1 --owner GauranshMathur --title "[CODE] Area: what" --bo
 
 ## Lanes
 
-Cards that edit the same file share a **lane** and run in order; cards on different files run in parallel lanes, as many as there are. All `F` cards edit Foundations, so they form one lane and finish before any card that uses what they add.
+Cards that edit the same file share a **lane** and run in order; cards on different files run in parallel lanes, at most two at once (see Resources). All `F` cards edit Foundations, so they form one lane and finish before any card that uses what they add.
+
+## Resources
+
+The VPS has 8 GB of RAM and 2 CPUs. On 2026-11-05 at 04:17 UTC an out-of-memory kill took down every session on it. The maintainer's rule since then:
+
+- **At most two card-builders run at once.** The orchestrator plans each round as two lanes; other ready cards wait for a free lane.
+- **Heavy local jobs run one at a time, and only when a card needs them.** Otherwise CI runs them. They are Playwright e2e, docker image builds, the full sandbox suite, and `bun run build` or a full test run with every worker. Each one runs under the shared heavy lock.
+- **Few test workers.** Locally, a worker runs only the tests its card touches, with at most two workers (`bunx vitest run <file> --maxWorkers=2`).
+- **One container at a time.** A worker's own Docker experiments run one container at a time, at the Runner's limits (`runner/config.ts`: 256 MB, 64 pids) unless the card says otherwise.
+- **The orchestrator's session is capped at 5 GB** and slows down at 4 GB.
+- **Exit 137 is memory pressure.** A command killed with exit 137, or a builder that dies with it, is rerun alone, and the event is noted below.
+
+Noted events:
+- **2026-11-05, 04:17 UTC.** C201's teardown probes ran 20 fork-bomb containers at once, each allowed 2 GB, from 04:15 to 04:17:36. Docker's events show other containers dying at 04:17:31. Every session on the host was lost, and the tmux server was restarted. C201 then resumed with one container at a time at the Runner's limits.
 
 ## Done when
 
