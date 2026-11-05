@@ -6,7 +6,16 @@ import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
 import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
-import { loadProgress, recordChapterRead, recordSubmission, resetProgress } from './progress.ts';
+import {
+	loadProgress,
+	recordChapterRead,
+	recordSubmission,
+	resetProgress,
+	revealedHints,
+	revealNextHint,
+	setTopicLanguage,
+	topicLanguage
+} from './progress.ts';
 import {
 	type BuildRef,
 	type ChapterView,
@@ -277,7 +286,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				problem: async (problemId) => {
 					const sourceId = seedSourceOf(deps.catalogue, problemId);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-					const language = await loadLanguage(deps.db, learnerId, topicId);
+					const language = (await topicLanguage(deps.db, learnerId, topicId)) ?? DEFAULT_LANGUAGE;
 					return problemView(
 						deps.catalogue,
 						await loadProgress(deps.catalogue, deps.db, learnerId),
@@ -302,7 +311,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				) => {
 					// The screen read's checks (NotFound, TopicLocked) and the stored step, no Markdown.
 					const topicId = await openStep(problemId);
-					const current = await loadLanguage(deps.db, learnerId, topicId);
+					const current = (await topicLanguage(deps.db, learnerId, topicId)) ?? DEFAULT_LANGUAGE;
 					const stored = await loadStep(deps.db, learnerId, topicId, current, problemId);
 					const view = { topicId, files: stored?.files, revision: stored?.revision ?? 0 };
 					const build = validateBuild(files);
@@ -360,18 +369,14 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				switchLanguage: async (problemId, language) => {
 					const topicId = await openStep(problemId); // NotFound / TopicLocked
 					if (!LANGUAGE_IDS.includes(language)) throw new LearningError('InvalidBuild');
-					await deps.db.topicLanguage.upsert({
-						where: { learnerId_topicId: { learnerId, topicId } },
-						create: { learnerId, topicId, language },
-						update: { language }
-					});
+					await setTopicLanguage(deps.db, learnerId, topicId, language);
 				},
 				hints: async (problemId) =>
 					hintsView(
 						deps.catalogue,
 						await loadProgress(deps.catalogue, deps.db, learnerId),
 						problemId,
-						await loadRevealed(deps.db, learnerId, problemId),
+						await revealedHints(deps.db, learnerId, problemId),
 						renderMarkdown
 					),
 				solution: async (problemId) =>
@@ -385,25 +390,10 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				revealHint: async (problemId) => {
 					await openStep(problemId); // NotFound / TopicLocked, before any count is raised
 					const total = deps.catalogue.problem(problemId)?.hints.length ?? 0;
-					if ((await loadRevealed(deps.db, learnerId, problemId)) >= total) {
+					if ((await revealedHints(deps.db, learnerId, problemId)) >= total) {
 						return learner.hints(problemId);
 					}
-					// One atomic step each, never past the count: concurrent reveals each raise it by
-					// one until the last Hint, then the rest change nothing.
-					const raise = () =>
-						deps.db.hintsRevealed.updateMany({
-							where: { learnerId, problemId, count: { lt: total } },
-							data: { count: { increment: 1 } }
-						});
-					if ((await raise()).count === 0) {
-						try {
-							await deps.db.hintsRevealed.create({ data: { learnerId, problemId, count: 1 } });
-						} catch (e) {
-							if ((e as { code?: string }).code !== 'P2002') throw e;
-							// The row appeared meanwhile (or is already at the last Hint).
-							await raise();
-						}
-					}
+					await revealNextHint(deps.db, learnerId, problemId, total);
 					return learner.hints(problemId);
 				},
 				submit: (build, files) =>
@@ -449,14 +439,6 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 	};
 }
 
-/** The Language the Learner builds a Topic in; Python until they switch. */
-async function loadLanguage(db: Db, learnerId: string, topicId: string): Promise<Language> {
-	const row = await db.topicLanguage.findUnique({
-		where: { learnerId_topicId: { learnerId, topicId } }
-	});
-	return LANGUAGE_IDS.find((l) => l === row?.language) ?? DEFAULT_LANGUAGE;
-}
-
 /** The Learner's stored code for one step in one Language, if it was ever saved. */
 async function loadStep(
 	db: Db,
@@ -490,12 +472,4 @@ async function languagesSaved(
 		select: { language: true }
 	});
 	return LANGUAGE_IDS.filter((l) => rows.some((r) => r.language === l));
-}
-
-/** How many of a Problem's Hints the Learner has revealed. */
-async function loadRevealed(db: Db, learnerId: string, problemId: string): Promise<number> {
-	const row = await db.hintsRevealed.findUnique({
-		where: { learnerId_problemId: { learnerId, problemId } }
-	});
-	return row?.count ?? 0;
 }
