@@ -2,52 +2,43 @@
 
 ## [1.19.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.1...v1.19.2) (2026-11-05)
 
+### Highlights
 
-### Fixes
+- **Phones and in-between widths.** Long code lines and wide tables in Problems scroll inside their own box on a phone. Sign up and Accept invite keep their side panel between 768 and 900 px, as Sign in does, and Sign in no longer scrolls sideways between 768 and 1100 px.
+- **Nothing you type is lost while a page loads.** Sign in, Sign up, Accept invite and Setup keep what you typed before the page finished loading.
+- **Clearer for screen readers.** Code blocks and tables are named and reachable with the keyboard everywhere, and the BLC wordmark link says where it goes.
 
-* **beyondleetcode:** C156 Problem: the wide layout starts above 900 px ([#445](https://github.com/GauranshMathur/BeyondLeetcode/issues/445)) ([e474849](https://github.com/GauranshMathur/BeyondLeetcode/commit/e474849c420bf401d8b01c1ddf7ab928e9dccefa))
-* **beyondleetcode:** C159 Markdown: the renderer emits named scroll boxes ([#442](https://github.com/GauranshMathur/BeyondLeetcode/issues/442)) ([05d4c2c](https://github.com/GauranshMathur/BeyondLeetcode/commit/05d4c2c04c544bd6ca0d368c7f9bcc68408f172f))
-* **beyondleetcode:** C165 Sign up and Accept invite switch at the phone breakpoint ([#450](https://github.com/GauranshMathur/BeyondLeetcode/issues/450)) ([59f64bc](https://github.com/GauranshMathur/BeyondLeetcode/commit/59f64bcd47a6e66d20ea1d36fdec8298c944a075))
-* **beyondleetcode:** C169 Account forms keep what a visitor typed before hydration ([#455](https://github.com/GauranshMathur/BeyondLeetcode/issues/455)) ([89a269f](https://github.com/GauranshMathur/BeyondLeetcode/commit/89a269f3326e087d04c5fffba71ab4ec3bb675c7))
-* **beyondleetcode:** C172 Setup keeps what a visitor typed before hydration ([#463](https://github.com/GauranshMathur/BeyondLeetcode/issues/463)) ([33d07fc](https://github.com/GauranshMathur/BeyondLeetcode/commit/33d07fcef0ae39de477a283d51d22608b98b7cc2))
-* **beyondleetcode:** C173 Header: the BLC wordmark link says what it is ([#462](https://github.com/GauranshMathur/BeyondLeetcode/issues/462)) ([96e02fd](https://github.com/GauranshMathur/BeyondLeetcode/commit/96e02fd1933b56b2e459da19d23cff5e6c5d21d0))
-* **beyondleetcode:** C174 Problem: the statement, Hints and Solution style their scroll boxes ([#459](https://github.com/GauranshMathur/BeyondLeetcode/issues/459)) ([5a992a9](https://github.com/GauranshMathur/BeyondLeetcode/commit/5a992a927db93f1be98cd96bc59cc2c22a2f9f44))
-* **beyondleetcode:** C203 Sign in: no sideways scroll between 768 and 1100 px ([#464](https://github.com/GauranshMathur/BeyondLeetcode/issues/464)) ([c18c591](https://github.com/GauranshMathur/BeyondLeetcode/commit/c18c5912e8a0e0bc989d6fc1bc6c48f741b40b3d))
+### Added
 
+Nothing new to use in this release.
 
-### Refactoring
+### Fixed
 
-* **beyondleetcode:** C157 Problem: one view state for both tab sets ([#453](https://github.com/GauranshMathur/BeyondLeetcode/issues/453)) ([9d20c92](https://github.com/GauranshMathur/BeyondLeetcode/commit/9d20c92f102d6b704b84e3f4478aa94de3db8783))
-* **beyondleetcode:** C158 Styles: F3's phone sizes as tokens ([#441](https://github.com/GauranshMathur/BeyondLeetcode/issues/441)) ([c957af6](https://github.com/GauranshMathur/BeyondLeetcode/commit/c957af69307836f4a7d0f743f6a456fb002f74bd))
-* **beyondleetcode:** C161 Header: one AppHeader, drawn from a header model ([#448](https://github.com/GauranshMathur/BeyondLeetcode/issues/448)) ([8c2db9b](https://github.com/GauranshMathur/BeyondLeetcode/commit/8c2db9bbcd86dc2a5e025ae61a22ef057ebddd1b))
-* **beyondleetcode:** C162 Problem: the panes render from the view ([#456](https://github.com/GauranshMathur/BeyondLeetcode/issues/456)) ([836257a](https://github.com/GauranshMathur/BeyondLeetcode/commit/836257ad9ccb4f4c083b304534767910ff79966a))
-* **beyondleetcode:** C163 Map: one Topic entry for the figure and the column ([#447](https://github.com/GauranshMathur/BeyondLeetcode/issues/447)) ([eb55727](https://github.com/GauranshMathur/BeyondLeetcode/commit/eb557272334dd00dc937116674b487e9f3f737be))
-* **beyondleetcode:** C164 Chapter: no Markdown fix-up in the browser ([#449](https://github.com/GauranshMathur/BeyondLeetcode/issues/449)) ([0d3aa76](https://github.com/GauranshMathur/BeyondLeetcode/commit/0d3aa76973f8c04e96081bb897376a9bdd35a6ca))
-* **beyondleetcode:** C166 Problem: one head line for the statement, Hints and Solution ([#457](https://github.com/GauranshMathur/BeyondLeetcode/issues/457)) ([8631835](https://github.com/GauranshMathur/BeyondLeetcode/commit/86318356ef52ad36822a2034d1f3071775e833a5))
-* **beyondleetcode:** C167 Header: the Problem screen uses the AppHeader ([#458](https://github.com/GauranshMathur/BeyondLeetcode/issues/458)) ([325c63b](https://github.com/GauranshMathur/BeyondLeetcode/commit/325c63b4237145fba307db789f03686eb0360df1))
-* **beyondleetcode:** C168 Chapter: its Problem table becomes the shared ProblemTable ([#452](https://github.com/GauranshMathur/BeyondLeetcode/issues/452)) ([4d749ee](https://github.com/GauranshMathur/BeyondLeetcode/commit/4d749ee59d2187c25a641727414beda4fd75f985))
-* **beyondleetcode:** C175 Topic: each Problem drawn once, with the shared ProblemTable ([#466](https://github.com/GauranshMathur/BeyondLeetcode/issues/466)) ([7339c8a](https://github.com/GauranshMathur/BeyondLeetcode/commit/7339c8a0f406294cc649d7f10edc1149fd983dc3))
-* **beyondleetcode:** C204 Editor: height floor through --editor-min ([#461](https://github.com/GauranshMathur/BeyondLeetcode/issues/461)) ([8fc170d](https://github.com/GauranshMathur/BeyondLeetcode/commit/8fc170d097bc7ec7fcaf4c001f3a73ce54ec31d2))
+- **Problem screen.** At 900 to 901 px wide, which browser zoom can make, it now gets the wide layout (C156, #445).
+- **Sign up and Accept invite.** Between 768 and 900 px wide, they now keep the side panel, as Sign in does (C165, #450).
+- **Sign in.** It no longer scrolls sideways on screens between 768 and 1100 px wide (C203, #464).
+- **Typing before a page loads.** These forms no longer clear what you typed before they finish loading:
+  - Sign in, Sign up and Accept invite (C169, #455);
+  - Setup's admin name and email (C172, #463).
+- **Wide content on a phone.** A long code line or a wide table in a Problem statement, a Hint or a Solution scrolls inside its own box instead of moving the whole page (C174, #459).
+- **Named code blocks and tables.** In Problem statements, Hints and Solutions they are now named and can be scrolled with the keyboard, as in Chapters (C159, #442).
+- **The BLC wordmark.** Where the header's wordmark reads "BLC", its link now tells screen readers where it goes: "BLC, Beyond Leetcode Map" (C173, #462).
 
+### Changed
 
-### Documentation
+- On a phone, each Problem row on a Topic page is one link named by the Problem's title, as on a Chapter (C175, #466).
 
-* **beyondleetcode:** C177 Sprint 15 exit check ([#467](https://github.com/GauranshMathur/BeyondLeetcode/issues/467)) ([73d3cb1](https://github.com/GauranshMathur/BeyondLeetcode/commit/73d3cb17238ac743dde8bdabce51fed865c538a8))
-* **beyondleetcode:** record the 1.19.1 cut ([#440](https://github.com/GauranshMathur/BeyondLeetcode/issues/440)) ([6fb6888](https://github.com/GauranshMathur/BeyondLeetcode/commit/6fb6888159de3e565b3b2fcffa5eb8d7dad86d49))
+### Content
 
+No content changes in this release.
 
-### Tests
+### Security
 
-* **beyondleetcode:** C160 one phone module, and phone flows picked by tag ([#443](https://github.com/GauranshMathur/BeyondLeetcode/issues/443)) ([e0febd2](https://github.com/GauranshMathur/BeyondLeetcode/commit/e0febd255409b3983a5e0b97854d36b4505e935e))
-* **beyondleetcode:** C170 Tests: the Local server's phone tests use the phone module ([#451](https://github.com/GauranshMathur/BeyondLeetcode/issues/451)) ([df6c002](https://github.com/GauranshMathur/BeyondLeetcode/commit/df6c00280ba59c8bb008c8f43473459a416d077a))
-* **beyondleetcode:** C171 Styles: a test holds every media query to the named breakpoints ([#454](https://github.com/GauranshMathur/BeyondLeetcode/issues/454)) ([023e5b7](https://github.com/GauranshMathur/BeyondLeetcode/commit/023e5b7597498df058a35ccbb634cc6ba824f647))
-* **beyondleetcode:** C176 Tests: the Multi-user server's phone tests use the phone module ([#465](https://github.com/GauranshMathur/BeyondLeetcode/issues/465)) ([b3f57ff](https://github.com/GauranshMathur/BeyondLeetcode/commit/b3f57ff242fa096c6cdaf96a3a09d2e08acd6537))
-* **beyondleetcode:** the Problem middle breakpoint is tied to AppHeader too ([#460](https://github.com/GauranshMathur/BeyondLeetcode/issues/460)) ([fce2547](https://github.com/GauranshMathur/BeyondLeetcode/commit/fce25479e1c2b34cfcc46643fc09e093116d1935))
+No security changes in this release.
 
+### Upgrade notes
 
-### CI
-
-* **beyondleetcode:** C200 release-please tries again after a rate-limit failure ([#444](https://github.com/GauranshMathur/BeyondLeetcode/issues/444)) ([4e6d226](https://github.com/GauranshMathur/BeyondLeetcode/commit/4e6d226b2c96aeff8008ba0249f4f37186daa999))
+Nothing to do. Pull `v1.19.2` or `latest`.
 
 ## [1.19.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.0...v1.19.1) (2026-11-04)
 
