@@ -1,16 +1,10 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
+import { LANGUAGE_IDS, type Language } from '../../languages.ts';
 import { MAX_BUILD_BYTES, submitPlan } from '../learning/rules.ts';
 import { sandboxConfig } from '../runner/config.ts';
-import type { Language } from '../runner/port.ts';
-import {
-	chapterManifest,
-	contentManifest,
-	LANGUAGES,
-	problemManifest,
-	topicManifest
-} from './schema.ts';
+import { chapterManifest, contentManifest, problemManifest, topicManifest } from './schema.ts';
 
 export type { Language };
 
@@ -190,12 +184,12 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 
 	async function readReferenceCode(referenceDir: string) {
 		for (const folder of await listDirs(referenceDir)) {
-			if (!(LANGUAGES as readonly string[]).includes(folder)) {
-				report(referenceDir, `"${folder}" is not a Language (${LANGUAGES.join(', ')})`);
+			if (!(LANGUAGE_IDS as readonly string[]).includes(folder)) {
+				report(referenceDir, `"${folder}" is not a Language (${LANGUAGE_IDS.join(', ')})`);
 			}
 		}
 		const code = {} as Record<Language, BuildFiles>;
-		for (const language of LANGUAGES) {
+		for (const language of LANGUAGE_IDS) {
 			const languageDir = join(referenceDir, language);
 			const paths = (await listFiles(languageDir, true)).sort();
 			if (paths.length === 0) report(languageDir, 'missing Reference Code');
@@ -400,7 +394,7 @@ function checkSubmitBatches(plan: {
 			);
 		}
 		const body = JSON.stringify({
-			language: 'typescript', // the longest Language id
+			language: LONGEST_LANGUAGE_ID,
 			files: {},
 			tests: batch.map(({ id, input }) => ({ id, input })),
 			limits: { timeoutMs: testTimeoutMs, memoryMb }
@@ -415,6 +409,9 @@ function checkSubmitBatches(plan: {
 	}
 	return messages;
 }
+
+/** The longest Language id, which makes the largest Runner request body. */
+const LONGEST_LANGUAGE_ID = LANGUAGE_IDS.reduce((a, b) => (b.length > a.length ? b : a));
 
 /** Every Prerequisite is a Topic, and Prerequisites never form a cycle. */
 function checkPrerequisites(

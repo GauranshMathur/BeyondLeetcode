@@ -36,7 +36,7 @@ The content catalogue (`loadCatalogue(dir)`) reads one content folder. Real cont
 - **Solution** is `solution.md` plus the Reference Code after the Problem, which the format does not duplicate.
 - **Reference Code** is required in every Language (`python`, `typescript`, `go`), and each folder must hold at least one file. No other Language folders are allowed. The empty Build before a Topic's first Problem is implied and not stored. Files may be nested; paths are `/`-separated and relative to the Language folder. By convention the entrypoint is `main.py`, `main.ts` or `main.go` at the root of the Build. The catalogue does not check for it: the Runner and the content check (C10a) own that.
 - **Markdown files** (`chapter.md`, `statement.md`, `solution.md`, Hints) must not be blank. A Test's input and expected output may be empty.
-- **Language** is the Runner port's `Language` (`runner/port.ts`); `LANGUAGES` here must list all of them.
+- **Language** is one of the ids in `src/lib/languages.ts`, the one list.
 - JSON manifests reject unknown keys. Dotfiles (such as `.DS_Store`) are ignored everywhere.
 - Loading reports every issue it finds at once, each one prefixed with its path.
 
