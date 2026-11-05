@@ -108,6 +108,22 @@ export interface TopicView {
 }
 
 /**
+ * May this Learner open this Topic? Pure, from the Topic's state on the Map, without building
+ * a TopicView. Returns that state; throws NotFound for an unknown id and TopicLocked while a
+ * Prerequisite is not Complete.
+ */
+export function requireOpenTopic(
+	catalogue: Pick<Catalogue, 'topicMap' | 'topic'>,
+	progress: Progress,
+	topicId: string
+): Exclude<TopicState, 'locked'> {
+	const mapTopic = mapView(catalogue, progress).topics.find((t) => t.id === topicId);
+	if (!mapTopic) throw new LearningError('NotFound');
+	if (mapTopic.state === 'locked') throw new LearningError('TopicLocked');
+	return mapTopic.state;
+}
+
+/**
  * One Topic for one Learner. Pure. Throws NotFound for an unknown id and TopicLocked while
  * a Prerequisite is not Complete.
  */
@@ -116,10 +132,9 @@ export function topicView(
 	progress: Progress,
 	topicId: string
 ): TopicView {
+	const state = requireOpenTopic(catalogue, progress, topicId); // NotFound / TopicLocked
 	const topic = catalogue.topic(topicId);
-	const mapTopic = mapView(catalogue, progress).topics.find((t) => t.id === topicId);
-	if (!topic || !mapTopic) throw new LearningError('NotFound');
-	if (mapTopic.state === 'locked') throw new LearningError('TopicLocked');
+	if (!topic) throw new LearningError('NotFound');
 
 	const chapters = topic.chapters.map(
 		(c): TopicChapter => ({
@@ -148,7 +163,7 @@ export function topicView(
 	return {
 		id: topic.id,
 		title: topic.title,
-		state: mapTopic.state,
+		state,
 		chapters,
 		counts: {
 			chaptersRead: chapters.filter((c) => c.read).length,
@@ -225,7 +240,7 @@ export function reachChapter(
 ): ProgressChange {
 	const chapter = catalogue.chapter(chapterId);
 	if (!chapter) throw new LearningError('NotFound');
-	topicView(catalogue, before, chapter.topicId); // NotFound / TopicLocked
+	requireOpenTopic(catalogue, before, chapter.topicId); // NotFound / TopicLocked
 	if (before.readChapters.has(chapterId)) {
 		return { read: true, topicCompleted: false, newlyUnlocked: [] };
 	}
@@ -407,7 +422,7 @@ export function hintsView(
 ): HintsView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
-	topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	requireOpenTopic(catalogue, progress, problem.topicId); // NotFound / TopicLocked
 	const chapter = catalogue.chapter(problem.chapterId);
 	const shown = Math.min(Math.max(revealedCount, 0), problem.hints.length);
 	return {
@@ -434,7 +449,7 @@ export function solutionView(
 ): SolutionView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
-	topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	requireOpenTopic(catalogue, progress, problem.topicId); // NotFound / TopicLocked
 	return {
 		explanationHtml: renderMarkdown(problem.solution),
 		referenceCode: problem.referenceCode

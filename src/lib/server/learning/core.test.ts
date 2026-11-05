@@ -1520,6 +1520,14 @@ describe('Hints', () => {
 		await expect(learner.revealHint('nope')).rejects.toMatchObject({ code: 'NotFound' });
 	});
 
+	it('refuses a reveal in a Locked Topic without raising any count', async () => {
+		const { core, db } = await setup();
+		await expect(core.forLearner('l').revealHint('queues-enqueue')).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		expect(await db.hintsRevealed.count()).toBe(0);
+	});
+
 	it('reveals and reads write no progress', async () => {
 		const { core } = await setup();
 		const learner = core.forLearner('l');
