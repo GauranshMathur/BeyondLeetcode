@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The smoke test of the app image, shared by ci's `docker` job and release's `publish-release` job,
-# so the image that is published is the image that passed it. Needs Docker, the Bun dependencies
+# The smoke test of the app image, run by ci's `docker` job. release.yml does not run it: its release-gate
+# waits for ci's own run on the commit, so the image that is published is the image that passed it. Needs Docker, the Bun dependencies
 # and Playwright's chromium installed (bun install, bunx playwright install).
 # Usage: .github/smoke.sh <local-image>   e.g. beyondleetcode:ci
 set -u

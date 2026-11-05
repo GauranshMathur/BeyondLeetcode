@@ -133,55 +133,35 @@ jobs:
         env:
           CONTENT_DIR: content
 
-  # Publishes the TypeScript Sandbox image to GHCR next to the app image, once per tag number
-  # (bumped by hand in config.ts when Dockerfile.sandbox-node changes). Only after the tests passed.
-  publish-sandbox-node:
+  # The Sandbox image names, read from config.ts (the one place they are listed): a JSON array like
+  # ["node","go"] for the matrix of publish-sandbox.
+  sandbox-images:
     if: github.event_name == 'push'
-    # Two publish runs never race for the same tag.
-    concurrency:
-      group: publish-sandbox-node
-      cancel-in-progress: false
-    needs: sandbox
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
+    timeout-minutes: 5
+    outputs:
+      names: ${{ steps.names.outputs.names }}
     steps:
       - uses: actions/checkout@v7
-      - name: Read the image name:tag from config.ts
-        id: image
-        run: echo "ref=$(grep -o 'ghcr.io/[a-z/-]*sandbox-node:[0-9]*' src/lib/server/runner/config.ts)" >> "$GITHUB_OUTPUT"
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Is this tag already published?
-        id: exists
-        run: .github/published.sh "${{ steps.image.outputs.ref }}" >> "$GITHUB_OUTPUT"
-      - if: steps.exists.outputs.published != 'true'
-        uses: docker/setup-qemu-action@v4
-      - if: steps.exists.outputs.published != 'true'
-        uses: docker/setup-buildx-action@v4
-      - if: steps.exists.outputs.published != 'true'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.sandbox-node
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.image.outputs.ref }}
+      - name: List the Sandbox images in config.ts
+        id: names
+        run: |
+          names="$(grep -o 'ghcr.io/[a-z/-]*sandbox-[a-z]*:[0-9]*' src/lib/server/runner/config.ts | sed 's/^.*sandbox-\([a-z]*\):.*$/\1/' | jq -R . | jq -sc .)"
+          echo "names=$names" >> "$GITHUB_OUTPUT"
 
-  # Publishes the Go Sandbox image to GHCR next to the app image, once per tag number
-  # (bumped by hand in config.ts when Dockerfile.sandbox-go changes). Only after the tests passed.
-  publish-sandbox-go:
+  # Publishes each Sandbox image to GHCR next to the app image, once per tag number (bumped by hand in
+  # config.ts when its Dockerfile.sandbox-<name> changes). Only after the tests passed.
+  publish-sandbox:
     if: github.event_name == 'push'
     # Two publish runs never race for the same tag.
     concurrency:
-      group: publish-sandbox-go
+      group: publish-sandbox-${{ matrix.name }}
       cancel-in-progress: false
-    needs: sandbox
+    needs: [sandbox, sandbox-images]
+    strategy:
+      fail-fast: false
+      matrix:
+        name: ${{ fromJSON(needs.sandbox-images.outputs.names) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -191,7 +171,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Read the image name:tag from config.ts
         id: image
-        run: echo "ref=$(grep -o 'ghcr.io/[a-z/-]*sandbox-go:[0-9]*' src/lib/server/runner/config.ts)" >> "$GITHUB_OUTPUT"
+        run: echo "ref=$(grep -o 'ghcr.io/[a-z/-]*sandbox-${{ matrix.name }}:[0-9]*' src/lib/server/runner/config.ts)" >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -208,7 +188,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.sandbox-go
+          file: Dockerfile.sandbox-${{ matrix.name }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.image.outputs.ref }}
@@ -242,11 +222,11 @@ jobs:
               echo "::error::@playwright/test is $version (bun.lock) but PLAYWRIGHT_IMAGE in .github/workflows/ci.yml is $PLAYWRIGHT_IMAGE. Set it to mcr.microsoft.com/playwright:v$version-noble@sha256:<index digest from 'docker buildx imagetools inspect mcr.microsoft.com/playwright:v$version-noble'>."
               exit 1 ;;
           esac
-      # Web, runner and init + compose up, then the browser flow in three Languages. Shared with
-      # release.yml, so the image published there passes the very same test.
+      # Web, runner and init + compose up, then the browser flow in three Languages. release.yml
+      # does not run it: its release-gate waits for this run's result on the commit it releases.
       # smoke.sh ends with `bun run test:smoke` on the host. The shim below sends exactly that command into the
       # Playwright image (host network, so localhost:3000 is the composed stack) and passes every other bun call
-      # through, so smoke.sh, shared with release.yml, stays as it is.
+      # through, so smoke.sh stays as it is.
       - name: Smoke test
         env:
           SMOKE_BASE_URL: http://localhost:3000
