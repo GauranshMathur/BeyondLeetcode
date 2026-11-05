@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.19.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.1...v1.19.2) (2026-11-05)
+
+### Highlights
+
+- **Phones and in-between widths.** Long code lines and wide tables in Problems scroll inside their own box on a phone. Sign up and Accept invite keep their side panel between 768 and 900 px, as Sign in does, and Sign in no longer scrolls sideways between 768 and 1100 px.
+- **Nothing you type is lost while a page loads.** Sign in, Sign up, Accept invite and Setup keep what you typed before the page finished loading.
+- **Clearer for screen readers.** Code blocks and tables are named and reachable with the keyboard everywhere, and the BLC wordmark link says where it goes.
+
+### Added
+
+Nothing new to use in this release.
+
+### Fixed
+
+- **Problem screen.** At 900 to 901 px wide, which browser zoom can make, it now gets the wide layout (C156, #445).
+- **Sign up and Accept invite.** Between 768 and 900 px wide, they now keep the side panel, as Sign in does (C165, #450).
+- **Sign in.** It no longer scrolls sideways on screens between 768 and 1100 px wide (C203, #464).
+- **Typing before a page loads.** These forms no longer clear what you typed before they finish loading:
+  - Sign in, Sign up and Accept invite (C169, #455);
+  - Setup's admin name and email (C172, #463).
+- **Wide content on a phone.** A long code line or a wide table in a Problem statement, a Hint or a Solution scrolls inside its own box instead of moving the whole page (C174, #459).
+- **Named code blocks and tables.** In Problem statements, Hints and Solutions they are now named and can be scrolled with the keyboard, as in Chapters (C159, #442).
+- **The BLC wordmark.** Where the header's wordmark reads "BLC", its link now tells screen readers where it goes: "BLC, Beyond Leetcode Map" (C173, #462).
+
+### Changed
+
+- On a phone, each Problem row on a Topic page is one link named by the Problem's title, as on a Chapter (C175, #466).
+
+### Content
+
+No content changes in this release.
+
+### Security
+
+No security changes in this release.
+
+### Upgrade notes
+
+Nothing to do. Pull `v1.19.2` or `latest`.
+
 ## [1.19.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.0...v1.19.1) (2026-11-04)
 
 ### Highlights
