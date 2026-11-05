@@ -135,19 +135,6 @@ def fresh_build():
         os.utime(EXEC, (0, 0))
 
 
-SYNTAX_LINE = re.compile(rb"^(?:Sorry: )?(?:SyntaxError|IndentationError|TabError|ValueError)\b", re.M)
-TSC_DIAGNOSTIC = re.compile(rb"error TS\d+")
-# What go build prints, with exit 1, when the Learner's code is wrong: a compiler diagnostic, a
-# linker error under its "# pkg" header (a missing main), a package that is not main (or a Build
-# mixing packages), and cgo-only files (cgo is off). Anything else on exit 1 is the toolchain's.
-GO_COMPILE_ERROR = re.compile(
-    rb"^\S+\.go:\d+:\d+: "
-    rb"|^# \S+\n(?:.*\n)*?[^\n]*function main is undeclared in the main package"
-    rb"|^-buildmode=exe requires exactly one main package"
-    rb"|^found packages \S+ \(\S+\) and \S+ \(\S+\) in "
-    rb"|^package \S+: build constraints exclude all Go files",
-    re.M,
-)
 GO_CACHE_SEED = "/opt/gocache"
 
 
@@ -164,7 +151,7 @@ def child_env():
 def compile_python():
     sources = []
     for root, _, names in os.walk(BUILD):
-        sources += [os.path.join(root, n) for n in names if n.endswith(".py")]
+        sources += [os.path.join(root, n) for n in names if n.endswith(LANGUAGES["python"]["ext"])]
     if not sources:
         return None
     return [sys.executable, "-I", "-m", "py_compile"] + sorted(sources), None, child_env()
@@ -173,7 +160,7 @@ def compile_python():
 def compile_typescript():
     sources = []
     for root, _, names in os.walk(BUILD):
-        sources += ["./" + os.path.relpath(os.path.join(root, n), BUILD) for n in names if n.endswith(".ts")]
+        sources += ["./" + os.path.relpath(os.path.join(root, n), BUILD) for n in names if n.endswith(LANGUAGES["typescript"]["ext"])]
     if not sources:
         return None
     # Type errors are Compile Errors, as in a normal TypeScript project. erasableSyntaxOnly makes
@@ -210,7 +197,7 @@ def compile_go():
     # the toolchain, so it cannot pick another Go version or ask for a dependency. A Build is the
     # top-level .go files, all package main.
     os.makedirs(module)
-    sources = [n for n in sorted(os.listdir(BUILD)) if n.endswith(".go") and os.path.isfile(os.path.join(BUILD, n))]
+    sources = [n for n in sorted(os.listdir(BUILD)) if n.endswith(LANGUAGES["go"]["ext"]) and os.path.isfile(os.path.join(BUILD, n))]
     for name in sources:
         shutil.copyfile(os.path.join(BUILD, name), os.path.join(module, name))
     version = subprocess.run(
@@ -220,7 +207,7 @@ def compile_go():
         f.write("module solution\n\ngo %s\n" % ".".join(version[2:].split(".")[:2]))
     # -buildmode=exe: a package that is not main is an error, never a library written as the binary.
     if not sources:
-        raise NoSources("No .go file in the Build (expected main.go)")
+        raise NoSources("No %s file in the Build (expected %s)" % (LANGUAGES["go"]["ext"], LANGUAGES["go"]["entry"]))
     return ["go", "build", "-buildmode=exe", "-ldflags=-s -w", "-o", EXEC_BINARY_PATH, "."], module, env
 
 
@@ -246,7 +233,8 @@ GO_COMPILE_ERROR = re.compile(
 
 # The two places the Language matters: how the Build is checked, and how a Test is run. Everything
 # else (isolation, cleanup, caps, the watchdog) is shared. Per Language:
-#   run      argv of a Test, run in the Build directory
+#   entry    the Build's entry file, and ext the extension of its source files
+#   run      function of the entry returning the argv of a Test, run in the Build directory
 #   compile  function returning (argv, cwd, env) of the compile step, or None to skip it
 #   error    the compile-error rule: the compiler's `exit` code, the `stream` it reports on and
 #            the `pattern` its diagnostics match. Anything else (a signal, OOM 137, another code)
@@ -254,15 +242,15 @@ GO_COMPILE_ERROR = re.compile(
 #   exec     whether the compiled binary lives in /exec (the second tmpfs, exec allowed)
 LANGUAGES = {
     "python": {
-        "run": [sys.executable, "main.py"], "compile": compile_python,
+        "entry": "main.py", "ext": ".py", "run": lambda entry: [sys.executable, entry], "compile": compile_python,
         "error": {"exit": 1, "stream": "stderr", "pattern": SYNTAX_LINE}, "exec": False,
     },
     "typescript": {
-        "run": ["node", "main.ts"], "compile": compile_typescript,
+        "entry": "main.ts", "ext": ".ts", "run": lambda entry: ["node", entry], "compile": compile_typescript,
         "error": {"exit": 2, "stream": "stdout", "pattern": TSC_DIAGNOSTIC}, "exec": False,
     },
     "go": {
-        "run": [EXEC_BINARY_PATH], "compile": compile_go,
+        "entry": "main.go", "ext": ".go", "run": lambda entry: [EXEC_BINARY_PATH], "compile": compile_go,
         "error": {"exit": 1, "stream": "stderr", "pattern": GO_COMPILE_ERROR}, "exec": True,
     },
 }
@@ -329,7 +317,7 @@ def run_tests():
         cap = CAP if spent < TOTAL_CAP else 0
         fresh_build()
         proc = subprocess.Popen(
-            LANGUAGES[LANGUAGE]["run"],
+            LANGUAGES[LANGUAGE]["run"](LANGUAGES[LANGUAGE]["entry"]),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             bufsize=0, start_new_session=True, env=child_env(), cwd=BUILD,
         )
