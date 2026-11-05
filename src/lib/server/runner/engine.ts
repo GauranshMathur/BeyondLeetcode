@@ -115,6 +115,13 @@ function guard(req: ClientRequest, ms: number, what: string, reject: (error: Err
 	};
 }
 
+/**
+ * Least time left on a remove's deadline for it to poll again. A poll started with less is cut by
+ * the deadline at once, but its request is already on the wire, so the daemon sees it after the
+ * remove has given up (C198).
+ */
+const minPollMs = 20;
+
 export function createEngine(
 	socketPath: string,
 	callTimeoutMs = engineCallTimeoutMs,
@@ -433,7 +440,7 @@ export function createEngine(
 				// The daemon is already removing it (AutoRemove): wait until it is gone.
 				// One overall deadline from the start of the remove (the call timeout), so a daemon that never finishes cannot hold
 				// the caller, or a late-remove slot, for 50 polls of a full call timeout each.
-				while (performance.now() < deadline) {
+				while (deadline - performance.now() > minPollMs) {
 					const left = deadline - performance.now();
 					try {
 						if ((await call('GET', `/containers/${ref}/json`, undefined, left)).status === 404)
