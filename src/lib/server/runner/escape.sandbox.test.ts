@@ -1,9 +1,10 @@
 import { type ChildProcess, execFileSync } from 'node:child_process';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { sandboxConfig } from './config';
+import { containerLabel, sandboxConfig } from './config';
 import { createEngine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import type { RunnerPort } from './port';
+import { removeAttemptTimeoutMs } from './sandbox';
 import { containersOwnedBy, startRunnerProcess, waitUntilHealthy } from './wait-healthy.testutil';
 
 /**
@@ -61,6 +62,43 @@ function dockerHostGateway(): string {
 		// fall back to Docker's default bridge gateway
 	}
 	return '172.17.0.1';
+}
+
+/**
+ * The container's own lifetime (die minus create, ms) from Docker's events for this Runner
+ * instance's containers since `sinceMs`, or undefined when Docker reported no pair.
+ */
+function containerLifetimeMs(sinceMs: number): number | undefined {
+	let out: string;
+	try {
+		out = execFileSync(
+			'docker',
+			[
+				'events',
+				'--since',
+				String(Math.floor(sinceMs / 1000) - 1),
+				'--until',
+				String(Math.ceil(Date.now() / 1000) + 1),
+				'--filter',
+				'type=container',
+				'--filter',
+				`label=${containerLabel}=${instanceId}`,
+				'--format',
+				'{{.Action}} {{.TimeNano}}'
+			],
+			{ encoding: 'utf8', timeout: 20_000 }
+		);
+	} catch {
+		return undefined;
+	}
+	// The bomb's container is the last this instance made.
+	const at = (action: string) => {
+		const line = lines(out).findLast((l) => l.startsWith(`${action} `));
+		return line ? Number(BigInt(line.split(' ')[1])) / 1e6 : undefined;
+	};
+	const created = at('create');
+	const died = at('die');
+	return created === undefined || died === undefined ? undefined : died - created;
 }
 
 const lines = (s: string) => s.split('\n').filter(Boolean);
@@ -344,8 +382,11 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		await healthy();
 	});
 
-	it('ends a bomb that forks without bound within the time limit, as a verdict or a refusal', async () => {
+	it('ends a bomb that forks without bound within the design bound, as a verdict or a refusal', async () => {
 		const bomb = 'import os\nwhile True:\n    os.fork()\n';
+		// What the code allows: the hard stop, then up to two remove attempts that each give up at
+		// removeAttemptTimeoutMs. A slower teardown is a regression, not a reason to widen this.
+		const designBoundMs = sandboxConfig.containerTimeoutMs + 2 * removeAttemptTimeoutMs;
 		const started = Date.now();
 
 		// The container may run out of memory before the pids limit bites and take the harness down
@@ -355,9 +396,16 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 			(result) => result.results[0].status,
 			(error: Error) => error.message
 		);
+		const elapsedMs = Date.now() - started;
+
+		// So drift shows in the CI log: the container's own lifetime, apart from create and teardown.
+		const lifetimeMs = containerLifetimeMs(started);
+		console.log(
+			`fork-bomb container lifetime ${lifetimeMs === undefined ? 'unavailable' : `${Math.round(lifetimeMs)} ms`}; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
+		);
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
-		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs + 5000);
+		expect(elapsedMs).toBeLessThan(designBoundMs);
 		await healthy();
 	});
 });
