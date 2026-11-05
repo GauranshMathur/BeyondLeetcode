@@ -3,7 +3,7 @@
  * afterwards whatever happened. Python, TypeScript and Go.
  */
 import { randomBytes } from 'node:crypto';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
 import {
 	type AttachedContainer,
@@ -12,25 +12,14 @@ import {
 	NameConflictError,
 	parseImageRef
 } from './engine';
-import { harnessScript } from './harness';
+import { harnessEnv, harnessInput, harnessLine, harnessScript } from './harness';
 import type { ExecuteRequest, ExecuteResult, Language, RunnerPort, TestResult } from './port';
-import { createTar } from './tar';
 
 const nobody = '65534:65534';
 const mib = 1024 * 1024;
 const removeAttempts = 3;
 /** Three attempts at this each, plus the pauses between them, keep the whole cleanup under about 30 s. */
 const removeAttemptTimeoutMs = 9_000;
-
-const harnessLine = z.union([
-	z.object({ compileError: z.string() }),
-	z.object({
-		i: z.number().int(),
-		status: z.enum(['ok', 'runtimeError', 'timeout']),
-		stdout: z.string(),
-		stderr: z.string()
-	})
-]);
 
 /** The Sandbox image for a Language, or undefined where the Runner has none yet. */
 function imageFor(language: Language): string | undefined {
@@ -49,14 +38,7 @@ export function containerSpec(
 		Cmd: ['python', '-I', '-c', harnessScript],
 		User: nobody,
 		WorkingDir: '/work',
-		Env: [
-			`RUNNER_LANGUAGE=${language}`,
-			`RUNNER_TEST_COUNT=${testCount}`,
-			`RUNNER_TEST_TIMEOUT_MS=${testTimeoutMs}`,
-			`RUNNER_OUTPUT_CAP=${sandboxConfig.outputCapBytes}`,
-			`RUNNER_TOTAL_OUTPUT_CAP=${sandboxConfig.totalOutputCapBytes}`,
-			`RUNNER_DEADLINE_S=${sandboxConfig.containerDeadlineS}`
-		],
+		Env: harnessEnv(language, testCount, testTimeoutMs),
 		Labels: { [containerLabel]: instanceId },
 		AttachStdin: true,
 		AttachStdout: true,
@@ -105,16 +87,10 @@ async function execute(
 	const testTimeoutMs = Math.min(sandboxConfig.testTimeoutMs, request.limits.timeoutMs);
 	const memoryMb = Math.min(sandboxConfig.memoryMb, request.limits.memoryMb);
 
-	const tar = createTar([
-		...Object.entries(request.files).map(([path, content]) => ({
-			path: `build/${path}`,
-			content
-		})),
-		...request.tests.map((test, i) => ({
-			path: `tests/${i}.in`,
-			content: test.input
-		}))
-	]);
+	const input = harnessInput(
+		request.files,
+		request.tests.map((test) => test.input)
+	);
 
 	const lines: z.infer<typeof harnessLine>[] = [];
 	const decoder = new TextDecoder();
@@ -184,7 +160,7 @@ async function execute(
 		);
 		if (timedOut) throw new Error('Sandbox start-up exceeded the time limit');
 		await engine.start(id);
-		attached.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
+		attached.sendInput(input);
 		await attached.closed;
 		if (!overflow && !timedOut) {
 			// The harness only exits non-zero when something went wrong inside it (or learner code
