@@ -1,9 +1,11 @@
 <script lang="ts" module>
 export type ProblemTableRow = { id: string; title: string; kind: string; status: string };
+/** The set column's text: the set word, and an optional note after it ("· off Push and size") that keeps its own style. */
+export type ProblemTableSet = string | { main: string; note: string };
 export type ProblemTableLabels = { problem: string; set: string; status: string };
 </script>
 
-<script lang="ts">
+<script lang="ts" generics="T extends ProblemTableRow">
 // A list of Problems, each drawn once: a table on a desktop, numbered rows on a phone whose
 // title link covers the row. The caller owns the wording (column labels and the set and
 // status texts), so a page keeps its own words at each width.
@@ -11,16 +13,25 @@ let {
 	problems,
 	labels,
 	setText,
-	statusText
+	statusText,
+	phoneSetText,
+	numberText
 }: {
-	problems: readonly ProblemTableRow[];
+	problems: readonly T[];
 	labels: ProblemTableLabels;
-	setText: (problem: ProblemTableRow) => string;
-	statusText: (problem: ProblemTableRow) => string;
+	setText: (problem: T) => ProblemTableSet;
+	statusText: (problem: T) => string;
+	/** A phone's own wording for the set column; without it the phone reads `setText` too. */
+	phoneSetText?: (problem: T) => ProblemTableSet;
+	/** A phone's own row number (the Topic's "1.1"); without it rows count 01, 02 and so on. */
+	numberText?: (problem: T, index: number) => string;
 } = $props();
+
+const main = (set: ProblemTableSet) => (typeof set === 'string' ? set : set.main);
+const note = (set: ProblemTableSet) => (typeof set === 'string' ? '' : set.note);
 </script>
 
-<table class="problems">
+<table class="problems" class:numbered={!!numberText}>
 	<thead>
 		<tr>
 			<th scope="col">{labels.problem}</th>
@@ -29,10 +40,21 @@ let {
 		</tr>
 	</thead>
 	<tbody>
-		{#each problems as problem (problem.id)}
+		{#each problems as problem, index (problem.id)}
 			<tr>
-				<td class="title"><a class="ptitle" href="/problems/{problem.id}">{problem.title}</a></td>
-				<td><span class={problem.kind === 'Core' ? 'core' : 'muted upper'}>{setText(problem)}</span></td>
+				<td class="title">
+					{#if numberText}<span class="no" aria-hidden="true">{numberText(problem, index)}</span>{/if}
+					<a class="ptitle" href="/problems/{problem.id}">{problem.title}</a>
+				</td>
+				<td>
+					{#each phoneSetText ? [['wide', setText], ['narrow', phoneSetText]] as const : [['', setText]] as const as [width, text] (width)}
+						{@const set = text(problem)}
+						<span class={width}>
+							<span class={problem.kind === 'Core' ? 'core' : 'muted upper'}>{main(set)}</span>
+							{#if note(set)}<span class="muted">{note(set)}</span>{/if}
+						</span>
+					{/each}
+				</td>
 				<td class="status muted">{statusText(problem)}</td>
 			</tr>
 		{/each}
@@ -95,6 +117,10 @@ let {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
+	.no,
+	.narrow {
+		display: none;
+	}
 	/* Phone: numbered rows; the whole row is the title link. */
 	@media (max-width: 767.98px) {
 		table.problems,
@@ -146,6 +172,20 @@ let {
 			content: counter(row, decimal-leading-zero);
 			font-size: 14px;
 			color: var(--muted);
+		}
+		table.problems.numbered td.title::before {
+			content: none;
+		}
+		.no {
+			display: inline;
+			font-size: 14px;
+			color: var(--muted);
+		}
+		.wide {
+			display: none;
+		}
+		.narrow {
+			display: inline;
 		}
 		table.problems td:nth-child(2) {
 			grid-column: 2;

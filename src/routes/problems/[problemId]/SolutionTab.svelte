@@ -63,4 +63,8 @@ let { problem, solution }: { problem: ProblemView; solution: SolutionView } = $p
 		border-bottom: 1px solid var(--ink);
 		overflow-x: auto;
 	}
+	.prose :global(.scrollbox) {
+		overflow-x: auto;
+		margin: 0 0 1em;
+	}
 </style>

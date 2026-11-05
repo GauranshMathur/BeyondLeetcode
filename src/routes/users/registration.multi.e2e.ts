@@ -1,4 +1,5 @@
 import { test as base, expect, type Page, type PlaywrightWorkerArgs } from '@playwright/test';
+import { expectNoSidewaysScroll, phone } from '../../lib/e2e-phone.ts';
 import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 import {
 	LEARNER_PASSWORD,
@@ -260,16 +261,13 @@ test.describe('on a Multi-user server of its own', () => {
 		const context = await browser.newContext({
 			baseURL: own.url,
 			storageState: admin,
-			viewport: { width: 390, height: 844 }
+			...phone
 		});
 		const page = await context.newPage();
 		await gotoHydrated(page, '/users');
 
 		await expect(registration(page)).toBeVisible();
-		const overflow = await page.evaluate(
-			() => document.documentElement.scrollWidth - document.documentElement.clientWidth
-		);
-		expect(overflow).toBeLessThanOrEqual(0);
+		await expectNoSidewaysScroll(page);
 		await context.close();
 	});
 });
