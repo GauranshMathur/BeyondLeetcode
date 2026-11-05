@@ -705,6 +705,80 @@ Release `R v1.19.3: Sprint 16 · Languages and the Learning core`, version 1.19.
 - #101, #104, #107, #133, #135 and #307 are closed.
 - The orchestrator cuts 1.19.3 from the release PR (`docs/releasing.md`) and records the cut. Releases stay `1.x`.
 
+**Status (2026-11-05):** exit met.
+- **Cards:** all 23 Sprint 16 cards are Done. The planned 20 (C178 to C196, plus C131) grew by three, all in Release 1.19.3:
+  - C198 and C199, filed after flakes on Sprint 14's CI;
+  - C201, filed after the sandbox-security review of #435 failed C131's first attempt.
+- **CI:** `ci` is green on `main` at 4fa5b9d, the last card's merge.
+- **Checks:**
+  - `src/lib/languages.ts` is the only module that exports `LANGUAGES`, and `src/routes/smoke.smoke.ts` names no Language id, name or entry file.
+  - `ci.yml` has one Sandbox publish job, `publish-sandbox`. Its matrix comes from the `sandbox-images` job, which reads `runner/config.ts`. Both legs, node and go, succeeded on C183's merge commit.
+  - `harness.ts` holds no Python. `harness.py` tests the Language only through its `LANGUAGES` table and does its work only from `main()`. The `unit` job runs `harness.test.ts`.
+  - `grep -n "mainLine.indexOf\|lastIndexOf('/')" src/lib/server/learning/rules.ts` prints nothing.
+  - `core.ts` names no Prisma model, and `core.test.ts` defines one `setup`.
+  - No file under `src/lib/server/content/` imports from `src/lib/server/learning/`.
+  - #101, #104, #107, #133, #135 and #307 are closed.
+- **Release:** this card's merge carries `Release-As: 1.19.3`. The orchestrator then cuts 1.19.3 from the release PR and records the cut in `docs/releasing.md`.
+- **Reviews:** every card that edits a file under `src/lib/server/runner/` had a `sandbox-security-reviewer` pass before merge. That is C131, C184, C185, C188, C189, C191, C192 and C198. Two went back to their workers first:
+  - C188: a committed `__pycache__` .pyc, the table's missing `entry` and `ext`, and a dead duplicate of the compile-error regexes. Then `.dockerignore` needed `**/__pycache__`.
+  - C191: six rows whose toolchain output the Sandbox never prints. Also, python3 was not gated by harness.py's pin, so a harness that acted at import could have run on the host.
+
+  C131 also took four low findings before merge.
+
+| Card | PR | What landed |
+|---|---|---|
+| C131 | #486 | The fork-bomb teardown is logged (the kill's result, a slow remove by name), and its test is bounded by the design, 28 s, and prints the container's lifetime. |
+| C178 | #469 | The Content catalogue gives each Problem's place on the Main Line (`mainLinePlace`) and each Test's `name`. |
+| C179 | #475 | Table tests for `judge`, `submitPlan`, `problemView` and `validateBuild`. |
+| C180 | #471 | One `setup` in core.test.ts. |
+| C181 | #470 | Each Language's file extension; the editor's highlighting is keyed by Language. |
+| C182 | #472 | The smoke test reads the Language list. |
+| C183 | #473 | CI reads the Sandbox images from `config.ts`, with one `publish-sandbox` job. |
+| C184 | #468 | The harness moves to `harness.py`. |
+| C185 | #480 | One zod schema for each Runner port shape, in `port.ts`. |
+| C186 | #483 | rules.ts reads the Main Line and Test names from the catalogue. |
+| C187 | #485 | One list named `LANGUAGES`, in `src/lib/languages.ts`. |
+| C188 | #478 | harness.py's per-Language rules as one table, and a pure `classify_compile`; its work runs from `main()`. |
+| C189 | #479 | The harness protocol (`harnessEnv`, `harnessInput`, `harnessLine`) written once, in harness.ts. |
+| C190 | #487 | `requireOpenTopic`: the access check as one named rule. |
+| C191 | #488 | The compile-error rules as a table test without Docker, through the host's python3, gated by harness.py's sha256 pin. |
+| C192 | #494 | One Runner start (`startTestRunner`) for the sandbox tests. |
+| C193 | #489 | Revealed Hints and the Language per Topic stored through progress.ts. |
+| C194 | #492 | The Submit plan in a leaf module, `submit-plan.ts`, which content and learning both import. |
+| C195 | #493 | Build steps stored through progress.ts; core.ts names no Prisma model. |
+| C196 | this PR | Exit check and `Release-As: 1.19.3`. |
+| C198 | #484 | An engine removal's poll never starts with under 20 ms left (a `fix`: the engine sent one poll after its deadline). |
+| C199 | #490 | Research: where a TypeScript Submit late on a long Main Line spends its time (`docs/research/typescript-submit-timing.md`). |
+| C201 | #474 | Research: why a fork-bombed container's forced remove hangs past its hard stop (`docs/research/fork-bomb-teardown.md`). |
+
+Decided along the way:
+- **The maintainer's questions.** On 2026-11-04 the maintainer asked the orchestrator to take the recommended option on any question that is not a hard call. Each answer is recorded on its card and issue:
+  - `python3` for `bun run test`: yes, 3.12 or later, with no Python linter (C191);
+  - #307: option 2, a leaf module both import (C194);
+  - #101: closed by C187, with the Sandbox image tags and Go's `/exec` flag kept keyed by Language, as planned;
+  - #107: closed by C192, with the port's `limits`, `outcome.ts` and `scripted-catalogue.ts` left as planned.
+- **C131 and C201, the fork-bomb teardown.** C201 measured that a fork-bombed container takes seconds to die after the hard stop's SIGKILL, and the forced remove waits for that death. It recommended observing first, with no flag or limit change. C131 was re-specified from that:
+  - the kill is logged;
+  - a slow remove names itself;
+  - the test asserts the design bound, `containerTimeoutMs + 2 * removeAttemptTimeoutMs` (28 s), and prints the container's own lifetime.
+
+  The review judged #435's objection partly answered. Asserting the lifetime once CI has data is #491.
+- **Files lines widened by the orchestrator:**
+  - C184 added `harness.test.ts`, which C191 then extended;
+  - C188 added `.gitignore` and `.dockerignore`;
+  - C131 added `sandbox.test.ts`;
+  - C190 added a guard test to `core.test.ts`, as its brief asked.
+- **The host's resource rule (2026-11-05).** An out-of-memory kill at 04:17 UTC took down every session; C201's probes had run 20 fork-bomb containers at 2 GB each. Since then, at most two card-builders run at once, heavy local jobs run one at a time, and Docker experiments run one container at a time at the Runner's limits (`docs/agents/board.md`, Resources). The restart lost every subagent mid-card. The orchestrator took over C178, C180, C181, C182 and C183, which were green, and merged them after a Codex second opinion where the worker had not run one.
+
+For the maintainer:
+- **Filed during the sprint, `needs-triage`:**
+  - #481: Dockerfile.sandbox-go's comment points at harness.ts;
+  - #482: the harness line schema strips unknown fields rather than refusing them;
+  - #491: assert the fork-bomb container's lifetime;
+  - #495: a correct TypeScript Submit late on a long Main Line can hit the hard stop on a slow host. C199's doc recommends compiling once and running `node main.js`.
+- **Also filed:** #496: start.sandbox.test.ts starts its test Runner on 0.0.0.0. C192 moved the shared helper's Runners to 127.0.0.1.
+- **Dependabot** #432 (`tailscale/github-action` 4.4.0) and #433 (five bun bumps) are still open. The release run's Tailscale step warns that `authkey` is deprecated in favour of an OAuth client.
+
 **Not in the sprint:**
 - **Kept keyed by Language:** the Sandbox image tags stay in `runner/config.ts`, and Go's `/exec` tmpfs stays a `language === 'go'` flag in `containerSpec`, where C15 and ADR 0002's amendment put them. Whether that is enough to close #101 is a question for the maintainer.
 - **Docker compile-error cases stay**, because they check the real toolchains' output. No Python linter is added: Ruff would be a new dependency.
