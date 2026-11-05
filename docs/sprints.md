@@ -567,6 +567,65 @@ For the maintainer:
 - The orchestrator cuts 1.19.2 from the release PR, as `docs/releasing.md` describes, and records the cut there.
 - Releases stay `1.x`.
 
+**Status (2026-11-05):** exit met.
+- **Cards:** all 25 Sprint 15 cards are Done. The planned 22 grew by three, all in Release 1.19.2:
+  - C200, release-please's retry after a rate-limit failure, filed in Sprint 14 and planned into this sprint;
+  - C203, filed after C165's 1100 px block showed Sign in scrolling sideways by 86 px between 768 and 1100 px;
+  - C204, filed after C162 left the editor's height floor on a `:last-child` rule.
+
+  One orchestrator PR, #460, fixed `main`'s breakpoints guard after C167 and C171 merged side by side: the Problem's middle query is tied to `AppHeader.svelte` too.
+- **CI:** `ci` is green on `main` at 96e02fd, the last card's merge.
+- **Checks:**
+  - `bunx vitest run breakpoints` passes. `grep -rn 901px src` prints only two lines of the guard's own test in `src/lib/styles/breakpoints.test.ts`, which checks that no CSS holds `901px`.
+  - `grep -rln "width: 390" src` prints only `src/lib/e2e-phone.ts`.
+  - `bunx playwright test --list --grep @mobile` lists six tagged tests, all under `mobile` or `mobile-multi`. It also lists the `setup` and `setup-multi` tests: those projects are dependencies of the two phone projects and always run whole.
+  - `grep -rln 'class="brand"' src` prints only `src/lib/header/AppHeader.svelte`.
+  - `grep -n route.id src/routes/+layout.svelte` and `grep -rn "content: 'Settings'" src` print nothing.
+  - `bunx vitest run markdown` passes. The Chapter page's one `$effect` is the reach-end observer, which posts the Read action and does not edit the article.
+  - #134, #241, #244, #245, #246, #247, #313 and #325 are closed.
+- **Release:** this card's merge carries `Release-As: 1.19.2`. The orchestrator then cuts 1.19.2 from the release PR and records the cut in `docs/releasing.md`.
+- **Reviews:** none, as planned. No card touched the Runner, the container flags, the Docker socket, a security rule or a response header.
+
+| Card | PR | What landed |
+|---|---|---|
+| C156 | #445 | The Problem screen's wide layout starts above 900 px, so 900 to 901 px is no longer a gap. |
+| C157 | #453 | `view.ts`: one view state for the Problem screen's two tab sets. |
+| C158 | #441 | F3's phone sizes as tokens. |
+| C159 | #442 | The Markdown renderer emits named, keyboard-reachable scroll boxes for code and tables. |
+| C160 | #443 | One phone module (`src/lib/e2e-phone.ts`), and phone flows picked by the `@mobile` tag. |
+| C161 | #448 | One `AppHeader`, drawn from a header model. |
+| C162 | #456 | The Problem panes render from the view. |
+| C163 | #447 | The Map's figure and column read one Topic entry. |
+| C164 | #449 | The Chapter has no Markdown fix-up in the browser. |
+| C165 | #450 | Sign up and Accept invite switch at the phone breakpoint, as Sign in does. |
+| C166 | #457 | One head line for the statement, Hints and Solution. |
+| C167 | #458 | The Problem screen uses the `AppHeader`. |
+| C168 | #452 | The Chapter's Problem table becomes the shared `ProblemTable`. |
+| C169 | #455 | Sign in, Sign up and Accept invite keep what a visitor typed before hydration. |
+| C170 | #451 | The Local server's phone tests use the phone module. |
+| C171 | #454 | A test holds every media query to the named breakpoints in `src/lib/styles/breakpoints.ts`. |
+| C172 | #463 | Setup keeps what a visitor typed before hydration. |
+| C173 | #462 | The BLC wordmark link is named "BLC, Beyond Leetcode Map". |
+| C174 | #459 | The statement, Hints and Solution style their scroll boxes on a phone. |
+| C175 | #466 | A Topic draws each Problem once, with the shared `ProblemTable`. |
+| C176 | #465 | The Multi-user server's phone tests use the phone module. |
+| C177 | this PR | Exit check and `Release-As: 1.19.2`. |
+| C200 | #444 | release-please tries once more after a rate-limit failure. |
+| C203 | #464 | Sign in no longer scrolls sideways between 768 and 1100 px. |
+| C204 | #461 | The editor's height floor is one `--editor-min` property. |
+
+Decided along the way:
+- **The maintainer's questions:** taken by the orchestrator on 2026-11-04 under the maintainer's rule to take the recommended option unless it is a hard call. Each is recorded on its cards and issue:
+  - #245: phone tests run with touch, through one `phone` setting (C160);
+  - #244: no new dependency, and the test is the guard; Setup keeps 900 px and Settings, Users and Change password keep 800 px, each tied to its files (C171); the shared Problem row restyles one table on a phone, as the Chapter does (C175);
+  - #325: option 2 for the fields typed into before hydration (C169, C172), and option 1 for the Problem screen's tabs, which are accepted as not working before hydration.
+- **C165's 1100 px block:** C165 added an account-forms query at `max-width: 1100px` that its card did not ask for. The orchestrator kept it: C171 names it and ties it to the Sign in, Sign up and Accept invite pages, and C203 fixed the overflow it showed on Sign in.
+- **Map links in tests:** C173's link name contains "Map", so locators that matched "Map" as a substring were made exact: `problem.e2e.ts` (C170) and `accept.multi.e2e.ts` (C173, its Files line widened).
+
+For the maintainer:
+- **Dependabot:** #432 (`tailscale/github-action` 4.3.0 to 4.4.0, the action `notify.yml` pins) and #433 (five bun minor and patch bumps) are open and left for you.
+- **The fork-bomb overrun** (C201, Sprint 16) still flakes `sandbox` now and then. A re-run passes.
+
 **Not in the sprint:**
 - #134's first point: each tab navigation still re-runs `learner.problem()`. The direction as extended on 2026-10-25 does not cover it. Stopping it, with a load that ignores `?tab`, would change when the Problem is re-read. C166 closes #134 with this noted, and a card follows if the maintainer wants one.
 - Run and Submit, which the Problem screen draws twice. Both copies render one snippet (`runAndSubmit`), so they cannot drift, and the boards place them in two places.
