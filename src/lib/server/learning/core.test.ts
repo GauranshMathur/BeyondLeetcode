@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { filesDigest } from '../../problem-wire.ts';
 import { type Language, loadCatalogue } from '../content/catalogue.ts';
 import { sandboxConfig } from '../runner/config.ts';
-import { createScriptedRunner, type RunnerScript } from '../runner/fake.ts';
-import type { ExecuteResult } from '../runner/port.ts';
+import { createScriptedRunner, type RunnerScript, type ScriptedRunner } from '../runner/fake.ts';
+import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { createFileTestDb, createTestDb } from '../test-db.ts';
 import {
 	type BuildRef,
@@ -66,6 +66,52 @@ vi.mock('../markdown.ts', async (original) => {
 });
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
+
+type SetupOptions<R extends RunnerPort> = {
+	/** What the scripted Runner answers; ignored when `runner` is given. */
+	script?: RunnerScript;
+	/** Any Runner, for the tests that gate or wrap it. */
+	runner?: R;
+	/** Every Example and Hidden Test of the fixture's stacks Problems answers its expected output. */
+	acceptAll?: boolean;
+	db?: Awaited<ReturnType<typeof createTestDb>>;
+	clock?: () => Date;
+	hiddenBatchTests?: number;
+	maxRunsPerLearner?: number;
+};
+
+/** The fixture Catalogue on a fresh test database, a Runner and a Learning core, with the Learner `any-learner`. */
+async function setup<R extends RunnerPort = ScriptedRunner>(options: SetupOptions<R> = {}) {
+	const catalogue = await loadCatalogue(fixtureDir);
+	const db = options.db ?? (await createTestDb());
+	let runner = options.runner as R;
+	if (!options.runner) {
+		const script = options.script ?? {};
+		const tests: NonNullable<RunnerScript['tests']> = {};
+		if (options.acceptAll) {
+			for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
+				for (const t of [
+					...(catalogue.problem(p)?.exampleTests ?? []),
+					...(catalogue.hiddenTests(p) ?? [])
+				])
+					tests[t.id] = { status: 'ok', stdout: t.expected };
+			}
+		}
+		runner = createScriptedRunner({
+			...script,
+			tests: { ...tests, ...script.tests }
+		}) as unknown as R;
+	}
+	const core = createLearningCore({
+		catalogue,
+		db,
+		runner,
+		clock: options.clock,
+		hiddenBatchTests: options.hiddenBatchTests,
+		maxRunsPerLearner: options.maxRunsPerLearner
+	});
+	return { catalogue, db, runner, core, learner: core.forLearner('any-learner') };
+}
 
 describe('learner.map()', () => {
 	it('shows a new Learner the fixture Topic Map: no-Prerequisite Topics Unlocked, the rest Locked, 0 Core solved', async () => {
@@ -176,15 +222,6 @@ describe('learner.topic()', () => {
 });
 
 describe('learner.chapter() and learner.reachChapterEnd()', () => {
-	async function setup(clock?: () => Date) {
-		const core = createLearningCore({
-			catalogue: await loadCatalogue(fixtureDir),
-			db: await createTestDb(),
-			clock
-		});
-		return { learner: core.forLearner('any-learner'), core };
-	}
-
 	it('gives a Chapter its rendered body, Topic, Problems and next Chapter', async () => {
 		const { learner } = await setup();
 
@@ -239,7 +276,7 @@ describe('learner.chapter() and learner.reachChapterEnd()', () => {
 
 	it('is idempotent: a repeat changes nothing and keeps the first read time', async () => {
 		let t = 1;
-		const { learner, core } = await setup(() => new Date(t++ * 1000));
+		const { learner, core } = await setup({ clock: () => new Date(t++ * 1000) });
 		await learner.reachChapterEnd('stacks-undo-log');
 		await learner.reachChapterEnd('stacks-call-frames');
 
@@ -268,12 +305,6 @@ describe('learner.chapter() and learner.reachChapterEnd()', () => {
 });
 
 describe('learner.problem() and learner.saveCode()', () => {
-	async function setup() {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const core = createLearningCore({ catalogue, db: await createTestDb() });
-		return { catalogue, core, learner: core.forLearner('any-learner') };
-	}
-
 	it('gives the first Problem of a Topic an empty Build with one entry file, revision 0', async () => {
 		const { learner } = await setup();
 
@@ -493,20 +524,11 @@ describe('learner.problem() and learner.saveCode()', () => {
 
 describe('learner.run()', () => {
 	const exampleId = 'stacks-push/example/01';
-	async function setup(script: RunnerScript = {}) {
-		const runner = createScriptedRunner(script);
-		const db = await createTestDb();
-		const core = createLearningCore({
-			catalogue: await loadCatalogue(fixtureDir),
-			db,
-			runner
-		});
-		return { runner, db, learner: core.forLearner('any-learner') };
-	}
-
 	it('saves the Build, sends only the Example Test ids and inputs with the files, and compares', async () => {
 		const { runner, learner } = await setup({
-			tests: { [exampleId]: { status: 'ok', stdout: '2\n' } }
+			script: {
+				tests: { [exampleId]: { status: 'ok', stdout: '2\n' } }
+			}
 		});
 
 		const view = await learner.run(ref('stacks-push', 0), { 'main.py': 'print(2)' });
@@ -541,7 +563,9 @@ describe('learner.run()', () => {
 
 	it('shows a wrong answer with the actual output and stderr', async () => {
 		const { learner } = await setup({
-			tests: { [exampleId]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
+			script: {
+				tests: { [exampleId]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
+			}
 		});
 
 		const view = await learner.run(ref('stacks-push', 0), { 'main.py': 'x' });
@@ -555,7 +579,7 @@ describe('learner.run()', () => {
 	});
 
 	it('returns a compile error as one block', async () => {
-		const { learner } = await setup({ compileError: 'SyntaxError: bad' });
+		const { learner } = await setup({ script: { compileError: 'SyntaxError: bad' } });
 
 		expect(await learner.run(ref('stacks-push', 0), { 'main.py': 'x' })).toEqual({
 			revision: 1,
@@ -566,7 +590,9 @@ describe('learner.run()', () => {
 
 	it('never changes progress: no Read mark, status, Submission or other Problem changes', async () => {
 		const { learner, db } = await setup({
-			tests: { [exampleId]: { status: 'ok', stdout: '2\n' } }
+			script: {
+				tests: { [exampleId]: { status: 'ok', stdout: '2\n' } }
+			}
 		});
 		const before = await learner.map();
 
@@ -603,7 +629,7 @@ describe('learner.run()', () => {
 	});
 
 	it('answers RunnerUnavailable when the Runner is down, keeping the saved code and recording nothing else', async () => {
-		const { learner, db } = await setup({ unavailable: true });
+		const { learner, db } = await setup({ script: { unavailable: true } });
 
 		// The error carries the revision the save produced, so no caller works it out.
 		await expect(learner.run(ref('stacks-push', 0), { 'main.py': 'a' })).rejects.toMatchObject({
@@ -658,26 +684,10 @@ describe('learner.submit()', () => {
 	const popExample = 'stacks-pop/example/01';
 	const popHidden = 'stacks-pop/hidden/01';
 	const peekExample = 'stacks-peek/example/01';
-	/** Every Test of the fixture answers correctly unless the script says otherwise. */
-	async function setup(script: RunnerScript = {}) {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const correct: NonNullable<RunnerScript['tests']> = {};
-		for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
-			const tests = [
-				...(catalogue.problem(p)?.exampleTests ?? []),
-				...(catalogue.hiddenTests(p) ?? [])
-			];
-			for (const t of tests) correct[t.id] = { status: 'ok', stdout: t.expected };
-		}
-		const runner = createScriptedRunner({ ...script, tests: { ...correct, ...script.tests } });
-		const db = await createTestDb();
-		const core = createLearningCore({ catalogue, db, runner });
-		return { runner, db, catalogue, learner: core.forLearner('any-learner'), core };
-	}
 	const wrong = { status: 'ok' as const, stdout: 'WRONG' };
 
 	it('Accepted when every Test passes: records the Submission and Solves the Problem', async () => {
-		const { runner, learner, db } = await setup();
+		const { runner, learner, db } = await setup({ acceptAll: true });
 
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'print(2)' });
 
@@ -693,7 +703,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('Accepted carries the next Core Problem, and no Topic completion mid-Topic', async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 		expect(view.accepted).toEqual({
 			nextProblemId: 'stacks-pop',
@@ -703,7 +713,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('the last Core Problem completes the Topic and lists only Topics it alone Unlocks', async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 		await learner.reachChapterEnd('stacks-undo-log');
 		await learner.reachChapterEnd('stacks-call-frames');
 		await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
@@ -717,7 +727,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('re-solving a Solved Problem reports no completion and nothing newly Unlocked', async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 		await learner.reachChapterEnd('stacks-undo-log');
 		await learner.reachChapterEnd('stacks-call-frames');
 		await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
@@ -731,20 +741,26 @@ describe('learner.submit()', () => {
 	});
 
 	it("an Extra's next is the Core Problem after its parent", async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 		const view = await learner.submit(ref('stacks-peek', 0), { 'main.py': 'x' });
 		expect(view.accepted?.nextProblemId).toBe('stacks-pop');
 	});
 
 	it('a Verdict other than Accepted has no accepted', async () => {
-		const { learner } = await setup({ tests: { [pushExample]: wrong } });
+		const { learner } = await setup({
+			acceptAll: true,
+			script: { tests: { [pushExample]: wrong } }
+		});
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 		expect(view.accepted).toBeUndefined();
 	});
 
 	it('Wrong Answer on an Example Test shows input, expected, got and stderr', async () => {
 		const { learner, db } = await setup({
-			tests: { [pushExample]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
+			acceptAll: true,
+			script: {
+				tests: { [pushExample]: { status: 'ok', stdout: '3\n', stderr: 'warn' } }
+			}
 		});
 
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
@@ -778,7 +794,10 @@ describe('learner.submit()', () => {
 		['Runtime Error', { status: 'runtimeError' as const, stdout: '', stderr: 'boom' }],
 		['Time Limit Exceeded', { status: 'timeout' as const, stdout: '', stderr: '' }]
 	])('%s on a Test is that Verdict, recorded', async (verdict, scripted) => {
-		const { learner, db } = await setup({ tests: { [pushExample]: scripted } });
+		const { learner, db } = await setup({
+			acceptAll: true,
+			script: { tests: { [pushExample]: scripted } }
+		});
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 		expect(view.verdict).toBe(verdict);
 		expect(view.failure).toMatchObject({ kind: 'example', stderr: scripted.stderr });
@@ -786,14 +805,20 @@ describe('learner.submit()', () => {
 	});
 
 	it('an Example Test timing out ends the Submission after the first call', async () => {
-		const { learner, runner } = await setup({ tests: { [pushExample]: { status: 'timeout' } } });
+		const { learner, runner } = await setup({
+			acceptAll: true,
+			script: { tests: { [pushExample]: { status: 'timeout' } } }
+		});
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 		expect(view.verdict).toBe('Time Limit Exceeded');
 		expect(runner.calls).toHaveLength(1);
 	});
 
 	it('Compile Error is one message, recorded with no failing Problem', async () => {
-		const { learner, db } = await setup({ compileError: 'SyntaxError: bad' });
+		const { learner, db } = await setup({
+			acceptAll: true,
+			script: { compileError: 'SyntaxError: bad' }
+		});
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 		expect(view).toMatchObject({
 			verdict: 'Compile Error',
@@ -807,8 +832,11 @@ describe('learner.submit()', () => {
 		const tle = { status: 'timeout' as const };
 		const rte = { status: 'runtimeError' as const };
 		const verdictOf = async (tests: RunnerScript['tests']) =>
-			(await (await setup({ tests })).learner.submit(ref('stacks-push', 0), { 'main.py': 'x' }))
-				.verdict;
+			(
+				await (
+					await setup({ acceptAll: true, script: { tests } })
+				).learner.submit(ref('stacks-push', 0), { 'main.py': 'x' })
+			).verdict;
 
 		expect(await verdictOf({ [pushExample]: wrong, [pushHidden]: rte })).toBe('Runtime Error');
 		expect(await verdictOf({ [pushExample]: rte, [pushHidden]: tle })).toBe('Time Limit Exceeded');
@@ -820,9 +848,12 @@ describe('learner.submit()', () => {
 
 	it('reports the first failing Test in run order among those with the winning outcome', async () => {
 		const { learner } = await setup({
-			tests: {
-				[pushHidden]: { status: 'runtimeError' },
-				[pushExample]: { status: 'runtimeError', stderr: 'first' }
+			acceptAll: true,
+			script: {
+				tests: {
+					[pushHidden]: { status: 'runtimeError' },
+					[pushExample]: { status: 'runtimeError', stderr: 'first' }
+				}
 			}
 		});
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
@@ -830,7 +861,7 @@ describe('learner.submit()', () => {
 	});
 
 	it("runs this Problem's Example Tests in one Runner call and every other Test in a second, ids and inputs only", async () => {
-		const { learner, runner } = await setup();
+		const { learner, runner } = await setup({ acceptAll: true });
 		await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 
 		expect(runner.calls.map((c) => c.tests.map((t) => t.id))).toEqual([
@@ -844,7 +875,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('never puts a Hidden input in the same Runner call as a visible Example Test', async () => {
-		const { learner, runner, catalogue } = await setup();
+		const { learner, runner, catalogue } = await setup({ acceptAll: true });
 		for (const id of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
 			runner.calls.length = 0;
 			await learner.submit(ref(id, (await learner.problem(id)).build.revision), { 'main.py': id });
@@ -858,22 +889,11 @@ describe('learner.submit()', () => {
 	});
 
 	describe('hidden Tests in containers of at most hiddenBatchTests', () => {
-		/** A core whose hidden containers hold one Test, so the fixture splits. */
-		async function setupSplit(script: RunnerScript = {}) {
-			const base = await setup(script);
-			const core = createLearningCore({
-				catalogue: base.catalogue,
-				db: base.db,
-				runner: base.runner,
-				hiddenBatchTests: 1
-			});
-			return { ...base, learner: core.forLearner('any-learner') };
-		}
 		const idsOf = (calls: { tests: { id: string }[] }[]) =>
 			calls.map((c) => c.tests.map((t) => t.id));
 
 		it('runs the visible Tests first, then the hidden ones in order, one per call', async () => {
-			const { learner, runner, catalogue } = await setupSplit();
+			const { learner, runner, catalogue } = await setup({ acceptAll: true, hiddenBatchTests: 1 });
 			const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 			expect(view.verdict).toBe('Accepted');
 			const plan = submitPlan(catalogue, 'stacks-pop', 1);
@@ -886,7 +906,7 @@ describe('learner.submit()', () => {
 		});
 
 		it('keeps every hidden call apart from the visible Tests', async () => {
-			const { learner, runner, catalogue } = await setupSplit();
+			const { learner, runner, catalogue } = await setup({ acceptAll: true, hiddenBatchTests: 1 });
 			await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 			const visible = catalogue.problem('stacks-pop')?.exampleTests.map((t) => t.id) ?? [];
 			for (const call of runner.calls.slice(1)) {
@@ -895,10 +915,14 @@ describe('learner.submit()', () => {
 		});
 
 		it('reports the same first failing Test as one big container: a later batch failing', async () => {
-			const { learner } = await setupSplit({ tests: { 'stacks-pop/hidden/01': wrong } });
+			const { learner } = await setup({
+				acceptAll: true,
+				hiddenBatchTests: 1,
+				script: { tests: { 'stacks-pop/hidden/01': wrong } }
+			});
 			const split = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 			const whole = await (
-				await setup({ tests: { 'stacks-pop/hidden/01': wrong } })
+				await setup({ acceptAll: true, script: { tests: { 'stacks-pop/hidden/01': wrong } } })
 			).learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 			expect(split.verdict).toBe(whole.verdict);
 			expect(split.failure).toEqual(whole.failure);
@@ -906,19 +930,28 @@ describe('learner.submit()', () => {
 
 		it('picks the earliest Test of the winning outcome across batches', async () => {
 			const tests = { [pushHidden]: wrong, [popHidden]: { status: 'timeout' as const } };
-			const split = await (await setupSplit({ tests })).learner.submit(ref('stacks-pop', 0), {
+			const split = await (
+				await setup({ acceptAll: true, hiddenBatchTests: 1, script: { tests } })
+			).learner.submit(ref('stacks-pop', 0), {
 				'main.py': 'x'
 			});
-			const whole = await (await setup({ tests })).learner.submit(ref('stacks-pop', 0), {
-				'main.py': 'x'
-			});
+			const whole = await (await setup({ acceptAll: true, script: { tests } })).learner.submit(
+				ref('stacks-pop', 0),
+				{
+					'main.py': 'x'
+				}
+			);
 			expect(split.verdict).toBe('Time Limit Exceeded');
 			expect({ ...split, submissionId: '' }).toEqual({ ...whole, submissionId: '' });
 		});
 
 		it('stops after the batch holding a Time Limit Exceeded: nothing later can change the Verdict', async () => {
-			const { learner, runner, catalogue } = await setupSplit({
-				tests: { [pushHidden]: { status: 'timeout' } }
+			const { learner, runner, catalogue } = await setup({
+				acceptAll: true,
+				hiddenBatchTests: 1,
+				script: {
+					tests: { [pushHidden]: { status: 'timeout' } }
+				}
 			});
 			const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 			expect(view.verdict).toBe('Time Limit Exceeded');
@@ -929,15 +962,19 @@ describe('learner.submit()', () => {
 		});
 
 		it('runs every batch when a failure is not a timeout, since a later timeout would outrank it', async () => {
-			const { learner, runner, catalogue } = await setupSplit({
-				tests: { [pushHidden]: wrong }
+			const { learner, runner, catalogue } = await setup({
+				acceptAll: true,
+				hiddenBatchTests: 1,
+				script: {
+					tests: { [pushHidden]: wrong }
+				}
 			});
 			await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 			expect(runner.calls).toHaveLength(1 + submitPlan(catalogue, 'stacks-pop', 1).hidden.length);
 		});
 
 		it('ignores a timeout on an id that is not one of the batch Tests: later batches still run', async () => {
-			const { db, catalogue, runner } = await setup();
+			const { db, catalogue, runner } = await setup({ acceptAll: true });
 			const core = createLearningCore({
 				catalogue,
 				db,
@@ -956,12 +993,12 @@ describe('learner.submit()', () => {
 		});
 
 		it.each([0, -1, 1.5, Number.NaN])('submitPlan refuses a batch size of %s', async (size) => {
-			const { catalogue } = await setup();
+			const { catalogue } = await setup({ acceptAll: true });
 			expect(() => submitPlan(catalogue, 'stacks-pop', size)).toThrow(RangeError);
 		});
 
 		it('a compile error in a later hidden batch is RunnerUnavailable, nothing recorded', async () => {
-			const { db, catalogue } = await setup();
+			const { db, catalogue } = await setup({ acceptAll: true });
 			let calls = 0;
 			const core = createLearningCore({
 				catalogue,
@@ -989,14 +1026,17 @@ describe('learner.submit()', () => {
 	});
 
 	it('a Compile Error from the first call is the Verdict and the second call is skipped', async () => {
-		const { learner, runner } = await setup({ compileError: 'SyntaxError: bad' });
+		const { learner, runner } = await setup({
+			acceptAll: true,
+			script: { compileError: 'SyntaxError: bad' }
+		});
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 		expect(view.verdict).toBe('Compile Error');
 		expect(runner.calls).toHaveLength(1);
 	});
 
 	it('a compile error only in the second Runner call is never shown: RunnerUnavailable, nothing recorded', async () => {
-		const { db, catalogue } = await setup();
+		const { db, catalogue } = await setup({ acceptAll: true });
 		let calls = 0;
 		const core = createLearningCore({
 			catalogue,
@@ -1015,7 +1055,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('either Runner call failing is RunnerUnavailable and records nothing', async () => {
-		const { db, catalogue } = await setup();
+		const { db, catalogue } = await setup({ acceptAll: true });
 		let calls = 0;
 		const core = createLearningCore({
 			catalogue,
@@ -1034,7 +1074,10 @@ describe('learner.submit()', () => {
 	});
 
 	it('a failing Hidden Test of this Problem reveals only the Problem and the Verdict', async () => {
-		const { learner } = await setup({ tests: { [pushHidden]: wrong } });
+		const { learner } = await setup({
+			acceptAll: true,
+			script: { tests: { [pushHidden]: wrong } }
+		});
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 
 		expect(view.verdict).toBe('Wrong Answer');
@@ -1046,7 +1089,10 @@ describe('learner.submit()', () => {
 
 	it('a failing earlier Core Problem Test is an earlier-step failure with no Test data', async () => {
 		const { learner, db } = await setup({
-			tests: { [pushExample]: { status: 'ok', stdout: 'WRONG', stderr: 'secret' } }
+			acceptAll: true,
+			script: {
+				tests: { [pushExample]: { status: 'ok', stdout: 'WRONG', stderr: 'secret' } }
+			}
 		});
 		const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 
@@ -1066,13 +1112,16 @@ describe('learner.submit()', () => {
 	});
 
 	it('an earlier Hidden Test failure is also an earlier-step failure', async () => {
-		const { learner } = await setup({ tests: { [pushHidden]: wrong } });
+		const { learner } = await setup({
+			acceptAll: true,
+			script: { tests: { [pushHidden]: wrong } }
+		});
 		const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 		expect(view.failure).toMatchObject({ kind: 'earlierStep', problemId: 'stacks-push' });
 	});
 
 	it('an Extra runs its own Example Tests first, then its parent and earlier Core Tests, never later Core Problems', async () => {
-		const { learner, runner } = await setup();
+		const { learner, runner } = await setup({ acceptAll: true });
 		await learner.submit(ref('stacks-peek', 0), { 'main.py': 'x' });
 		expect(runner.calls.map((c) => c.tests.map((t) => t.id))).toEqual([
 			[peekExample],
@@ -1081,7 +1130,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('a Runner outage records nothing and leaves the status, keeping the saved code', async () => {
-		const { learner, db } = await setup({ unavailable: true });
+		const { learner, db } = await setup({ acceptAll: true, script: { unavailable: true } });
 		await expect(learner.submit(ref('stacks-push', 0), { 'main.py': 'a' })).rejects.toMatchObject({
 			code: 'RunnerUnavailable'
 		});
@@ -1094,7 +1143,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('applies the saveCode checks first', async () => {
-		const { learner, runner, db } = await setup();
+		const { learner, runner, db } = await setup({ acceptAll: true });
 		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'a' });
 		await expect(learner.submit(ref('stacks-push', 0), { 'main.py': 'b' })).rejects.toMatchObject({
 			code: 'RevisionConflict'
@@ -1115,7 +1164,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('a Problem stays Solved after a later failing Submission', async () => {
-		const { db, catalogue, learner } = await setup();
+		const { db, catalogue, learner } = await setup({ acceptAll: true });
 		expect((await learner.submit(ref('stacks-push', 0), { 'main.py': 'a' })).status).toBe('Solved');
 
 		const failing = createLearningCore({
@@ -1130,7 +1179,7 @@ describe('learner.submit()', () => {
 	});
 
 	it('Solving the last Core Problem with every Chapter Read completes the Topic', async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 		await learner.reachChapterEnd('stacks-undo-log');
 		await learner.reachChapterEnd('stacks-call-frames');
 		await learner.submit(ref('stacks-push', 0), { 'main.py': 'a' });
@@ -1142,7 +1191,10 @@ describe('learner.submit()', () => {
 	});
 
 	it('shows Attempted on the Topic after a failing Submission, and the Topic as current', async () => {
-		const { learner } = await setup({ tests: { [pushExample]: wrong } });
+		const { learner } = await setup({
+			acceptAll: true,
+			script: { tests: { [pushExample]: wrong } }
+		});
 		await learner.submit(ref('stacks-push', 0), { 'main.py': 'a' });
 		expect((await learner.topic('stacks')).chapters[0]?.problems[0]?.status).toBe('Attempted');
 		expect((await learner.map()).currentTopicId).toBe('stacks');
@@ -1160,14 +1212,6 @@ describe('learner.submit()', () => {
 });
 
 describe('learner.switchLanguage()', () => {
-	async function setup() {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const runner = createScriptedRunner();
-		const db = await createTestDb();
-		const core = createLearningCore({ catalogue, db, runner });
-		return { catalogue, db, runner, learner: core.forLearner('any-learner') };
-	}
-
 	it('starts the first Problem of a Topic empty, with the TypeScript entry file', async () => {
 		const { learner } = await setup();
 
@@ -1249,22 +1293,19 @@ describe('learner.switchLanguage()', () => {
 });
 
 describe('a tab acts on the Language it was loaded with', () => {
-	async function setup() {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const runner = createScriptedRunner();
-		const db = await createTestDb();
-		const core = createLearningCore({ catalogue, db, runner });
-		const learner = core.forLearner('any-learner');
-		// The stale tab saved Python (revision 1); another tab then switched the Topic to TypeScript
-		// and saved there too (revision 1), so both Builds sit at the same revision.
+	/**
+	 * The stale tab saved Python (revision 1); another tab then switched the Topic to TypeScript
+	 * and saved there too (revision 1), so both Builds sit at the same revision.
+	 */
+	async function saveOnBothLanguages(learner: Awaited<ReturnType<typeof setup>>['learner']) {
 		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'python v1' });
 		await learner.switchLanguage('stacks-push', 'typescript');
 		await learner.saveCode(ref('stacks-push', 0, 'typescript'), { 'main.ts': 'ts v1' });
-		return { learner, runner, db };
 	}
 
 	it('refuses a stale-Language save and leaves both Builds untouched', async () => {
 		const { learner, db } = await setup();
+		await saveOnBothLanguages(learner);
 
 		await expect(
 			learner.saveCode(ref('stacks-push', 1), { 'main.py': 'python v2' })
@@ -1277,6 +1318,7 @@ describe('a tab acts on the Language it was loaded with', () => {
 
 	it('refuses a stale-Language run: nothing saved, nothing executed', async () => {
 		const { learner, runner } = await setup();
+		await saveOnBothLanguages(learner);
 
 		await expect(
 			learner.run(ref('stacks-push', 1), { 'main.py': 'python v2' })
@@ -1288,6 +1330,7 @@ describe('a tab acts on the Language it was loaded with', () => {
 
 	it('refuses a stale-Language submit: no Submission, nothing executed', async () => {
 		const { learner, runner, db } = await setup();
+		await saveOnBothLanguages(learner);
 
 		await expect(
 			learner.submit(ref('stacks-push', 1), { 'main.py': 'python v2' })
@@ -1300,6 +1343,7 @@ describe('a tab acts on the Language it was loaded with', () => {
 
 	it('refuses a stale-Language first save too, creating no Build', async () => {
 		const { learner, db } = await setup();
+		await saveOnBothLanguages(learner);
 
 		await expect(
 			learner.saveCode(ref('stacks-pop', 0), { 'main.py': 'late' })
@@ -1310,6 +1354,7 @@ describe('a tab acts on the Language it was loaded with', () => {
 
 	it('still saves, runs and submits in the current Language', async () => {
 		const { learner, runner } = await setup();
+		await saveOnBothLanguages(learner);
 
 		expect(
 			await learner.saveCode(ref('stacks-push', 1, 'typescript'), { 'main.ts': 'ts v2' })
@@ -1326,16 +1371,7 @@ describe('a tab acts on the Language it was loaded with', () => {
 
 describe('progress events racing on a file database', () => {
 	it('credit each effect to exactly one caller: a Chapter read once, a Topic completed once', async () => {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const correct: NonNullable<RunnerScript['tests']> = {};
-		for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
-			const tests = [
-				...(catalogue.problem(p)?.exampleTests ?? []),
-				...(catalogue.hiddenTests(p) ?? [])
-			];
-			for (const t of tests) correct[t.id] = { status: 'ok', stdout: t.expected };
-		}
-		const inner = createScriptedRunner({ tests: correct });
+		const { runner: inner } = await setup({ acceptAll: true });
 		// Runner calls are held until the racing submits are all in flight, so their database
 		// steps start together and interleave.
 		let hold: { waiting: number; of: number; release: () => void; gate: Promise<void> } | undefined;
@@ -1347,7 +1383,7 @@ describe('progress events racing on a file database', () => {
 				return inner.execute(request);
 			}
 		};
-		const core = createLearningCore({ catalogue, db: await createFileTestDb(), runner });
+		const { core } = await setup({ runner, db: await createFileTestDb() });
 
 		// Two reads of the same Chapter: exactly one is the read that completes the Topic.
 		const reader = core.forLearner('reader');
@@ -1383,12 +1419,6 @@ describe('progress events racing on a file database', () => {
 });
 
 describe('Hints', () => {
-	async function setup(db?: Awaited<ReturnType<typeof createTestDb>>) {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const core = createLearningCore({ catalogue, db: db ?? (await createTestDb()) });
-		return { catalogue, core };
-	}
-
 	it('starts with nothing revealed: the count and the Chapter to link to, no hint text', async () => {
 		const { core } = await setup();
 
@@ -1463,7 +1493,7 @@ describe('Hints', () => {
 	});
 
 	it('two reveals at once never go past the count, and a lone pair raises it by two', async () => {
-		const { core } = await setup(await createFileTestDb());
+		const { core } = await setup({ db: await createFileTestDb() });
 		const learner = core.forLearner('l');
 
 		await Promise.all([learner.revealHint('stacks-push'), learner.revealHint('stacks-push')]);
@@ -1502,12 +1532,6 @@ describe('Hints', () => {
 });
 
 describe('learner.solution()', () => {
-	async function setup() {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const core = createLearningCore({ catalogue, db: await createTestDb() });
-		return { catalogue, core };
-	}
-
 	it('gives the explanation as HTML and the Reference Code after the Problem in every Language', async () => {
 		const { catalogue, core } = await setup();
 
@@ -1578,24 +1602,8 @@ describe('learner.solution()', () => {
 });
 
 describe('learner.startFromReferenceCode()', () => {
-	async function setup() {
-		const catalogue = await loadCatalogue(fixtureDir);
-		// Every Test answers correctly, so a Submit is Accepted whatever the code.
-		const tests: NonNullable<RunnerScript['tests']> = {};
-		for (const p of ['stacks-push', 'stacks-pop', 'stacks-peek']) {
-			for (const t of [
-				...(catalogue.problem(p)?.exampleTests ?? []),
-				...(catalogue.hiddenTests(p) ?? [])
-			])
-				tests[t.id] = { status: 'ok', stdout: t.expected };
-		}
-		const db = await createTestDb();
-		const core = createLearningCore({ catalogue, db, runner: createScriptedRunner({ tests }) });
-		return { catalogue, db, learner: core.forLearner('any-learner') };
-	}
-
 	it('answers a retried restart whose reply was lost as started, at the same revision', async () => {
-		const { learner, db } = await setup();
+		const { learner, db } = await setup({ acceptAll: true });
 		const broken = await learner.saveCode(ref('stacks-pop', 0), { 'main.py': 'broken' });
 		const first = await learner.startFromReferenceCode(ref('stacks-pop', broken.revision));
 		const before = await db.buildStep.findMany();
@@ -1607,7 +1615,7 @@ describe('learner.startFromReferenceCode()', () => {
 	});
 
 	it("replaces the Learner's Build with the Reference Code after the previous Problem", async () => {
-		const { learner, catalogue } = await setup();
+		const { learner, catalogue } = await setup({ acceptAll: true });
 		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'mine' });
 		const broken = await learner.saveCode(ref('stacks-pop', 0), { 'main.py': 'broken' });
 
@@ -1624,7 +1632,7 @@ describe('learner.startFromReferenceCode()', () => {
 	});
 
 	it('works on a step never saved, and a Submit with the new revision is accepted by the core', async () => {
-		const { learner, catalogue } = await setup();
+		const { learner, catalogue } = await setup({ acceptAll: true });
 
 		const started = await learner.startFromReferenceCode(ref('stacks-pop', 0));
 		expect(started.revision).toBe(1);
@@ -1635,7 +1643,7 @@ describe('learner.startFromReferenceCode()', () => {
 	});
 
 	it("starts a Topic's first Problem empty", async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'mine' });
 
 		const started = await learner.startFromReferenceCode(ref('stacks-push', 1));
@@ -1644,7 +1652,7 @@ describe('learner.startFromReferenceCode()', () => {
 	});
 
 	it('uses the Language of the Build, and an Extra starts from its parent', async () => {
-		const { learner, catalogue } = await setup();
+		const { learner, catalogue } = await setup({ acceptAll: true });
 		await learner.switchLanguage('stacks-push', 'typescript');
 
 		const started = await learner.startFromReferenceCode(ref('stacks-peek', 0, 'typescript'));
@@ -1653,7 +1661,7 @@ describe('learner.startFromReferenceCode()', () => {
 	});
 
 	it('goes through the same revision check as a save', async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 		await learner.saveCode(ref('stacks-pop', 0), { 'main.py': 'a' });
 
 		await expect(learner.startFromReferenceCode(ref('stacks-pop', 0))).rejects.toMatchObject({
@@ -1666,7 +1674,7 @@ describe('learner.startFromReferenceCode()', () => {
 	});
 
 	it('refuses a Locked Topic and an unknown Problem', async () => {
-		const { learner } = await setup();
+		const { learner } = await setup({ acceptAll: true });
 
 		await expect(learner.startFromReferenceCode(ref('queues-enqueue', 0))).rejects.toMatchObject({
 			code: 'TopicLocked'
@@ -1677,7 +1685,7 @@ describe('learner.startFromReferenceCode()', () => {
 	});
 
 	it('keeps the Submissions and changes no progress or Hint', async () => {
-		const { learner, db } = await setup();
+		const { learner, db } = await setup({ acceptAll: true });
 		await learner.revealHint('stacks-pop');
 		const view = await learner.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
 		const before = {
@@ -1697,14 +1705,8 @@ describe('learner.startFromReferenceCode()', () => {
 });
 
 describe('the autosave read', () => {
-	async function setup() {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const core = createLearningCore({ catalogue, db: await createTestDb() });
-		return core.forLearner('any-learner');
-	}
-
 	it('renders no Markdown on saveCode, nor on Start from reference code', async () => {
-		const learner = await setup();
+		const { learner } = await setup();
 		await learner.problem('stacks-pop'); // the screen read does render
 		expect(rendered.calls).toBeGreaterThan(0);
 
@@ -1716,7 +1718,7 @@ describe('the autosave read', () => {
 	});
 
 	it('still answers NotFound and TopicLocked, on a save and on a restart', async () => {
-		const learner = await setup();
+		const { learner } = await setup();
 		await expect(learner.saveCode(ref('nope', 0), { 'main.py': '' })).rejects.toMatchObject({
 			code: 'NotFound'
 		});
@@ -1743,13 +1745,6 @@ describe('one Build rule for the Learning core and the Runner (C78)', () => {
 		['a file under another file', { a: 'x', 'a/b': 'x' }],
 		['lone surrogates in paths', { 'main.py': 'x', 'x\ud800': '1', 'x\udc00/y': '2' }]
 	] as const;
-
-	async function setup() {
-		const runner = createScriptedRunner();
-		const db = await createTestDb();
-		const core = createLearningCore({ catalogue: await loadCatalogue(fixtureDir), db, runner });
-		return { runner, learner: core.forLearner('any-learner') };
-	}
 
 	it.each(shapes)('refuses %s on run, submit and save, and stores nothing', async (_n, files) => {
 		const { learner, runner } = await setup();
@@ -1780,19 +1775,17 @@ describe('one Build rule for the Learning core and the Runner (C78)', () => {
 });
 
 describe('a keepalive save on top of the tab own unconfirmed save (C69)', () => {
-	async function setup() {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const core = createLearningCore({ catalogue, db: await createTestDb() });
-		const learner = core.forLearner('any-learner');
-		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'v1' }); // head is revision 1
-		return learner;
+	/** The head is revision 1. */
+	async function saveFirst(learner: Awaited<ReturnType<typeof setup>>['learner']) {
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'v1' });
 	}
 	const A = { 'main.py': 'v2' }; // the save in flight
 	const B = { 'main.py': 'v3' }; // the keepalive save, with more typing
 	const digestOfA = () => filesDigest(A);
 
 	it('stores the keepalive save when the in-flight save lands first', async () => {
-		const learner = await setup();
+		const { learner } = await setup();
+		await saveFirst(learner);
 
 		expect(await learner.saveCode(ref('stacks-push', 1), A)).toEqual({ revision: 2 });
 		expect(await learner.saveCode(ref('stacks-push', 1), B, await digestOfA())).toEqual({
@@ -1804,7 +1797,8 @@ describe('a keepalive save on top of the tab own unconfirmed save (C69)', () => 
 	});
 
 	it('stores the keepalive save when it lands first, and the in-flight save then conflicts', async () => {
-		const learner = await setup();
+		const { learner } = await setup();
+		await saveFirst(learner);
 
 		expect(await learner.saveCode(ref('stacks-push', 1), B, await digestOfA())).toEqual({
 			revision: 2
@@ -1818,7 +1812,8 @@ describe('a keepalive save on top of the tab own unconfirmed save (C69)', () => 
 	});
 
 	it('refuses a digest that does not match the stored head, for example another tab save', async () => {
-		const learner = await setup();
+		const { learner } = await setup();
+		await saveFirst(learner);
 		await learner.saveCode(ref('stacks-push', 1), { 'main.py': 'other tab' });
 
 		await expect(
@@ -1829,7 +1824,8 @@ describe('a keepalive save on top of the tab own unconfirmed save (C69)', () => 
 	});
 
 	it('still refuses a save two or more behind, whatever the digest', async () => {
-		const learner = await setup();
+		const { learner } = await setup();
+		await saveFirst(learner);
 		await learner.saveCode(ref('stacks-push', 1), A);
 		await learner.saveCode(ref('stacks-push', 2), B);
 
@@ -1839,7 +1835,8 @@ describe('a keepalive save on top of the tab own unconfirmed save (C69)', () => 
 	});
 
 	it('keeps the identical-retry rule: a retry of the stored head is answered as saved', async () => {
-		const learner = await setup();
+		const { learner } = await setup();
+		await saveFirst(learner);
 		await learner.saveCode(ref('stacks-push', 1), A);
 
 		expect(await learner.saveCode(ref('stacks-push', 1), A)).toEqual({ revision: 2 });
@@ -1872,21 +1869,10 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 			failOne: (e = failWith ?? new Error('down')) => pending.shift()?.reject(e)
 		};
 	}
-	async function setup(cap = 2) {
-		const runner = gatedRunner();
-		const db = await createTestDb();
-		const core = createLearningCore({
-			catalogue: await loadCatalogue(fixtureDir),
-			db,
-			runner,
-			maxRunsPerLearner: cap
-		});
-		return { runner, db, core };
-	}
 	const tick = () => new Promise((r) => setTimeout(r, 20));
 
 	it('refuses one past the cap as RunnerUnavailable, counting Runs and Submits together, saving but recording nothing', async () => {
-		const { runner, db, core } = await setup(2);
+		const { runner, db, core } = await setup({ runner: gatedRunner(), maxRunsPerLearner: 2 });
 		const a = core.forLearner('ann');
 		const run = a.run(ref('stacks-push', 0), { 'main.py': '1' });
 		await tick();
@@ -1912,7 +1898,7 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('counts each Learner on their own, across every forLearner view', async () => {
-		const { runner, core } = await setup(1);
+		const { runner, core } = await setup({ runner: gatedRunner(), maxRunsPerLearner: 1 });
 		const first = core.forLearner('ann').run(ref('stacks-push', 0), { 'main.py': '1' });
 		await tick();
 
@@ -1928,7 +1914,7 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('frees the cap when a Run finishes', async () => {
-		const { runner, core } = await setup(1);
+		const { runner, core } = await setup({ runner: gatedRunner(), maxRunsPerLearner: 1 });
 		const a = core.forLearner('ann');
 		const first = a.run(ref('stacks-push', 0), { 'main.py': '1' });
 		await tick();
@@ -1943,19 +1929,8 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('frees the cap when a Submit finishes with a Verdict', async () => {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const correct: NonNullable<RunnerScript['tests']> = {};
-		for (const t of [
-			...(catalogue.problem('stacks-push')?.exampleTests ?? []),
-			...(catalogue.hiddenTests('stacks-push') ?? [])
-		])
-			correct[t.id] = { status: 'ok', stdout: t.expected };
-		const a = createLearningCore({
-			catalogue,
-			db: await createTestDb(),
-			runner: createScriptedRunner({ tests: correct }),
-			maxRunsPerLearner: 1
-		}).forLearner('ann');
+		const { core } = await setup({ acceptAll: true, maxRunsPerLearner: 1 });
+		const a = core.forLearner('ann');
 
 		expect(await a.submit(ref('stacks-push', 0), { 'main.py': '1' })).toMatchObject({
 			verdict: 'Accepted'
@@ -1966,7 +1941,7 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('frees the cap when the Runner fails mid-Run or mid-Submit', async () => {
-		const { runner, core } = await setup(1);
+		const { runner, core } = await setup({ runner: gatedRunner(), maxRunsPerLearner: 1 });
 		const a = core.forLearner('ann');
 		const run = a.run(ref('stacks-push', 0), { 'main.py': '1' });
 		await tick();
@@ -1986,7 +1961,7 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('frees the cap when the Run or Submit throws something that is not a Runner error', async () => {
-		const { runner, core } = await setup(1);
+		const { runner, core } = await setup({ runner: gatedRunner(), maxRunsPerLearner: 1 });
 		const a = core.forLearner('ann');
 		const run = a.run(ref('stacks-push', 0), { 'main.py': '1' });
 		await tick();
@@ -2001,7 +1976,7 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('does not hold the cap for a save conflict or a refusal before the Runner', async () => {
-		const { runner, core } = await setup(1);
+		const { runner, core } = await setup({ runner: gatedRunner(), maxRunsPerLearner: 1 });
 		const a = core.forLearner('ann');
 		await expect(a.run(ref('stacks-push', 5), { 'main.py': '1' })).rejects.toMatchObject({
 			code: 'RevisionConflict'
@@ -2074,14 +2049,7 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('frees the place when recording the Submission fails, and accepts the next Run', async () => {
-		const catalogue = await loadCatalogue(fixtureDir);
-		const correct: NonNullable<RunnerScript['tests']> = {};
-		for (const t of [
-			...(catalogue.problem('stacks-push')?.exampleTests ?? []),
-			...(catalogue.hiddenTests('stacks-push') ?? [])
-		])
-			correct[t.id] = { status: 'ok', stdout: t.expected };
-		const db = await createTestDb();
+		const { db } = await setup();
 		// The Submission is recorded in a transaction: make that write reject.
 		const failing = new Proxy(db, {
 			get(target, prop, receiver) {
@@ -2089,12 +2057,8 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 				return Reflect.get(target, prop, receiver);
 			}
 		});
-		const a = createLearningCore({
-			catalogue,
-			db: failing,
-			runner: createScriptedRunner({ tests: correct }),
-			maxRunsPerLearner: 1
-		}).forLearner('ann');
+		const { core } = await setup({ acceptAll: true, db: failing, maxRunsPerLearner: 1 });
+		const a = core.forLearner('ann');
 
 		await expect(a.submit(ref('stacks-push', 0), { 'main.py': '1' })).rejects.toThrow();
 
@@ -2102,7 +2066,7 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 	});
 
 	it('Promise.all of three Runs on different Problems with a cap of 2 refuses exactly one', async () => {
-		const { runner, core } = await setup(2);
+		const { runner, core } = await setup({ runner: gatedRunner(), maxRunsPerLearner: 2 });
 		const a = core.forLearner('ann');
 		const settled = Promise.allSettled([
 			a.run(ref('stacks-push', 0), { 'main.py': '1' }),
