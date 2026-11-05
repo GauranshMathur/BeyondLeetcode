@@ -12,7 +12,9 @@ describe('harnessScript', () => {
 	});
 
 	it('is a complete script that names harness.ts as its protocol and ends with a newline', () => {
-		expect(harnessScript.startsWith('# The protocol this script speaks is described in harness.ts.\n')).toBe(true);
+		expect(
+			harnessScript.startsWith('# The protocol this script speaks is described in harness.ts.\n')
+		).toBe(true);
 		expect(harnessScript).toContain('run_tests()');
 		expect(harnessScript.endsWith('\n')).toBe(true);
 	});
