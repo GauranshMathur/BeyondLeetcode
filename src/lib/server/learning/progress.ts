@@ -1,4 +1,5 @@
-import type { Catalogue } from '../content/catalogue.ts';
+import { LANGUAGE_IDS } from '../../languages.ts';
+import type { Catalogue, Language } from '../content/catalogue.ts';
 import type { Db } from '../db.ts';
 import {
 	type AcceptedView,
@@ -148,4 +149,64 @@ export async function deleteLearner(db: Db, learnerId: string): Promise<void> {
 		for (const clear of Object.values(CLEAR)) await clear(tx, learnerId);
 		await tx.learner.deleteMany({ where: { id: learnerId } });
 	});
+}
+
+/** The Language the Learner chose for a Topic, or undefined while they have not chosen (or the stored one is no longer offered). */
+export async function topicLanguage(
+	db: Db,
+	learnerId: string,
+	topicId: string
+): Promise<Language | undefined> {
+	const row = await db.topicLanguage.findUnique({
+		where: { learnerId_topicId: { learnerId, topicId } }
+	});
+	return LANGUAGE_IDS.find((l) => l === row?.language);
+}
+
+/** Stores the Language the Learner builds a Topic in from now on. */
+export async function setTopicLanguage(
+	db: Db,
+	learnerId: string,
+	topicId: string,
+	language: Language
+): Promise<void> {
+	await db.topicLanguage.upsert({
+		where: { learnerId_topicId: { learnerId, topicId } },
+		create: { learnerId, topicId, language },
+		update: { language }
+	});
+}
+
+/** How many of a Problem's Hints the Learner has revealed. */
+export async function revealedHints(db: Db, learnerId: string, problemId: string): Promise<number> {
+	const row = await db.hintsRevealed.findUnique({
+		where: { learnerId_problemId: { learnerId, problemId } }
+	});
+	return row?.count ?? 0;
+}
+
+/**
+ * Raises the Learner's revealed count for a Problem by one, never past `total`. One atomic step
+ * each, so concurrent reveals each raise it by one until the last Hint, then the rest change nothing.
+ */
+export async function revealNextHint(
+	db: Db,
+	learnerId: string,
+	problemId: string,
+	total: number
+): Promise<void> {
+	const raise = () =>
+		db.hintsRevealed.updateMany({
+			where: { learnerId, problemId, count: { lt: total } },
+			data: { count: { increment: 1 } }
+		});
+	if ((await raise()).count === 0) {
+		try {
+			await db.hintsRevealed.create({ data: { learnerId, problemId, count: 1 } });
+		} catch (e) {
+			if (!isUniqueViolation(e)) throw e;
+			// The row appeared meanwhile (or is already at the last Hint).
+			await raise();
+		}
+	}
 }
