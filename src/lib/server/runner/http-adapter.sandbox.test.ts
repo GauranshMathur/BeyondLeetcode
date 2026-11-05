@@ -1,4 +1,3 @@
-import type { ChildProcess } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sandboxConfig } from './config';
 import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
@@ -7,33 +6,26 @@ import { harnessInput } from './harness';
 import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
-import { containersOwnedBy, startRunnerProcess, waitUntilHealthy } from './wait-healthy.testutil';
+import { containersOwnedBy, startTestRunner, stopTestRunners } from './wait-healthy.testutil';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
 const token = 'sandbox-test-token-0123456789-abcdef';
 const socket = process.env.DOCKER_SOCKET ?? '/var/run/docker.sock';
 const engine = createEngine(socket);
-let runnerProcess: ChildProcess;
 let url: string;
 let instanceId: string;
 let runner: RunnerPort;
 
 beforeAll(async () => {
-	const started = await startRunnerProcess(token, socket);
-	runnerProcess = started.process;
+	const started = await startTestRunner(token);
 	url = started.url;
 	instanceId = started.instanceId;
-	await waitUntilHealthy(url, token);
-	runner = createHttpRunner({ url, token });
-	// Pull the image now so the first test does not pay for it.
-	for (const image of Object.values(sandboxConfig.images)) {
-		await engine.create(image, {}).then((id) => engine.remove(id));
-	}
+	runner = started.runner;
 }, 120_000);
 
 afterAll(() => {
-	runnerProcess?.kill();
+	stopTestRunners();
 });
 
 const programs: Record<Exclude<ProgramKind, 'unavailable'>, string> = {
