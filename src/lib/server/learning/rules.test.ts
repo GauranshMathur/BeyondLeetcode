@@ -6,7 +6,12 @@ import {
 	type Topic,
 	type TopicSummary
 } from '../content/catalogue.ts';
-import type { ExecuteResult, TestResult } from '../runner/port.ts';
+import {
+	type ExecuteResult,
+	MAX_BUILD_FILES,
+	MAX_PATH_BYTES,
+	type TestResult
+} from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 import {
 	acceptedDiff,
@@ -539,17 +544,15 @@ describe('judge()', () => {
 	});
 
 	it('shows the first failing Test in run order', () => {
-		const batches = [
-			batch([a], raw(a.id, 'ok')),
-			batch([b, c], raw(b.id, 'ok', 'x'), raw(c.id, 'ok', 'y'))
-		];
+		const first = batch([a], raw(a.id, 'ok', 'x'));
+		const second = batch([b], raw(b.id, 'ok', 'y'));
 
-		expect(judge(batches, 'p', title)).toMatchObject({
-			verdict: 'Wrong Answer',
-			failure: { kind: 'hidden', problemId: 'p' },
-			failingProblemId: 'p'
+		expect(judge([first, second], 'p', title)).toMatchObject({
+			failure: { kind: 'example', name: 'a', actual: 'x' }
 		});
-		expect(judge([...batches].reverse(), 'p', title).failingProblemId).toBe('p');
+		expect(judge([second, first], 'p', title)).toMatchObject({
+			failure: { kind: 'hidden', problemId: 'p' }
+		});
 	});
 
 	it('picks the first Test with the winning outcome, not the first failure', () => {
@@ -615,7 +618,16 @@ describe('Fixture rules', () => {
 				hiddenTests: (id: string) =>
 					id === 'stacks-mid'
 						? catalogue.hiddenTests('stacks-pop')?.map((t) => ({ ...t, id: `${id}/hidden/01` }))
-						: catalogue.hiddenTests(id)
+						: id === 'stacks-peek'
+							? [
+									{
+										id: 'stacks-peek/hidden/01',
+										kind: 'hidden' as const,
+										input: 'in',
+										expected: 'out'
+									}
+								]
+							: catalogue.hiddenTests(id)
 			};
 		};
 		const ids = (tests: readonly SubmitTest[]) => tests.map((t) => t.id);
@@ -651,7 +663,7 @@ describe('Fixture rules', () => {
 				'stacks-peek',
 				10,
 				['stacks-peek/example/01'],
-				[['stacks-push/example/01', 'stacks-push/hidden/01']]
+				[['stacks-push/example/01', 'stacks-push/hidden/01', 'stacks-peek/hidden/01']]
 			]
 		])('plans %s', (_name, problemId, size, visible, hidden) => {
 			const plan = submitPlan(withMiddle(), problemId, size);
@@ -765,6 +777,15 @@ describe('validateBuild()', () => {
 		['a Build over the size limit', { 'main.py': 'x'.repeat(MAX_BUILD_BYTES) }],
 		['a size counted in UTF-8 bytes', { 'main.py': 'é'.repeat(MAX_BUILD_BYTES / 2) }],
 		['an absolute path', { '/main.py': 'x' }],
+		['a dot segment', { 'a/./b.py': 'x' }],
+		['an empty segment', { 'a//b.py': 'x' }],
+		['a path with a NUL', { 'a\0b.py': 'x' }],
+		['a path that is not well-formed Unicode', { '\uD800.py': 'x' }],
+		['a path over the byte limit', { [`${'a'.repeat(MAX_PATH_BYTES)}.py`]: 'x' }],
+		[
+			'too many files',
+			Object.fromEntries(Array.from({ length: MAX_BUILD_FILES + 1 }, (_, i) => [`f${i}.py`, '']))
+		],
 		['a path with ..', { '../main.py': 'x' }],
 		['a path with a backslash', { 'a\\b.py': 'x' }],
 		['an empty path', { '': 'x' }],
