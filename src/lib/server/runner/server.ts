@@ -1,23 +1,20 @@
 /** The Runner's HTTP surface: `POST /execute` and `GET /health`, both behind a bearer token. */
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
-import { LANGUAGE_IDS } from '../../languages';
 import { sandboxConfig } from './config';
-import { buildPathsIssue, type RunnerPort } from './port';
+import { buildPathsIssue, executeRequestSchema, type RunnerPort } from './port';
 
-const executeRequest = z.object({
-	language: z.enum(LANGUAGE_IDS),
-	files: z
-		.record(z.string(), z.string())
+// port.ts's schema plus the Runner's own limits. Unknown keys are still stripped, so an expected
+// output can never reach a container.
+const executeRequest = executeRequestSchema.extend({
+	files: executeRequestSchema.shape.files
 		// The same rule the Learning core applies before it saves a Build (runner/port.ts).
 		.superRefine((files, ctx) => {
 			const issue = buildPathsIssue(Object.keys(files));
 			if (issue) ctx.addIssue({ code: 'custom', message: issue });
 		}),
-	// Unknown keys are stripped, so an expected output can never reach a container.
-	tests: z.array(z.object({ id: z.string(), input: z.string() })).max(sandboxConfig.maxTests),
-	limits: z.object({
-		timeoutMs: z.number().int().positive(),
+	tests: executeRequestSchema.shape.tests.max(sandboxConfig.maxTests),
+	limits: executeRequestSchema.shape.limits.extend({
 		memoryMb: z.number().int().min(sandboxConfig.minMemoryMb)
 	})
 });
