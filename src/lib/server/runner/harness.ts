@@ -1,4 +1,8 @@
 import { readFileSync } from 'node:fs';
+import { z } from 'zod';
+import { sandboxConfig } from './config';
+import type { Language } from './port';
+import { createTar } from './tar';
 
 /**
  * The fixed script that runs inside the Sandbox container (`python -I -c`: isolated, so nothing
@@ -26,3 +30,35 @@ import { readFileSync } from 'node:fs';
  * non-zero without printing further results (the Runner then treats the run as failed).
  */
 export const harnessScript = readFileSync(new URL('./harness.py', import.meta.url), 'utf8');
+
+/** The RUNNER_* variables the harness reads, in the container's Env form. */
+export function harnessEnv(language: Language, testCount: number, testTimeoutMs: number): string[] {
+	return [
+		`RUNNER_LANGUAGE=${language}`,
+		`RUNNER_TEST_COUNT=${testCount}`,
+		`RUNNER_TEST_TIMEOUT_MS=${testTimeoutMs}`,
+		`RUNNER_OUTPUT_CAP=${sandboxConfig.outputCapBytes}`,
+		`RUNNER_TOTAL_OUTPUT_CAP=${sandboxConfig.totalOutputCapBytes}`,
+		`RUNNER_DEADLINE_S=${sandboxConfig.containerDeadlineS}`
+	];
+}
+
+/** What goes to the harness's stdin: the `<length>\n` prefix, then the tar of `build/<path>` and `tests/<i>.in`. */
+export function harnessInput(files: Record<string, string>, inputs: string[]): Buffer {
+	const tar = createTar([
+		...Object.entries(files).map(([path, content]) => ({ path: `build/${path}`, content })),
+		...inputs.map((input, i) => ({ path: `tests/${i}.in`, content: input }))
+	]);
+	return Buffer.concat([Buffer.from(`${tar.length}\n`), tar]);
+}
+
+/** One JSON line the harness prints: a Compile Error, or a Test's result. */
+export const harnessLine = z.union([
+	z.object({ compileError: z.string() }),
+	z.object({
+		i: z.number().int(),
+		status: z.enum(['ok', 'runtimeError', 'timeout']),
+		stdout: z.string(),
+		stderr: z.string()
+	})
+]);

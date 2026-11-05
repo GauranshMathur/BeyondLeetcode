@@ -3,10 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sandboxConfig } from './config';
 import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
 import { createEngine } from './engine';
+import { harnessInput } from './harness';
 import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
-import { createTar } from './tar';
 import { containersOwnedBy, startRunnerProcess, waitUntilHealthy } from './wait-healthy.testutil';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
@@ -808,14 +808,7 @@ async function runHarness(
 		5000
 	);
 	await engine.start(id);
-	const tar = createTar([
-		...Object.entries(files).map(([path, content]) => ({
-			path: `build/${path}`,
-			content
-		})),
-		...inputs.map((input, i) => ({ path: `tests/${i}.in`, content: input }))
-	]);
-	conn.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
+	conn.sendInput(harnessInput(files, inputs));
 	await conn.closed;
 	const status = await exit;
 	await engine.remove(id);
@@ -972,11 +965,7 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 			5000
 		);
 		await engine.start(id);
-		const tar = createTar([
-			{ path: 'build/main.py', content: 'print(1)' },
-			{ path: 'tests/0.in', content: '' }
-		]);
-		conn.sendInput(Buffer.concat([Buffer.from(`${tar.length}\n`), tar]));
+		conn.sendInput(harnessInput({ 'main.py': 'print(1)' }, ['']));
 		await conn.closed;
 
 		expect(await exit).not.toBe(0);
