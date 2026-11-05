@@ -9,7 +9,8 @@
  * request. The Learning core maps that rejection to `RunnerUnavailable`.
  */
 
-import type { Language } from '../../languages';
+import { z } from 'zod';
+import { LANGUAGE_IDS, type Language } from '../../languages';
 
 export type { Language };
 
@@ -52,37 +53,53 @@ export function buildPathsIssue(paths: readonly string[]): string | undefined {
 	return undefined;
 }
 
+/**
+ * The request and result shapes, written once. They carry no Runner limit: the Runner's HTTP
+ * surface adds its own on top (server.ts: most Tests, least memory, the Build path rule). Unknown
+ * keys are stripped when a request is parsed, so an expected output can never reach a container.
+ */
+
 /** One Test as the Runner sees it: an id and the input, nothing else. */
-export type TestInput = { id: string; input: string };
+const testInputSchema = z.object({ id: z.string(), input: z.string() });
+export type TestInput = z.infer<typeof testInputSchema>;
 
 /**
  * Per-run limits (ADR 0002): wall-clock timeout per Test, counted from the Test's start (not
  * container start-up or compilation), and a memory cap. CPU and pids limits are fixed by the
  * Runner, not sent per request.
  */
-export type Limits = { timeoutMs: number; memoryMb: number };
+const limitsSchema = z.object({
+	timeoutMs: z.number().int().positive(),
+	memoryMb: z.number().int()
+});
+export type Limits = z.infer<typeof limitsSchema>;
 
-export type ExecuteRequest = {
-	language: Language;
-	files: Files;
-	tests: TestInput[];
-	limits: Limits;
-};
+export const executeRequestSchema = z.object({
+	language: z.enum(LANGUAGE_IDS),
+	files: z.record(z.string(), z.string()),
+	tests: z.array(testInputSchema),
+	limits: limitsSchema
+});
+export type ExecuteRequest = z.infer<typeof executeRequestSchema>;
 
-export type TestStatus = 'ok' | 'runtimeError' | 'timeout';
-
-export type TestResult = {
-	id: string;
-	status: TestStatus;
-	stdout: string;
-	stderr: string;
-};
+const testResultSchema = z.object({
+	id: z.string(),
+	status: z.enum(['ok', 'runtimeError', 'timeout']),
+	stdout: z.string(),
+	stderr: z.string()
+});
+export type TestStatus = TestResult['status'];
+export type TestResult = z.infer<typeof testResultSchema>;
 
 /**
  * `compileError` set: the code did not compile and `results` is empty.
  * Otherwise `results` holds one entry per request Test, in request order.
  */
-export type ExecuteResult = { compileError?: string; results: TestResult[] };
+export const executeResultSchema = z.object({
+	compileError: z.string().optional(),
+	results: z.array(testResultSchema)
+});
+export type ExecuteResult = z.infer<typeof executeResultSchema>;
 
 export interface RunnerPort {
 	execute(request: ExecuteRequest): Promise<ExecuteResult>;
