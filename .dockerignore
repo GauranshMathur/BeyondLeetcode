@@ -10,4 +10,4 @@ prisma/generated
 .serena
 test-results
 playwright-report
-__pycache__/
+**/__pycache__
