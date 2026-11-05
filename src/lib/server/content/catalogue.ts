@@ -51,6 +51,8 @@ export interface Test {
 	/** Unique across the catalogue: `<problemId>/<kind>/<name>`. */
 	readonly id: string;
 	readonly kind: 'example' | 'hidden';
+	/** The `<name>` part of the id. */
+	readonly name: string;
 	/** Given to the program on stdin. */
 	readonly input: string;
 	/** The expected stdout, byte for byte as authored. */
@@ -74,6 +76,16 @@ export interface Problem extends ProblemSummary {
 	readonly referenceCode: Readonly<Record<Language, BuildFiles>>;
 }
 
+/** Where a Problem sits on its Topic's Main Line. */
+export interface MainLinePlace {
+	/** The Problem itself for a Core Problem, its parent for an Extra. */
+	readonly anchor: string;
+	/** The Core Problems before the anchor, in Main Line order. */
+	readonly earlier: readonly string[];
+	/** The Core Problem after the anchor, if there is one. */
+	readonly next?: string;
+}
+
 export interface Catalogue {
 	/** Every Topic, in content order, with its Prerequisites. */
 	topicMap(): readonly TopicSummary[];
@@ -83,6 +95,8 @@ export interface Catalogue {
 	problem(id: string): Problem | undefined;
 	/** The Problem's Hidden Tests. Keep them on the server. */
 	hiddenTests(problemId: string): readonly Test[] | undefined;
+	/** The Problem's place on the Main Line; undefined for an unknown Problem. */
+	mainLinePlace(problemId: string): MainLinePlace | undefined;
 }
 
 /** Content failed validation. `issues` lists every problem found, each prefixed with its path. */
@@ -143,6 +157,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 				async (name): Promise<Test> => ({
 					id: `${problemId}/${kind}/${name}`,
 					kind,
+					name,
 					input: await readText(join(testDir, `${name}.in`)),
 					expected: await readText(join(testDir, `${name}.out`))
 				})
@@ -214,6 +229,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	const problems = new Map<string, Problem>();
 	const hidden = new Map<string, Test[]>();
 	const problemDirs = new Map<string, string>();
+	const places = new Map<string, MainLinePlace>();
 
 	const content = await readJson(join(dir, 'content.json'), contentManifest);
 	if (content) await checkListed(join(dir, 'topics'), content.topics, 'content.json');
@@ -296,6 +312,22 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		});
 	}
 
+	for (const topic of topics.values()) {
+		for (const { problems: listed } of topic.chapters) {
+			for (const problem of listed) {
+				const anchor = problem.kind === 'core' ? problem.id : (problem.parent ?? '');
+				const index = topic.mainLine.indexOf(anchor);
+				if (index < 0) continue;
+				const next = topic.mainLine[index + 1];
+				places.set(problem.id, {
+					anchor,
+					earlier: topic.mainLine.slice(0, index),
+					...(next !== undefined && { next })
+				});
+			}
+		}
+	}
+
 	checkPrerequisites(topics, new Set(content?.topics), (topicId, message) =>
 		report(join(dir, 'topics', topicId, 'topic.json'), message)
 	);
@@ -305,7 +337,8 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		topic: (id) => topics.get(id),
 		chapter: (id) => chapters.get(id),
 		problem: (id) => problems.get(id),
-		hiddenTests: (problemId) => hidden.get(problemId)
+		hiddenTests: (problemId) => hidden.get(problemId),
+		mainLinePlace: (problemId) => places.get(problemId)
 	};
 	// Only a complete catalogue has Submit batches worth measuring.
 	if (issues.length === 0) {
@@ -326,7 +359,7 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 		summary,
 		prerequisites
 	}));
-	deepFreeze([topicMap, topics, chapters, problems, hidden]);
+	deepFreeze([topicMap, topics, chapters, problems, hidden, places]);
 
 	return catalogue;
 }
@@ -345,8 +378,8 @@ const FILE_JSON_OVERHEAD = 8;
  * the per-file JSON syntax, so the answer holds for any code.
  */
 function checkSubmitBatches(plan: {
-	visible: readonly Test[];
-	hidden: readonly (readonly Test[])[];
+	visible: readonly Pick<Test, 'id' | 'input'>[];
+	hidden: readonly (readonly Pick<Test, 'id' | 'input'>[])[];
 }): string[] {
 	const messages: string[] = [];
 	const calls = 1 + plan.hidden.length;
