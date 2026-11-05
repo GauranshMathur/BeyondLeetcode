@@ -136,8 +136,8 @@ async function execute(
 			.kill(id)
 			.then(
 				() =>
-					console.error(
-						`Killed container ${id} after ${Math.round(performance.now() - killStarted)} ms`
+					console.warn(
+						`Kill of container ${id} answered after ${Math.round(performance.now() - killStarted)} ms`
 					),
 				(error) => console.error(`Could not kill container ${id}`, error)
 			)

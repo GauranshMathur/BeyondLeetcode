@@ -386,8 +386,9 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 
 	it('ends a bomb that forks without bound within the design bound, as a verdict or a refusal', async () => {
 		const bomb = 'import os\nwhile True:\n    os.fork()\n';
-		// What the code allows: the hard stop, then up to two remove attempts that each give up at
-		// removeAttemptTimeoutMs. A slower teardown is a regression, not a reason to widen this.
+		// What the code allows: the hard stop plus two of `removeContainer`'s three attempts, each
+		// giving up at removeAttemptTimeoutMs. A slower teardown is a regression, not a reason to
+		// widen this.
 		const designBoundMs = sandboxConfig.containerTimeoutMs + 2 * removeAttemptTimeoutMs;
 		const started = Date.now();
 
@@ -402,8 +403,10 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 
 		// So drift shows in the CI log: the container's own lifetime, apart from create and teardown.
 		const lifetimeMs = containerLifetimeMs(started);
+		// A broken `docker events` pairing must fail here, not print "unavailable".
+		expect(lifetimeMs).toBeDefined();
 		console.log(
-			`fork-bomb container lifetime ${lifetimeMs === undefined ? 'unavailable' : `${Math.round(lifetimeMs)} ms`}; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
+			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
 		);
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
