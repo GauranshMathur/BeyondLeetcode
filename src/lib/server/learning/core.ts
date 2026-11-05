@@ -7,6 +7,8 @@ import { sandboxConfig } from '../runner/config.ts';
 import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 import {
+	buildStep,
+	languagesWithStep,
 	loadProgress,
 	recordChapterRead,
 	recordSubmission,
@@ -14,6 +16,7 @@ import {
 	revealedHints,
 	revealNextHint,
 	setTopicLanguage,
+	storeBuildStep,
 	topicLanguage
 } from './progress.ts';
 import {
@@ -33,7 +36,6 @@ import {
 	requireOpenTopic,
 	runSubmission,
 	runView,
-	type SavedStep,
 	type SolutionView,
 	type SubmitView,
 	sameBuild,
@@ -293,12 +295,12 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						problemId,
 						language,
 						{
-							own: await loadStep(deps.db, learnerId, topicId, language, problemId),
+							own: await buildStep(deps.db, { learnerId, topicId, language, problemId }),
 							source: sourceId
-								? await loadStep(deps.db, learnerId, topicId, language, sourceId)
+								? await buildStep(deps.db, { learnerId, topicId, language, problemId: sourceId })
 								: undefined,
 							sourceSavedIn: sourceId
-								? await languagesSaved(deps.db, learnerId, topicId, sourceId)
+								? await languagesWithStep(deps.db, learnerId, topicId, sourceId)
 								: []
 						},
 						renderMarkdown
@@ -312,7 +314,12 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					// The screen read's checks (NotFound, TopicLocked) and the stored step, no Markdown.
 					const topicId = await openStep(problemId);
 					const current = (await topicLanguage(deps.db, learnerId, topicId)) ?? DEFAULT_LANGUAGE;
-					const stored = await loadStep(deps.db, learnerId, topicId, current, problemId);
+					const stored = await buildStep(deps.db, {
+						learnerId,
+						topicId,
+						language: current,
+						problemId
+					});
 					const view = { topicId, files: stored?.files, revision: stored?.revision ?? 0 };
 					const build = validateBuild(files);
 					// A tab showing another Language than the current one is stale (switched elsewhere).
@@ -336,23 +343,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							return { revision: view.revision };
 						throw new LearningError('RevisionConflict');
 					}
-					try {
-						if (view.revision === 0) {
-							await deps.db.buildStep.create({ data: { ...key, files: build, revision: 1 } });
-							return { revision: 1 };
-						}
-						// Only the save still based on the stored revision updates it.
-						const { count } = await deps.db.buildStep.updateMany({
-							where: { ...key, revision: expected },
-							data: { files: build, revision: expected + 1 }
-						});
-						if (count === 0) throw new LearningError('RevisionConflict');
-						return { revision: expected + 1 };
-					} catch (e) {
-						if ((e as { code?: string }).code === 'P2002')
-							throw new LearningError('RevisionConflict');
-						throw e;
-					}
+					return { revision: await storeBuildStep(deps.db, key, build, expected) };
 				},
 				startFromReferenceCode: async (build) => {
 					await openStep(build.problemId); // NotFound / TopicLocked
@@ -437,39 +428,4 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 			return learner;
 		}
 	};
-}
-
-/** The Learner's stored code for one step in one Language, if it was ever saved. */
-async function loadStep(
-	db: Db,
-	learnerId: string,
-	topicId: string,
-	language: Language,
-	problemId: string
-): Promise<SavedStep | undefined> {
-	const row = await db.buildStep.findUnique({
-		where: {
-			learnerId_topicId_language_problemId: {
-				learnerId,
-				topicId,
-				language,
-				problemId
-			}
-		}
-	});
-	return row ? { files: row.files as BuildFiles, revision: row.revision } : undefined;
-}
-
-/** The Languages in which the Learner has saved this step. */
-async function languagesSaved(
-	db: Db,
-	learnerId: string,
-	topicId: string,
-	problemId: string
-): Promise<Language[]> {
-	const rows = await db.buildStep.findMany({
-		where: { learnerId, topicId, problemId },
-		select: { language: true }
-	});
-	return LANGUAGE_IDS.filter((l) => rows.some((r) => r.language === l));
 }

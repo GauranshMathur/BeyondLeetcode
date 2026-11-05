@@ -1,12 +1,14 @@
 import { LANGUAGE_IDS } from '../../languages.ts';
-import type { Catalogue, Language } from '../content/catalogue.ts';
+import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import type { Db } from '../db.ts';
+import { LearningError } from './errors.ts';
 import {
 	type AcceptedView,
 	acceptedDiff,
 	type Progress,
 	type ProgressChange,
-	reachChapter
+	reachChapter,
+	type SavedStep
 } from './rules.ts';
 
 /** Where progress is recorded and read from. */
@@ -208,5 +210,64 @@ export async function revealNextHint(
 			// The row appeared meanwhile (or is already at the last Hint).
 			await raise();
 		}
+	}
+}
+
+/** Which stored step a Build is: one Learner's code for one Problem in one Language of a Topic. */
+export interface BuildStepKey {
+	learnerId: string;
+	topicId: string;
+	language: Language;
+	problemId: string;
+}
+
+/** The Learner's stored code for one step in one Language, if it was ever saved. */
+export async function buildStep(db: Db, key: BuildStepKey): Promise<SavedStep | undefined> {
+	const row = await db.buildStep.findUnique({
+		where: { learnerId_topicId_language_problemId: key }
+	});
+	return row ? { files: row.files as BuildFiles, revision: row.revision } : undefined;
+}
+
+/** The Languages in which the Learner has saved this step. */
+export async function languagesWithStep(
+	db: Db,
+	learnerId: string,
+	topicId: string,
+	problemId: string
+): Promise<Language[]> {
+	const rows = await db.buildStep.findMany({
+		where: { learnerId, topicId, problemId },
+		select: { language: true }
+	});
+	return LANGUAGE_IDS.filter((l) => rows.some((r) => r.language === l));
+}
+
+/**
+ * Stores a step's code. Creates revision 1 when `expectedRevision` is 0, else updates only the row
+ * still at `expectedRevision`. Returns the new revision. Throws RevisionConflict when it wrote no row
+ * or a create hit a unique violation (another save created the step first).
+ */
+export async function storeBuildStep(
+	db: Db,
+	key: BuildStepKey,
+	files: BuildFiles,
+	expectedRevision: number
+): Promise<number> {
+	try {
+		if (expectedRevision === 0) {
+			await db.buildStep.create({ data: { ...key, files, revision: 1 } });
+			return 1;
+		}
+		// Only the save still based on the stored revision updates it.
+		const { count } = await db.buildStep.updateMany({
+			where: { ...key, revision: expectedRevision },
+			data: { files, revision: expectedRevision + 1 }
+		});
+		if (count === 0) throw new LearningError('RevisionConflict');
+		return expectedRevision + 1;
+	} catch (e) {
+		if (isUniqueViolation(e)) throw new LearningError('RevisionConflict');
+		throw e;
 	}
 }
