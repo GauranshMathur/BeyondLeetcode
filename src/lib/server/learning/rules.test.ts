@@ -24,6 +24,7 @@ import {
 	type Progress,
 	problemView,
 	reachChapter,
+	requireOpenTopic,
 	runView,
 	type SubmitTest,
 	submitPlan,
@@ -230,6 +231,24 @@ describe('topicView', () => {
 		const both = catalogueOf([topic('a', []), topic('b', ['a'])]);
 		expect(() => topicView(both, none, 'b')).toThrow(LearningError);
 		expect(() => topicView(both, none, 'zzz')).toThrow(LearningError);
+	});
+});
+
+describe('requireOpenTopic', () => {
+	const cat = catalogueOf([topic('a', []), topic('b', ['a'])]);
+	it.each([
+		['an unknown Topic', 'zzz', none, 'NotFound'],
+		['a Locked Topic', 'b', none, 'TopicLocked'],
+		['an Unlocked Topic', 'a', none, undefined],
+		['a Complete Topic', 'a', progress(['a-c'], ['a-p']), undefined]
+	] as const)('for %s', (_name, topicId, given, error) => {
+		if (error) {
+			expect(() => requireOpenTopic(cat, given, topicId)).toThrow(
+				expect.objectContaining({ code: error })
+			);
+		} else {
+			expect(() => requireOpenTopic(cat, given, topicId)).not.toThrow();
+		}
 	});
 });
 

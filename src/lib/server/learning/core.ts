@@ -21,6 +21,7 @@ import {
 	problemView,
 	type RunView,
 	referenceStartOf,
+	requireOpenTopic,
 	runSubmission,
 	runView,
 	type SavedStep,
@@ -231,7 +232,11 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 			const openStep = async (problemId: string): Promise<string> => {
 				const topicId = deps.catalogue.problem(problemId)?.topicId;
 				if (topicId === undefined) throw new LearningError('NotFound');
-				topicView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId), topicId); // TopicLocked
+				requireOpenTopic(
+					deps.catalogue,
+					await loadProgress(deps.catalogue, deps.db, learnerId),
+					topicId
+				); // TopicLocked
 				return topicId;
 			};
 			/**
@@ -353,13 +358,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						})
 					),
 				switchLanguage: async (problemId, language) => {
-					const topicId = deps.catalogue.problem(problemId)?.topicId;
-					if (topicId === undefined) throw new LearningError('NotFound');
-					topicView(
-						deps.catalogue,
-						await loadProgress(deps.catalogue, deps.db, learnerId),
-						topicId
-					); // TopicLocked
+					const topicId = await openStep(problemId); // NotFound / TopicLocked
 					if (!LANGUAGE_IDS.includes(language)) throw new LearningError('InvalidBuild');
 					await deps.db.topicLanguage.upsert({
 						where: { learnerId_topicId: { learnerId, topicId } },
@@ -384,13 +383,16 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					),
 				resetProgress: () => resetProgress(deps.db, learnerId),
 				revealHint: async (problemId) => {
-					const before = await learner.hints(problemId); // NotFound / TopicLocked
-					if (before.revealed.length >= before.total) return before;
+					await openStep(problemId); // NotFound / TopicLocked, before any count is raised
+					const total = deps.catalogue.problem(problemId)?.hints.length ?? 0;
+					if ((await loadRevealed(deps.db, learnerId, problemId)) >= total) {
+						return learner.hints(problemId);
+					}
 					// One atomic step each, never past the count: concurrent reveals each raise it by
 					// one until the last Hint, then the rest change nothing.
 					const raise = () =>
 						deps.db.hintsRevealed.updateMany({
-							where: { learnerId, problemId, count: { lt: before.total } },
+							where: { learnerId, problemId, count: { lt: total } },
 							data: { count: { increment: 1 } }
 						});
 					if ((await raise()).count === 0) {
