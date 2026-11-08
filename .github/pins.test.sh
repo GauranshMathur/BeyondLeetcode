@@ -58,6 +58,8 @@ check "comment fakes a block scalar" 1 "      steps: # : |\n      - \"us\\\\x65s
 check "multi-line flow mapping" 1 "      - {name: x,\n         uses: docker/login-action@v4\n        }"
 check "multi-line flow mapping, pinned" 1 "      - {name: x,\n         uses: docker/login-action@$sha\n        }"
 check "script with quotes and colons" 0 "        run: |\n          trap 'echo \"::warning::x\"; exit 0' ERR"
+check "tab before quoted flow key" 1 "      - {\t\"us\\\\x65s\": docker/login-action@v4}"
+check "brace inside a string, then uses" 1 "      - {name: \"}\",\n         uses: docker/login-action@$sha\n        }"
 # Other spellings
 check "space before colon" 1 "      - uses : docker/login-action@v4"
 check "value on next line" 1 "      - uses:"
