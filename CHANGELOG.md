@@ -2,36 +2,51 @@
 
 ## [1.19.4](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.3...v1.19.4) (2026-11-08)
 
+### Highlights
 
-### Fixes
+- **The Sandbox is tighter.** Learner code that crashes can no longer start the host's core-dump helper. The core limit is held at 1 byte, and a seccomp filter in the harness stops Learner code changing it. A result line the Runner can't trust now fails the run, where it used to be dropped.
+- **Long TypeScript Submits are faster.** TypeScript now compiles once per container and each Test runs the compiled JavaScript, so a 25-Test batch takes about 3.8 s instead of 6–7 s. A correct Submit is far less likely to hit the time limit on a slow host.
+- **Upgrading actually upgrades.** The Upgrading steps, and these notes, now say to set the image tag in `.env` first.
 
-* **beyondleetcode:** C205 Runner: every Sandbox's core rlimit is 1:1 ([#538](https://github.com/GauranshMathur/BeyondLeetcode/issues/538)) ([2ba2ee7](https://github.com/GauranshMathur/BeyondLeetcode/commit/2ba2ee74bcbcf65775ddb5f96ac1a81b0197e2f3))
-* **beyondleetcode:** C207 Runner: TypeScript compiles once, and each Test runs the emitted JavaScript ([#541](https://github.com/GauranshMathur/BeyondLeetcode/issues/541)) ([091430e](https://github.com/GauranshMathur/BeyondLeetcode/commit/091430eca8ac60d322da147294a4b6ac8baea705))
-* **beyondleetcode:** C209 Runner: a harness line with an unknown field, or an out-of-range Test, fails the Run ([#548](https://github.com/GauranshMathur/BeyondLeetcode/issues/548)) ([0b5726c](https://github.com/GauranshMathur/BeyondLeetcode/commit/0b5726c725d98060ec64ced4e188b3a0b92922c6))
-* **beyondleetcode:** C212 ci.yml pins third-party actions by SHA, and lint checks every pin ([#540](https://github.com/GauranshMathur/BeyondLeetcode/issues/540)) ([48d254a](https://github.com/GauranshMathur/BeyondLeetcode/commit/48d254a67ea8fd2c43d081942a1835127fc376ed))
-* **beyondleetcode:** C213 Runner refuses the .env.example token; example binds 127.0.0.1 ([#542](https://github.com/GauranshMathur/BeyondLeetcode/issues/542)) ([a7026ee](https://github.com/GauranshMathur/BeyondLeetcode/commit/a7026ee1dbb09f96366c95851d4ef6d5ec3f25e6))
-* **beyondleetcode:** C214 notify.yml sends an issue's title only when the repo's own people wrote it ([#545](https://github.com/GauranshMathur/BeyondLeetcode/issues/545)) ([e4035cd](https://github.com/GauranshMathur/BeyondLeetcode/commit/e4035cd41113f64ca737616bc18ae741d956eb70))
-* **beyondleetcode:** C222 Runner: a seccomp filter holds every Sandbox's core rlimit at 1 ([#551](https://github.com/GauranshMathur/BeyondLeetcode/issues/551)) ([aae47f5](https://github.com/GauranshMathur/BeyondLeetcode/commit/aae47f5de78043dabc69a30e761d47d234f216eb))
+### Added
 
+Nothing new to use in this release.
 
-### Documentation
+### Fixed
 
-* **beyondleetcode:** C208 Upgrading steps change the image tag in .env first ([#539](https://github.com/GauranshMathur/BeyondLeetcode/issues/539)) ([6be978d](https://github.com/GauranshMathur/BeyondLeetcode/commit/6be978d5a8b2faafa79357f493f47140d070b4f6))
-* **beyondleetcode:** C218 a runbook for the CI credentials, the Tailscale OAuth client and a GitHub App ([#546](https://github.com/GauranshMathur/BeyondLeetcode/issues/546)) ([fbe6190](https://github.com/GauranshMathur/BeyondLeetcode/commit/fbe6190c965ec5ebae9fe6e7cac5887064669c13))
-* **beyondleetcode:** C219 Sprint 17 exit check ([#552](https://github.com/GauranshMathur/BeyondLeetcode/issues/552)) ([98899d1](https://github.com/GauranshMathur/BeyondLeetcode/commit/98899d1c0a2fb9598775418852b77d50e3b2e1af))
-* **beyondleetcode:** record the 1.19.3 cut ([#498](https://github.com/GauranshMathur/BeyondLeetcode/issues/498)) ([fb6d786](https://github.com/GauranshMathur/BeyondLeetcode/commit/fb6d786dcffbf137f481f5751766ee031ee75218))
-* **beyondleetcode:** Sprint 17 plan ([#536](https://github.com/GauranshMathur/BeyondLeetcode/issues/536)) ([da74e4f](https://github.com/GauranshMathur/BeyondLeetcode/commit/da74e4fee86ea6404b78f7cc68a0d6fa0f157a1f))
+- Long TypeScript Submits are less likely to hit the time limit on a slow host. A runtime error still names `main.ts` and your line (C207, #541).
+- A malformed or out-of-range result from the code Runner now fails the run instead of being silently dropped. A run stopped at the time limit still reports a timeout (C209, #548).
 
+### Changed
 
-### Tests
+- `docs/self-hosting.md`'s Upgrading steps say to set `BEYONDLEETCODE_IMAGE` in `.env` to the new tag before `docker compose pull && docker compose up -d`, because `init` pins the version it ran from (C208, #539).
+- New `docs/ci-credentials.md`: every CI credential, where it is read, and how to move the tailnet join to a Tailscale OAuth client and release-please to a GitHub App (C218, #546).
 
-* **beyondleetcode:** C211 fork-bomb test asserts the container's own lifetime ([#547](https://github.com/GauranshMathur/BeyondLeetcode/issues/547)) ([73e3cfe](https://github.com/GauranshMathur/BeyondLeetcode/commit/73e3cfe4803a6db9fdc8fe8729d4b9315dc92e2b))
-* **beyondleetcode:** C215 start.sandbox.test.ts binds its Runner to 127.0.0.1 ([#543](https://github.com/GauranshMathur/BeyondLeetcode/issues/543)) ([10371d7](https://github.com/GauranshMathur/BeyondLeetcode/commit/10371d7e8a0d23169584e36c4e8c47ef581705b9))
+### Content
 
+No content changes in this release.
 
-### CI
+### Security
 
-* **beyondleetcode:** C216 both tailnet joins take the Tailscale OAuth client, with the auth key as fallback ([#550](https://github.com/GauranshMathur/BeyondLeetcode/issues/550)) ([9118f83](https://github.com/GauranshMathur/BeyondLeetcode/commit/9118f8382e0dbe1c867147ecd88911466f4aaef4))
+- **No crash in Learner code starts the host's core-dump helper** (C205, #538; C222, #551).
+  - Every Sandbox's core rlimit is 1:1. A seccomp filter installed by the harness refuses any change to it: `setrlimit` and `prlimit64` on `RLIMIT_CORE`, with non-native and x32 syscalls refused too.
+  - Before this, on a host whose `core_pattern` pipes to a helper (Ubuntu's apport), a crash could start that helper as root, outside the Sandbox's limits.
+- **The Runner refuses to start with the placeholder token from `.env.example`,** and the example binds the Runner to 127.0.0.1 (C213, #542).
+- **Dependencies:**
+  - better-auth 1.7.12 → 1.7.17, which fixes revoked sessions staying usable with a cookie cache (off here), stops reading a string `email_verified: "false"` as verified, and stops following redirects on token exchange;
+  - SvelteKit 3.1.1, which stops server-side route resolution loading code from another origin for `//` paths;
+  - marked 18.1.3 and others (#537).
+- **Release and CI supply chain:**
+  - every third-party action in the workflows is pinned by commit, and CI fails on an unpinned one (C212, #540);
+  - the QEMU image the image builds use is pinned by digest (C212);
+  - `docker/login-action` 4.8.0 (#549) and `tailscale/github-action` 4.4.0 (#432);
+  - the event notifier no longer forwards an outsider's issue title (C214, #545).
+
+### Upgrade notes
+
+- **To upgrade:** set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.19.4` (or `latest`), then run `docker compose pull && docker compose up -d`. Before this release, `docker compose pull` alone re-pulled the version `init` had pinned.
+- **On a host whose `core_pattern` is a pipe (Ubuntu's apport):** each crash in Learner code now writes two kernel log lines ("has RLIMIT_CORE set to 1", "Aborting core") instead of starting the helper. The lines are not rate-limited. To make them silent, see `docs/self-hosting.md`: disable apport and set `kernel.core_pattern=core` under `/etc/sysctl.d/`.
+- **Developers:** a `.env` copied from `.env.example` must set its own `RUNNER_TOKEN`. The Runner now refuses the placeholder. Installs written by `init` are unaffected.
 
 ## [1.19.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.2...v1.19.3) (2026-11-05)
 
