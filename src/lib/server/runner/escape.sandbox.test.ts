@@ -434,6 +434,9 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
 		expect(elapsedMs).toBeLessThan(designBoundMs);
+		// The container's own life: the hard stop plus one remove attempt. CI's nine runs on main
+		// logged 1.1 s to 9.2 s, so this holds about 10 s above the slowest.
+		expect(lifetimeMs).toBeLessThan(sandboxConfig.containerTimeoutMs + removeAttemptTimeoutMs);
 		await healthy();
 	});
 });
