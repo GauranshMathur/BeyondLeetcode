@@ -70,8 +70,9 @@ export function containerSpec(
 			NanoCpus: sandboxConfig.nanoCpus,
 			PidsLimit: sandboxConfig.pidsLimit,
 			// core_pattern is not namespaced: a crash would start the host's core-dump helper as root,
-			// outside this Sandbox's cgroups. CapDrop ALL stops Learner code raising the hard limit.
-			Ulimits: [{ Name: 'core', Soft: 0, Hard: 0 }]
+			// outside this Sandbox's cgroups. A limit of 0 is ignored for a piped helper; 1 byte is the
+			// kernel's special value that skips it. CapDrop ALL stops Learner code raising the hard limit.
+			Ulimits: [{ Name: 'core', Soft: 1, Hard: 1 }]
 		}
 	};
 }

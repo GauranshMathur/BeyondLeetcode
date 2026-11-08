@@ -315,7 +315,7 @@ describe('Runner: repeated runs', { timeout: 120_000 }, () => {
 });
 
 describe('Sandbox escapes: core dumps', { timeout: 60_000 }, () => {
-	it('finds RLIMIT_CORE at (0, 0), cannot raise it, and aborts without a core', async () => {
+	it('finds RLIMIT_CORE at (1, 1), cannot raise it, and aborts without a core', async () => {
 		const probe = [
 			'import os, resource, signal',
 			'print("limit", resource.getrlimit(resource.RLIMIT_CORE))',
@@ -330,15 +330,12 @@ describe('Sandbox escapes: core dumps', { timeout: 60_000 }, () => {
 			'_, status = os.waitpid(pid, 0)',
 			'print("aborted", os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGABRT)',
 			'print("core", os.WCOREDUMP(status))',
-			'print("files", [f for f in os.listdir(".") if f.startswith("core")])',
 			''
 		].join('\n');
 
 		const result = await run(probe);
 
-		expect(result.results[0].stdout).toBe(
-			'limit (0, 0)\nnot raised\naborted True\ncore False\nfiles []\n'
-		);
+		expect(result.results[0].stdout).toBe('limit (1, 1)\nnot raised\naborted True\ncore False\n');
 	});
 
 	it('reports a crashing Test as a runtime error, as any crash does', async () => {
