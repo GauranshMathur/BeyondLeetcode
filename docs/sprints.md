@@ -790,10 +790,12 @@ For the maintainer:
 
 Release `R v1.19.4: Sprint 17 · Runner and CI hardening`, version 1.19.4 (patch, because no card is `feat`: the cards are `fix`, `test`, `ci`, `docs` and `chore`). release-please's #499 already proposes 1.19.4.
 
-- **Scope, set by the maintainer on 2026-11-08:**
+- **Scope.** The maintainer set it on 2026-11-08:
   - the Runner follow-ups: #481, #482, #491, #495 and #496;
   - the Dependabot PRs #432 and #433;
-  - #535's part 1, the Tailscale OAuth fallback, and a runbook for both its parts;
+  - the Tailscale and token items. Here that is #535's part 1, the Tailscale OAuth fallback, and a runbook for both of its parts.
+
+  The orchestrator added six findings from the hardening and docs sweeps the maintainer asked it to run:
   - the hardening findings that edit the same files as those cards, so the files are not reopened next sprint: #530 and #534 in the Runner, #531 and #532 in the CI workflows;
   - #506, because 1.19.4's fixes reach Instances only if the Upgrading steps work.
 
@@ -829,7 +831,7 @@ Release `R v1.19.4: Sprint 17 · Runner and CI hardening`, version 1.19.4 (patch
   #535 stays open. C216 and C218 prepare it, and C220 and C221 finish it.
 - **Decided before the sprint.** The orchestrator decided these on 2026-11-08, under the maintainer's rule to take the recommended option unless it is a hard call. Each is recorded on its issue:
   - #495: a Learner's runtime error still names `main.ts` and its line, through a source map, or a path rewrite if that measures cheaper.
-  - #482: fail loudly. C209 also fails the Run on a line the strict schema refuses; the orchestrator confirms that reading at dispatch.
+  - #482: fail loudly. C209 also fails the Run on a line the strict schema refuses, as the orchestrator confirmed on 2026-11-08.
   - #491: the CI data is in, so the bound is `containerTimeoutMs + removeAttemptTimeoutMs`.
   - #432 and #433: merge once rebased and green.
   - #535's part 2: a new action and a change of token, so it is the maintainer's call. This sprint only prepares it.
