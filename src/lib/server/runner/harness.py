@@ -11,9 +11,11 @@ TOTAL_CAP = 0
 DEADLINE = 0
 INPUTS = []
 BUILD_FILES = []
+EMITTED_FILES = []
 EXEC_BINARY = b""
 WORK = "/work"
 BUILD = WORK + "/build"
+OUT = WORK + "/out"  # TypeScript only: the JavaScript tsc emits, beside the Build, never inside it
 EXEC = "/exec"
 EXEC_BINARY_PATH = EXEC + "/main"
 MARK = "\n[output truncated]"
@@ -122,6 +124,11 @@ def fresh_build():
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "wb") as f:
             f.write(data)
+    for rel, data in EMITTED_FILES:
+        target = os.path.join(OUT, rel)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as f:
+            f.write(data)
     os.utime(WORK, (0, 0))
     if LANGUAGES[LANGUAGE]["exec"]:
         # /exec is the second tmpfs (exec allowed) holding the compiled binary. Same treatment as /work:
@@ -166,9 +173,14 @@ def compile_typescript():
     # Type errors are Compile Errors, as in a normal TypeScript project. erasableSyntaxOnly makes
     # enums and runtime namespaces (which Node's type stripping cannot run) fail here too.
     # --ignoreConfig: a learner tsconfig.json or jsconfig.json is never read (TS 6 exits 1 with TS5112 when files and a config coexist).
-    # allowImportingTsExtensions: Node needs "./util.ts" in imports, and tsc only allows that with it.
+    # allowImportingTsExtensions: tsc only allows "./util.ts" in imports with it, and
+    # rewriteRelativeImportExtensions turns them into "./util.js" in the emit.
+    # The type check is the one every Test used to pay for in `node` (stripping types again); it now
+    # runs once, and each Test runs the emitted JavaScript. The source map keeps a runtime error
+    # naming main.ts and the Learner's line (node --enable-source-maps).
     argv = [
-        "tsc", "--ignoreConfig", "--noEmit", "--pretty", "false", "--strict", "--target", "ES2023", "--lib", "ES2023",
+        "tsc", "--ignoreConfig", "--outDir", OUT, "--rootDir", BUILD, "--sourceMap",
+        "--rewriteRelativeImportExtensions", "--pretty", "false", "--strict", "--target", "ES2023", "--lib", "ES2023",
         "--module", "nodenext", "--erasableSyntaxOnly", "--allowImportingTsExtensions", "--skipLibCheck",
         "--typeRoots", "/opt/ts/node_modules/@types", "--types", "node",
     ] + sorted(sources)
@@ -246,7 +258,8 @@ LANGUAGES = {
         "error": {"exit": 1, "stream": "stderr", "pattern": SYNTAX_LINE}, "exec": False,
     },
     "typescript": {
-        "entry": "main.ts", "ext": ".ts", "run": lambda entry: ["node", entry], "compile": compile_typescript,
+        "entry": "main.ts", "ext": ".ts", "run": lambda entry: ["node", "--enable-source-maps", OUT + "/" + entry[:-3] + ".js"],
+        "compile": compile_typescript,
         "error": {"exit": 2, "stream": "stdout", "pattern": TSC_DIAGNOSTIC}, "exec": False,
     },
     "go": {
@@ -388,6 +401,13 @@ def main():
                 sys.exit("compile step failed with status %d" % compiled.returncode)
             emit({"compileError": text(diagnostics[:CAP], len(diagnostics) > CAP)})
             sys.exit(0)
+    if LANGUAGE == "typescript":
+        # The emitted JavaScript is kept in memory and put back before every Test (fresh_build).
+        for root, _, names in os.walk(OUT):
+            for name in names:
+                path = os.path.join(root, name)
+                with open(path, "rb") as f:
+                    EMITTED_FILES.append((os.path.relpath(path, OUT), f.read()))
     if language["exec"]:
         # The binary is kept in memory and put back before every Test (fresh_build).
         with open(EXEC_BINARY_PATH, "rb") as f:

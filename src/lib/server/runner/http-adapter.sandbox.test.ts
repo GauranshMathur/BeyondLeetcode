@@ -144,6 +144,45 @@ describe('Runner: typescript in a fresh Sandbox per run', { timeout: 60_000 }, (
 		expect(result.results[0]).toMatchObject({ status: 'ok', stdout: '42\n' });
 	});
 
+	it('names main.ts and the Learner line in a runtime error, from the emitted JavaScript', async () => {
+		const result = await runTs({
+			'main.ts': "const a: number = 1;\nconst b: number = 2;\nthrow new Error('boom ' + (a + b));\n"
+		});
+
+		expect(result.results[0].status).toBe('runtimeError');
+		expect(result.results[0].stderr).toMatch(/\/work\/build\/main\.ts:3\b/);
+		expect(result.results[0].stderr).toContain('boom 3');
+		expect(result.results[0].stderr).not.toMatch(/main\.js/);
+	});
+
+	it('names the imported file and its line when the error is thrown in ./util.ts', async () => {
+		const result = await runTs({
+			'main.ts': "import { fail } from './util.ts';\nfail();\n",
+			'util.ts': "export function fail(): never {\n  throw new Error('from util');\n}\n"
+		});
+
+		expect(result.results[0].status).toBe('runtimeError');
+		expect(result.results[0].stderr).toMatch(/\/work\/build\/util\.ts:2\b/);
+	});
+
+	it('restores the emitted JavaScript before every Test, so a Test cannot change the next', async () => {
+		const main = [
+			"import { readFileSync, appendFileSync, readdirSync } from 'node:fs';",
+			"const first = readFileSync(0, 'utf8') === 'first';",
+			"if (first) { for (const f of readdirSync('/work/out')) appendFileSync('/work/out/' + f, '\\nprocess.exit(7);'); }",
+			"console.log('ran');",
+			''
+		].join('\n');
+
+		const result = await runTs({ 'main.ts': main }, [
+			{ id: 'first', input: 'first' },
+			{ id: 'second', input: 'second' }
+		]);
+
+		expect(result.results.map((r) => r.status)).toEqual(['ok', 'ok']);
+		expect(result.results[1].stdout).toBe('ran\n');
+	});
+
 	it('ignores a learner tsconfig.json: the Build still runs with the fixed options', async () => {
 		const result = await runTs({
 			'main.ts': "const n: number = Number('2') + 3;\nconsole.log(n);\n",
