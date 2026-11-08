@@ -68,7 +68,10 @@ export function containerSpec(
 			Memory: memory,
 			MemorySwap: memory,
 			NanoCpus: sandboxConfig.nanoCpus,
-			PidsLimit: sandboxConfig.pidsLimit
+			PidsLimit: sandboxConfig.pidsLimit,
+			// core_pattern is not namespaced: a crash would start the host's core-dump helper as root,
+			// outside this Sandbox's cgroups. CapDrop ALL stops Learner code raising the hard limit.
+			Ulimits: [{ Name: 'core', Soft: 0, Hard: 0 }]
 		}
 	};
 }
