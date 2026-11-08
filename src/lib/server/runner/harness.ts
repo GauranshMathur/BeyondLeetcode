@@ -8,8 +8,8 @@ import { createTar } from './tar';
  * The fixed script that runs inside the Sandbox container (`python -I -c`: isolated, so nothing
  * learner-written in the working directory is ever imported into this process). It reads `<length>\n` and then
  * that many bytes of tar from stdin (the socket is never half-closed: Bun's net does not support it),
- * extracts it into the tmpfs work dir, checks the Build (py_compile, tsc --noEmit for TypeScript, or go build, which
- * also produces the binary, for Go), then runs each Test in its own
+ * extracts it into the tmpfs work dir, checks the Build (py_compile; for TypeScript tsc, which emits JavaScript to /work/out, each Test then
+ * running it with `node --enable-source-maps`; or go build, which also produces the binary, for Go), then runs each Test in its own
  * process and prints one JSON line per Test to stdout. Learner code never gets the harness's
  * stdout: it runs as a child with piped stdio.
  *
@@ -52,10 +52,13 @@ export function harnessInput(files: Record<string, string>, inputs: string[]): B
 	return Buffer.concat([Buffer.from(`${tar.length}\n`), tar]);
 }
 
-/** One JSON line the harness prints: a Compile Error, or a Test's result. */
+/**
+ * One JSON line the harness prints: a Compile Error, or a Test's result. Strict: a line with an
+ * unknown field is refused, and the Run fails (sandbox.ts).
+ */
 export const harnessLine = z.union([
-	z.object({ compileError: z.string() }),
-	z.object({
+	z.strictObject({ compileError: z.string() }),
+	z.strictObject({
 		i: z.number().int(),
 		status: z.enum(['ok', 'runtimeError', 'timeout']),
 		stdout: z.string(),

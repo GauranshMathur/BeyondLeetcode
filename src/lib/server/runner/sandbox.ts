@@ -104,6 +104,7 @@ async function execute(
 	let harnessStderr = '';
 	let received = 0;
 	let overflow = false;
+	let refusedLine = false;
 
 	// Named on our side: if the create call times out while the daemon completes it, the reply is
 	// lost but the name is not, and this Run can remove exactly that container. Random, so it
@@ -171,7 +172,10 @@ async function execute(
 				for (let end = partial.indexOf('\n'); end >= 0; end = partial.indexOf('\n')) {
 					const parsed = harnessLine.safeParse(safeJson(partial.slice(0, end)));
 					partial = partial.slice(end + 1);
+					// The harness prints only well-formed lines (harness.ts); anything else means
+					// the output cannot be trusted, so the Run fails after cleanup.
 					if (parsed.success) lines.push(parsed.data);
+					else refusedLine = true;
 				}
 			},
 			sandboxConfig.attachTimeoutMs
@@ -199,6 +203,17 @@ async function execute(
 	}
 
 	if (overflow) throw new Error('Sandbox produced more output than the Runner allows');
+	// Every harness line ends in a newline; bytes left over after a normal end are not its.
+	if (refusedLine || (!timedOut && partial !== '')) {
+		throw new Error(`Sandbox harness printed an unexpected line: ${harnessStderr}`);
+	}
+	for (const line of lines) {
+		if ('i' in line && (line.i < 0 || line.i >= request.tests.length)) {
+			throw new Error(
+				`Sandbox harness reported Test ${line.i}, outside the Test count of ${request.tests.length}`
+			);
+		}
+	}
 	for (const line of lines) {
 		if ('compileError' in line) return { compileError: line.compileError, results: [] };
 	}

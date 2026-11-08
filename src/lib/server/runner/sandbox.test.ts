@@ -115,6 +115,93 @@ describe('Sandbox runner: harness exit status', () => {
 	});
 });
 
+describe('Sandbox runner: a harness line the Runner cannot trust', () => {
+	const failsAsRunnerError = async (output: string, message: RegExp) => {
+		const { engine, calls } = fakeEngine({ output });
+		await expect(createSandboxRunner(engine, 'test-instance').execute(request)).rejects.toThrow(
+			message
+		);
+		expect(calls).toContain('remove c1');
+	};
+
+	it('fails the Run on a result line with an unknown field', async () => {
+		await failsAsRunnerError(
+			JSON.stringify({ i: 0, status: 'ok', stdout: 'hi', stderr: '', extra: 1 }),
+			/unexpected line/
+		);
+	});
+
+	it('fails the Run on a Compile Error line with an unknown field', async () => {
+		await failsAsRunnerError(JSON.stringify({ compileError: 'x', extra: 1 }), /unexpected line/);
+	});
+
+	it('fails the Run on trailing output that no newline ends', async () => {
+		const { engine } = fakeEngine({
+			attach: (async (_id: string, onFrame: (s: 1 | 2, p: Buffer) => void) => ({
+				sendInput() {
+					onFrame(1, Buffer.from(`${okLine}\n{"i"`));
+				},
+				closed: Promise.resolve(),
+				destroy() {}
+			})) as unknown as () => Promise<never>
+		});
+		await expect(createSandboxRunner(engine, 'test-instance').execute(request)).rejects.toThrow(
+			/unexpected line/
+		);
+	});
+
+	it('keeps a hard-stopped Run a timeout when its last line is half written', async () => {
+		vi.useFakeTimers();
+		try {
+			let end: () => void = () => {};
+			const closed = new Promise<void>((resolve) => {
+				end = resolve;
+			});
+			const { engine } = fakeEngine({
+				exitCode: 137,
+				attach: (async (_id: string, onFrame: (s: 1 | 2, p: Buffer) => void) => ({
+					sendInput() {
+						onFrame(1, Buffer.from(`${okLine}\n{"i": 1, "sta`));
+					},
+					closed,
+					destroy: end
+				})) as unknown as () => Promise<never>
+			});
+			const pending = createSandboxRunner(engine, 'test-instance').execute({
+				...request,
+				tests: [
+					{ id: 'a', input: '' },
+					{ id: 'b', input: '' }
+				]
+			});
+
+			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
+			const result = await pending;
+
+			expect(result.results.map((r) => [r.id, r.status])).toEqual([
+				['a', 'ok'],
+				['b', 'timeout']
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('fails the Run on a line that is not JSON', async () => {
+		await failsAsRunnerError('not json', /unexpected line/);
+	});
+
+	it.each([1, -1, 7])(
+		'fails the Run on a result whose i (%i) is outside the Test count',
+		async (i) => {
+			await failsAsRunnerError(
+				`${okLine}\n${JSON.stringify({ i, status: 'ok', stdout: '', stderr: '' })}`,
+				/Test count/
+			);
+		}
+	);
+});
+
 describe('Sandbox runner: Language', () => {
 	it('starts TypeScript and Go in their own images with RUNNER_LANGUAGE set, and Python in the stock one', async () => {
 		for (const [language, image] of [
