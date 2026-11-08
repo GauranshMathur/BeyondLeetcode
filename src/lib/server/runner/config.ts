@@ -1,4 +1,5 @@
 import type { Language } from '../../languages';
+import { isPlaceholderSecret } from '../identity/secret';
 
 const pythonImage = 'python:3.13-slim';
 /** Built from Dockerfile.sandbox-node: bump the tag number by hand whenever that file changes. */
@@ -39,8 +40,9 @@ export const sandboxConfig = {
 	containerTimeoutMs: 10_000,
 	/**
 	 * Most hidden Tests a Submission puts in one container. The harness starts a fresh process per
-	 * Test, about 0.2 s each in TypeScript whatever the code does, so 25 Tests take about 5 s of the
-	 * 10 s `containerTimeoutMs`, leaving half for slow learner code and the compile step.
+	 * Test, about 0.05 s each in TypeScript (run from the JavaScript `tsc` emits once), so 25 Tests
+	 * take about 1.3 s of the 10 s `containerTimeoutMs`, leaving the rest for slow learner code and
+	 * the compile step.
 	 */
 	hiddenBatchTests: 25,
 	/** Per-Test run time. */
@@ -142,6 +144,11 @@ export function readRunnerEnv(
 	const token = env.RUNNER_TOKEN;
 	if (!token) {
 		throw new Error('RUNNER_TOKEN is not set. Every request must present it as a bearer token.');
+	}
+	if (isPlaceholderSecret(token)) {
+		throw new Error(
+			'RUNNER_TOKEN is still the placeholder from .env.example. Set it to a random string of 32 or more characters.'
+		);
 	}
 	if (token.length < minTokenLength) {
 		throw new Error(`RUNNER_TOKEN must be at least ${minTokenLength} characters.`);
