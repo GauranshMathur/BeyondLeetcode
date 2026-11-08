@@ -152,6 +152,16 @@ describe('Sandbox runner: Language', () => {
 	});
 });
 
+describe('Sandbox runner: core dumps', () => {
+	it('sets the core rlimit to 1 byte, soft and hard, for every Language', () => {
+		for (const language of ['python', 'typescript', 'go'] as const) {
+			const { HostConfig } = containerSpec(language, 'test-instance', 1, 2000, 256);
+
+			expect(HostConfig.Ulimits).toEqual([{ Name: 'core', Soft: 1, Hard: 1 }]);
+		}
+	});
+});
+
 describe('Sandbox runner: leaks and stalls', () => {
 	it('retries a failing remove three times and does not mask the original error', async () => {
 		const { engine } = fakeEngine({

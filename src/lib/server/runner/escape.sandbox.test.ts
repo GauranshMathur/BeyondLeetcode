@@ -314,6 +314,37 @@ describe('Runner: repeated runs', { timeout: 120_000 }, () => {
 	});
 });
 
+describe('Sandbox escapes: core dumps', { timeout: 60_000 }, () => {
+	it('finds RLIMIT_CORE at (1, 1), cannot raise it, and aborts without a core', async () => {
+		const probe = [
+			'import os, resource, signal',
+			'print("limit", resource.getrlimit(resource.RLIMIT_CORE))',
+			'try:',
+			'    resource.setrlimit(resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))',
+			'    print("raised")',
+			'except (ValueError, OSError):',
+			'    print("not raised")',
+			'pid = os.fork()',
+			'if pid == 0:',
+			'    os.abort()',
+			'_, status = os.waitpid(pid, 0)',
+			'print("aborted", os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGABRT)',
+			'print("core", os.WCOREDUMP(status))',
+			''
+		].join('\n');
+
+		const result = await run(probe);
+
+		expect(result.results[0].stdout).toBe('limit (1, 1)\nnot raised\naborted True\ncore False\n');
+	});
+
+	it('reports a crashing Test as a runtime error, as any crash does', async () => {
+		const result = await run('import os\nos.abort()\n');
+
+		expect(result.results[0].status).toBe('runtimeError');
+	});
+});
+
 describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 	const healthy = async () => {
 		const next = await run('print("still serving")\n');
