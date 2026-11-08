@@ -20,8 +20,13 @@ else
   while IFS= read -r f; do files+=("$f"); done < <(find "$here/workflows" -type f \( -name '*.yml' -o -name '*.yaml' \) | sort)
 fi
 [ "${#files[@]}" -gt 0 ] || { echo "check-pins: no workflow files found" >&2; exit 1; }
+for f in "${files[@]}"; do
+  [ -f "$f" ] || { echo "check-pins: $f is not a file" >&2; exit 1; }
+done
 
-bad="$(awk '
+out="$(mktemp)"
+trap 'rm -f "$out"' EXIT
+awk '
   function pinned(v,   n, path, ref) {
     if (v ~ /\.\./) return 0
     if (v ~ /^\.\/[A-Za-z0-9_.\/-]+$/) return 1
@@ -33,26 +38,44 @@ bad="$(awk '
     if (path ~ /^actions\//) return ref ~ /^[A-Za-z0-9_.\/-]+$/
     return length(ref) == 40 && ref ~ /^[0-9a-f]+$/
   }
+  FNR == 1 { block = -1; usescol = -1 }
+  /^[ ]*$/ { next }
   /^[ ]*#/ { next }
   {
+    line = $0
+    match(line, /^[ ]*/); indent = RLENGTH
+    body = substr(line, indent + 1)
+    col = indent
+    if (body ~ /^- +/) { match(body, /^- +/); col = indent + RLENGTH; body = substr(body, RLENGTH + 1) }
+
+    # Inside a block scalar (run: |) the text is a script, not YAML; the uses and anchor rules still apply.
+    inblock = 0
+    if (block >= 0) { if (indent > block) inblock = 1; else block = -1 }
+
     ok = 0
-    if ($0 ~ /^[ ]*(- +)?uses: +[A-Za-z0-9_.\/@-]+( +#.*)? *$/) {
-      v = $0
-      sub(/^[ ]*(- +)?uses: +/, "", v)
+    if (usescol >= 0 && indent > usescol) {
+      ok = 0   # a continuation line would fold into the accepted value
+    } else if (line ~ /^[ ]*(- +)?uses: +[A-Za-z0-9_.\/@-]+( +#.*)? *$/) {
+      v = body
+      sub(/^uses: +/, "", v)
       sub(/[ #].*$/, "", v)
       ok = pinned(v)
-    } else if ($0 !~ /(^|[^A-Za-z0-9_])uses([^A-Za-z0-9_]|$)/ \
-               && $0 !~ /^[ ]*(- +)?["\047][^"\047]*["\047] *:/ \
-               && $0 !~ /[{,] *["\047][^"\047]*["\047] *:/ \
-               && $0 !~ /^[ ]*(- +)?\? / \
-               && $0 !~ /(^|[ :\[{,])&[A-Za-z0-9_-]/) {
+    } else if (line !~ /(^|[^A-Za-z0-9_])uses([^A-Za-z0-9_]|$)/ \
+               && (inblock || line !~ /["\047][^"\047]*["\047] *:/) \
+               && line !~ /^[ ]*(- +)?\? / \
+               && (inblock || line !~ /!!|![<]/) \
+               && (inblock || (body !~ /^["\047]/ && body !~ /^!/)) \
+               && line !~ /(^|[ :\[{,])&[A-Za-z0-9_-]/) {
       ok = 1
     }
+    usescol = -1
+    if (ok && line ~ /^[ ]*(- +)?uses: /) usescol = col
     if (!ok) print FILENAME ":" FNR ": " $0
-  }' "${files[@]}")"
+    if (!inblock && body ~ /[:-] +[|>][-+0-9]*( +#.*)?$/) block = col
+  }' "${files[@]}" >"$out" || { echo "check-pins: awk failed" >&2; exit 1; }
 
-if [ -n "$bad" ]; then
+if [ -s "$out" ]; then
   echo "These lines are not an action pinned by a full 40-hex commit SHA (or an actions/* ref, or a ./ path) in the canonical 'uses: <ref>' form:" >&2
-  echo "$bad" >&2
+  cat "$out" >&2
   exit 1
 fi

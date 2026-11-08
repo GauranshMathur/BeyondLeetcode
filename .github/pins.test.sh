@@ -49,6 +49,11 @@ check "c: escaped key in flow" 1 "      - {\"us\\\\x65s\": docker/login-action@v
 # (d) a complex key
 check "d: complex key" 1 "      - ? uses\n        : docker/login-action@v4"
 check "d: complex key, any name" 1 "      - ? \"u\"\n        : docker/login-action@v4"
+# Found in review round 2
+check "tagged escaped key" 1 "      - !!str \"us\\\\x65s\": docker/login-action@v4"
+check "multiline quoted key" 1 "      - \"us\\\\\n        es\": docker/login-action@v4"
+check "continuation folds into value" 1 "      - uses: docker/login-action@$sha\n          mutable"
+check "next sibling key is fine" 0 "      - uses: docker/login-action@$sha\n        with:\n          x: y"
 # Other spellings
 check "space before colon" 1 "      - uses : docker/login-action@v4"
 check "value on next line" 1 "      - uses:"
@@ -57,4 +62,5 @@ check "trailing text" 1 "      - uses: docker/login-action@$sha extra"
 check "tab" 1 "      - uses:\tdocker/login-action@v4"
 check "anchor" 1 "      - &step uses: docker/login-action@v4"
 check "uses in a run line" 1 "        run: echo uses"
+"$here/check-pins.sh" "$dir/does-not-exist.yml" >/dev/null 2>&1 && { echo "FAIL missing file passed"; fail=1; } || echo "ok   missing file"
 exit "$fail"
