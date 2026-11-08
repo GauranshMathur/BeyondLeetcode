@@ -222,11 +222,11 @@ describe('Runner: typescript in a fresh Sandbox per run', { timeout: 60_000 }, (
 			'  for (const e of readdirSync(dir, { withFileTypes: true })) {',
 			"    const p = dir + '/' + e.name;",
 			'    if (e.isDirectory()) walk(p);',
-			"    else if (p !== '/work/build/main.ts' && !p.startsWith('/work/out/')) seen.push(p + ' ' + readFileSync(p, 'utf8'));",
+			"    else if (!['/work/build/main.ts', '/work/out/main.js', '/work/out/main.js.map'].includes(p)) seen.push(p + ' ' + readFileSync(p, 'utf8'));",
 			'  }',
 			'};',
 			"walk('/work');",
-			"for (const w of ['/work/stash', '/work/build/stash']) { try { writeFileSync(w, data); } catch {} }",
+			"for (const w of ['/work/stash', '/work/build/stash', '/work/out/stash']) { try { writeFileSync(w, data); } catch {} }",
 			"console.log(seen.join('\\n'));",
 			''
 		].join('\n');

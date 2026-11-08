@@ -1,6 +1,6 @@
 # The protocol this script speaks is described in harness.ts.
 
-import ctypes, io, json, os, re, shutil, signal, stat, subprocess, sys, tarfile, threading, time, traceback
+import ctypes, io, json, os, platform, re, shutil, signal, stat, subprocess, sys, tarfile, threading, time, traceback
 
 # Set by main() from the RUNNER_* variables. Importing this file runs nothing.
 LANGUAGE = ""
@@ -362,12 +362,83 @@ def run_tests():
         spent += emit({"i": i, "status": status, "stdout": text(o, o_over), "stderr": text(e, e_over)})
 
 
+def seccomp_program(machine):
+    # Classic BPF over struct seccomp_data (nr at 0, arch at 4, args at 16 + 8 * n; little-endian, so
+    # the low 32 bits of an argument come first). Jumps may only go forward, so the shared returns
+    # sit at the end. What it does: a non-native arch (closes i386 int 0x80) and, on x86_64, x32
+    # syscalls get ENOSYS; setrlimit(RLIMIT_CORE) and prlimit64(RLIMIT_CORE) with a new limit get
+    # EPERM; everything else is allowed. It stacks on Docker's default profile.
+    if machine == "x86_64":
+        audit, setrlimit, prlimit64, x32 = 0xC000003E, 160, 302, True
+    elif machine in ("aarch64", "arm64"):
+        audit, setrlimit, prlimit64, x32 = 0xC00000B7, 164, 261, False
+    else:
+        sys.exit("no seccomp filter for " + machine)
+    LD, JEQ, JSET, RET = 0x20, 0x15, 0x45, 0x06
+    RLIMIT_CORE = 4
+    program = [
+        (LD, 0, 0, 4), (JEQ, "nr", "bad", audit),
+        ("nr",), (LD, 0, 0, 0),
+    ]
+    if x32:
+        program.append((JSET, "bad", 0, 0x40000000))
+    program += [
+        (JEQ, "sr", 0, setrlimit), (JEQ, "pl", "allow", prlimit64),
+        ("sr",), (LD, 0, 0, 16), (JEQ, "deny", "allow", RLIMIT_CORE),
+        # prlimit64(pid, resource, new_limit, old_limit): only a call with a non-NULL new_limit
+        # (both halves of the pointer) changes anything.
+        ("pl",), (LD, 0, 0, 24), (JEQ, 0, "allow", RLIMIT_CORE),
+        (LD, 0, 0, 32), (JEQ, 0, "deny", 0),
+        (LD, 0, 0, 36), (JEQ, "allow", "deny", 0),
+        ("deny",), (RET, 0, 0, 0x00050000 | 1),
+        ("bad",), (RET, 0, 0, 0x00050000 | 38),
+        ("allow",), (RET, 0, 0, 0x7FFF0000),
+    ]
+    labels, count = {}, 0
+    for item in program:
+        if len(item) == 1:
+            labels[item[0]] = count
+        else:
+            count += 1
+    rows, count = [], 0
+    for item in program:
+        if len(item) == 1:
+            continue
+        code, jt, jf, k = item
+        count += 1
+        rows.append((code, labels[jt] - count if isinstance(jt, str) else jt,
+                     labels[jf] - count if isinstance(jf, str) else jf, k))
+    return rows
+
+
+def install_seccomp():
+    # Learner code shares our uid and may lower its own soft RLIMIT_CORE, which would start the
+    # host's piped core-dump helper as root; this holds the limit at the 1:1 the container sets.
+    # Installed before anything is compiled or run, so every compile and Test process inherits it.
+    rows = seccomp_program(platform.machine())
+
+    class Insn(ctypes.Structure):
+        _fields_ = [("code", ctypes.c_uint16), ("jt", ctypes.c_uint8), ("jf", ctypes.c_uint8), ("k", ctypes.c_uint32)]
+
+    class Prog(ctypes.Structure):
+        _fields_ = [("len", ctypes.c_uint16), ("filter", ctypes.POINTER(Insn))]
+
+    insns = (Insn * len(rows))(*[Insn(*row) for row in rows])
+    prog = Prog(len(rows), insns)
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.prctl.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong]
+    # PR_SET_NO_NEW_PRIVS (the container sets it too), then PR_SET_SECCOMP / SECCOMP_MODE_FILTER.
+    if libc.prctl(38, 1, 0, 0, 0) != 0 or libc.prctl(22, 2, ctypes.addressof(prog), 0, 0) != 0:
+        sys.exit("seccomp filter failed: errno %d" % ctypes.get_errno())
+
+
 def main():
     global LANGUAGE, COUNT, TIMEOUT, CAP, TOTAL_CAP, DEADLINE, EXEC_BINARY
     # Learner code shares our uid. Not dumpable: it cannot open /proc/1/fd/1 (the result channel) or
     # read our memory; ignoring SIGINT stops it interrupting us with os.kill(1, SIGINT).
     ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    install_seccomp()
 
     LANGUAGE = os.environ["RUNNER_LANGUAGE"]
     COUNT = int(os.environ["RUNNER_TEST_COUNT"])
