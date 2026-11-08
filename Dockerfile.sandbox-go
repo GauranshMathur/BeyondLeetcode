@@ -7,8 +7,8 @@ ARG PYTHON_IMAGE=python:3.13-slim
 
 # Same Debian release as the python image, so the Go tool's libc needs are met.
 FROM golang:${GO_VERSION}-trixie AS tools
-# These are the flags the harness compiles with (harness.ts), so the cache entries made here are the
-# ones it hits: -trimpath is part of every cache key. No cgo, so no C compiler is ever needed.
+# These are the flags the harness compiles with (the `LANGUAGES` table in harness.py), so the cache
+# entries made here are the ones it hits: -trimpath is part of every cache key. No cgo, so no C compiler is ever needed.
 ENV GOCACHE=/opt/gocache GOFLAGS=-trimpath CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=off GOTELEMETRY=off GOENV=off
 COPY <<'WARM' /warm/main.go
 package main
