@@ -38,7 +38,7 @@ awk '
     if (path ~ /^actions\//) return ref ~ /^[A-Za-z0-9_.\/-]+$/
     return length(ref) == 40 && ref ~ /^[0-9a-f]+$/
   }
-  FNR == 1 { block = -1; usescol = -1 }
+  FNR == 1 { block = -1; usescol = -1; flow = 0 }
   /^[ ]*$/ { next }
   /^[ ]*#/ { next }
   {
@@ -53,7 +53,9 @@ awk '
     if (block >= 0) { if (indent > block) inblock = 1; else block = -1 }
 
     ok = 0
-    if (usescol >= 0 && indent > usescol) {
+    if (flow > 0 && line ~ /(^|[^A-Za-z0-9_])uses([^A-Za-z0-9_]|$)/) {
+      ok = 0   # a uses inside a multi-line flow collection is not the canonical block form
+    } else if (usescol >= 0 && indent > usescol) {
       ok = 0   # a continuation line would fold into the accepted value
     } else if (line ~ /^[ ]*(- +)?uses: +[A-Za-z0-9_.\/@-]+( +#.*)? *$/) {
       v = body
@@ -61,9 +63,9 @@ awk '
       sub(/[ #].*$/, "", v)
       ok = pinned(v)
     } else if (line !~ /(^|[^A-Za-z0-9_])uses([^A-Za-z0-9_]|$)/ \
-               && (inblock || line !~ /["\047][^"\047]*["\047] *:/) \
+               && line !~ /(^|[{,]|- |![^ ]+ )[ ]*["\047][^"\047]*["\047] *:/ \
                && line !~ /^[ ]*(- +)?\? / \
-               && (inblock || line !~ /!!|![<]/) \
+               && line !~ /!!|![<]/ \
                && (inblock || (body !~ /^["\047]/ && body !~ /^!/)) \
                && line !~ /(^|[ :\[{,])&[A-Za-z0-9_-]/) {
       ok = 1
@@ -71,7 +73,12 @@ awk '
     usescol = -1
     if (ok && line ~ /^[ ]*(- +)?uses: /) usescol = col
     if (!ok) print FILENAME ":" FNR ": " $0
-    if (!inblock && body ~ /[:-] +[|>][-+0-9]*( +#.*)?$/) block = col
+    if (!inblock && body ~ /^[^#]*[:-] +[|>][-+0-9]*( +#.*)?$/) block = col
+    if (!inblock) {
+      t = line
+      flow += gsub(/[{\[]/, "", t) - gsub(/[}\]]/, "", t)
+      if (flow < 0) flow = 0
+    }
   }' "${files[@]}" >"$out" || { echo "check-pins: awk failed" >&2; exit 1; }
 
 if [ -s "$out" ]; then

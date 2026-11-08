@@ -54,6 +54,10 @@ check "tagged escaped key" 1 "      - !!str \"us\\\\x65s\": docker/login-action@
 check "multiline quoted key" 1 "      - \"us\\\\\n        es\": docker/login-action@v4"
 check "continuation folds into value" 1 "      - uses: docker/login-action@$sha\n          mutable"
 check "next sibling key is fine" 0 "      - uses: docker/login-action@$sha\n        with:\n          x: y"
+check "comment fakes a block scalar" 1 "      steps: # : |\n      - \"us\\\\x65s\": docker/login-action@v4"
+check "multi-line flow mapping" 1 "      - {name: x,\n         uses: docker/login-action@v4\n        }"
+check "multi-line flow mapping, pinned" 1 "      - {name: x,\n         uses: docker/login-action@$sha\n        }"
+check "script with quotes and colons" 0 "        run: |\n          trap 'echo \"::warning::x\"; exit 0' ERR"
 # Other spellings
 check "space before colon" 1 "      - uses : docker/login-action@v4"
 check "value on next line" 1 "      - uses:"
