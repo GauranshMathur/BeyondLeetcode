@@ -73,6 +73,8 @@ jobs:
           ISSUE_ACTION: ${{ github.event.action }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_ASSOCIATION: ${{ github.event.issue.author_association }}
           RUN_WORKFLOW: ${{ github.event.workflow_run.name }}
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           RUN_TITLE: ${{ github.event.workflow_run.display_title }}
@@ -92,8 +94,15 @@ jobs:
               PAYLOAD=$(jq -n --argjson number "$PR_NUMBER" --arg title "$PR_TITLE" --arg actor "$ACTOR" \
                 '{kind:"pull_request", number:$number, title:$title, actor:$actor}') ;;
             issues)
-              PAYLOAD=$(jq -n --arg action "$ISSUE_ACTION" --argjson number "$ISSUE_NUMBER" --arg title "$ISSUE_TITLE" \
-                '{kind:"issues", action:$action, number:$number, title:$title}') ;;
+              # Any account can open an issue and this run still gets secrets, so the title travels only when
+              # the repo's own people wrote it; an outsider's issue sends its number and "outside author".
+              case "$ISSUE_ASSOCIATION" in
+                OWNER|MEMBER|COLLABORATOR) ISSUE_TITLE_SENT="$ISSUE_TITLE" ;;
+                *) ISSUE_TITLE_SENT="outside author" ;;
+              esac
+              PAYLOAD=$(jq -n --arg action "$ISSUE_ACTION" --argjson number "$ISSUE_NUMBER" --arg title "$ISSUE_TITLE_SENT" \
+                --arg author "$ISSUE_AUTHOR" --arg assoc "$ISSUE_ASSOCIATION" \
+                '{kind:"issues", action:$action, number:$number, title:$title, author:$author, author_association:$assoc}') ;;
             workflow_run)
               PAYLOAD=$(jq -n --arg workflow "$RUN_WORKFLOW" --arg conclusion "$RUN_CONCLUSION" --arg title "$RUN_TITLE" \
                 '{kind:"workflow_run", workflow:$workflow, conclusion:$conclusion, title:$title}') ;;
