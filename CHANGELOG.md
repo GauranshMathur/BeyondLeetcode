@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.19.4](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.3...v1.19.4) (2026-11-08)
+
+
+### Fixes
+
+* **beyondleetcode:** C205 Runner: every Sandbox's core rlimit is 1:1 ([#538](https://github.com/GauranshMathur/BeyondLeetcode/issues/538)) ([2ba2ee7](https://github.com/GauranshMathur/BeyondLeetcode/commit/2ba2ee74bcbcf65775ddb5f96ac1a81b0197e2f3))
+* **beyondleetcode:** C207 Runner: TypeScript compiles once, and each Test runs the emitted JavaScript ([#541](https://github.com/GauranshMathur/BeyondLeetcode/issues/541)) ([091430e](https://github.com/GauranshMathur/BeyondLeetcode/commit/091430eca8ac60d322da147294a4b6ac8baea705))
+* **beyondleetcode:** C209 Runner: a harness line with an unknown field, or an out-of-range Test, fails the Run ([#548](https://github.com/GauranshMathur/BeyondLeetcode/issues/548)) ([0b5726c](https://github.com/GauranshMathur/BeyondLeetcode/commit/0b5726c725d98060ec64ced4e188b3a0b92922c6))
+* **beyondleetcode:** C212 ci.yml pins third-party actions by SHA, and lint checks every pin ([#540](https://github.com/GauranshMathur/BeyondLeetcode/issues/540)) ([48d254a](https://github.com/GauranshMathur/BeyondLeetcode/commit/48d254a67ea8fd2c43d081942a1835127fc376ed))
+* **beyondleetcode:** C213 Runner refuses the .env.example token; example binds 127.0.0.1 ([#542](https://github.com/GauranshMathur/BeyondLeetcode/issues/542)) ([a7026ee](https://github.com/GauranshMathur/BeyondLeetcode/commit/a7026ee1dbb09f96366c95851d4ef6d5ec3f25e6))
+* **beyondleetcode:** C214 notify.yml sends an issue's title only when the repo's own people wrote it ([#545](https://github.com/GauranshMathur/BeyondLeetcode/issues/545)) ([e4035cd](https://github.com/GauranshMathur/BeyondLeetcode/commit/e4035cd41113f64ca737616bc18ae741d956eb70))
+* **beyondleetcode:** C222 Runner: a seccomp filter holds every Sandbox's core rlimit at 1 ([#551](https://github.com/GauranshMathur/BeyondLeetcode/issues/551)) ([aae47f5](https://github.com/GauranshMathur/BeyondLeetcode/commit/aae47f5de78043dabc69a30e761d47d234f216eb))
+
+
+### Documentation
+
+* **beyondleetcode:** C208 Upgrading steps change the image tag in .env first ([#539](https://github.com/GauranshMathur/BeyondLeetcode/issues/539)) ([6be978d](https://github.com/GauranshMathur/BeyondLeetcode/commit/6be978d5a8b2faafa79357f493f47140d070b4f6))
+* **beyondleetcode:** C218 a runbook for the CI credentials, the Tailscale OAuth client and a GitHub App ([#546](https://github.com/GauranshMathur/BeyondLeetcode/issues/546)) ([fbe6190](https://github.com/GauranshMathur/BeyondLeetcode/commit/fbe6190c965ec5ebae9fe6e7cac5887064669c13))
+* **beyondleetcode:** C219 Sprint 17 exit check ([#552](https://github.com/GauranshMathur/BeyondLeetcode/issues/552)) ([98899d1](https://github.com/GauranshMathur/BeyondLeetcode/commit/98899d1c0a2fb9598775418852b77d50e3b2e1af))
+* **beyondleetcode:** record the 1.19.3 cut ([#498](https://github.com/GauranshMathur/BeyondLeetcode/issues/498)) ([fb6d786](https://github.com/GauranshMathur/BeyondLeetcode/commit/fb6d786dcffbf137f481f5751766ee031ee75218))
+* **beyondleetcode:** Sprint 17 plan ([#536](https://github.com/GauranshMathur/BeyondLeetcode/issues/536)) ([da74e4f](https://github.com/GauranshMathur/BeyondLeetcode/commit/da74e4fee86ea6404b78f7cc68a0d6fa0f157a1f))
+
+
+### Tests
+
+* **beyondleetcode:** C211 fork-bomb test asserts the container's own lifetime ([#547](https://github.com/GauranshMathur/BeyondLeetcode/issues/547)) ([73e3cfe](https://github.com/GauranshMathur/BeyondLeetcode/commit/73e3cfe4803a6db9fdc8fe8729d4b9315dc92e2b))
+* **beyondleetcode:** C215 start.sandbox.test.ts binds its Runner to 127.0.0.1 ([#543](https://github.com/GauranshMathur/BeyondLeetcode/issues/543)) ([10371d7](https://github.com/GauranshMathur/BeyondLeetcode/commit/10371d7e8a0d23169584e36c4e8c47ef581705b9))
+
+
+### CI
+
+* **beyondleetcode:** C216 both tailnet joins take the Tailscale OAuth client, with the auth key as fallback ([#550](https://github.com/GauranshMathur/BeyondLeetcode/issues/550)) ([9118f83](https://github.com/GauranshMathur/BeyondLeetcode/commit/9118f8382e0dbe1c867147ecd88911466f4aaef4))
+
 ## [1.19.3](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.2...v1.19.3) (2026-11-05)
 
 ### Highlights
