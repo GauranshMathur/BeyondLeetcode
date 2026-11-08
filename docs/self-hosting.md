@@ -73,7 +73,7 @@ These settings go in the `.env` next to `compose.yaml`.
 
 ## Upgrading
 
-Pull a new image and recreate: `docker compose pull && docker compose up -d`. Migrations run when `web` starts. `init` never touches existing files, so for settings added later, edit your `compose.yaml` and `.env` as described above.
+`.env` names the exact version `init` ran from (`BEYONDLEETCODE_IMAGE=ghcr.io/gauranshmathur/beyondleetcode:vX.Y.Z`), and `compose.yaml` runs that image, so pulling alone fetches the same version again. To upgrade, set `BEYONDLEETCODE_IMAGE` in `.env` to the new tag (or to `:latest` to follow releases), then pull and recreate: `docker compose pull && docker compose up -d`. Migrations run when `web` starts. `init` never touches existing files, so for settings added later, edit your `compose.yaml` and `.env` as described above.
 
 **If `web` stops with `stopped_the_same_provider_identity_belongs_to_different_users_resolve_by_hand`,** the `20261023000000_learner_relations` migration found one GitHub or Google identity attached to two Users, and will not guess which keeps it. Recover by hand:
 
