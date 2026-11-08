@@ -163,7 +163,7 @@ jobs:
     concurrency:
       group: publish-sandbox-${{ matrix.name }}
       cancel-in-progress: false
-    needs: [sandbox, sandbox-images]
+    needs: [lint, sandbox, sandbox-images]
     strategy:
       fail-fast: false
       matrix:
