@@ -61,7 +61,9 @@ function dockerHostGateway(): string {
  * it. The bomb container is the last this Runner instance created at or after `sinceMs` that also
  * started; undefined when Docker reported no such container or no die event.
  */
-function bombContainerTimes(sinceMs: number): { lifetimeMs: number; destroyMs?: number } | undefined {
+function bombContainerTimes(
+	sinceMs: number
+): { lifetimeMs: number; destroyMs?: number } | undefined {
 	let out: string;
 	try {
 		out = execFileSync(
@@ -88,7 +90,8 @@ function bombContainerTimes(sinceMs: number): { lifetimeMs: number; destroyMs?: 
 		const [action, id, nano] = l.split(' ');
 		return { action, id, ms: Number(BigInt(nano)) / 1e6 };
 	});
-	const at = (action: string, id: string) => events.find((e) => e.action === action && e.id === id)?.ms;
+	const at = (action: string, id: string) =>
+		events.find((e) => e.action === action && e.id === id)?.ms;
 	// A create that failed (an accepted outcome) leaves no start; never fall back to an earlier test's container.
 	const bombId = events.findLast(
 		(e) => e.action === 'create' && e.ms >= sinceMs && at('start', e.id) !== undefined
