@@ -51,17 +51,20 @@ jobs:
               line = $0
               sub(/[[:space:]]#.*$/, "", line)
               q = "[\"\047]"
-              if (!match(line, "(^|[^A-Za-z0-9_./-])" q "?[u]ses" q "?[[:space:]]*:")) next
-              v = substr(line, RSTART + RLENGTH)
-              sub("^[[:space:]]*" q "?", "", v)
-              sub("[[:space:]\"\047,}].*$", "", v)
-              ok = 0
-              if (v ~ /^(actions\/|\.\/)/) ok = 1
-              else if ((n = index(v, "@")) > 0) {
-                ref = substr(v, n + 1)
-                if (length(ref) == 40 && ref ~ /^[0-9a-f]+$/) ok = 1
+              rest = line
+              while (match(rest, "(^|[^A-Za-z0-9_./-])" q "?[u]ses" q "?[[:space:]]*:")) {
+                v = substr(rest, RSTART + RLENGTH)
+                rest = v
+                sub("^[[:space:]]*" q "?", "", v)
+                sub("[[:space:]\"\047,}].*$", "", v)
+                ok = 0
+                if (v ~ /^(actions\/|\.\/)/) ok = 1
+                else if ((n = index(v, "@")) > 0) {
+                  ref = substr(v, n + 1)
+                  if (length(ref) == 40 && ref ~ /^[0-9a-f]+$/) ok = 1
+                }
+                if (!ok) { print FILENAME ":" FNR ": " $0; break }
               }
-              if (!ok) print FILENAME ":" FNR ": " $0
             }' $(find .github/workflows -type f \( -name "*.yml" -o -name "*.yaml" \)))
           if [ -n "$bad" ]; then
             echo "These action references are not pinned by a full 40-hex commit SHA:" >&2
