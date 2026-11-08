@@ -136,6 +136,13 @@ jobs:
         run: echo "::notice::$IMAGE:$TAG is already published, not overwriting it or moving latest"
       - if: steps.exists.outputs.published != 'true'
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          # The action's default is the moving docker.io/tonistiigi/binfmt:latest, which it runs --privileged here.
+          # Pinned by index digest; Dependabot does not bump it. To bump: pick a newer qemu-vX.Y.Z-N tag at
+          # https://hub.docker.com/r/tonistiigi/binfmt/tags, read its digest with
+          # `docker buildx imagetools inspect docker.io/tonistiigi/binfmt:<tag>`, and change all three pins together
+          # (ci.yml publish-sandbox and publish-edge, release.yml publish-release).
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
       - if: steps.exists.outputs.published != 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - if: steps.exists.outputs.published != 'true'

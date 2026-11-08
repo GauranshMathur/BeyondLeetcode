@@ -40,37 +40,11 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - name: Check third-party actions are pinned by SHA
-        # Outside actions/*, every action reference in the workflows needs a 40-hex ref, so a moved tag
-        # cannot reach a job that holds a credential. Local ./ actions are exempt. The check reads the key
-        # and its value only (comments are cut, quoted and flow-style keys are caught) and fails closed:
-        # a value it cannot read is reported. [u]ses keeps this script from matching itself.
-        run: |
-          bad=$(awk '
-            /^[[:space:]]*#/ { next }
-            {
-              line = $0
-              sub(/[[:space:]]#.*$/, "", line)
-              q = "[\"\047]"
-              rest = line
-              while (match(rest, "(^|[^A-Za-z0-9_./-])" q "?[u]ses" q "?[[:space:]]*:")) {
-                v = substr(rest, RSTART + RLENGTH)
-                rest = v
-                sub("^[[:space:]]*" q "?", "", v)
-                sub("[[:space:]\"\047,}].*$", "", v)
-                ok = 0
-                if (v ~ /^(actions\/|\.\/)/) ok = 1
-                else if ((n = index(v, "@")) > 0) {
-                  ref = substr(v, n + 1)
-                  if (length(ref) == 40 && ref ~ /^[0-9a-f]+$/) ok = 1
-                }
-                if (!ok) { print FILENAME ":" FNR ": " $0; break }
-              }
-            }' $(find .github/workflows -type f \( -name "*.yml" -o -name "*.yaml" \)))
-          if [ -n "$bad" ]; then
-            echo "These action references are not pinned by a full 40-hex commit SHA:" >&2
-            echo "$bad" >&2
-            exit 1
-          fi
+        # Outside actions/*, every action in the workflows needs a 40-hex ref, so a moved tag cannot reach a job
+        # that holds a credential. The restricted syntax it accepts is in check-pins.sh.
+        run: .github/check-pins.sh
+      - name: Test the pin check
+        run: .github/pins.test.sh
       - name: Test the published-tag check
         run: .github/published.test.sh
       - name: Test the release gate's wait for ci
@@ -214,6 +188,13 @@ jobs:
         run: .github/published.sh "${{ steps.image.outputs.ref }}" >> "$GITHUB_OUTPUT"
       - if: steps.exists.outputs.published != 'true'
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          # The action's default is the moving docker.io/tonistiigi/binfmt:latest, which it runs --privileged here.
+          # Pinned by index digest; Dependabot does not bump it. To bump: pick a newer qemu-vX.Y.Z-N tag at
+          # https://hub.docker.com/r/tonistiigi/binfmt/tags, read its digest with
+          # `docker buildx imagetools inspect docker.io/tonistiigi/binfmt:<tag>`, and change all three pins together
+          # (ci.yml publish-sandbox and publish-edge, release.yml publish-release).
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
       - if: steps.exists.outputs.published != 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - if: steps.exists.outputs.published != 'true'
@@ -300,6 +281,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          # The action's default is the moving docker.io/tonistiigi/binfmt:latest, which it runs --privileged here.
+          # Pinned by index digest; Dependabot does not bump it. To bump: pick a newer qemu-vX.Y.Z-N tag at
+          # https://hub.docker.com/r/tonistiigi/binfmt/tags, read its digest with
+          # `docker buildx imagetools inspect docker.io/tonistiigi/binfmt:<tag>`, and change all three pins together
+          # (ci.yml publish-sandbox and publish-edge, release.yml publish-release).
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
