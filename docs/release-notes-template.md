@@ -68,5 +68,5 @@ No security changes in this release.
 ### Upgrade notes
 
 _Anything an operator must do or know when deploying: config, env, data, breaking changes._
-Nothing to do. Pull `vX.Y.Z` or `latest`.
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `vX.Y.Z` (or `latest`), then run `docker compose pull && docker compose up -d`.
 ```
