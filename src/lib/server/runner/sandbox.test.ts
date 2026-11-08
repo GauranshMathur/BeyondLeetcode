@@ -115,6 +115,41 @@ describe('Sandbox runner: harness exit status', () => {
 	});
 });
 
+describe('Sandbox runner: a harness line the Runner cannot trust', () => {
+	const failsAsRunnerError = async (output: string, message: RegExp) => {
+		const { engine, calls } = fakeEngine({ output });
+		await expect(createSandboxRunner(engine, 'test-instance').execute(request)).rejects.toThrow(
+			message
+		);
+		expect(calls).toContain('remove c1');
+	};
+
+	it('fails the Run on a result line with an unknown field', async () => {
+		await failsAsRunnerError(
+			JSON.stringify({ i: 0, status: 'ok', stdout: 'hi', stderr: '', extra: 1 }),
+			/unexpected line/
+		);
+	});
+
+	it('fails the Run on a Compile Error line with an unknown field', async () => {
+		await failsAsRunnerError(JSON.stringify({ compileError: 'x', extra: 1 }), /unexpected line/);
+	});
+
+	it('fails the Run on a line that is not JSON', async () => {
+		await failsAsRunnerError('not json', /unexpected line/);
+	});
+
+	it.each([1, -1, 7])(
+		'fails the Run on a result whose i (%i) is outside the Test count',
+		async (i) => {
+			await failsAsRunnerError(
+				`${okLine}\n${JSON.stringify({ i, status: 'ok', stdout: '', stderr: '' })}`,
+				/Test count/
+			);
+		}
+	);
+});
+
 describe('Sandbox runner: Language', () => {
 	it('starts TypeScript and Go in their own images with RUNNER_LANGUAGE set, and Python in the stock one', async () => {
 		for (const [language, image] of [
