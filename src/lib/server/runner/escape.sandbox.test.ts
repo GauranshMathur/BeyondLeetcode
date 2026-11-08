@@ -57,10 +57,11 @@ function dockerHostGateway(): string {
 }
 
 /**
- * The container's own lifetime (die minus create, ms) from Docker's events for this Runner
- * instance's containers since `sinceMs`, or undefined when Docker reported no pair.
+ * The bomb container's own times, in ms after its create: when it died and when Docker destroyed
+ * it. The bomb container is the last this Runner instance created at or after `sinceMs` that also
+ * started; undefined when Docker reported no such container or no die event.
  */
-function containerLifetimeMs(sinceMs: number): number | undefined {
+function bombContainerTimes(sinceMs: number): { lifetimeMs: number; destroyMs?: number } | undefined {
 	let out: string;
 	try {
 		out = execFileSync(
@@ -68,7 +69,7 @@ function containerLifetimeMs(sinceMs: number): number | undefined {
 			[
 				'events',
 				'--since',
-				String(Math.floor(sinceMs / 1000) - 1),
+				(sinceMs / 1000).toFixed(3),
 				'--until',
 				String(Math.ceil(Date.now() / 1000) + 1),
 				'--filter',
@@ -83,17 +84,28 @@ function containerLifetimeMs(sinceMs: number): number | undefined {
 	} catch {
 		return undefined;
 	}
-	// The bomb's container is the last this instance made; pair its create with its own die.
-	const events = lines(out).map((l) => l.split(' '));
-	const bombId = events.findLast(([action]) => action === 'create')?.[1];
-	const at = (action: string) => {
-		const event = events.find(([a, id]) => a === action && id === bombId);
-		return event ? Number(BigInt(event[2])) / 1e6 : undefined;
+	const events = lines(out).map((l) => {
+		const [action, id, nano] = l.split(' ');
+		return { action, id, ms: Number(BigInt(nano)) / 1e6 };
+	});
+	const at = (action: string, id: string) => events.find((e) => e.action === action && e.id === id)?.ms;
+	// A create that failed (an accepted outcome) leaves no start; never fall back to an earlier test's container.
+	const bombId = events.findLast(
+		(e) => e.action === 'create' && e.ms >= sinceMs && at('start', e.id) !== undefined
+	)?.id;
+	if (bombId === undefined) return undefined;
+	const created = at('create', bombId) as number;
+	const died = at('die', bombId);
+	const destroyed = at('destroy', bombId);
+	if (died === undefined) return undefined;
+	return {
+		lifetimeMs: died - created,
+		destroyMs: destroyed === undefined ? undefined : destroyed - created
 	};
-	const created = at('create');
-	const died = at('die');
-	return created === undefined || died === undefined ? undefined : died - created;
 }
+
+/** Docker's destroy event trails the remove call by event delivery and scheduling. */
+const destroySlackMs = 500;
 
 const lines = (s: string) => s.split('\n').filter(Boolean);
 
@@ -425,7 +437,8 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		const elapsedMs = Date.now() - started;
 
 		// So drift shows in the CI log: the container's own lifetime, apart from create and teardown.
-		const lifetimeMs = containerLifetimeMs(started);
+		const times = bombContainerTimes(started);
+		const lifetimeMs = times?.lifetimeMs;
 		// A broken `docker events` pairing must fail here, not print "unavailable".
 		expect(lifetimeMs).toBeDefined();
 		console.log(
@@ -434,9 +447,15 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
 		expect(elapsedMs).toBeLessThan(designBoundMs);
-		// The container's own life: the hard stop plus one remove attempt. CI's nine runs on main
-		// logged 1.1 s to 9.2 s, so this holds about 10 s above the slowest.
+		// The container's own life: the hard stop plus one remove attempt. Past this, the container
+		// outlived the first forced remove (#435). CI's runs so far all ended before the hard stop
+		// (the kernel ended PID 1, exit 137), so this guards the hard-stop path without measuring it.
 		expect(lifetimeMs).toBeLessThan(sandboxConfig.containerTimeoutMs + removeAttemptTimeoutMs);
+		// The other reading of #435: the container died promptly and the daemon removed it slowly.
+		expect(times?.destroyMs).toBeDefined();
+		expect(times?.destroyMs).toBeLessThan(
+			sandboxConfig.containerTimeoutMs + removeAttemptTimeoutMs + destroySlackMs
+		);
 		await healthy();
 	});
 });
