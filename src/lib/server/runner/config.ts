@@ -1,4 +1,5 @@
 import type { Language } from '../../languages';
+import { isPlaceholderSecret } from '../identity/secret';
 
 const pythonImage = 'python:3.13-slim';
 /** Built from Dockerfile.sandbox-node: bump the tag number by hand whenever that file changes. */
@@ -142,6 +143,11 @@ export function readRunnerEnv(
 	const token = env.RUNNER_TOKEN;
 	if (!token) {
 		throw new Error('RUNNER_TOKEN is not set. Every request must present it as a bearer token.');
+	}
+	if (isPlaceholderSecret(token)) {
+		throw new Error(
+			'RUNNER_TOKEN is still the placeholder from .env.example. Set it to a random string of 32 or more characters.'
+		);
 	}
 	if (token.length < minTokenLength) {
 		throw new Error(`RUNNER_TOKEN must be at least ${minTokenLength} characters.`);

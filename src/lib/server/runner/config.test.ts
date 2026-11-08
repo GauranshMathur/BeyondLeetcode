@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { readRunnerEnv } from './config';
 
@@ -37,5 +38,23 @@ describe('readRunnerEnv', () => {
 		['a non-numeric concurrency', { ...base, RUNNER_MAX_CONCURRENT: 'lots' }]
 	])('refuses to start with %s', (_name, env) => {
 		expect(() => readRunnerEnv(env, 6)).toThrow();
+	});
+});
+
+describe('.env.example', () => {
+	const example = readFileSync(new URL('../../../../.env.example', import.meta.url), 'utf8');
+	const value = (key: string) => new RegExp(`^${key}="([^"]*)"`, 'm').exec(example)?.[1];
+
+	it('ships a Runner token the Runner refuses, with a fixed message', () => {
+		const exampleToken = value('RUNNER_TOKEN');
+		expect(exampleToken?.length).toBeGreaterThanOrEqual(32);
+		expect(() => readRunnerEnv({ ...base, RUNNER_TOKEN: exampleToken }, 6)).toThrow(
+			'RUNNER_TOKEN is still the placeholder from .env.example. Set it to a random string of 32 or more characters.'
+		);
+	});
+
+	it('binds the Runner to loopback, and points RUNNER_URL at the same address', () => {
+		expect(value('RUNNER_HOST')).toBe('127.0.0.1');
+		expect(value('RUNNER_URL')).toBe('http://127.0.0.1:8787');
 	});
 });
