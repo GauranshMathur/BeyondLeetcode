@@ -353,6 +353,55 @@ describe('Sandbox escapes: core dumps', { timeout: 60_000 }, () => {
 		expect(result.results[0].stdout).toBe('limit (1, 1)\nnot raised\naborted True\ncore False\n');
 	});
 
+	it('cannot lower RLIMIT_CORE, by setrlimit, prlimit64 or the prlimit tool, and still aborts without a core', async () => {
+		// Each attempt is followed by a fork-and-abort: the kernel reads the soft limit, so a lowered
+		// one would start the host's piped core-dump helper as root again.
+		const probe = [
+			'import os, resource, signal, subprocess',
+			'def abort_dumps():',
+			'    pid = os.fork()',
+			'    if pid == 0:',
+			'        os.abort()',
+			'    _, status = os.waitpid(pid, 0)',
+			'    return os.WCOREDUMP(status)',
+			'def attempt(name, lower):',
+			'    try:',
+			'        lower()',
+			'        print(name, "lowered")',
+			'    except (ValueError, OSError):',
+			'        print(name, "refused")',
+			'    print(name, "limit", resource.getrlimit(resource.RLIMIT_CORE), "core", abort_dumps())',
+			'attempt("setrlimit(0, 1)", lambda: resource.setrlimit(resource.RLIMIT_CORE, (0, 1)))',
+			'attempt("setrlimit(0, 0)", lambda: resource.setrlimit(resource.RLIMIT_CORE, (0, 0)))',
+			'attempt("prlimit64", lambda: resource.prlimit(0, resource.RLIMIT_CORE, (0, 1)))',
+			'def tool():',
+			'    done = subprocess.run(["prlimit", "--core=0:1", "--pid", str(os.getpid())], capture_output=True)',
+			'    if done.returncode == 0:',
+			'        return',
+			'    if b"not permitted" in done.stderr:',
+			'        raise OSError("refused")',
+			'    raise SystemExit("prlimit tool failed another way: " + done.stderr.decode())',
+			'attempt("prlimit tool", tool)',
+			''
+		].join('\n');
+
+		const result = await run(probe);
+
+		expect(result.results[0].stdout).toBe(
+			[
+				'setrlimit(0, 1) refused',
+				'setrlimit(0, 1) limit (1, 1) core False',
+				'setrlimit(0, 0) refused',
+				'setrlimit(0, 0) limit (1, 1) core False',
+				'prlimit64 refused',
+				'prlimit64 limit (1, 1) core False',
+				'prlimit tool refused',
+				'prlimit tool limit (1, 1) core False',
+				''
+			].join('\n')
+		);
+	});
+
 	it('reports a crashing Test as a runtime error, as any crash does', async () => {
 		const result = await run('import os\nos.abort()\n');
 
@@ -445,7 +494,7 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		// A broken `docker events` pairing must fail here, not print "unavailable".
 		expect(lifetimeMs).toBeDefined();
 		console.log(
-			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
+			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; destroy ${Math.round(times?.destroyMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
 		);
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
