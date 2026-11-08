@@ -21,6 +21,15 @@ Repository secrets live at Settings > Secrets and variables > Actions. A workflo
 
 Why move: `tailscale/github-action` prints a deprecation warning for `authkey` (v4.3.0 and v4.4.0). There is a second reason. On the `authkey` path the action ignores its `tags` input (`tag:ci`) in both versions, so the node's tags, and whether it is ephemeral, come only from how `TS_AUTHKEY` was minted. On the OAuth path the action applies `tags` and joins with `?preauthorized=true&ephemeral=true`, so the workflow, not the key, decides.
 
+**Before you create the client: what it can do if it leaks.** An OAuth client secret never expires. With the `auth_keys` scope and `tag:ci`, whoever holds it can keep minting auth keys for `tag:ci` until the client is revoked. Those include persistent, preauthorized keys: the workflow's `ephemeral=true` binds only the workflow's own join. An auth key, by contrast, expires within 90 days.
+
+`notify.yml` runs, with this secret, on an issue that any GitHub account opens. It runs no checked-out code, and C214 keeps an outsider's text out of its payload. The secret is still exposed to every such run.
+
+So the client is worth having only with these three:
+- **Limit what `tag:ci` can reach.** In the tailnet policy file, grant `tag:ci` only the Hermes host's port 8644. Give it nothing else, and no SSH. Then a stolen key reaches one port on one machine.
+- **Rotate it.** Generate a new client (steps 1 to 4), replace `TS_OAUTH_SECRET`, check the next `notify` run joins, then revoke the old client (Settings > OAuth clients). Do it on a schedule you choose, and whenever the repository's secrets may have been exposed.
+- **If it may have leaked,** revoke the client first. Then, in the Machines list, remove every `tag:ci` device that is not a running CI job, and check the auth keys page for keys you did not mint.
+
 1. In the Tailscale admin console, open Settings > OAuth clients ([Tailscale: OAuth clients](https://tailscale.com/s/oauth-clients)) and generate a client.
 2. Give it the `auth_keys` scope with write access, and the tag `tag:ci`. Add no other scope or tag. `tag:ci` must already exist in the tailnet policy file with the maintainer as its owner.
 3. Copy the client secret when it is shown (it is shown once). It begins `tskey-client-`.
