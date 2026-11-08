@@ -18,7 +18,7 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # GitHub Actions: monthly version updates (workflows pin major tags such as @v4).
+  # GitHub Actions: monthly version updates (third-party actions are pinned by full SHA with a version comment, so Dependabot moves ci.yml and release.yml together; actions/* stay on tags).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
