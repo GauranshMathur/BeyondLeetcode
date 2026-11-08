@@ -1,6 +1,6 @@
 # Releasing
 
-**One release per sprint.** A sprint is the unit of release: it ends with a single release, cut by the orchestrator at the sprint's exit. The `sprint-planner` chooses its version when it plans the sprint, and the sprint's last card sets it with a `Release-As` footer. Nothing merges the release PR automatically. release-please (`.github/workflows/release.yml`) only opens and refreshes the release PR, with `RELEASE_PAT`, so the required checks run on it. Versions stay 1.x.
+**One release per sprint.** A sprint is the unit of release: it ends with a single release, cut by the orchestrator at the sprint's exit. The `sprint-planner` chooses its version when it plans the sprint, and the sprint's last card sets it with a `Release-As` footer. Nothing merges the release PR automatically. release-please (`.github/workflows/release.yml`) only opens and refreshes the release PR, with `RELEASE_PAT` (the CI credentials and how to replace it: [`ci-credentials.md`](ci-credentials.md)), so the required checks run on it. Versions stay 1.x.
 
 Every commit merged to main joins the open release PR, so whatever merges between two cuts (a card, a plan PR, the record of the last cut) ships in the next sprint's release.
 
