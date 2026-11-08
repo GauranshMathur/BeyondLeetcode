@@ -106,7 +106,7 @@ RUNNER_TOKEN=${token}
 # without a valid one. Keep it stable once users sign in: changing it signs everyone out.
 BETTER_AUTH_SECRET=${authSecret}
 
-# Image both containers run. Pin a version tag to control upgrades.
+# Image both containers run. To upgrade, set this to the new version tag (or :latest) before docker compose pull && docker compose up -d.
 BEYONDLEETCODE_IMAGE=${image}
 `;
 }
