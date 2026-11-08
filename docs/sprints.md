@@ -885,6 +885,82 @@ Release `R v1.19.4: Sprint 17 · Runner and CI hardening`, version 1.19.4 (patch
 - #481, #482, #491, #495, #496, #506, #530, #531, #532 and #534 are closed.
 - The orchestrator cuts 1.19.4 from the release PR (`docs/releasing.md`) and records the cut. Releases stay `1.x`.
 
+**Status (2026-11-08):** exit met.
+- **Cards:** all 16 Sprint 17 cards are Done. The planned 15 (C205 to C219) grew by one, in Release 1.19.4: C222. C205's sandbox review showed that a core limit of 1:1 alone can be undone, because Learner code may lower its own soft limit. C220 and C221 are on the board, Todo, with no Sprint, waiting for the maintainer.
+- **CI:** `ci` is green on `main` at aae47f5, the last card's merge.
+- **Checks:**
+  - `containerSpec` sets the core rlimit to **1:1** for every Language. The exit line said 0, but C205 amended that: the kernel ignores a limit of 0 for a piped `core_pattern`, and 1 is the value that stops the dump before the helper starts. `harness.py`'s seccomp filter (C222) keeps the limit at 1. The `sandbox` job's escape tests find (1, 1), are refused when they try to raise or lower it, and abort without a core dump.
+  - `grep -n -- '--noEmit' src/lib/server/runner/harness.py` prints nothing. `http-adapter.sandbox.test.ts` checks that a TypeScript runtime error names `main.ts` and the Learner's line.
+  - ci's `lint` job runs `.github/check-pins.sh`, which accepts a third-party `uses:` only with a 40-hex ref, and its fixtures (`pins.test.sh`). Both pass on `main`.
+  - `grep -c 'oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}'` prints 1 for each of `notify.yml` and `release.yml`.
+  - `grep -n 'harness.ts' Dockerfile.sandbox-go` prints nothing, and `.env.example` sets `RUNNER_HOST="127.0.0.1"`.
+  - #432 is merged. #433 was closed by Dependabot after the rebase was asked for, and replaced by #537, which is merged. Dependabot's #549, `docker/login-action` 4.8.0, opened during the sprint and was merged after review.
+  - `docs/ci-credentials.md` exists, and `docs/releasing.md` links to it.
+  - #481, #482, #491, #495, #496, #506, #530, #531, #532 and #534 are closed. #535 stays open for C220 and C221. #546 had closed it, because "does not close #535" was read as a closing keyword, and the orchestrator reopened it.
+- **Release:** this card's merge carries `Release-As: 1.19.4`. The orchestrator then cuts 1.19.4 from the release PR and records the cut in `docs/releasing.md`.
+- **Reviews:**
+  - **`sandbox-security-reviewer`** before merge on C205, C207, C209, C211, C213, C215, C217 and C222. Two went back first:
+    - C205's soft-limit escape (F1);
+    - C211's PR body and its measurement.
+  - **The orchestrator's two-reader review** (Fable and Codex) on C206 (#537), C210 (#432), C212, C213, C214, and C216 with #549. C212 went back once, for two lint bypasses the orchestrator confirmed on a scratch copy, and for setup-qemu's `binfmt:latest`.
+
+| Card | PR | What landed |
+|---|---|---|
+| C205 | #538 | Every Sandbox's core rlimit is 1:1. |
+| C206 | #537 | Dependabot's bun group: better-auth 1.7.17, SvelteKit 3.1.1, marked 18.1.3, biome 2.6.5 and five more. It replaced #433. |
+| C207 | #541 | TypeScript compiles once, and each Test runs the emitted JavaScript, with source maps. One 25-Test container: 6.3–7.2 s before, 3.8 s after. |
+| C208 | #539 | The Upgrading steps set the new image tag in `.env` first. |
+| C209 | #548 | A harness line with an unknown field, an out-of-range Test or trailing bytes fails the Run. A hard-stopped Run stays a timeout. |
+| C210 | #432 | `tailscale/github-action` 4.4.0. |
+| C211 | #547 | The fork-bombed container's own lifetime and its destroy time are asserted. |
+| C212 | #540 | ci.yml pins its third-party actions by SHA, and lint checks every pin. The binfmt image is pinned by digest, and `publish-sandbox` needs `lint`. |
+| C213 | #542 | The Runner refuses `.env.example`'s token, and the example binds 127.0.0.1. |
+| C214 | #545 | notify.yml sends an issue's title only when the repo's own people wrote it. |
+| C215 | #543 | start.sandbox.test.ts binds its Runner to 127.0.0.1. |
+| C216 | #550 | Both tailnet joins take the Tailscale OAuth client, with the auth key as fallback. |
+| C217 | #544 | Dockerfile.sandbox-go's comment points at harness.py. |
+| C218 | #546 | `docs/ci-credentials.md`, the runbook for the CI credentials. |
+| C219 | this PR | Exit check and `Release-As: 1.19.4`, plus the runbook's leak, ACL and rotation steps, and two self-hosting wording fixes. |
+| C222 | #551 | A seccomp filter holds every Sandbox's core rlimit at 1. |
+
+Decided along the way. Each decision was taken under the maintainer's rule to take the recommended option, and is recorded on its card and issue:
+- **The core rlimit.**
+  - C205 found that 0 doesn't stop a piped helper, so the limit became 1:1.
+  - Its review then found that Learner code can lower the soft limit (F1). C205 merged 1:1, worded as cover for crashes that are not deliberate.
+  - C222 closed #530 with the reviewer's seccomp filter, and documented the kernel-log cost and the operator's non-pipe `core_pattern` option.
+- **#482:** a line the strict schema refuses fails the Run too, and so do trailing bytes after a normal end.
+- **#495:** a Learner's runtime error keeps naming `main.ts` and its line, through source maps.
+- **C212's pin checker** became a restricted syntax: a canonical `uses: <value>`, or the line fails. It runs with a stop rule: forms only a hostile workflow author would write are accepted residuals.
+- **C211's measurement:**
+  - the events window starts at the test's start, and the bomb must have a `start` event;
+  - a `destroy` bound covers #435's slow-removal reading;
+  - a create that fails turns the test red.
+- **#491's kill attribution** was corrected on the issue. The 44–53 ms kill lines are from http-adapter's hard-limit test. Every fork-bomb container in those runs was ended by the kernel (exit 137) before the hard stop.
+- **Files lines widened by the orchestrator:**
+  - C212 added `release.yml`, `check-pins.sh` and `pins.test.sh`;
+  - C222 added `http-adapter.sandbox.test.ts`, from C207's review;
+  - C209 and C213 each fixed a stale comment in a file they already edited;
+  - C219 adds `docs/ci-credentials.md` and `docs/self-hosting.md`.
+- **Scope:** the maintainer set it (the Runner follow-ups, the Dependabot PRs, the Tailscale and token items). The orchestrator added the hardening findings in the same files (#530, #531, #532, #534), and #506.
+
+For the maintainer:
+- **#535, one ask:**
+  - Part 1: create the Tailscale OAuth client as `docs/ci-credentials.md` says, with the ACL limit and rotation steps, and add `TS_OAUTH_SECRET`. That unblocks C220.
+  - Part 2: answer whether release-please moves to a GitHub App token (C221) or keeps `RELEASE_PAT`.
+- **Held for Sprint 18,** which the maintainer plans after a separate architecture review. These are the issues filed on 2026-11-08:
+  - architecture: #500 to #505, and #512 to #521;
+  - docs: #507 to #511;
+  - accessibility: #522 to #529;
+  - #533.
+- **Follow-ups found by this sprint's reviews,** none blocking:
+  - `check-pins.sh` scans `.github/workflows/` only, not a future `.github/actions/`;
+  - the binfmt pin is bumped by hand;
+  - the push and `workflow_run` payloads carry an outsider's merged text, labelled only by the merger;
+  - a CI test is missing for `prlimit64` aimed at PID 1;
+  - `biome.json`'s `$schema` still says 2.6.2;
+  - small comment nits in the Dockerfile and on C217.
+- **GitGuardian:** incidents 39252375 and 39260283 are false positives. Only the maintainer can mark them.
+
 **Not in the sprint:**
 - **Held for Sprint 18,** which the maintainer plans after a separate architecture review. No card, Sprint or Release is filed for them:
   - the architecture issues #500 to #505 and #512 to #521;
