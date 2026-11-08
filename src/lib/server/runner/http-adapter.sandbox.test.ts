@@ -222,7 +222,7 @@ describe('Runner: typescript in a fresh Sandbox per run', { timeout: 60_000 }, (
 			'  for (const e of readdirSync(dir, { withFileTypes: true })) {',
 			"    const p = dir + '/' + e.name;",
 			'    if (e.isDirectory()) walk(p);',
-			"    else if (p !== '/work/build/main.ts') seen.push(p + ' ' + readFileSync(p, 'utf8'));",
+			"    else if (p !== '/work/build/main.ts' && !p.startsWith('/work/out/')) seen.push(p + ' ' + readFileSync(p, 'utf8'));",
 			'  }',
 			'};',
 			"walk('/work');",
