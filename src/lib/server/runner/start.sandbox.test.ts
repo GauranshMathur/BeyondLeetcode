@@ -40,6 +40,7 @@ describe('Runner start: image pull', { timeout: 180_000 }, () => {
 			env: {
 				...process.env,
 				RUNNER_PORT: String(port),
+				RUNNER_HOST: '127.0.0.1',
 				RUNNER_TOKEN: token,
 				DOCKER_SOCKET: socket
 			},
