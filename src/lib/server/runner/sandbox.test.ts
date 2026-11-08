@@ -135,6 +135,21 @@ describe('Sandbox runner: a harness line the Runner cannot trust', () => {
 		await failsAsRunnerError(JSON.stringify({ compileError: 'x', extra: 1 }), /unexpected line/);
 	});
 
+	it('fails the Run on trailing output that no newline ends', async () => {
+		const { engine } = fakeEngine({
+			attach: (async (_id: string, onFrame: (s: 1 | 2, p: Buffer) => void) => ({
+				sendInput() {
+					onFrame(1, Buffer.from(`${okLine}\n{"i"`));
+				},
+				closed: Promise.resolve(),
+				destroy() {}
+			})) as unknown as () => Promise<never>
+		});
+		await expect(createSandboxRunner(engine, 'test-instance').execute(request)).rejects.toThrow(
+			/unexpected line/
+		);
+	});
+
 	it('fails the Run on a line that is not JSON', async () => {
 		await failsAsRunnerError('not json', /unexpected line/);
 	});

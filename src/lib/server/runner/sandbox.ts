@@ -203,7 +203,8 @@ async function execute(
 	}
 
 	if (overflow) throw new Error('Sandbox produced more output than the Runner allows');
-	if (refusedLine) {
+	// Every harness line ends in a newline; bytes left over after a normal end are not its.
+	if (refusedLine || (!timedOut && partial !== '')) {
 		throw new Error(`Sandbox harness printed an unexpected line: ${harnessStderr}`);
 	}
 	for (const line of lines) {
