@@ -150,6 +150,43 @@ describe('Sandbox runner: a harness line the Runner cannot trust', () => {
 		);
 	});
 
+	it('keeps a hard-stopped Run a timeout when its last line is half written', async () => {
+		vi.useFakeTimers();
+		try {
+			let end: () => void = () => {};
+			const closed = new Promise<void>((resolve) => {
+				end = resolve;
+			});
+			const { engine } = fakeEngine({
+				exitCode: 137,
+				attach: (async (_id: string, onFrame: (s: 1 | 2, p: Buffer) => void) => ({
+					sendInput() {
+						onFrame(1, Buffer.from(`${okLine}\n{"i": 1, "sta`));
+					},
+					closed,
+					destroy: end
+				})) as unknown as () => Promise<never>
+			});
+			const pending = createSandboxRunner(engine, 'test-instance').execute({
+				...request,
+				tests: [
+					{ id: 'a', input: '' },
+					{ id: 'b', input: '' }
+				]
+			});
+
+			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
+			const result = await pending;
+
+			expect(result.results.map((r) => [r.id, r.status])).toEqual([
+				['a', 'ok'],
+				['b', 'timeout']
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('fails the Run on a line that is not JSON', async () => {
 		await failsAsRunnerError('not json', /unexpected line/);
 	});
