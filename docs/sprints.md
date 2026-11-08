@@ -784,6 +784,114 @@ For the maintainer:
 - **Docker compile-error cases stay**, because they check the real toolchains' output. No Python linter is added: Ruff would be a new dependency.
 - **Left as they are, from #107:** the Runner port's `limits`, which the sandbox and escape tests use to lower the per-Test limit. Also the Problem screen's `outcome.ts`, which belongs to Sprint 15's area, and `scripted-catalogue.ts`'s split of a Test id, since the e2e fake only sees ids. Whether #107 closes without them is a question for the maintainer.
 
+## Sprint 17 · Runner and CI hardening
+
+**Goal:** the Runner, the Sandbox and CI are hardened where the reviews after Sprints 14 to 16 found them open, and the fixes reach Instances. The five Runner follow-ups and four hardening findings are fixed, both Dependabot PRs are settled, CI is ready to leave the deprecated Tailscale auth key, and the Upgrading steps upgrade.
+
+Release `R v1.19.4: Sprint 17 · Runner and CI hardening`, version 1.19.4 (patch, because no card is `feat`: the cards are `fix`, `test`, `ci`, `docs` and `chore`). release-please's #499 already proposes 1.19.4.
+
+- **Scope, set by the maintainer on 2026-11-08:**
+  - the Runner follow-ups: #481, #482, #491, #495 and #496;
+  - the Dependabot PRs #432 and #433;
+  - #535's part 1, the Tailscale OAuth fallback, and a runbook for both its parts;
+  - the hardening findings that edit the same files as those cards, so the files are not reopened next sprint: #530 and #534 in the Runner, #531 and #532 in the CI workflows;
+  - #506, because 1.19.4's fixes reach Instances only if the Upgrading steps work.
+
+  Everything else the sweeps found waits for Sprint 18 (see Not in the sprint).
+- **Fifteen cards, C205 to C219.** Two more, C220 and C221, are filed with no Sprint.
+  - **Sandbox** (`runner/sandbox.ts`, `sandbox.test.ts`, `escape.sandbox.test.ts`):
+    - C205 sets every Sandbox's core rlimit to 0 (#530).
+    - Then C209 fails the Run on a harness line with an unknown field or an out-of-range Test (#482).
+    - Also after C205, C211 asserts the fork-bombed container's own lifetime (#491).
+  - **Harness:** C207 compiles TypeScript once, and runs the emitted JavaScript for each Test (#495).
+  - **Runner config and tests**, no shared file:
+    - C213: the Runner refuses `.env.example`'s placeholder token, and the example binds 127.0.0.1 (#534).
+    - C215: start.sandbox.test.ts binds its Runner to 127.0.0.1 (#496).
+    - C217: Dockerfile.sandbox-go's comment points at harness.py (#481).
+  - **Workflows** (`notify.yml`, `release.yml`):
+    - C210 merges Dependabot's `tailscale/github-action` 4.4.0 (#432).
+    - Then C214: notify.yml sends an issue's title only when the repo's own people wrote it (#532).
+    - Then C216: both tailnet joins take a Tailscale OAuth client, with the auth key as fallback (#535, part 1).
+  - **CI and dependencies:**
+    - C212 pins ci.yml's third-party actions by SHA, and a lint step checks every pin (#531).
+    - C206 merges Dependabot's bun group (#433).
+  - **Docs:**
+    - C208: the Upgrading steps change the image tag in `.env` first (#506).
+    - C218: `docs/ci-credentials.md`, a runbook for the CI credentials, both parts of #535.
+  - **Last:** C219, the exit check and `Release-As: 1.19.4` (`docs/releasing.md`, The last card).
+- **Filed with no Sprint**, each fully specified and waiting on the maintainer:
+  - C220 removes `authkey` from both workflows, once the maintainer has created the Tailscale OAuth client and added `TS_OAUTH_SECRET` (`docs/ci-credentials.md`). Only that silences the deprecation warning.
+  - C221 moves release-please from RELEASE_PAT to a GitHub App token, once the maintainer answers #535's part 2. It follows C220 on `release.yml` and `docs/ci-credentials.md`. If the maintainer answers part 2 first, the orchestrator swaps the two.
+- **Issues closed.** Each card closes its own issue:
+  - C205 closes #530, C207 #495, C208 #506, C209 #482, C211 #491;
+  - C212 closes #531, C213 #534, C214 #532, C215 #496, C217 #481.
+
+  #535 stays open. C216 and C218 prepare it, and C220 and C221 finish it.
+- **Decided before the sprint.** The orchestrator decided these on 2026-11-08, under the maintainer's rule to take the recommended option unless it is a hard call. Each is recorded on its issue:
+  - #495: a Learner's runtime error still names `main.ts` and its line, through a source map, or a path rewrite if that measures cheaper.
+  - #482: fail loudly. C209 also fails the Run on a line the strict schema refuses; the orchestrator confirms that reading at dispatch.
+  - #491: the CI data is in, so the bound is `containerTimeoutMs + removeAttemptTimeoutMs`.
+  - #432 and #433: merge once rebased and green.
+  - #535's part 2: a new action and a change of token, so it is the maintainer's call. This sprint only prepares it.
+- **Reviews.**
+  - `sandbox-security-reviewer` before merge: C205, C207, C209, C211, C213, C215 and C217. They are every card under `src/lib/server/runner/` or in a Sandbox Dockerfile.
+  - The orchestrator's security review:
+    - C206, because better-auth is Identity and marked is the Markdown renderer;
+    - C210, the action that holds the tailnet credential;
+    - C212, the CI supply chain;
+    - C214 and C216, secrets in CI;
+    - C213, which changes the Runner token's rule.
+
+    C220 and C221 get it too, when they run.
+- **Shared files**, each an ordered chain:
+  - `runner/sandbox.ts` and `sandbox.test.ts`: C205, then C209.
+  - `runner/escape.sandbox.test.ts`: C205, then C211.
+  - `.github/workflows/notify.yml`: C210, C214, C216, then C220.
+  - `.github/workflows/release.yml`: C210, C216, then C220 and C221.
+  - `docs/ci-credentials.md` (new in C218): C218, then C220 and C221.
+  - `docs/releasing.md`: C218, then C221.
+- **Two lanes a round** (`docs/agents/board.md`, Resources). Lane A holds the Runner cards, one a round, because the `sandbox` tests share one lock.
+
+  | Round | A · Runner | B · CI, dependencies and docs |
+  |---|---|---|
+  | 1 | C205 core rlimit 0 (#530) | C206 bun group (#433) |
+  | 2 | C207 TypeScript compiled once (#495) | C208 Upgrading steps (#506) |
+  | 3 | C209 strict harness line (#482) | C210 tailscale 4.4.0 (#432) |
+  | 4 | C211 fork-bomb lifetime (#491) | C212 SHA pins (#531) |
+  | 5 | C213 placeholder token (#534) | C214 notify authors (#532) |
+  | 6 | C215 test Runner on 127.0.0.1 (#496) | C216 OAuth fallback (#535) |
+  | 7 | C217 Go Dockerfile comment (#481) | C218 credentials runbook (#535) |
+  | 8 | C219 exit check and `Release-As: 1.19.4` | |
+
+  C206 goes first in lane B, so every later card builds on biome 2.6.4's format. C206 and C210 are Dependabot's PRs, so the orchestrator can work them itself, without a card-builder.
+- **Rounds: 22.**
+  - The longest chain is three cards (C210, C214, C216), so the two lanes set the build: seven rounds.
+  - There are 13 reviews: seven sandbox and six security.
+  - The last card and the cut add one round each.
+  - A review of one lane's card can run while the other lane builds.
+- **No limit or image changes.** C205 adds one container flag to ADR 0002's list, without reopening the ADR. C207 changes no flag, limit or image. C217 changes a comment, and the Go image's tag stays.
+
+**Exit:**
+- All fifteen Sprint 17 cards are Done, and `ci` is green on `main`.
+- `containerSpec` sets the core rlimit to 0 for every Language, and the `sandbox` job's escape test finds it at (0, 0).
+- `grep -n -- '--noEmit' src/lib/server/runner/harness.py` prints nothing, and a TypeScript runtime error in the `sandbox` job names `main.ts` and its line.
+- ci's `lint` job checks that every non-`actions/*` `uses:` has a 40-hex ref, and it passes on `main`.
+- `grep -c 'oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}' .github/workflows/notify.yml .github/workflows/release.yml` prints 1 for each file.
+- `grep -n 'harness.ts' Dockerfile.sandbox-go` prints nothing, and `.env.example` sets `RUNNER_HOST="127.0.0.1"`.
+- #432 and #433 are merged, or closed with the reason on the PR.
+- `docs/ci-credentials.md` exists and `docs/releasing.md` links to it. C220 and C221 are on the board, Todo, with no Sprint.
+- #481, #482, #491, #495, #496, #506, #530, #531, #532 and #534 are closed.
+- The orchestrator cuts 1.19.4 from the release PR (`docs/releasing.md`) and records the cut. Releases stay `1.x`.
+
+**Not in the sprint:**
+- **Held for Sprint 18,** which the maintainer plans after a separate architecture review. No card, Sprint or Release is filed for them:
+  - the architecture issues #500 to #505 and #512 to #521;
+  - the docs issues #507 to #511;
+  - the accessibility issues #522 to #529;
+  - #533, the Markdown renderer's raw HTML and `javascript:` links.
+- **#535's part 2,** the GitHub App: the maintainer's call. C221 waits for it, with no Sprint.
+- **The deferred items in Sprints 14 to 16's "Not in the sprint"** stay as written there.
+
 ## After each build sprint
 
 Code cards for Sprints 2–5 come from the spec via `to-tickets` when the sprint starts. When a sprint's features land, `improve-codebase-architecture` turns friction into `architecture` issues for later.
