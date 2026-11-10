@@ -1,7 +1,15 @@
 import { randomInt } from 'node:crypto';
 import { APIError } from 'better-auth/api';
+import type { Instance, RegistrationMode } from '../instance.ts';
+import { RegistrationNotAvailableError } from '../instance.ts';
 import type { Auth } from './auth.ts';
 import type { Identity, Role } from './index.ts';
+import {
+	type CreatedInvite,
+	type Invites,
+	InvitesNotAdminError,
+	type PendingInvite
+} from './invites.ts';
 import { currentSession, passwordAccountWhere, roleOf } from './session-binding.ts';
 
 /** One Account as the Users page draws it. Nothing else of the user row leaves this module. */
@@ -304,4 +312,129 @@ export async function removeAccount(
 	} catch {
 		throw new ProgressNotRemovedError();
 	}
+}
+
+/**
+ * One code per way an admin's action is refused. A route turns a code into its status and text; no code
+ * carries one. A failure that is not a refusal still throws.
+ *
+ * - `NOT_ADMIN`: the asker's role is not `admin` exactly, or the plugin or the session check said so (403)
+ * - `UNKNOWN_ACCOUNT`: the Account is not there: a stale row, or an id that was never one (404)
+ * - `SELF_RESET`: the admin asked to reset their own password
+ * - `SELF_REMOVE`: the admin asked to remove their own Account
+ * - `PROGRESS_NOT_REMOVED`: the Account is gone and cannot sign in, but its Learner and progress could not be deleted
+ * - `REGISTRATION_UNAVAILABLE`: this Instance has no Registration Mode to switch (not Multi-user)
+ */
+export const ADMIN_REFUSAL_CODES = [
+	'NOT_ADMIN',
+	'UNKNOWN_ACCOUNT',
+	'SELF_RESET',
+	'SELF_REMOVE',
+	'PROGRESS_NOT_REMOVED',
+	'REGISTRATION_UNAVAILABLE'
+] as const;
+export type AdminRefusalCode = (typeof ADMIN_REFUSAL_CODES)[number];
+
+export interface AdminRefusal {
+	refused: AdminRefusalCode;
+}
+
+/** Whether an answer of the admin actions is a refusal (a code) rather than what was asked for. */
+export const isAdminRefusal = (answer: unknown): answer is AdminRefusal =>
+	typeof answer === 'object' && answer !== null && 'refused' in answer;
+
+/** What the admin does to the Instance's Accounts, Invites and Registration Mode. Every method checks the role first. */
+export interface AdminActions {
+	/** Every Account, oldest first. */
+	listAccounts(input: { who: Identity; headers: Headers }): Promise<AccountRow[] | AdminRefusal>;
+	/** The one-time password is in the answer and nowhere else: it is not logged or kept. */
+	resetPassword(input: {
+		who: Identity;
+		headers: Headers;
+		userId: string;
+	}): Promise<{ password: string } | AdminRefusal>;
+	/** The Account first, then its Learner and progress. */
+	removeAccount(input: {
+		who: Identity;
+		headers: Headers;
+		userId: string;
+	}): Promise<{ removed: true } | AdminRefusal>;
+	createInvite(input: { who: Identity; now: Date }): Promise<CreatedInvite | AdminRefusal>;
+	/** Not used, not expired; oldest first. */
+	pendingInvites(input: { who: Identity; now: Date }): Promise<PendingInvite[] | AdminRefusal>;
+	/** `cancelled` is false, and nothing changed, when no unused Invite has this id. */
+	cancelInvite(input: {
+		who: Identity;
+		id: string;
+	}): Promise<{ cancelled: boolean } | AdminRefusal>;
+	/** Takes effect on the next sign-up. */
+	setRegistrationMode(input: {
+		who: Identity;
+		mode: RegistrationMode;
+	}): Promise<{ registration: RegistrationMode } | AdminRefusal>;
+}
+
+const refusalOfError = (error: unknown): AdminRefusal | null => {
+	if (error instanceof NotAdminError || error instanceof InvitesNotAdminError) {
+		return { refused: 'NOT_ADMIN' };
+	}
+	if (error instanceof UnknownAccountError) return { refused: 'UNKNOWN_ACCOUNT' };
+	if (error instanceof SelfResetError) return { refused: 'SELF_RESET' };
+	if (error instanceof SelfRemoveError) return { refused: 'SELF_REMOVE' };
+	if (error instanceof ProgressNotRemovedError) return { refused: 'PROGRESS_NOT_REMOVED' };
+	if (error instanceof RegistrationNotAvailableError) {
+		return { refused: 'REGISTRATION_UNAVAILABLE' };
+	}
+	return null;
+};
+
+/**
+ * The admin's Account management as one object: Better Auth, the Learner removal, the Invites and the
+ * Instance's Registration Mode, built once by the Multi-user factory. The role check is made here, once,
+ * before anything is read or written: `who.role` must be `admin` exactly (the plugin's own check alone
+ * would let a stored `admin,learner` through). The functions above stay the implementation and still check
+ * for themselves, so a refusal they throw comes back as its code.
+ */
+export function createAdminActions({
+	auth,
+	invites,
+	instance,
+	deleteLearner
+}: {
+	auth: Auth;
+	invites: Invites;
+	instance: Pick<Instance, 'setRegistrationMode'>;
+	/** `deleteLearner` of the progress module, bound to the database: the Learner and all its progress. */
+	deleteLearner: (learnerId: string) => Promise<void>;
+}): AdminActions {
+	async function asAdmin<T>(who: Identity, run: () => Promise<T>): Promise<T | AdminRefusal> {
+		if (who.role !== 'admin') return { refused: 'NOT_ADMIN' };
+		try {
+			return await run();
+		} catch (error) {
+			const refusal = refusalOfError(error);
+			if (refusal) return refusal;
+			throw error;
+		}
+	}
+
+	return {
+		listAccounts: ({ who, headers }) => asAdmin(who, () => listAccounts(auth, { who, headers })),
+		resetPassword: ({ who, headers, userId }) =>
+			asAdmin(who, () => resetPassword(auth, { who, headers, userId })),
+		removeAccount: ({ who, headers, userId }) =>
+			asAdmin(who, async () => {
+				await removeAccount(auth, { deleteLearner, who, headers, userId });
+				return { removed: true as const };
+			}),
+		createInvite: ({ who, now }) => asAdmin(who, () => invites.create({ who, now })),
+		pendingInvites: ({ who, now }) => asAdmin(who, () => invites.listPending({ who, now })),
+		cancelInvite: ({ who, id }) =>
+			asAdmin(who, async () => ({ cancelled: await invites.cancel({ who, id }) })),
+		setRegistrationMode: ({ who, mode }) =>
+			asAdmin(who, async () => {
+				await instance.setRegistrationMode(mode);
+				return { registration: mode };
+			})
+	};
 }

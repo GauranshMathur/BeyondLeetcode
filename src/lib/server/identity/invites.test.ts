@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { redactText } from '../logging';
 import { createTestDb } from '../test-db';
-import { NotAdminError } from './accounts';
+
 import {
 	createInvites,
 	hashToken,
 	INVITE_COOKIE,
 	INVITE_LIFETIME_MS,
-	INVITE_LOG_PATTERNS
+	INVITE_LOG_PATTERNS,
+	InvitesNotAdminError
 } from './invites';
 
 const origin = 'https://learn.example.com';
@@ -61,7 +62,9 @@ describe('create', () => {
 
 	it('refuses a learner and writes nothing', async () => {
 		const { db, invites } = await setup();
-		await expect(invites.create({ who: learner, now })).rejects.toBeInstanceOf(NotAdminError);
+		await expect(invites.create({ who: learner, now })).rejects.toBeInstanceOf(
+			InvitesNotAdminError
+		);
 		expect(await db.invite.count()).toBe(0);
 	});
 
@@ -99,7 +102,9 @@ describe('listPending', () => {
 
 	it('refuses a learner', async () => {
 		const { invites } = await setup();
-		await expect(invites.listPending({ who: learner, now })).rejects.toBeInstanceOf(NotAdminError);
+		await expect(invites.listPending({ who: learner, now })).rejects.toBeInstanceOf(
+			InvitesNotAdminError
+		);
 	});
 });
 
@@ -128,7 +133,7 @@ describe('cancel', () => {
 		const { db, invites } = await setup();
 		const made = await invites.create({ who: admin, now });
 		await expect(invites.cancel({ who: learner, id: made.id })).rejects.toBeInstanceOf(
-			NotAdminError
+			InvitesNotAdminError
 		);
 		expect(await db.invite.count()).toBe(1);
 	});

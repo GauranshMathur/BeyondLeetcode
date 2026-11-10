@@ -1,9 +1,9 @@
-import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
-import { createChangePassword } from '../../../routes/account/password/change-password.ts';
 import { deleteLearner } from '../learning/progress.ts';
 import {
 	type AccountRow,
+	createAdminActions,
+	isAdminRefusal,
 	listAccounts,
 	NotAdminError,
 	removeAccount,
@@ -279,23 +279,14 @@ describe('resetPassword', () => {
 			.getSetCookie()
 			.map((c) => c.split(';')[0])
 			.join('; ');
-		const { action } = createChangePassword();
-		const ev = {
-			request: new Request('http://localhost/account/password', {
-				method: 'POST',
-				headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
-				body: new URLSearchParams({
-					current: fresh,
-					new: 'a brand new passphrase 42',
-					confirm: 'a brand new passphrase 42'
-				})
-			}),
-			locals: { multiUser },
-			cookies: { set: vi.fn() },
-			url: new URL('http://localhost/account/password'),
-			getClientAddress: () => '10.0.0.1'
-		} as unknown as RequestEvent;
-		await expect(action(ev)).rejects.toMatchObject({ status: 303, location: '/' });
+		const changed = await multiUser.accounts.changePassword({
+			headers: new Headers({ cookie }),
+			current: fresh,
+			next: 'a brand new passphrase 42',
+			confirm: 'a brand new passphrase 42',
+			address: '10.0.0.1'
+		});
+		expect(changed).toMatchObject({ forced: true, flagCleared: true });
 
 		expect((await db.user.findUniqueOrThrow({ where: { id: oz.id } })).mustChangePassword).toBe(
 			false
@@ -982,5 +973,210 @@ describe('resetAdminPassword', () => {
 		});
 		// The row survived the failed deletion, but it began before the password was set (C53): it is over.
 		expect(who).toBeNull();
+	});
+});
+
+describe('the admin actions', () => {
+	/** A Multi-user Instance with its admin, a learner and the admin actions the server would use. */
+	async function world() {
+		const t = await createTestInstance();
+		const admin = await t.admin({ name: 'Ada Admin', email: 'ada@example.com', password });
+		const lin = await t.learner({ name: 'Lin Learner', email: 'lin@example.com', password });
+		const identityOf = async (cookie: string) => {
+			const headers = new Headers({ cookie });
+			const who = await t.resolver.resolve({
+				cookies: { get: () => undefined },
+				request: { headers }
+			});
+			if (!who) throw new Error('the cookie resolves to nobody');
+			return { who, headers };
+		};
+		return {
+			...t,
+			actions: t.multiUser.adminActions,
+			admin: { ...admin, ...(await identityOf(admin.cookie)) },
+			lin: { ...lin, ...(await identityOf(lin.cookie)) }
+		};
+	}
+
+	it('lists the Accounts for the admin, as the Users page draws them', async () => {
+		const { actions, admin } = await world();
+
+		const rows = await actions.listAccounts(admin);
+
+		expect(isAdminRefusal(rows)).toBe(false);
+		expect((rows as AccountRow[]).map((r) => [r.email, r.role, r.you])).toEqual([
+			['ada@example.com', 'admin', true],
+			['lin@example.com', 'learner', false]
+		]);
+	});
+
+	it('refuses every action to a learner with NOT_ADMIN, before anything is read or changed', async () => {
+		const { actions, auth, db, instance, lin } = await world();
+		const adminRow = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+		const before = {
+			users: await db.user.count(),
+			invites: await db.invite.count(),
+			registration: instance.registrationMode()
+		};
+
+		const answers = [
+			await actions.listAccounts(lin),
+			await actions.resetPassword({ ...lin, userId: adminRow.id }),
+			await actions.removeAccount({ ...lin, userId: adminRow.id }),
+			await actions.createInvite({ who: lin.who, now: new Date() }),
+			await actions.pendingInvites({ who: lin.who, now: new Date() }),
+			await actions.cancelInvite({ who: lin.who, id: 'any' }),
+			await actions.setRegistrationMode({ who: lin.who, mode: 'open' })
+		];
+
+		expect(answers).toEqual(answers.map(() => ({ refused: 'NOT_ADMIN' })));
+		expect({
+			users: await db.user.count(),
+			invites: await db.invite.count(),
+			registration: instance.registrationMode()
+		}).toEqual(before);
+		// Nothing was reset: the admin still signs in with the old password.
+		await expect(
+			auth.api.signInEmail({ body: { email: 'ada@example.com', password } })
+		).resolves.toBeTruthy();
+	});
+
+	it('refuses a role that only contains admin, which the plugin alone would let through', async () => {
+		const { actions, db, admin } = await world();
+		await db.user.update({ where: { email: 'ada@example.com' }, data: { role: 'admin,learner' } });
+		const who = { ...admin.who, role: 'learner' as const };
+
+		expect(await actions.listAccounts({ ...admin, who })).toEqual({ refused: 'NOT_ADMIN' });
+	});
+
+	it('refuses with NOT_ADMIN when the admin session ended after Identity judged it', async () => {
+		const { actions, auth, db, admin } = await world();
+		const linRow = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		await auth.api.signOut({ headers: admin.headers });
+
+		expect(await actions.resetPassword({ ...admin, userId: linRow.id })).toEqual({
+			refused: 'NOT_ADMIN'
+		});
+		expect(await actions.removeAccount({ ...admin, userId: linRow.id })).toEqual({
+			refused: 'NOT_ADMIN'
+		});
+		expect(await db.user.count()).toBe(2);
+	});
+
+	it('resets a password to a one-time password that signs in, and ends the sessions', async () => {
+		const { actions, auth, db, admin, lin } = await world();
+		const linRow = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+
+		const answer = await actions.resetPassword({ ...admin, userId: linRow.id });
+
+		if (isAdminRefusal(answer)) throw new Error(`refused ${answer.refused}`);
+		expect(answer.password).toMatch(/^[A-Za-z0-9]{20}$/);
+		await expect(
+			auth.api.signInEmail({ body: { email: 'lin@example.com', password } })
+		).rejects.toThrow();
+		await expect(
+			auth.api.signInEmail({ body: { email: 'lin@example.com', password: answer.password } })
+		).resolves.toBeTruthy();
+		expect(await auth.api.getSession({ headers: lin.headers })).toBeNull();
+	});
+
+	it('answers UNKNOWN_ACCOUNT for an id that is not an Account, SELF_RESET and SELF_REMOVE for the admin', async () => {
+		const { actions, db, admin } = await world();
+		const adminRow = await db.user.findUniqueOrThrow({ where: { email: 'ada@example.com' } });
+
+		expect(await actions.resetPassword({ ...admin, userId: 'nobody' })).toEqual({
+			refused: 'UNKNOWN_ACCOUNT'
+		});
+		expect(await actions.removeAccount({ ...admin, userId: '' })).toEqual({
+			refused: 'UNKNOWN_ACCOUNT'
+		});
+		expect(await actions.resetPassword({ ...admin, userId: adminRow.id })).toEqual({
+			refused: 'SELF_RESET'
+		});
+		expect(await actions.removeAccount({ ...admin, userId: adminRow.id })).toEqual({
+			refused: 'SELF_REMOVE'
+		});
+		expect(await db.user.count()).toBe(2);
+	});
+
+	it('removes an Account, then its Learner with the progress', async () => {
+		const { actions, auth, db, admin } = await world();
+		const linRow = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		await db.chapterRead.create({
+			data: { learnerId: linRow.learnerId as string, chapterId: 'c' }
+		});
+
+		expect(await actions.removeAccount({ ...admin, userId: linRow.id })).toEqual({ removed: true });
+
+		expect(await db.user.count({ where: { email: 'lin@example.com' } })).toBe(0);
+		expect(await db.learner.count({ where: { id: linRow.learnerId as string } })).toBe(0);
+		expect(await db.chapterRead.count({ where: { learnerId: linRow.learnerId as string } })).toBe(
+			0
+		);
+		await expect(
+			auth.api.signInEmail({ body: { email: 'lin@example.com', password } })
+		).rejects.toThrow();
+	});
+
+	it('answers PROGRESS_NOT_REMOVED when the Account went but its progress did not', async () => {
+		const { auth, db, instance, multiUser, admin } = await world();
+		const failing = createAdminActions({
+			auth,
+			invites: multiUser.invites,
+			instance,
+			deleteLearner: async () => {
+				throw new Error('disk');
+			}
+		});
+		const linRow = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+
+		expect(await failing.removeAccount({ ...admin, userId: linRow.id })).toEqual({
+			refused: 'PROGRESS_NOT_REMOVED'
+		});
+		expect(await db.user.count({ where: { email: 'lin@example.com' } })).toBe(0);
+		expect(await db.learner.count({ where: { id: linRow.learnerId as string } })).toBe(1);
+	});
+
+	it('throws a failure that is not a refusal, rather than call it one', async () => {
+		const { actions, auth, db, admin } = await world();
+		const linRow = await db.user.findUniqueOrThrow({ where: { email: 'lin@example.com' } });
+		vi.spyOn(auth.api, 'removeUser').mockRejectedValue(new Error('disk'));
+
+		await expect(actions.removeAccount({ ...admin, userId: linRow.id })).rejects.toThrow('disk');
+	});
+
+	it('creates, lists and cancels Invites for the admin', async () => {
+		const { actions, admin } = await world();
+		const now = new Date();
+
+		const made = await actions.createInvite({ who: admin.who, now });
+		if (isAdminRefusal(made)) throw new Error(`refused ${made.refused}`);
+		expect(made.link).toContain(`/invite/${made.token}`);
+		const pending = await actions.pendingInvites({ who: admin.who, now });
+		expect(pending).toEqual([expect.objectContaining({ id: made.id })]);
+		expect(await actions.cancelInvite({ who: admin.who, id: made.id })).toEqual({
+			cancelled: true
+		});
+		expect(await actions.cancelInvite({ who: admin.who, id: made.id })).toEqual({
+			cancelled: false
+		});
+		expect(await actions.pendingInvites({ who: admin.who, now })).toEqual([]);
+	});
+
+	it('switches the Registration Mode for the next sign-up, and answers REGISTRATION_UNAVAILABLE on a Local Instance', async () => {
+		const { actions, instance, admin } = await world();
+		expect(instance.registrationMode()).toBe('invite');
+
+		expect(await actions.setRegistrationMode({ who: admin.who, mode: 'open' })).toEqual({
+			registration: 'open'
+		});
+		expect(instance.registrationMode()).toBe('open');
+
+		const local = await createTestInstance();
+		await local.chooseLocal();
+		expect(
+			await local.multiUser.adminActions.setRegistrationMode({ who: admin.who, mode: 'open' })
+		).toEqual({ refused: 'REGISTRATION_UNAVAILABLE' });
 	});
 });

@@ -2,6 +2,7 @@ import type { Db } from '../db.ts';
 import type { Instance } from '../instance.ts';
 import { deleteLearner } from '../learning/progress.ts';
 import { type AccountActions, createAccountActions } from './account-actions.ts';
+import { type AdminActions, createAdminActions } from './accounts.ts';
 import {
 	type AdmitSignUp,
 	type Auth,
@@ -16,7 +17,7 @@ import { createRegistration } from './registration.ts';
 import { sweepStaleSessions } from './session-binding.ts';
 import { createProviderStarts } from './throttle.ts';
 
-/** Better Auth, the account actions, Invites and the Learner removal: what the Multi-user routes use. */
+/** Better Auth, the account actions, the admin actions, Invites and the Learner removal: what the Multi-user routes use. */
 export interface MultiUser {
 	auth: Auth;
 	/**
@@ -24,6 +25,11 @@ export interface MultiUser {
 	 * Always set by `createApp`.
 	 */
 	accounts: AccountActions;
+	/**
+	 * The admin's Accounts, Invites and Registration Mode, answering refusal codes with the role check inside.
+	 * Always set by `createApp`.
+	 */
+	adminActions: AdminActions;
 	invites: Invites;
 	/** `deleteLearner` of the progress module, bound to the database. */
 	deleteLearner: (learnerId: string) => Promise<void>;
@@ -38,11 +44,11 @@ export interface MultiUserInstanceOptions {
 	origin: string;
 	/** The OAuth provider variables; a provider with only one of its two is left out. */
 	providerEnv: Record<string, string | undefined>;
-	/** Replaces Better Auth's scrypt; for tests that sign up many Accounts. Left out, the production hasher runs. */
+	/** Replaces Better Auth's scrypt; for tests that sign up many Accounts. Left out, the production hasher runs. Refused when NODE_ENV is production. */
 	passwordHasher?: CreateAuthOptions['passwordHasher'];
 	/**
-	 * Wraps the production admission rule, given as `inner`; it never replaces it, so a test overrides
-	 * one rule and keeps the rest. Left out, the production rule decides alone.
+	 * For tests only. Receives the production admission rule as `inner`: it may delegate to it or override
+	 * it. Left out, the production rule decides alone. Refused when NODE_ENV is production.
 	 */
 	admit?: (inner: AdmitSignUp) => AdmitSignUp;
 }
@@ -66,6 +72,11 @@ export async function createMultiUserInstance(
 	options: MultiUserInstanceOptions
 ): Promise<MultiUserInstance> {
 	const { db, instance, secret, origin, providerEnv, passwordHasher, admit } = options;
+	if ((admit || passwordHasher) && process.env.NODE_ENV === 'production') {
+		throw new Error(
+			'The Multi-user factory takes admit and passwordHasher for tests only: production refuses them.'
+		);
+	}
 	// Invite links name the same ORIGIN the cookies and the origin check use. The one Invites module
 	// serves the Users page and, through the gate and the claim, sign-up.
 	const invites = createInvites({ db, origin });
@@ -88,13 +99,21 @@ export async function createMultiUserInstance(
 		registrationOpen: () => instance.registrationMode() === 'open',
 		inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
 	});
+	const removeLearner = (learnerId: string) => deleteLearner(db, learnerId);
+	const adminActions = createAdminActions({
+		auth,
+		invites,
+		instance,
+		deleteLearner: removeLearner
+	});
 	if (instance.mode() === 'multi') await repairStartup(db);
 	return {
 		multiUser: {
 			auth,
 			accounts,
+			adminActions,
 			invites,
-			deleteLearner: (learnerId) => deleteLearner(db, learnerId)
+			deleteLearner: removeLearner
 		},
 		resolver: createMultiUserIdentity(auth)
 	};

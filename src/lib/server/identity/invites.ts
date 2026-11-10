@@ -1,7 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { Db } from '../db.ts';
 import type { LogPatterns } from '../logging.ts';
-import { NotAdminError } from './accounts.ts';
 import type { Identity } from './index.ts';
 
 /** An Invite works for 7 days from its creation. */
@@ -75,6 +74,14 @@ export const INVITE_LOG_PATTERNS: LogPatterns = {
 			)
 };
 
+/** The asker is not an admin, or has no Account of their own to create an Invite as. */
+export class InvitesNotAdminError extends Error {
+	constructor() {
+		super('Only the admin may manage Invites.');
+		this.name = 'InvitesNotAdminError';
+	}
+}
+
 /** A pending Invite as the Users page lists it. Nothing the token can be rebuilt from is in it. */
 export interface PendingInvite {
 	id: string;
@@ -124,7 +131,7 @@ export const hashToken = (token: string) => createHash('sha256').update(token).d
 
 export function createInvites({ db, origin }: { db: Db; origin: string }): Invites {
 	const requireAdmin = (who: Identity) => {
-		if (who.role !== 'admin') throw new NotAdminError();
+		if (who.role !== 'admin') throw new InvitesNotAdminError();
 	};
 
 	return {
@@ -135,7 +142,7 @@ export function createInvites({ db, origin }: { db: Db; origin: string }): Invit
 				where: { learnerId: who.learnerId },
 				select: { id: true }
 			});
-			if (!user) throw new NotAdminError();
+			if (!user) throw new InvitesNotAdminError();
 			const token = randomBytes(INVITE_TOKEN_BYTES).toString('base64url');
 			const expiresAt = new Date(now.getTime() + INVITE_LIFETIME_MS);
 			const id = randomUUID();
