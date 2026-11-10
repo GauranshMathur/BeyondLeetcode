@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
-import { judge, runSubmission, submitPlan } from '../learning/submission.ts';
+import { judgeSubmission } from '../learning/submission.ts';
 import { sandboxConfig } from './config.ts';
 import { createEngine } from './engine.ts';
 import type { Language } from './port.ts';
@@ -11,8 +11,9 @@ import { createSandboxRunner, ensureImages } from './sandbox.ts';
  * Seam 3, the content check: every Problem's Reference Code, in every Language, is Accepted by the
  * real Sandbox against its own Tests and the earlier Core Problems' Tests. Loading the catalogue
  * validates the content folder first. Point it at real content with CONTENT_DIR; it defaults to the
- * fixture. The pure rules the Learning core uses (`submitPlan`, `judge`) pick the Tests and the
- * Verdict, so nothing is re-implemented here.
+ * fixture. Each case calls the Submission module (`judgeSubmission`) with the Sandbox Runner, so the
+ * Tests, the batches, the request and the Verdict are the ones a Learner's Submission gets and
+ * nothing is re-implemented here.
  *
  * The cases run concurrently, at most `maxConcurrency` at once (vitest.sandbox.config.ts): a later
  * Problem submits many Tests, so one after another the check outgrows the CI job's timeout as
@@ -48,21 +49,14 @@ function cases(ids: string[]) {
 			it(`${problemId} / ${language}`, async () => {
 				const files = catalogue.problem(problemId)?.referenceCode[language];
 				expect(files, `${problemId}: no ${language} Reference Code`).toBeDefined();
-				// Same batches as a Submission: Example Tests in one container, the rest in several.
-				const plan = submitPlan(catalogue, problemId, sandboxConfig.hiddenBatchTests);
-				const batches = await runSubmission(plan, (tests) =>
-					runner.execute({
-						language,
-						files: { ...files },
-						tests: tests.map(({ id, input }) => ({ id, input })),
-						limits: { timeoutMs: sandboxConfig.testTimeoutMs, memoryMb: sandboxConfig.memoryMb }
-					})
-				);
-				const { verdict, failure } = judge(
-					batches,
+				// The module a Submission goes through: its batches, its request, its Verdict.
+				const { verdict, failure } = await judgeSubmission({
+					catalogue,
 					problemId,
-					(id) => catalogue.problem(id)?.title ?? id
-				);
+					language,
+					files: { ...files },
+					runner
+				});
 				expect(
 					verdict,
 					`Reference Code for ${problemId} (${language}) got ${verdict}: ${JSON.stringify(failure)}`

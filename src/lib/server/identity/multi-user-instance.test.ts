@@ -6,7 +6,7 @@ import { createCatalogueScriptedRunner } from '../runner/scripted-catalogue.ts';
 import { createFileTestDb } from '../test-db.ts';
 import { enabledProviders } from './auth.ts';
 import { INVITE_COOKIE } from './invites.ts';
-import { createMultiUserInstance } from './multi-user-instance.ts';
+import { createMultiUserInstance, type MultiUserInstanceOptions } from './multi-user-instance.ts';
 import { createFirstAdmin } from './setup.ts';
 import type { ProviderStarts } from './throttle.ts';
 
@@ -51,7 +51,14 @@ const secret = 'a-test-secret-of-at-least-thirty-two-characters';
 const origin = 'http://localhost:4174';
 const admin = { name: 'Ada', email: 'ada@example.com', password: 'correct horse battery' };
 
-async function boot(extra: { origin?: string; providerEnv?: Record<string, string> } = {}) {
+async function boot(
+	extra: {
+		origin?: string;
+		providerEnv?: Record<string, string>;
+		passwordHasher?: MultiUserInstanceOptions['passwordHasher'];
+		admit?: MultiUserInstanceOptions['admit'];
+	} = {}
+) {
 	const db = await createFileTestDb();
 	const instance = await createInstance(db);
 	const built = await createMultiUserInstance({
@@ -59,7 +66,9 @@ async function boot(extra: { origin?: string; providerEnv?: Record<string, strin
 		instance,
 		secret,
 		origin: extra.origin ?? origin,
-		providerEnv: extra.providerEnv ?? {}
+		providerEnv: extra.providerEnv ?? {},
+		passwordHasher: extra.passwordHasher,
+		admit: extra.admit
 	});
 	return { db, instance, ...built };
 }
@@ -195,6 +204,55 @@ describe('createMultiUserInstance', () => {
 		expect(made.auth[1]).toBe(two);
 		expect(made.accounts[1]).toBe(two);
 		expect(made.auth[0]).not.toBe(made.auth[1]);
+	});
+});
+
+describe('the options a test may pass', () => {
+	const signUp = async (booted: Booted, email = 'lin@example.com') => {
+		try {
+			await booted.multiUser.auth.api.signUpEmail({
+				body: { name: 'Lin', email, password: 'a long enough secret' }
+			});
+			return 200;
+		} catch (error) {
+			return (error as { statusCode?: number }).statusCode;
+		}
+	};
+
+	it('admits by the production rule when no override is given: an Instance not set up refuses a sign-up', async () => {
+		expect(await signUp(await boot())).toBe(403);
+	});
+
+	it('hands the production rule to admit, which may delegate to it or override it', async () => {
+		let inner: Parameters<NonNullable<MultiUserInstanceOptions['admit']>>[0] | undefined;
+		const delegating = await boot({
+			admit: (production) => {
+				inner = production;
+				return (attempt) => production(attempt);
+			}
+		});
+		expect(await signUp(delegating)).toBe(403);
+		expect(inner).toBeTypeOf('function');
+		expect(await inner?.({ email: 'x@example.com' })).toBeNull();
+
+		const overriding = await boot({ admit: () => () => ({}) });
+		expect(await signUp(overriding)).toBe(200);
+	});
+
+	it('signs Accounts up with the given password hasher', async () => {
+		const booted = await boot({
+			admit: () => () => ({}),
+			passwordHasher: {
+				hash: async (p) => `plain:${p}`,
+				verify: async ({ hash, password }) => hash === `plain:${password}`
+			}
+		});
+		await signUp(booted);
+
+		const account = await booted.db.account.findFirstOrThrow({
+			where: { providerId: 'credential' }
+		});
+		expect(account.password).toBe('plain:a long enough secret');
 	});
 });
 
