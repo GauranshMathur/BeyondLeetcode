@@ -368,7 +368,8 @@ def seccomp_program(machine):
     # sit at the end. What it does: a non-native arch (closes i386 int 0x80) and, on x86_64, x32
     # syscalls get ENOSYS; ptrace, and setrlimit(RLIMIT_CORE) and prlimit64(RLIMIT_CORE) with a new
     # limit, get EPERM (a tracer can rewrite a checked argument after the filter has read it on
-    # arm64 kernels without the upstream fixes, so nothing may trace); everything else is allowed. It stacks on Docker's default profile.
+    # arm64 kernels without the upstream fixes, so nothing may trace); everything else is allowed.
+    # It stacks on Docker's default profile.
     if machine == "x86_64":
         audit, ptrace, setrlimit, prlimit64, x32 = 0xC000003E, 101, 160, 302, True
     elif machine in ("aarch64", "arm64"):

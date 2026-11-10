@@ -18,7 +18,7 @@ let runner: RunnerPort;
 let instanceId: string;
 
 beforeAll(async () => {
-	const started = await startTestRunner(token, { images: Object.values(sandboxConfig.images) });
+	const started = await startTestRunner(token);
 	instanceId = started.instanceId;
 	runner = started.runner;
 }, 120_000);
@@ -418,13 +418,18 @@ describe('Sandbox escapes: core dumps', { timeout: 60_000 }, () => {
 
 describe('Sandbox escapes: tracing', { timeout: 60_000 }, () => {
 	// A tracer can change a syscall's arguments after the seccomp filter has checked them on some
-	// kernels, so the filter refuses ptrace outright. PTRACE_TRACEME would succeed without it.
+	// kernels, so the filter refuses ptrace outright. PTRACE_TRACEME would succeed without it. A host
+	// with Yama ptrace_scope 2 or more answers EPERM to TRACEME even with no filter, so PTRACE_ATTACH
+	// is probed too: with no filter the kernel answers ESRCH (no such process) on any host.
 	const pythonProbe = [
 		'import ctypes, errno',
 		'libc = ctypes.CDLL(None, use_errno=True)',
 		'result = libc.ptrace(0, 0, 0, 0)',
 		'refused = result == -1 and ctypes.get_errno() == errno.EPERM',
 		'print("ptrace", "EPERM" if refused else "allowed")',
+		'result = libc.ptrace(16, 0, 0, 0)',
+		'refused = result == -1 and ctypes.get_errno() == errno.EPERM',
+		'print("attach", "EPERM" if refused else "allowed")',
 		''
 	].join('\n');
 
@@ -460,16 +465,25 @@ describe('Sandbox escapes: tracing', { timeout: 60_000 }, () => {
 				'\t} else {',
 				'\t\tfmt.Println("ptrace", "allowed")',
 				'\t}',
+				'\t_, _, errno = syscall.Syscall6(syscall.SYS_PTRACE, 16, 0, 0, 0, 0, 0)',
+				'\tif errno == syscall.EPERM {',
+				'\t\tfmt.Println("attach", "EPERM")',
+				'\t} else {',
+				'\t\tfmt.Println("attach", "allowed")',
+				'\t}',
 				'}',
 				''
 			].join('\n')
 		]
-	] as const)('refuses ptrace(PTRACE_TRACEME) with EPERM in %s', async (language, file, main) => {
-		const result = await runIn(language, file, main);
+	] as const)(
+		'refuses ptrace(PTRACE_TRACEME and PTRACE_ATTACH) with EPERM in %s',
+		async (language, file, main) => {
+			const result = await runIn(language, file, main);
 
-		expect(result.compileError).toBeUndefined();
-		expect(result.results[0].stdout).toBe('ptrace EPERM\n');
-	});
+			expect(result.compileError).toBeUndefined();
+			expect(result.results[0].stdout).toBe('ptrace EPERM\nattach EPERM\n');
+		}
+	);
 });
 
 describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {

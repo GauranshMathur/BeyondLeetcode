@@ -7,7 +7,7 @@ import { LANGUAGES } from '../../languages';
 import { harnessScript } from './harness';
 
 /** sha256 of harness.py. A change to the harness updates this constant on purpose. */
-const harnessSha256 = '7e3f1fa5215af2a9d69e513c6ee032fd60252ed44e3376e75f62388acb9303f8';
+const harnessSha256 = '1a582b2e2baa07a9f899827645f63edaa9509876bbc6e1222991679a52aefe5d';
 
 describe('harnessScript', () => {
 	it('is the Python in harness.py, with no TypeScript string left in harness.ts', () => {
@@ -298,4 +298,126 @@ describe('harness.py through the host python3', () => {
 			expect(reported.languages[l.id], l.id).toEqual([l.entryFile, l.extension]);
 		}
 	});
+});
+
+// seccomp_program() is classic BPF over struct seccomp_data; this runs it for both architectures
+// with a small interpreter, since the host kernel only ever enforces its own.
+const seccompDriver = `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("harness", sys.argv[1])
+h = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(h)
+print(json.dumps({m: h.seccomp_program(m) for m in ("x86_64", "aarch64")}))
+`;
+const seccomp = harnessUnchanged
+	? spawnSync('python3', ['-B', '-I', '-c', seccompDriver, harnessPath], {
+			encoding: 'utf8',
+			timeout: 30_000
+		})
+	: undefined;
+const programs: Record<string, [number, number, number, number][]> | undefined =
+	seccomp?.status === 0 ? JSON.parse(seccomp.stdout) : undefined;
+
+const EPERM = 0x00050000 | 1;
+const ENOSYS = 0x00050000 | 38;
+const ALLOW = 0x7fff0000;
+const RLIMIT_CORE = 4;
+const LD_W_ABS = 0x20;
+const JEQ = 0x15;
+const JSET = 0x45;
+const RET = 0x06;
+
+type SeccompData = { nr: number; arch: number; args?: bigint[] };
+
+/** Runs the program the way the kernel does: the action of the first RET reached. */
+function runSeccomp(program: [number, number, number, number][], data: SeccompData): number {
+	const bytes = Buffer.alloc(64);
+	bytes.writeUInt32LE(data.nr >>> 0, 0);
+	bytes.writeUInt32LE(data.arch, 4);
+	for (const [n, value] of (data.args ?? []).entries()) bytes.writeBigUInt64LE(value, 16 + 8 * n);
+	let a = 0;
+	let pc = 0;
+	for (let steps = 0; steps < 1000; steps++) {
+		const [code, jt, jf, k] = program[pc];
+		if (code === LD_W_ABS) {
+			a = bytes.readUInt32LE(k);
+			pc += 1;
+		} else if (code === JEQ) pc += 1 + (a === k ? jt : jf);
+		else if (code === JSET) pc += 1 + ((a & k) !== 0 ? jt : jf);
+		else if (code === RET) return k;
+		else throw new Error(`unexpected instruction ${code}`);
+	}
+	throw new Error('program did not return');
+}
+
+const arches = [
+	{
+		machine: 'x86_64',
+		audit: 0xc000003e,
+		ptrace: 101,
+		setrlimit: 160,
+		prlimit64: 302,
+		other: 0xc00000b7
+	},
+	{
+		machine: 'aarch64',
+		audit: 0xc00000b7,
+		ptrace: 117,
+		setrlimit: 164,
+		prlimit64: 261,
+		other: 0xc000003e
+	}
+];
+const nullPointer = 0n;
+const somePointer = 0x7ffd12345678n;
+const highPointer = 0x1_0000_0000n;
+
+describe('harness.py seccomp_program', () => {
+	it('is built by the python3 the pinned hash covers', () => {
+		expect(harnessUnchanged, changedMessage).toBe(true);
+		expect(programs).toBeDefined();
+	});
+
+	describe.each(arches)(
+		'on $machine',
+		({ machine, audit, ptrace, setrlimit, prlimit64, other }) => {
+			const answer = (nr: number, args: bigint[] = [], arch = audit) =>
+				runSeccomp(programs?.[machine] ?? [], { nr, arch, args });
+
+			it('refuses ptrace with EPERM', () => {
+				expect(answer(ptrace, [0n])).toBe(EPERM);
+				expect(answer(ptrace, [16n])).toBe(EPERM);
+			});
+
+			it('refuses setrlimit on RLIMIT_CORE with EPERM and allows another resource', () => {
+				expect(answer(setrlimit, [BigInt(RLIMIT_CORE)])).toBe(EPERM);
+				expect(answer(setrlimit, [7n])).toBe(ALLOW);
+			});
+
+			it('refuses prlimit64 on RLIMIT_CORE with a new limit, and allows the rest', () => {
+				expect(answer(prlimit64, [0n, BigInt(RLIMIT_CORE), somePointer, 0n])).toBe(EPERM);
+				expect(answer(prlimit64, [0n, BigInt(RLIMIT_CORE), highPointer, 0n])).toBe(EPERM);
+				expect(answer(prlimit64, [0n, BigInt(RLIMIT_CORE), nullPointer, somePointer])).toBe(ALLOW);
+				expect(answer(prlimit64, [0n, 7n, somePointer, 0n])).toBe(ALLOW);
+			});
+
+			it('allows a syscall it does not name', () => {
+				expect(answer(0)).toBe(ALLOW);
+				expect(answer(39)).toBe(ALLOW);
+			});
+
+			it('answers ENOSYS to a foreign architecture, whatever the number', () => {
+				expect(answer(ptrace, [0n], other)).toBe(ENOSYS);
+				expect(answer(0, [], other)).toBe(ENOSYS);
+				expect(answer(0, [], 0x40000003)).toBe(ENOSYS);
+			});
+
+			if (machine === 'x86_64') {
+				it('answers ENOSYS to an x32 syscall number', () => {
+					expect(answer(0x40000000 | ptrace, [0n])).toBe(ENOSYS);
+					expect(answer(0x40000000 | 1)).toBe(ENOSYS);
+				});
+			}
+		}
+	);
 });
