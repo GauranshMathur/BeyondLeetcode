@@ -2,7 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { PrismaClient } from '../../../prisma/generated/client';
 import type { Db } from '../../lib/server/db.ts';
-import { createAuth } from '../../lib/server/identity/auth.ts';
+import { createMultiUserInstance } from '../../lib/server/identity/multi-user-instance.ts';
+import { createInstance } from '../../lib/server/instance.ts';
 
 // Test-only, and it adds no production code path. Browser tests of the Multi-user server (4174) that need
 // Accounts the screens cannot make yet (a learner, a user whose role only contains admin) open the server's
@@ -134,8 +135,21 @@ export async function openMultiUserDatabase(target: ServerTarget = serverEnviron
 		}
 	});
 	const busyCount = () => busyHits;
-	// Admits every sign-up: this instance is only ever driven from the test process, never over HTTP.
-	const auth = createAuth({ db: db as unknown as Db, origin, secret, admitSignUp: () => ({}) });
+	// The server's own wiring, admitting every sign-up: this instance is only ever driven from the test
+	// process, never over HTTP. Its Instance answers Local so the start-up repair is skipped: the server
+	// already ran it, and four workers share this database, so a second repair could delete a Learner
+	// another worker's sign-up has made but not yet given to its Account.
+	const instance = await createInstance(db as unknown as Db);
+	const {
+		multiUser: { auth }
+	} = await createMultiUserInstance({
+		db: db as unknown as Db,
+		instance: { ...instance, mode: () => 'local' as const },
+		secret,
+		origin,
+		providerEnv: {},
+		admit: () => () => ({})
+	});
 
 	return {
 		db,

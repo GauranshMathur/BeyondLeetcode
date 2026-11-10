@@ -1,14 +1,7 @@
 import { isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-	type AccountActions,
-	createAccountActions,
-	type Refusal,
-	type RefusalCode
-} from '#lib/server/identity/account-actions.js';
-import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
-import { createTestAuth } from '#lib/server/identity/test-auth.js';
-import { createProviderStarts } from '#lib/server/identity/throttle.js';
+import type { AccountActions, Refusal, RefusalCode } from '#lib/server/identity/account-actions.js';
+import { createTestInstance } from '#lib/server/identity/test-auth.js';
 import { createSignIn, landing, providerNotice } from './sign-in';
 
 afterEach(() => vi.restoreAllMocks());
@@ -89,18 +82,6 @@ function harness(
 		}
 	}
 	return { signIn, accounts, cookies, setHeaders, post, load };
-}
-
-function realAccounts(
-	auth: Awaited<ReturnType<typeof createTestAuth>>['auth'],
-	providerStarts = createProviderStarts()
-) {
-	return createAccountActions({
-		auth,
-		providerStarts,
-		registrationOpen: () => true,
-		inviteValid: async () => false
-	});
 }
 
 describe('landing: where a sign-in goes', () => {
@@ -336,10 +317,9 @@ describe('with the real Better Auth', () => {
 	const password = 'correct horse battery';
 
 	async function real() {
-		const { db, auth, signUp } = await createTestAuth();
-		await signUp({ password });
+		const { db, auth, instance, multiUser, resolver, learner } = await createTestInstance();
+		await learner({ name: 'Ada', email: 'ada@example.com', password });
 		const signIn = createSignIn();
-		const accounts = realAccounts(auth);
 		const cookies = new Map<string, string>();
 		const jar = {
 			set: (name: string, value: string) => void cookies.set(name, value)
@@ -347,7 +327,7 @@ describe('with the real Better Auth', () => {
 		const post = async (values: Form, next = '/') => {
 			const event = {
 				request: { formData: async () => formOf(values) },
-				locals: { instance: { registrationMode: () => 'open' }, multiUser: { accounts } },
+				locals: { instance, multiUser },
 				cookies: jar,
 				setHeaders: () => {},
 				url: new URL(`http://localhost/signin?next=${encodeURIComponent(next)}`),
@@ -366,7 +346,7 @@ describe('with the real Better Auth', () => {
 					.map(([name, value]) => `${name}=${encodeURIComponent(value)}`)
 					.join('; ')
 			});
-			return createMultiUserIdentity(auth).resolve({
+			return resolver.resolve({
 				cookies: { get: () => undefined },
 				request: { headers }
 			});
@@ -595,16 +575,13 @@ describe('what the page says about a refused provider sign-in', () => {
 
 describe('provider buttons with the real Better Auth', () => {
 	it('starts GitHub: the state cookie is set and the visitor goes to GitHub with the callback on this site', async () => {
-		const { auth } = await createTestAuth({
-			socialProviders: { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } }
+		const { instance, multiUser } = await createTestInstance({
+			providerEnv: { GITHUB_CLIENT_ID: 'gh-id', GITHUB_CLIENT_SECRET: 'gh-secret' }
 		});
 		const jar = new Map<string, string>();
 		const event = {
 			request: { formData: async () => formOf({ provider: 'github' }) },
-			locals: {
-				instance: { registrationMode: () => 'invite' },
-				multiUser: { accounts: realAccounts(auth) }
-			},
+			locals: { instance, multiUser },
 			cookies: { set: (name: string, value: string) => void jar.set(name, value) },
 			url: new URL('http://localhost/signin'),
 			getClientAddress: () => '203.0.113.9'
@@ -657,14 +634,14 @@ describe('a provider sign-in that completes gives its start back', () => {
 	}
 
 	async function world() {
-		const starts = createProviderStarts();
-		const { db, auth } = await createTestAuth({
+		const { db, auth, instance, multiUser, admin } = await createTestInstance({
 			origin,
-			socialProviders: { github: { clientId: 'gh-id', clientSecret: 'gh-secret' } },
-			providerStarts: starts
+			providerEnv: { GITHUB_CLIENT_ID: 'gh-id', GITHUB_CLIENT_SECRET: 'gh-secret' }
 		});
+		// A first-time GitHub sign-in is a sign-up, so the Registration Mode must be open.
+		await admin();
+		await instance.setRegistrationMode('open');
 		const signIn = createSignIn();
-		const accounts = realAccounts(auth, starts);
 		let person = 0;
 		github(() => person);
 		/** The button: returns the state of the authorize URL and the cookies the browser would send back. */
@@ -672,7 +649,7 @@ describe('a provider sign-in that completes gives its start back', () => {
 			const jar = new Map<string, string>();
 			const event = {
 				request: { formData: async () => formOf({ provider: 'github' }) },
-				locals: { instance: { registrationMode: () => 'open' }, multiUser: { accounts } },
+				locals: { instance, multiUser },
 				cookies: { set: (name: string, value: string) => void jar.set(name, value) },
 				url: new URL(`${origin}/signin`),
 				getClientAddress: () => address
@@ -699,8 +676,7 @@ describe('a provider sign-in that completes gives its start back', () => {
 			callback,
 			next: () => {
 				person += 1;
-			},
-			starts
+			}
 		};
 	}
 
@@ -718,7 +694,7 @@ describe('a provider sign-in that completes gives its start back', () => {
 			expect(done.headers.get('location'), `callback ${i + 1}`).toBe('/');
 		}
 
-		expect(await db.session.count()).toBe(30);
+		expect(await db.session.count({ where: { user: { role: 'learner' } } })).toBe(30);
 	}, 30_000);
 
 	it('still refuses the 21st start when none completes a callback', async () => {
@@ -732,12 +708,11 @@ describe('a provider sign-in that completes gives its start back', () => {
 	});
 
 	it('gives back one start per callback: replaying a completed callback refunds nothing more', async () => {
-		const { press, callback, next, starts } = await world();
+		const { press, callback, next } = await world();
 		next();
 		const first = await press();
 		if (!first.started) throw new Error('refused');
 		await callback(first.state, first.cookie);
-		expect(starts.size()).toBe(0);
 		for (let i = 0; i < 19; i++) await press();
 
 		await callback(first.state, first.cookie);
@@ -748,13 +723,15 @@ describe('a provider sign-in that completes gives its start back', () => {
 	});
 
 	it('does not give a start back when the callback does not sign anyone in', async () => {
-		const { press, callback, starts } = await world();
+		const { press, callback } = await world();
 		const start = await press();
 		if (!start.started) throw new Error('refused');
 
 		const refused = await callback(start.state, '');
 
 		expect(refused.headers.get('location')).toContain('error=');
-		expect(starts.size()).toBe(1);
+		// The start is still outstanding: 19 more fill the 20, and the next is refused.
+		for (let i = 0; i < 19; i++) expect((await press()).started, `start ${i + 2}`).toBe(true);
+		expect((await press()).started).toBe(false);
 	});
 });

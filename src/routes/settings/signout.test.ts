@@ -1,27 +1,24 @@
 import { isHttpError, isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
-import { createTestAuth } from '#lib/server/identity/test-auth.js';
-import { createProviderStarts } from '#lib/server/identity/throttle.js';
+import { createTestInstance } from '#lib/server/identity/test-auth.js';
 import { actions, load } from './+page.server';
 
 afterEach(() => vi.restoreAllMocks());
 
 const CLEARED = 'better-auth.session_token=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax';
 
-/** Locals of a Multi-user Instance whose Better Auth is `auth` (a stub of the calls Sign out makes, or the real one). */
-function multi(auth: unknown) {
-	return {
-		multiUser: {
-			accounts: createAccountActions({
-				auth: auth as never,
-				providerStarts: createProviderStarts(),
-				registrationOpen: () => true,
-				inviteValid: async () => true
-			})
-		}
-	};
+/**
+ * Locals of the server's own Multi-user wiring. `stubs` replace the Better Auth calls Sign out makes;
+ * left out, the real ones run.
+ */
+async function multi(stubs: { signOut?: unknown; getSession?: unknown } = {}) {
+	const instance = await createTestInstance();
+	await instance.admin();
+	const { api } = instance.multiUser.auth;
+	if (stubs.signOut) vi.spyOn(api, 'signOut').mockImplementation(stubs.signOut as never);
+	if (stubs.getSession) vi.spyOn(api, 'getSession').mockImplementation(stubs.getSession as never);
+	return { ...instance, locals: { multiUser: instance.multiUser } };
 }
 
 /** What Better Auth's get-session answers with `returnHeaders`: an Account that must, or need not, change. */
@@ -79,7 +76,7 @@ describe('the sign-out action', () => {
 		headers.append('set-cookie', CLEARED);
 		const signOut = vi.fn(async () => ({ headers, response: { success: true } }));
 		const sent = new Headers({ cookie: 'better-auth.session_token=abc' });
-		const e = event(multi({ api: { signOut } }), sent);
+		const e = event((await multi({ signOut })).locals, sent);
 
 		const result = await run(e);
 
@@ -108,7 +105,7 @@ describe('the sign-out action', () => {
 				code: 'SQLITE_BUSY'
 			});
 		};
-		const e = event(multi({ api: { signOut, getSession: sessionOf(false) } }));
+		const e = event((await multi({ signOut, getSession: sessionOf(false) })).locals);
 
 		const result = await run(e);
 
@@ -137,7 +134,7 @@ describe('a failed sign-out for an Account that must change its password', () =>
 		const signOut = async () => {
 			throw new Error('down');
 		};
-		const e = event(multi({ api: { signOut, getSession } }));
+		const e = event((await multi({ signOut, getSession })).locals);
 
 		const result = await run(e);
 
@@ -147,9 +144,8 @@ describe('a failed sign-out for an Account that must change its password', () =>
 
 describe('with the real Better Auth', () => {
 	async function signedIn() {
-		const { db, auth, signUp } = await createTestAuth();
-		await signUp();
-		const { headers } = await auth.api.signInEmail({
+		const instance = await multi();
+		const { headers } = await instance.auth.api.signInEmail({
 			body: { email: 'ada@example.com', password: 'correct horse battery' },
 			returnHeaders: true
 		});
@@ -157,11 +153,11 @@ describe('with the real Better Auth', () => {
 			.getSetCookie()
 			.map((c) => c.split(';')[0])
 			.join('; ');
-		return { db, auth, cookie };
+		return { ...instance, cookie };
 	}
 
 	it('revokes the session in the database and clears the cookie, so the old cookie is nobody', async () => {
-		const { db, auth, cookie } = await signedIn();
+		const { db, auth, locals, cookie } = await signedIn();
 		const who = () =>
 			createMultiUserIdentity(auth).resolve({
 				cookies: { get: () => undefined },
@@ -170,7 +166,7 @@ describe('with the real Better Auth', () => {
 		expect(await who()).not.toBeNull();
 		// Sign-up made one session and sign-in another; only the one the cookie names ends.
 		expect(await db.session.count()).toBe(2);
-		const e = event(multi(auth), new Headers({ cookie }));
+		const e = event(locals, new Headers({ cookie }));
 
 		const result = await run(e);
 

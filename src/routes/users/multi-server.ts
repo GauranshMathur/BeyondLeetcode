@@ -3,8 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDb } from '../../lib/server/db.ts';
-import { createAuth } from '../../lib/server/identity/auth.ts';
-import { createRegistration } from '../../lib/server/identity/registration.ts';
+import { createMultiUserInstance } from '../../lib/server/identity/multi-user-instance.ts';
 import { createFirstAdmin } from '../../lib/server/identity/setup.ts';
 import { createInstance } from '../../lib/server/instance.ts';
 import { freePort } from '../../lib/test/free-port.ts';
@@ -58,13 +57,14 @@ export async function startMultiUserServer(): Promise<MultiUserServer> {
 	const db = createDb(database);
 	try {
 		const instance = await createInstance(db);
-		const auth = createAuth({
+		const { multiUser } = await createMultiUserInstance({
 			db,
-			origin,
+			instance,
 			secret: SECRET,
-			admitSignUp: createRegistration({ instance })
+			origin,
+			providerEnv: {}
 		});
-		await createFirstAdmin({ instance, auth, db }, OWN_SERVER_ADMIN);
+		await createFirstAdmin({ instance, auth: multiUser.auth, db }, OWN_SERVER_ADMIN);
 	} finally {
 		await db.$disconnect();
 	}

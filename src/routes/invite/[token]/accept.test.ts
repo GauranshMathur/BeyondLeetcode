@@ -1,10 +1,8 @@
 import { inspect } from 'node:util';
 import { isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { INVITE_COOKIE, INVITE_LIFETIME_MS } from '#lib/server/identity/invites.js';
 import { createTestInstance } from '#lib/server/identity/test-auth.js';
-import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import { createAccept } from './accept';
 
 afterEach(() => vi.restoreAllMocks());
@@ -19,18 +17,6 @@ const formOf = (values: Form) => {
 	for (const [key, value] of Object.entries(values)) body.set(key, value);
 	return body;
 };
-
-/** The account actions over this Better Auth, whose Invites are judged by `invites`. */
-const accountsOver = (
-	auth: unknown,
-	invites: { lookup: (t: string, n: Date) => Promise<unknown> }
-) =>
-	createAccountActions({
-		auth: auth as never,
-		providerStarts: createProviderStarts(),
-		registrationOpen: () => false,
-		inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
-	});
 
 async function real() {
 	const { db, instance, multiUser, admin: signUpAdmin } = await createTestInstance({ origin });
@@ -268,15 +254,8 @@ describe('accepting', () => {
 			['NAME_INVALID_CHARACTERS', 'name'],
 			['NAME_REQUIRED', 'name']
 		] as const) {
-			locals.multiUser.accounts = accountsOver(
-				{
-					api: {
-						signUpEmail: async () => {
-							throw new APIError('BAD_REQUEST', { message: 'x', code });
-						}
-					}
-				},
-				{ lookup: async () => ({}) }
+			vi.spyOn(locals.multiUser.auth.api, 'signUpEmail').mockRejectedValue(
+				new APIError('BAD_REQUEST', { message: 'x', code })
 			);
 			expect(await post(token, lin)).toMatchObject({ status: 400, data: { field } });
 		}
@@ -359,15 +338,8 @@ describe('accepting', () => {
 		);
 		const { post, create, locals } = await real();
 		const { token } = await create();
-		locals.multiUser.accounts = accountsOver(
-			{
-				api: {
-					signUpEmail: async () => {
-						throw new Error(`boom ${token} ${lin.password}`);
-					}
-				}
-			},
-			{ lookup: async () => ({}) }
+		vi.spyOn(locals.multiUser.auth.api, 'signUpEmail').mockRejectedValue(
+			new Error(`boom ${token} ${lin.password}`)
 		);
 
 		expect(await post(token, lin)).toMatchObject({ status: 500 });
