@@ -834,7 +834,7 @@ async function runHarness(
 	env: Record<string, string> = {}
 ) {
 	const spec = containerSpec('python', 'test-instance', inputs.length, 2000, 256);
-	const { end, frames } = await runCaptured(engine, {
+	const { end, frames, stdout } = await runCaptured(engine, {
 		image: sandboxConfig.pythonImage,
 		spec,
 		input: harnessInput(files, inputs),
@@ -846,10 +846,10 @@ async function runHarness(
 		}
 	});
 	if (end.kind !== 'exited') throw new Error(`The harness container ended with ${end.kind}`);
-	if (end.code !== 0) return { status: end.code, lines: [] };
+	if (end.code !== 0) return { status: end.code, lines: [], stdout };
 	const decoder = createHarnessDecoder(inputs.map((_, i) => ({ id: String(i) })));
 	for (const [stream, payload] of frames) decoder.frame(stream, payload);
-	return { status: end.code, lines: decoder.finish(end).results };
+	return { status: end.code, lines: decoder.finish(end).results, stdout };
 }
 
 describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60_000 }, () => {
@@ -1000,13 +1000,13 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 	it('exits on its own at the in-container deadline if the Runner is gone', async () => {
 		const started = Date.now();
 
-		const { status, lines } = await runHarness({ 'main.py': 'while True:\n    pass\n' }, [''], {
+		const { status, stdout } = await runHarness({ 'main.py': 'while True:\n    pass\n' }, [''], {
 			RUNNER_DEADLINE_S: '1',
 			RUNNER_TEST_TIMEOUT_MS: '60000'
 		});
 
 		expect(status).not.toBe(0);
-		expect(lines).toEqual([]);
+		expect(stdout).toBe('');
 		expect(Date.now() - started).toBeLessThan(6000);
 	});
 
