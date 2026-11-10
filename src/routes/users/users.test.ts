@@ -731,7 +731,9 @@ describe('Reset password on the Users page', () => {
 		it('hands the Admin actions the asker, the request headers and the id, and answers the password', async () => {
 			const adminActions = scripted({ password: 'one-time-password-from-the-adapter' });
 			const answer = await call({ identity: asAdmin, multiUser: { adminActions } });
-			expect(answer).toEqual({ reset: { userId: 'u1', password: 'one-time-password-from-the-adapter' } });
+			expect(answer).toEqual({
+				reset: { userId: 'u1', password: 'one-time-password-from-the-adapter' }
+			});
 			expect(adminActions.resetPassword).toHaveBeenCalledExactlyOnceWith({
 				who: asAdmin,
 				headers: expect.any(Headers),
