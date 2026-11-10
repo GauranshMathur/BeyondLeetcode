@@ -3,7 +3,7 @@ import { sandboxConfig } from './config';
 import { createEngine } from './engine';
 import type { RunnerPort } from './port';
 import { containerSpec } from './sandbox';
-import { startTestRunner, stopTestRunners } from './wait-healthy.testutil';
+import { runCaptured, startTestRunner, stopTestRunners } from './wait-healthy.testutil';
 
 /** Real Docker: the Go Sandbox image carries the pinned Go toolchain and a pre-warmed build cache, under the Sandbox flags. */
 
@@ -11,25 +11,16 @@ const engine = createEngine(process.env.DOCKER_SOCKET ?? '/var/run/docker.sock')
 const image = sandboxConfig.images.go;
 
 async function runInImage(cmd: string[]): Promise<{ out: string; status: number }> {
-	// create no longer pulls a missing image (C86).
+	// create no longer pulls a missing image.
 	if (!(await engine.hasImage(image))) await engine.pull(image);
-	const id = await engine.create(image, {
-		...containerSpec('go', 'test-instance', 1, 2000, 256),
-		Cmd: cmd
+	const { end, stdout } = await runCaptured(engine, {
+		image,
+		spec: containerSpec('go', 'test-instance', 1, 2000, 256),
+		input: Buffer.alloc(0),
+		override: { Cmd: cmd }
 	});
-	let out = '';
-	const { status: exit } = await engine.wait(id);
-	const conn = await engine.attach(
-		id,
-		(stream, payload) => {
-			if (stream === 1) out += payload.toString('utf8');
-		},
-		5000
-	);
-	await engine.start(id);
-	conn.sendInput(Buffer.alloc(0));
-	await conn.closed;
-	return { out: out.trim(), status: await exit };
+	if (end.kind !== 'exited') throw new Error(`The container ended with ${end.kind}`);
+	return { out: stdout.trim(), status: end.code };
 }
 
 describe('Go Sandbox image', { timeout: 120_000 }, () => {

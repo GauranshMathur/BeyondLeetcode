@@ -2,11 +2,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sandboxConfig } from './config';
 import { type ContractSubject, type ProgramKind, runnerContract } from './contract';
 import { createEngine } from './engine';
-import { harnessInput } from './harness';
+import { createHarnessDecoder, harnessInput } from './harness';
 import { createHttpRunner } from './http-adapter';
 import type { ExecuteRequest, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
-import { containersOwnedBy, startTestRunner, stopTestRunners } from './wait-healthy.testutil';
+import {
+	containersOwnedBy,
+	runCaptured,
+	startTestRunner,
+	stopTestRunners
+} from './wait-healthy.testutil';
 
 /** Real HTTP adapter, real Runner process (started as `runner` role would), real Docker. */
 
@@ -818,40 +823,33 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 	});
 });
 
-/** Drives the harness container directly, so a test can change its env or read its exit status. */
+/**
+ * Drives the harness container directly, so a test can change its env or read its exit status.
+ * The container runs through the container module and its output is read by the Runner's own
+ * decoder; a non-zero exit makes that output untrusted, so `lines` is empty then.
+ */
 async function runHarness(
 	files: Record<string, string>,
 	inputs: string[],
 	env: Record<string, string> = {}
 ) {
 	const spec = containerSpec('python', 'test-instance', inputs.length, 2000, 256);
-	const merged = [
-		...spec.Env.filter((e) => !(e.split('=')[0] in env)),
-		...Object.entries(env).map(([k, v]) => `${k}=${v}`)
-	];
-	const id = await engine.create(sandboxConfig.pythonImage, {
-		...spec,
-		Env: merged
+	const { end, frames, stdout } = await runCaptured(engine, {
+		image: sandboxConfig.pythonImage,
+		spec,
+		input: harnessInput(files, inputs),
+		override: {
+			Env: [
+				...spec.Env.filter((e) => !(e.split('=')[0] in env)),
+				...Object.entries(env).map(([k, v]) => `${k}=${v}`)
+			]
+		}
 	});
-	const { status: exit } = await engine.wait(id);
-	let out = '';
-	const conn = await engine.attach(
-		id,
-		(stream, payload) => {
-			if (stream === 1) out += payload.toString('utf8');
-		},
-		5000
-	);
-	await engine.start(id);
-	conn.sendInput(harnessInput(files, inputs));
-	await conn.closed;
-	const status = await exit;
-	await engine.remove(id);
-	const lines = out
-		.split('\n')
-		.filter(Boolean)
-		.map((l) => JSON.parse(l));
-	return { status, lines };
+	if (end.kind !== 'exited') throw new Error(`The harness container ended with ${end.kind}`);
+	if (end.code !== 0) return { status: end.code, lines: [], stdout };
+	const decoder = createHarnessDecoder(inputs.map((_, i) => ({ id: String(i) })));
+	for (const [stream, payload] of frames) decoder.frame(stream, payload);
+	return { status: end.code, lines: decoder.finish(end).results, stdout };
 }
 
 describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60_000 }, () => {
@@ -988,36 +986,27 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 
 	it('stops printing results and exits non-zero when something unexpected happens', async () => {
 		// A Test input missing from the archive makes the harness fail before any learner code runs.
-		const spec = containerSpec('python', 'test-instance', 2, 2000, 256);
-		const id = await engine.create(sandboxConfig.pythonImage, spec);
-		const { status: exit } = await engine.wait(id);
-		let out = '';
-		const conn = await engine.attach(
-			id,
-			(s, p) => {
-				if (s === 1) out += p.toString();
-			},
-			5000
-		);
-		await engine.start(id);
-		conn.sendInput(harnessInput({ 'main.py': 'print(1)' }, ['']));
-		await conn.closed;
+		const { end, stdout } = await runCaptured(engine, {
+			image: sandboxConfig.pythonImage,
+			spec: containerSpec('python', 'test-instance', 2, 2000, 256),
+			input: harnessInput({ 'main.py': 'print(1)' }, [''])
+		});
 
-		expect(await exit).not.toBe(0);
-		expect(out).toBe('');
-		await engine.remove(id);
+		expect(end).toMatchObject({ kind: 'exited' });
+		expect(end.kind === 'exited' && end.code).not.toBe(0);
+		expect(stdout).toBe('');
 	});
 
 	it('exits on its own at the in-container deadline if the Runner is gone', async () => {
 		const started = Date.now();
 
-		const { status, lines } = await runHarness({ 'main.py': 'while True:\n    pass\n' }, [''], {
+		const { status, stdout } = await runHarness({ 'main.py': 'while True:\n    pass\n' }, [''], {
 			RUNNER_DEADLINE_S: '1',
 			RUNNER_TEST_TIMEOUT_MS: '60000'
 		});
 
 		expect(status).not.toBe(0);
-		expect(lines).toEqual([]);
+		expect(stdout).toBe('');
 		expect(Date.now() - started).toBeLessThan(6000);
 	});
 

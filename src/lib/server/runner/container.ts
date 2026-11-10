@@ -7,6 +7,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { sandboxConfig } from './config';
+import { deadline } from './deadline';
 import {
 	type AttachedContainer,
 	type ContainerSpec,
@@ -24,37 +25,6 @@ export type ContainerEnd =
 const removeAttempts = 3;
 /** Three attempts at this each, plus the pauses between them, keep the whole cleanup under about 30 s. */
 export const removeAttemptTimeoutMs = 9_000;
-
-/**
- * A point in time fixed when it is made. It runs on the monotonic clock, so a host clock that
- * steps back cannot stretch it.
- */
-export function deadline(totalMs: number) {
-	const end = performance.now() + totalMs;
-	return {
-		/** Milliseconds until the deadline, never below zero. */
-		left: () => Math.max(0, end - performance.now()),
-		/** Settles with `promise`, or rejects with `message` once `capMs` or the deadline, whichever is first, has passed. */
-		bound<T>(promise: Promise<T>, message: string, capMs = Number.POSITIVE_INFINITY): Promise<T> {
-			return new Promise((resolve, reject) => {
-				const timer = setTimeout(
-					() => reject(new Error(message)),
-					Math.min(capMs, Math.max(0, end - performance.now()))
-				);
-				promise.then(
-					(value) => {
-						clearTimeout(timer);
-						resolve(value);
-					},
-					(error) => {
-						clearTimeout(timer);
-						reject(error);
-					}
-				);
-			});
-		}
-	};
-}
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

@@ -5,7 +5,7 @@
 import { type ClientRequest, request } from 'node:http';
 import { connect } from 'node:net';
 import { engineCallTimeoutMs } from './config';
-import { deadline } from './container';
+import { deadline } from './deadline';
 
 export type ContainerSpec = Record<string, unknown>;
 
