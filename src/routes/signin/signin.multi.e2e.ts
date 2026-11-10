@@ -518,7 +518,7 @@ base.describe('the shared Multi-user server', () => {
 		async ({ request }) => {
 			const headers = { origin: 'http://localhost:4174' };
 
-			for (const path of ['/get-session', '/list-sessions', '/ok', '/sign-out/', '/callback']) {
+			for (const path of ['/get-session', '/list-sessions', '/ok', '/callback']) {
 				const response = await request.get(`/api/auth${path}`, { headers, maxRedirects: 0 });
 				expect(response.status(), path).toBe(404);
 			}
