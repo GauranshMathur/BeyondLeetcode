@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { sandboxConfig } from './config';
-import type { Language } from './port';
+import type { ExecuteResult, Language, TestResult } from './port';
+import { testStatusSchema } from './port';
 import { createTar } from './tar';
 
 /**
@@ -52,6 +53,9 @@ export function harnessInput(files: Record<string, string>, inputs: string[]): B
 	return Buffer.concat([Buffer.from(`${tar.length}\n`), tar]);
 }
 
+/** The harness's stderr kept for an error message, in characters. */
+const stderrKeepChars = 4096;
+
 /**
  * One JSON line the harness prints: a Compile Error, or a Test's result. Strict: a line with an
  * unknown field is refused, and the Run fails (sandbox.ts).
@@ -60,8 +64,121 @@ export const harnessLine = z.union([
 	z.strictObject({ compileError: z.string() }),
 	z.strictObject({
 		i: z.number().int(),
-		status: z.enum(['ok', 'runtimeError', 'timeout']),
+		status: testStatusSchema,
 		stdout: z.string(),
 		stderr: z.string()
 	})
 ]);
+
+/** How the container ended, as the Runner saw it. Output overflow outranks a hard stop. */
+export type HarnessEnd =
+	| { readonly kind: 'exited'; readonly code: number }
+	/** The wall clock killed it (or start-up ran out of time). */
+	| { readonly kind: 'hardStop' }
+	| { readonly kind: 'overflow' };
+
+/** Reads the harness's transcript: frames in, then how the container ended, an ExecuteResult out. */
+export interface HarnessDecoder {
+	/**
+	 * Feeds one attached frame (stream 1 is stdout, 2 is stderr). Answers false once the container
+	 * has printed more than the Runner allows; the caller then stops reading.
+	 */
+	frame(stream: 1 | 2, payload: Uint8Array): boolean;
+	/** The result, or throws the Runner error: the output cannot be trusted. */
+	finish(end: HarnessEnd): ExecuteResult;
+}
+
+function safeJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * The read side of the protocol, for one Run. One TextDecoder per stream, so a stderr frame that
+ * ends mid-character cannot prefix the next stdout line. Rules, in the order `finish` applies them:
+ * a non-zero exit makes the output untrusted; output past the cap fails the Run; a line that is not
+ * a well-formed result, or bytes no newline ends (unless hard-stopped), fail it; so does a Test
+ * index out of range or reported twice; the first compile error wins; a missing result is a
+ * timeout only after a hard stop, a Runner error otherwise.
+ */
+export function createHarnessDecoder(tests: readonly { readonly id: string }[]): HarnessDecoder {
+	const stdoutText = new TextDecoder();
+	const stderrText = new TextDecoder();
+	const lines: z.infer<typeof harnessLine>[] = [];
+	let partial = '';
+	let stderr = '';
+	let received = 0;
+	let overflowed = false;
+	let refusedLine = false;
+
+	return {
+		frame(stream, payload) {
+			if (overflowed) return false;
+			received += payload.length;
+			if (received > sandboxConfig.containerOutputMaxBytes) {
+				overflowed = true;
+				return false;
+			}
+			if (stream === 2) {
+				stderr = (stderr + stderrText.decode(payload, { stream: true })).slice(0, stderrKeepChars);
+				return true;
+			}
+			partial += stdoutText.decode(payload, { stream: true });
+			for (let end = partial.indexOf('\n'); end >= 0; end = partial.indexOf('\n')) {
+				const parsed = harnessLine.safeParse(safeJson(partial.slice(0, end)));
+				partial = partial.slice(end + 1);
+				// The harness prints only well-formed lines; anything else means the output cannot be trusted.
+				if (parsed.success) lines.push(parsed.data);
+				else refusedLine = true;
+			}
+			return true;
+		},
+		finish(end) {
+			if (end.kind === 'overflow' || overflowed) {
+				throw new Error('Sandbox produced more output than the Runner allows');
+			}
+			// The harness only exits non-zero when something went wrong inside it (or learner code
+			// got to it): whatever it printed cannot be trusted.
+			if (end.kind === 'exited' && end.code !== 0) {
+				throw new Error(`Sandbox harness exited with status ${end.code}: ${stderr}`);
+			}
+			const hardStopped = end.kind === 'hardStop';
+			// An incomplete UTF-8 sequence the stream decoder still holds is a trailing byte too.
+			const tail = stdoutText.decode();
+			if (tail !== '') partial += tail;
+			// Every harness line ends in a newline; bytes left over after a normal end are not its.
+			if (refusedLine || (!hardStopped && partial !== '')) {
+				throw new Error(`Sandbox harness printed an unexpected line: ${stderr}`);
+			}
+			const seen = new Set<number>();
+			for (const line of lines) {
+				if (!('i' in line)) continue;
+				if (line.i < 0 || line.i >= tests.length) {
+					throw new Error(
+						`Sandbox harness reported Test ${line.i}, outside the Test count of ${tests.length}`
+					);
+				}
+				if (seen.has(line.i)) throw new Error(`Sandbox harness reported Test ${line.i} twice`);
+				seen.add(line.i);
+			}
+			for (const line of lines) {
+				if ('compileError' in line) return { compileError: line.compileError, results: [] };
+			}
+			const byIndex = new Map<number, Omit<TestResult, 'id'>>();
+			for (const line of lines) if ('i' in line) byIndex.set(line.i, line);
+			return {
+				results: tests.map(({ id }, i): TestResult => {
+					const found = byIndex.get(i);
+					if (found) {
+						return { id, status: found.status, stdout: found.stdout, stderr: found.stderr };
+					}
+					if (hardStopped) return { id, status: 'timeout', stdout: '', stderr: '' };
+					throw new Error(`Sandbox ended without a result for Test ${id}: ${stderr}`);
+				})
+			};
+		}
+	};
+}
