@@ -29,16 +29,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY package.json prisma.config.ts ./
 COPY prisma ./prisma
-COPY src/lib/server/runner ./src/lib/server/runner
+# The server source, whole: the runner, init, web and reset-admin-password roles run from it (docker-entrypoint.sh), and
+# the generated Prisma client below comes from the build stage. .dockerignore keeps out tests and fixtures.
+COPY src/lib/server ./src/lib/server
 # The shared list of Languages (src/lib/languages.ts) is read by the Runner.
 COPY src/lib/languages.ts ./src/lib/languages.ts
-COPY src/lib/server/init ./src/lib/server/init
-# `reset-admin-password` runs from source: it imports db.ts, instance.ts, identity/auth.ts, accounts.ts and origin.ts, and through
-# auth.ts logging.ts, identity/account-creation.ts (and through it identity/gate.ts and identity/route-policy.ts), identity/invites.ts, identity/secret.ts and identity/session-binding.ts (their other imports are types, which Bun drops) and the generated Prisma client, which only the build stage has.
-COPY src/lib/server/db.ts src/lib/server/instance.ts src/lib/server/logging.ts ./src/lib/server/
-COPY src/lib/server/identity/auth.ts src/lib/server/identity/account-creation.ts src/lib/server/identity/gate.ts src/lib/server/identity/route-policy.ts src/lib/server/identity/accounts.ts src/lib/server/identity/origin.ts src/lib/server/identity/invites.ts src/lib/server/identity/secret.ts src/lib/server/identity/session-binding.ts ./src/lib/server/identity/
-# The web role starts this entry, which pins the request origin to ORIGIN and then runs the build (adapter-node 6 no longer reads ORIGIN).
-COPY src/lib/server/web-entry.ts src/lib/server/origin-pin.ts ./src/lib/server/
 COPY --from=build /app/prisma/generated ./prisma/generated
 COPY content /app/content
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
