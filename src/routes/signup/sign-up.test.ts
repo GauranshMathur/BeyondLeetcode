@@ -37,12 +37,10 @@ async function harness(
 		signUpEmail?: (input: unknown) => Promise<unknown>;
 	} = {}
 ) {
-	const { instance, multiUser, admin } = await createTestInstance();
+	const { instance, multiUser, auth, admin } = await createTestInstance();
 	await admin({ name: 'Admin', email: 'admin@example.com' });
 	await instance.setRegistrationMode(options.registration ?? 'open');
-	const signUpEmail = vi.spyOn(multiUser.auth.api, 'signUpEmail').mockImplementation(((
-		input: unknown
-	) =>
+	const signUpEmail = vi.spyOn(auth.api, 'signUpEmail').mockImplementation(((input: unknown) =>
 		options.signUpEmail
 			? options.signUpEmail(input)
 			: Promise.resolve({
@@ -589,10 +587,9 @@ describe('with Better Auth and the database', () => {
 	const origin = 'http://localhost:3000';
 
 	async function real(registration: Registration) {
-		const { db, instance, multiUser, admin } = await createTestInstance({ origin });
+		const { db, instance, multiUser, auth, admin } = await createTestInstance({ origin });
 		await admin({ name: 'Admin', email: 'admin@example.com' });
 		await instance.setRegistrationMode(registration);
-		const { auth } = multiUser;
 		const signUp = createSignUp();
 		const jar: Record<string, string> = {};
 		const cookies = {

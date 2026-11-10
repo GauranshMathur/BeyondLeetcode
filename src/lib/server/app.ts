@@ -118,10 +118,10 @@ export async function createApp(env: {
 		setup: {
 			multiUser: choice(auth),
 			async createFirstAdmin(input) {
-				if (!multiUser) {
+				if (!multi) {
 					throw new MultiUserNotAvailableError();
 				}
-				return createFirstAdmin({ instance, auth: multiUser.auth, db }, input);
+				return createFirstAdmin({ instance, auth: multi.auth, db }, input);
 			}
 		},
 		core: createLearningCore({ catalogue, db, runner })

@@ -84,8 +84,8 @@ async function restart({ db }: Booted) {
 	};
 }
 
-const chooseAdmin = async ({ db, instance, multiUser }: Booted) => {
-	const { headers } = await createFirstAdmin({ instance, auth: multiUser.auth, db }, admin);
+const chooseAdmin = async ({ db, instance, auth }: Booted) => {
+	const { headers } = await createFirstAdmin({ instance, auth, db }, admin);
 	return headers
 		.getSetCookie()
 		.map((c) => c.split(';')[0])
@@ -129,7 +129,7 @@ describe('createMultiUserInstance', () => {
 		const made = await booted.multiUser.invites.create({ who: who as never, now: new Date() });
 		const signUp = async (email: string) => {
 			try {
-				await booted.multiUser.auth.api.signUpEmail({
+				await booted.auth.api.signUpEmail({
 					body: { name: 'Lin', email, password: 'a long enough secret' },
 					headers: new Headers({ cookie: `${INVITE_COOKIE}=${made?.token}` })
 				});
@@ -150,7 +150,7 @@ describe('createMultiUserInstance', () => {
 		const booted = await boot({ origin: 'http://192.168.1.20:3000' });
 
 		const { headers } = await createFirstAdmin(
-			{ instance: booted.instance, auth: booted.multiUser.auth, db: booted.db },
+			{ instance: booted.instance, auth: booted.auth, db: booted.db },
 			admin
 		);
 
@@ -163,7 +163,7 @@ describe('createMultiUserInstance', () => {
 		const booted = await boot({ origin: 'https://learn.example.com' });
 
 		const { headers } = await createFirstAdmin(
-			{ instance: booted.instance, auth: booted.multiUser.auth, db: booted.db },
+			{ instance: booted.instance, auth: booted.auth, db: booted.db },
 			admin
 		);
 
@@ -172,7 +172,7 @@ describe('createMultiUserInstance', () => {
 
 	it('offers a provider only when the factory is given both of its variables', async () => {
 		const providers = async (providerEnv: Record<string, string>) =>
-			enabledProviders((await boot({ providerEnv })).multiUser.auth);
+			enabledProviders((await boot({ providerEnv })).auth);
 
 		expect(await providers({})).toEqual([]);
 		expect(await providers({ GITHUB_CLIENT_ID: 'id' })).toEqual([]);
@@ -210,7 +210,7 @@ describe('createMultiUserInstance', () => {
 describe('the options a test may pass', () => {
 	const signUp = async (booted: Booted, email = 'lin@example.com') => {
 		try {
-			await booted.multiUser.auth.api.signUpEmail({
+			await booted.auth.api.signUpEmail({
 				body: { name: 'Lin', email, password: 'a long enough secret' }
 			});
 			return 200;

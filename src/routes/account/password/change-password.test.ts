@@ -8,7 +8,7 @@ import { createChangePassword } from './change-password';
 
 const oldPassword = 'correct horse battery staple';
 const newPassword = 'a brand new passphrase 42';
-type Auth = MultiUser['auth'];
+type Auth = Awaited<ReturnType<typeof createTestInstance>>['auth'];
 
 /** The server's own Multi-user wiring of each Better Auth a test set up: its throttle outlasts a request. */
 const multiUsers = new WeakMap<object, MultiUser>();

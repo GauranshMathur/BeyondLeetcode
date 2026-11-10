@@ -77,6 +77,17 @@ describe('handleAuthRequest', () => {
 		expect(mapped.status).toBe(429);
 	});
 
+	it('keeps callers whose address cannot be told in one shared bucket', async () => {
+		const { auth } = await setup();
+		for (let i = 0; i < BUDGET + 1; i++) await handleAuthRequest(auth, limited(), '');
+
+		const again = await handleAuthRequest(auth, limited(), '');
+		const known = await handleAuthRequest(auth, limited(), '192.0.2.60');
+
+		expect(again.status).toBe(429);
+		expect(known.status).not.toBe(429);
+	});
+
 	it('ignores a client-supplied copy of the private address header', async () => {
 		const { auth } = await setup();
 		for (let i = 0; i < BUDGET + 1; i++) {
