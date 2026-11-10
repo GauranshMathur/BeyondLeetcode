@@ -8,6 +8,7 @@ import { enabledProviders } from './auth.ts';
 import { INVITE_COOKIE } from './invites.ts';
 import { createMultiUserInstance, type MultiUserInstanceOptions } from './multi-user-instance.ts';
 import { createFirstAdmin } from './setup.ts';
+import { fastPasswordHasher } from './test-auth.ts';
 import type { ProviderStarts } from './throttle.ts';
 
 const made = vi.hoisted(() => ({
@@ -98,6 +99,16 @@ const whoIs = (resolver: Booted['resolver'], cookie: string) =>
 	});
 
 describe('createMultiUserInstance', () => {
+	it('refuses the test-only admit and passwordHasher in production, and builds without them', async () => {
+		vi.stubEnv('NODE_ENV', 'production');
+		onTestFinished(() => void vi.unstubAllEnvs());
+
+		await expect(boot({ admit: (inner) => inner })).rejects.toThrow(/tests only/);
+		await expect(boot({ passwordHasher: fastPasswordHasher })).rejects.toThrow(/tests only/);
+		const built = await boot();
+		expect(built.multiUser.adminActions).toBeDefined();
+	});
+
 	it('signs the first admin in through the resolver, and Invite links carry the validated origin', async () => {
 		const booted = await boot();
 		const cookie = await chooseAdmin(booted);
