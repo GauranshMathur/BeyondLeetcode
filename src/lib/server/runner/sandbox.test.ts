@@ -88,7 +88,9 @@ describe('Sandbox runner: harness exit status', () => {
 			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
 			const result = await pending;
 
-			expect(result.results).toEqual([{ id: 'a', status: 'timeout', stdout: '', stderr: '' }]);
+			expect(result.results).toEqual([
+				{ id: 'a', status: 'timeout', stdout: '', stderr: '', cutOff: true }
+			]);
 			expect(calls).toContain('kill c1');
 		} finally {
 			vi.useRealTimers();
@@ -105,7 +107,9 @@ describe('Sandbox runner: harness exit status', () => {
 			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
 			const result = await pending;
 
-			expect(result.results).toEqual([{ id: 'a', status: 'timeout', stdout: '', stderr: '' }]);
+			expect(result.results).toEqual([
+				{ id: 'a', status: 'timeout', stdout: '', stderr: '', cutOff: true }
+			]);
 			expect(calls).toContain('remove c1');
 			expect(logged).toHaveBeenCalledWith('Could not kill container c1', expect.any(Error));
 		} finally {
