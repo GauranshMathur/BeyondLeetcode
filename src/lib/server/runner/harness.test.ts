@@ -7,7 +7,7 @@ import { LANGUAGES } from '../../languages';
 import { harnessScript } from './harness';
 
 /** sha256 of harness.py. A change to the harness updates this constant on purpose. */
-const harnessSha256 = 'b10030ec831226c8dcffb57c7565c8401398b7f179019ad1bfd0276032812e8d';
+const harnessSha256 = '7e3f1fa5215af2a9d69e513c6ee032fd60252ed44e3376e75f62388acb9303f8';
 
 describe('harnessScript', () => {
 	it('is the Python in harness.py, with no TypeScript string left in harness.ts', () => {
