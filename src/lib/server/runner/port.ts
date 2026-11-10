@@ -82,9 +82,12 @@ export const executeRequestSchema = z.object({
 });
 export type ExecuteRequest = z.infer<typeof executeRequestSchema>;
 
+/** How one Test ended; the harness's result line uses the same set. */
+export const testStatusSchema = z.enum(['ok', 'runtimeError', 'timeout']);
+
 const testResultSchema = z.object({
 	id: z.string(),
-	status: z.enum(['ok', 'runtimeError', 'timeout']),
+	status: testStatusSchema,
 	stdout: z.string(),
 	stderr: z.string()
 });

@@ -3,7 +3,6 @@
  * afterwards whatever happened. Python, TypeScript and Go.
  */
 import { randomBytes } from 'node:crypto';
-import type { z } from 'zod';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
 import {
 	type AttachedContainer,
@@ -12,8 +11,14 @@ import {
 	NameConflictError,
 	parseImageRef
 } from './engine';
-import { harnessEnv, harnessInput, harnessLine, harnessScript } from './harness';
-import type { ExecuteRequest, ExecuteResult, Language, RunnerPort, TestResult } from './port';
+import {
+	createHarnessDecoder,
+	type HarnessEnd,
+	harnessEnv,
+	harnessInput,
+	harnessScript
+} from './harness';
+import type { ExecuteRequest, ExecuteResult, Language, RunnerPort } from './port';
 
 const nobody = '65534:65534';
 const mib = 1024 * 1024;
@@ -98,13 +103,8 @@ async function execute(
 		request.tests.map((test) => test.input)
 	);
 
-	const lines: z.infer<typeof harnessLine>[] = [];
-	const decoder = new TextDecoder();
-	let partial = '';
-	let harnessStderr = '';
-	let received = 0;
+	const decoder = createHarnessDecoder(request.tests);
 	let overflow = false;
-	let refusedLine = false;
 
 	// Named on our side: if the create call times out while the daemon completes it, the reply is
 	// lost but the name is not, and this Run can remove exactly that container. Random, so it
@@ -157,25 +157,9 @@ async function execute(
 		attached = await engine.attach(
 			id,
 			(stream, payload) => {
-				received += payload.length;
-				if (received > sandboxConfig.containerOutputMaxBytes) {
+				if (!overflow && !decoder.frame(stream, payload)) {
 					overflow = true;
 					attached?.destroy();
-					return;
-				}
-				const chunk = decoder.decode(payload, { stream: true });
-				if (stream === 2) {
-					harnessStderr = (harnessStderr + chunk).slice(0, 4096);
-					return;
-				}
-				partial += chunk;
-				for (let end = partial.indexOf('\n'); end >= 0; end = partial.indexOf('\n')) {
-					const parsed = harnessLine.safeParse(safeJson(partial.slice(0, end)));
-					partial = partial.slice(end + 1);
-					// The harness prints only well-formed lines (harness.ts); anything else means
-					// the output cannot be trusted, so the Run fails after cleanup.
-					if (parsed.success) lines.push(parsed.data);
-					else refusedLine = true;
 				}
 			},
 			sandboxConfig.attachTimeoutMs
@@ -184,56 +168,24 @@ async function execute(
 		await engine.start(id);
 		attached.sendInput(input);
 		await attached.closed;
-		if (!overflow && !timedOut) {
-			// The harness only exits non-zero when something went wrong inside it (or learner code
-			// got to it): whatever it printed cannot be trusted.
-			const code = await within(
-				exitStatus,
-				sandboxConfig.exitStatusTimeoutMs,
-				'Timed out waiting for the Sandbox exit'
-			);
-			if (code !== 0) {
-				throw new Error(`Sandbox harness exited with status ${code}: ${harnessStderr}`);
-			}
-		}
+		const end: HarnessEnd = overflow
+			? { kind: 'overflow' }
+			: timedOut
+				? { kind: 'hardStop' }
+				: {
+						kind: 'exited',
+						code: await within(
+							exitStatus,
+							sandboxConfig.exitStatusTimeoutMs,
+							'Timed out waiting for the Sandbox exit'
+						)
+					};
+		return decoder.finish(end);
 	} finally {
 		clearTimeout(hardStop);
 		attached?.destroy();
 		await removeContainer(engine, id);
 	}
-
-	if (overflow) throw new Error('Sandbox produced more output than the Runner allows');
-	// Every harness line ends in a newline; bytes left over after a normal end are not its.
-	if (refusedLine || (!timedOut && partial !== '')) {
-		throw new Error(`Sandbox harness printed an unexpected line: ${harnessStderr}`);
-	}
-	for (const line of lines) {
-		if ('i' in line && (line.i < 0 || line.i >= request.tests.length)) {
-			throw new Error(
-				`Sandbox harness reported Test ${line.i}, outside the Test count of ${request.tests.length}`
-			);
-		}
-	}
-	for (const line of lines) {
-		if ('compileError' in line) return { compileError: line.compileError, results: [] };
-	}
-	const byIndex = new Map<number, Omit<TestResult, 'id'>>();
-	for (const line of lines) {
-		if ('i' in line && !byIndex.has(line.i)) byIndex.set(line.i, line);
-	}
-	const results = request.tests.map(({ id: testId }, i): TestResult => {
-		const found = byIndex.get(i);
-		if (found)
-			return {
-				id: testId,
-				status: found.status,
-				stdout: found.stdout,
-				stderr: found.stderr
-			};
-		if (timedOut) return { id: testId, status: 'timeout', stdout: '', stderr: '' };
-		throw new Error(`Sandbox ended without a result for Test ${testId}: ${harnessStderr}`);
-	});
-	return { results };
 }
 
 /** Settles with `promise`, or rejects with `message` after `ms`. */
@@ -471,14 +423,6 @@ export async function ensureImages(
 	} = {}
 ): Promise<void> {
 	await createImageKeeper(engine, images, options).start();
-}
-
-function safeJson(text: string): unknown {
-	try {
-		return JSON.parse(text);
-	} catch {
-		return undefined;
-	}
 }
 
 export function createSandboxRunner(
