@@ -9,3 +9,5 @@ Format: `- <finding, in one line> — <files> — <review and date> (<the issue 
 ## Candidates
 
 The re-triage of the open `architecture` issues against this rule (2026-11-10) is with the maintainer. The findings of the issues the maintainer closes as wontfix move here.
+
+- The Main Line, its places and the Topic Map are computed only inside `loadCatalogue`, so every in-memory catalogue re-derives them: split out a pure indexer ("index content into a Catalogue") that the file reader, `rules.test.ts` (its `placeOf` and `catalogueOf` copies) and the scripted Runner all build through — `src/lib/server/content/catalogue.ts`, `src/lib/server/learning/rules.test.ts`, `src/lib/server/runner/scripted-catalogue.ts` — Sprint 17 architecture review, finding 26, 2026-11-10 (#517's larger step; its bug, the fake, is C381 in Sprint 20)

@@ -316,9 +316,9 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
 - The orchestrator cuts 1.19.7 from the release PR and records the cut. Releases stay `1.x`.
 
 **Not in the sprint:**
-- **#517's catalogue indexer** and **#514's screen half (#501)**: refactors; #501 is proposed for wontfix.
+- **#517's catalogue indexer** (a line in `docs/architecture-candidates.md`) and **#514's screen half (#501)**: refactors; #501 is proposed for wontfix.
 - **#570**, the release webhook's shared notify script: card C340 with no Sprint, after C220 and C221, which wait on #535.
-- **Sprints 21 to 23.** The backlog fills two sprints. The Sprint options `Sprint 21 · Accessibility`, `Sprint 22 · Tests, CI and docs` and `Sprint 23 · The Learning core and the Problem screen`, and their Release options (1.19.8 to 1.19.10), stay on the board with no cards, for the orchestrator to reuse or rename when the maintainer's wontfix answers or new issues give them a theme.
+- **Sprints 21 to 23.** The backlog fills two sprints. Their Sprint options are renamed `Sprint 21 · Unplanned`, `Sprint 22 · Unplanned` and `Sprint 23 · Unplanned`, and their Release options `R v1.19.8: Sprint 21 · Unplanned` and so on (2026-11-10). They hold no cards; the planner renames them when the maintainer's wontfix answers or new issues give them a theme.
 
 ## After each build sprint
 
