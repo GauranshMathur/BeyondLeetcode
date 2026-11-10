@@ -1,16 +1,42 @@
 import { parseSetCookieHeader, toCookieOptions } from 'better-auth/cookies';
 import { type Auth, CLIENT_IP_HEADER } from './auth.ts';
 
+/** Where Better Auth's endpoints are mounted (its default `basePath`; the route is `/api/auth/[...all]`). */
+const AUTH_BASE_PATH = '/api/auth';
+
 /**
- * Runs a request through Better Auth's handler. The private client-address header is overwritten
- * with `clientAddress` (SvelteKit's `getClientAddress()`), never taken from the client, so the rate
- * limiter's bucket is the real caller's and a forged `X-Forwarded-For` or copy of the header is ignored.
+ * The only Better Auth endpoints served over HTTP, as paths under `AUTH_BASE_PATH`:
+ * - `/callback/:id`, where an OAuth provider sends the browser back;
+ * - `/sign-up/email` and `/sign-out`, which stay until the forms replace them.
+ * Every other path answers 404 before it reaches Better Auth, so an endpoint a Better Auth upgrade adds
+ * is not served until it is listed here. `disabledPaths` in `createAuth` stays as a second layer.
+ */
+const SERVED_PATHS: readonly RegExp[] = [
+	/^\/callback\/[A-Za-z0-9_-]+$/,
+	/^\/sign-up\/email$/,
+	/^\/sign-out$/
+];
+
+function isServedAuthPath(pathname: string): boolean {
+	if (!pathname.startsWith(`${AUTH_BASE_PATH}/`)) return false;
+	const path = pathname.slice(AUTH_BASE_PATH.length);
+	return SERVED_PATHS.some((served) => served.test(path));
+}
+
+/**
+ * Runs a request through Better Auth's handler, if its path is on the allowlist (`SERVED_PATHS`).
+ * The private client-address header is overwritten with `clientAddress` (SvelteKit's
+ * `getClientAddress()`), never taken from the client, so the rate limiter's bucket is the real caller's
+ * and a forged `X-Forwarded-For` or copy of the header is ignored.
  */
 export async function handleAuthRequest(
 	auth: Auth,
 	request: Request,
 	clientAddress: string
 ): Promise<Response> {
+	if (!isServedAuthPath(new URL(request.url).pathname)) {
+		return new Response('Not found', { status: 404 });
+	}
 	const headers = new Headers(request.headers);
 	headers.set(CLIENT_IP_HEADER, clientAddress);
 	const response = await auth.handler(new Request(request, { headers }));

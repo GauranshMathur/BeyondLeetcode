@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Auth } from './auth.ts';
 import { forwardSetCookies, handleAuthRequest } from './auth-handler.ts';
 import { createTestAuth, TEST_ORIGIN } from './test-auth.ts';
 
@@ -88,6 +89,22 @@ describe('handleAuthRequest', () => {
 		expect(known.status).not.toBe(429);
 	});
 
+	describe('on the production key path (no test-mode address fallback)', () => {
+		afterEach(() => vi.unstubAllEnvs());
+
+		it('keeps callers whose address cannot be told in one shared bucket', async () => {
+			vi.stubEnv('NODE_ENV', 'production');
+			const { auth } = await setup();
+			for (let i = 0; i < BUDGET + 1; i++) await handleAuthRequest(auth, limited(), '');
+
+			const again = await handleAuthRequest(auth, limited(), '');
+			const known = await handleAuthRequest(auth, limited(), '192.0.2.61');
+
+			expect(again.status).toBe(429);
+			expect(known.status).not.toBe(429);
+		});
+	});
+
 	it('ignores a client-supplied copy of the private address header', async () => {
 		const { auth } = await setup();
 		for (let i = 0; i < BUDGET + 1; i++) {
@@ -139,6 +156,103 @@ describe('handleAuthRequest', () => {
 
 		res.headers.set('X-Frame-Options', 'DENY');
 		expect(res.headers.get('x-frame-options')).toBe('DENY');
+	});
+});
+
+describe('the served paths', () => {
+	// Every endpoint the Better Auth instance has, read from the instance itself, so one that an upgrade adds
+	// is in the table without anyone listing it.
+	const served = ['/sign-up/email', '/sign-out'];
+	const endpoints = async () => {
+		const { auth } = await setup();
+		const paths = Object.values(auth.api as Record<string, { path?: string }>)
+			.map((endpoint) => endpoint.path)
+			.filter((path): path is string => typeof path === 'string');
+		return { auth, paths };
+	};
+	const reached = () => {
+		const handler = vi.fn(async () => new Response('reached'));
+		return { auth: { handler } as unknown as Auth, handler };
+	};
+	const ask = (path: string, method = 'POST') =>
+		new Request(`${origin}/api/auth${path}`, { method, headers: { origin } });
+
+	it('lists endpoints to check, among them the ones this app turns off by name', async () => {
+		const { paths } = await endpoints();
+
+		expect(paths.length).toBeGreaterThan(30);
+		expect(paths).toEqual(
+			expect.arrayContaining(['/get-session', '/sign-in/email', '/admin/list-users', ...served])
+		);
+	});
+
+	it('answers 404 for every Better Auth path outside the allowlist, without reaching Better Auth', async () => {
+		const { paths } = await endpoints();
+		const outside = paths
+			// A path with a parameter is asked with a value.
+			.map((path) => path.replace(/:[A-Za-z]+/g, 'x'))
+			.filter((path) => !served.includes(path) && !path.startsWith('/callback/'));
+		const { auth, handler } = reached();
+
+		for (const path of outside) {
+			for (const method of ['GET', 'POST']) {
+				const res = await handleAuthRequest(auth, ask(path, method), '192.0.2.70');
+				expect(res.status, `${method} ${path}`).toBe(404);
+			}
+		}
+
+		expect(outside).toContain('/get-session');
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it('answers 404 for paths Better Auth does not have, and for lookalikes of the served ones', async () => {
+		const { auth, handler } = reached();
+
+		for (const path of [
+			'/',
+			'/unknown',
+			'/sign-out/',
+			'/Sign-Out',
+			'/sign-out/extra',
+			'/sign-up/email/',
+			'//sign-out',
+			'/%73ign-out',
+			'/sign-up/email%2f',
+			'/callback',
+			'/callback/',
+			'/callback/github/extra',
+			'/callback/git%68ub',
+			'/callback/a.b',
+			'/delete-user/callback'
+		]) {
+			const res = await handleAuthRequest(auth, ask(path), '192.0.2.71');
+			expect(res.status, path).toBe(404);
+		}
+		const outsideMount = await handleAuthRequest(
+			auth,
+			new Request(`${origin}/api/authx/sign-out`, { method: 'POST' }),
+			'192.0.2.71'
+		);
+
+		expect(outsideMount.status).toBe(404);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it('passes the provider callback, sign-up and sign-out to Better Auth', async () => {
+		const { auth, handler } = reached();
+
+		for (const [method, path] of [
+			['GET', '/callback/github'],
+			['GET', '/callback/google'],
+			['POST', '/callback/github'],
+			['POST', '/sign-up/email'],
+			['POST', '/sign-out']
+		]) {
+			const res = await handleAuthRequest(auth, ask(path, method), '192.0.2.72');
+			expect(await res.text(), `${method} ${path}`).toBe('reached');
+		}
+
+		expect(handler).toHaveBeenCalledTimes(5);
 	});
 });
 
