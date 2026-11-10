@@ -2,12 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { containerLabel, sandboxConfig } from './config';
 import { createEngine } from './engine';
-import type { RunnerPort } from './port';
+import type { Language, RunnerPort } from './port';
 import { removeAttemptTimeoutMs } from './sandbox';
 import { containersOwnedBy, startTestRunner, stopTestRunners } from './wait-healthy.testutil';
 
 /**
- * Seam 2, adversarial: real learner Python through the HTTP adapter and a real Runner process,
+ * Seam 2, adversarial: real learner code (mostly Python) through the HTTP adapter and a real Runner process,
  * against real Docker. Each test asserts only on what the learner's run observably returns.
  */
 
@@ -18,7 +18,7 @@ let runner: RunnerPort;
 let instanceId: string;
 
 beforeAll(async () => {
-	const started = await startTestRunner(token, { images: [sandboxConfig.pythonImage] });
+	const started = await startTestRunner(token);
 	instanceId = started.instanceId;
 	runner = started.runner;
 }, 120_000);
@@ -38,6 +38,13 @@ const run = (main: string, lim = limits) =>
 		files: { 'main.py': main },
 		tests: [{ id: 't', input: '' }],
 		limits: lim
+	});
+const runIn = (language: Language, file: string, main: string) =>
+	runner.execute({
+		language,
+		files: { [file]: main },
+		tests: [{ id: 't', input: '' }],
+		limits
 	});
 const gateway = dockerHostGateway();
 
@@ -407,6 +414,76 @@ describe('Sandbox escapes: core dumps', { timeout: 60_000 }, () => {
 
 		expect(result.results[0].status).toBe('runtimeError');
 	});
+});
+
+describe('Sandbox escapes: tracing', { timeout: 60_000 }, () => {
+	// A tracer can change a syscall's arguments after the seccomp filter has checked them on some
+	// kernels, so the filter refuses ptrace outright. PTRACE_TRACEME would succeed without it. A host
+	// with Yama ptrace_scope 2 or more answers EPERM to TRACEME even with no filter, so PTRACE_ATTACH
+	// is probed too: with no filter the kernel answers ESRCH (no such process) on any host.
+	const pythonProbe = [
+		'import ctypes, errno',
+		'libc = ctypes.CDLL(None, use_errno=True)',
+		'result = libc.ptrace(0, 0, 0, 0)',
+		'refused = result == -1 and ctypes.get_errno() == errno.EPERM',
+		'print("ptrace", "EPERM" if refused else "allowed")',
+		'result = libc.ptrace(16, 0, 0, 0)',
+		'refused = result == -1 and ctypes.get_errno() == errno.EPERM',
+		'print("attach", "EPERM" if refused else "allowed")',
+		''
+	].join('\n');
+
+	it.each([
+		['python', 'main.py', pythonProbe],
+		[
+			'typescript',
+			'main.ts',
+			// Node has no direct syscall: the probe is the image's Python, run as a child, which
+			// inherits the filter.
+			[
+				"import { execFileSync } from 'node:child_process';",
+				`const probe = ${JSON.stringify(pythonProbe)};`,
+				"process.stdout.write(execFileSync('/usr/local/bin/python3', ['-I', '-c', probe]));",
+				''
+			].join('\n')
+		],
+		[
+			'go',
+			'main.go',
+			[
+				'package main',
+				'',
+				'import (',
+				'\t"fmt"',
+				'\t"syscall"',
+				')',
+				'',
+				'func main() {',
+				'\t_, _, errno := syscall.Syscall6(syscall.SYS_PTRACE, 0, 0, 0, 0, 0, 0)',
+				'\tif errno == syscall.EPERM {',
+				'\t\tfmt.Println("ptrace", "EPERM")',
+				'\t} else {',
+				'\t\tfmt.Println("ptrace", "allowed")',
+				'\t}',
+				'\t_, _, errno = syscall.Syscall6(syscall.SYS_PTRACE, 16, 0, 0, 0, 0, 0)',
+				'\tif errno == syscall.EPERM {',
+				'\t\tfmt.Println("attach", "EPERM")',
+				'\t} else {',
+				'\t\tfmt.Println("attach", "allowed")',
+				'\t}',
+				'}',
+				''
+			].join('\n')
+		]
+	] as const)(
+		'refuses ptrace(PTRACE_TRACEME and PTRACE_ATTACH) with EPERM in %s',
+		async (language, file, main) => {
+			const result = await runIn(language, file, main);
+
+			expect(result.compileError).toBeUndefined();
+			expect(result.results[0].stdout).toBe('ptrace EPERM\nattach EPERM\n');
+		}
+	);
 });
 
 describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {

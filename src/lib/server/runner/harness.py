@@ -366,12 +366,14 @@ def seccomp_program(machine):
     # Classic BPF over struct seccomp_data (nr at 0, arch at 4, args at 16 + 8 * n; little-endian, so
     # the low 32 bits of an argument come first). Jumps may only go forward, so the shared returns
     # sit at the end. What it does: a non-native arch (closes i386 int 0x80) and, on x86_64, x32
-    # syscalls get ENOSYS; setrlimit(RLIMIT_CORE) and prlimit64(RLIMIT_CORE) with a new limit get
-    # EPERM; everything else is allowed. It stacks on Docker's default profile.
+    # syscalls get ENOSYS; ptrace, and setrlimit(RLIMIT_CORE) and prlimit64(RLIMIT_CORE) with a new
+    # limit, get EPERM (a tracer can rewrite a checked argument after the filter has read it on
+    # arm64 kernels without the upstream fixes, so nothing may trace); everything else is allowed.
+    # It stacks on Docker's default profile.
     if machine == "x86_64":
-        audit, setrlimit, prlimit64, x32 = 0xC000003E, 160, 302, True
+        audit, ptrace, setrlimit, prlimit64, x32 = 0xC000003E, 101, 160, 302, True
     elif machine in ("aarch64", "arm64"):
-        audit, setrlimit, prlimit64, x32 = 0xC00000B7, 164, 261, False
+        audit, ptrace, setrlimit, prlimit64, x32 = 0xC00000B7, 117, 164, 261, False
     else:
         sys.exit("no seccomp filter for " + machine)
     LD, JEQ, JSET, RET = 0x20, 0x15, 0x45, 0x06
@@ -383,6 +385,7 @@ def seccomp_program(machine):
     if x32:
         program.append((JSET, "bad", 0, 0x40000000))
     program += [
+        (JEQ, "deny", 0, ptrace),
         (JEQ, "sr", 0, setrlimit), (JEQ, "pl", "allow", prlimit64),
         ("sr",), (LD, 0, 0, 16), (JEQ, "deny", "allow", RLIMIT_CORE),
         # prlimit64(pid, resource, new_limit, old_limit): only a call with a non-NULL new_limit
