@@ -99,14 +99,9 @@ jobs:
               echo "::error::@playwright/test is $version (bun.lock) but PLAYWRIGHT_IMAGE in .github/workflows/ci.yml is $PLAYWRIGHT_IMAGE. Set it to mcr.microsoft.com/playwright:v$version-noble@sha256:<index digest from 'docker buildx imagetools inspect mcr.microsoft.com/playwright:v$version-noble'>."
               exit 1 ;;
           esac
-      # Run goes through the real Runner (started by the Playwright config), which needs the Sandbox image.
-      - run: docker pull python:3.13-slim
-      # Built here under the exact name:tag config.ts uses, so the Runner finds it locally and never waits
-      # on a pull of a tag that is only published once this change reaches main.
-      - name: Build the Sandbox images
-        run: .github/build-sandbox-images.sh
-      # The Playwright webServer builds the app, serves it under Bun and starts the Runner. Only this step runs in the
-      # Playwright image; the job stays on the runner, which has Docker for the steps above. The workspace and the
+      # The Playwright webServer builds the app and serves it under Bun with RUNNER_ADAPTER=scripted, so no Sandbox
+      # image is pulled or built here (the sandbox and docker jobs cover the real Runner). Only this step runs in the
+      # Playwright image; the job stays on the runner, which has Docker for it. The workspace and the
       # runner's Bun (mounted as bun and bunx) go in, the servers bind the host network, so the e2e ports are the same.
       - name: Run the e2e tests in the Playwright image
         run: |
