@@ -627,6 +627,28 @@ describe('learner.run()', () => {
 		expect(runner.calls).toHaveLength(0);
 	});
 
+	it('answers RunnerUnavailable, not a timeout, when the container cut a Test off, keeping the saved code', async () => {
+		const { learner, db } = await setup({
+			script: { tests: { 'stacks-push/example/01': { status: 'timeout', cutOff: true } } }
+		});
+
+		await expect(learner.run(ref('stacks-push', 0), { 'main.py': 'a' })).rejects.toMatchObject({
+			code: 'RunnerUnavailable',
+			revision: 1
+		});
+		expect(await db.buildStep.count()).toBe(1);
+	});
+
+	it('still shows a Test that hit its own limit as a timeout', async () => {
+		const { learner } = await setup({
+			script: { tests: { 'stacks-push/example/01': { status: 'timeout' } } }
+		});
+
+		const view = await learner.run(ref('stacks-push', 0), { 'main.py': 'a' });
+
+		expect(view.tests.map((t) => t.status)).toContain('timeout');
+	});
+
 	it('answers RunnerUnavailable when the Runner is down, keeping the saved code and recording nothing else', async () => {
 		const { learner, db } = await setup({ script: { unavailable: true } });
 
@@ -808,6 +830,31 @@ describe('learner.submit()', () => {
 		const view = await learner.submit(ref('stacks-push', 0), { 'main.py': 'x' });
 		expect(view.verdict).toBe('Time Limit Exceeded');
 		expect(runner.calls).toHaveLength(1);
+	});
+
+	it('a Test the container cut off is RunnerUnavailable, not Time Limit Exceeded: saved, nothing recorded', async () => {
+		const { learner, db } = await setup({
+			acceptAll: true,
+			script: { tests: { [pushExample]: { status: 'timeout', cutOff: true } } }
+		});
+		await expect(learner.submit(ref('stacks-push', 0), { 'main.py': 'x' })).rejects.toMatchObject({
+			code: 'RunnerUnavailable',
+			revision: 1
+		});
+		expect(await db.submission.count()).toBe(0);
+	});
+
+	it('a Hidden Test the container cut off is RunnerUnavailable, however slow its earlier Tests were', async () => {
+		const hidden = (await loadCatalogue(fixtureDir)).hiddenTests('stacks-push') ?? [];
+		expect(hidden.length).toBeGreaterThan(0);
+		const { learner, db } = await setup({
+			acceptAll: true,
+			script: { tests: { [hidden[0].id]: { status: 'timeout', cutOff: true } } }
+		});
+		await expect(learner.submit(ref('stacks-push', 0), { 'main.py': 'x' })).rejects.toMatchObject({
+			code: 'RunnerUnavailable'
+		});
+		expect(await db.submission.count()).toBe(0);
 	});
 
 	it('Compile Error is one message, recorded with no failing Problem', async () => {

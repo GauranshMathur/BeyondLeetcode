@@ -42,8 +42,8 @@ export interface SubmissionInput {
 
 /**
  * Plans, runs and judges one Submission. Throws NotFound for an unknown Problem and
- * RunnerUnavailable when the Runner is missing, fails, answers without a Test, or compiles a
- * Hidden batch badly. Visible Tests run in one container, then the hidden ones in containers of
+ * RunnerUnavailable when the Runner is missing, fails, cuts a batch off (see `runBatch`), answers
+ * without a Test, or compiles a Hidden batch badly. Visible Tests run in one container, then the hidden ones in containers of
  * at most `hiddenBatchTests`: nothing a Hidden Test runs shares one with a Test whose output is shown.
  */
 export async function judgeSubmission(input: SubmissionInput): Promise<Judgement> {
@@ -53,20 +53,36 @@ export async function judgeSubmission(input: SubmissionInput): Promise<Judgement
 		problemId,
 		input.hiddenBatchTests ?? sandboxConfig.hiddenBatchTests
 	);
-	const batches = await runSubmission(plan, async (tests) => {
-		if (!runner) throw new LearningError('RunnerUnavailable');
-		try {
-			return await runner.execute(
-				batchRequest(language, files, tests, {
-					timeoutMs: sandboxConfig.testTimeoutMs,
-					memoryMb: sandboxConfig.memoryMb
-				})
-			);
-		} catch {
-			throw new LearningError('RunnerUnavailable');
-		}
-	});
+	const batches = await runSubmission(plan, (tests) => runBatch(runner, language, files, tests));
 	return judge(batches, problemId, (id) => catalogue.problem(id)?.title ?? id);
+}
+
+/**
+ * Sends one batch to the Runner with the configured limits; the one place a Run or a Submission
+ * reaches it. A missing or failing Runner, and a batch the container cut off, are all
+ * RunnerUnavailable: a cut-off Test never ran to its own limit, so it is not the Learner's
+ * Time Limit Exceeded (it may be a slow earlier Test that used up the container's time).
+ */
+export async function runBatch(
+	runner: RunnerPort | undefined,
+	language: Language,
+	files: BuildFiles,
+	tests: readonly { readonly id: string; readonly input: string }[]
+): Promise<ExecuteResult> {
+	if (!runner) throw new LearningError('RunnerUnavailable');
+	let result: ExecuteResult;
+	try {
+		result = await runner.execute(
+			batchRequest(language, files, tests, {
+				timeoutMs: sandboxConfig.testTimeoutMs,
+				memoryMb: sandboxConfig.memoryMb
+			})
+		);
+	} catch (cause) {
+		throw new LearningError('RunnerUnavailable', undefined, cause);
+	}
+	if (result.results.some((r) => r.cutOff)) throw new LearningError('RunnerUnavailable');
+	return result;
 }
 
 /** The Tests a Submission runs (see the leaf module); throws NotFound for an unknown Problem. */

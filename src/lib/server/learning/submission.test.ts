@@ -419,3 +419,50 @@ describe('judgeSubmission: a Runner that cannot be trusted', () => {
 		await expect(submit(runner)).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 	});
 });
+
+describe('judgeSubmission: a batch the container cut off', () => {
+	it('answers RunnerUnavailable when the visible batch was cut off', async () => {
+		const { runner } = scriptedRunner({
+			'p/example/a': { status: 'timeout', stdout: '', cutOff: true }
+		});
+
+		await expect(submit(runner)).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+	});
+
+	it('answers RunnerUnavailable, not a Time Limit Exceeded on an earlier step, when a hidden batch was cut off', async () => {
+		const { runner } = scriptedRunner({
+			'q/hidden/z': { status: 'timeout', stdout: '', cutOff: true }
+		});
+
+		await expect(submit(runner)).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+	});
+
+	it('still answers Time Limit Exceeded for a Test that hit its own limit', async () => {
+		const { runner } = scriptedRunner({ 'q/hidden/z': { status: 'timeout', stdout: '' } });
+
+		expect(await submit(runner)).toMatchObject({
+			verdict: 'Time Limit Exceeded',
+			failure: { kind: 'earlierStep', problemId: 'q' }
+		});
+	});
+
+	it('answers RunnerUnavailable for a batch of slow Tests that stay inside their own limit, the rest cut off', async () => {
+		const { runner } = scriptedRunner({
+			'p/hidden/b': { status: 'timeout', stdout: '', cutOff: true },
+			'p/hidden/c': { status: 'timeout', stdout: '', cutOff: true }
+		});
+
+		await expect(
+			submit(runner, { hiddenBatchTests: 10, cat: stubCatalogue(['b', 'c']) })
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+	});
+});
+
+describe('judgeSubmission: why the Runner failed', () => {
+	it('keeps the Runner error as the cause of RunnerUnavailable', async () => {
+		const down = new Error('socket hang up');
+		const { runner } = scriptedRunner({}, () => down);
+
+		await expect(submit(runner)).rejects.toMatchObject({ code: 'RunnerUnavailable', cause: down });
+	});
+});

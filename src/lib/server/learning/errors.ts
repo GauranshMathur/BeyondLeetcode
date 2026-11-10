@@ -10,12 +10,14 @@ export class LearningError extends Error {
 	/**
 	 * `revision`: set when the Learner's code was saved before the refusal (a Runner outage during
 	 * Run or Submit), so the tab can carry on from the revision the save produced.
+	 * `cause`: the error behind the refusal, for logs and the content check; never shown to a Learner.
 	 */
 	constructor(
 		readonly code: LearningErrorCode,
-		readonly revision?: number
+		readonly revision?: number,
+		cause?: unknown
 	) {
-		super(code);
+		super(code, cause === undefined ? undefined : { cause });
 		this.name = 'LearningError';
 	}
 }
