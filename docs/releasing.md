@@ -51,13 +51,15 @@ The `sprint-planner` adds a row for each sprint it plans.
 
 ## The last card
 
-Every sprint ends with one card the planner files: `[Cnnn] Sprint N: exit check and Release-As X.Y.Z`, commit type `docs`, `Blocked by: every other card in Sprint N`. The orchestrator works it itself: it checks the sprint's exit criteria, writes the sprint's Status in `docs/sprints.md`, and squash-merges that PR with the footer:
+Every sprint ends with one card the planner files: `[Cnnn] Sprint N: exit check and Release-As X.Y.Z`, commit type `docs`, `Blocked by: every other card in Sprint N`. The orchestrator works it itself. It checks the sprint's exit criteria and writes the sprint's Status in `docs/sprints.md`. The Status counts issues closed as well as cards done (`docs/agents/board.md`, Issues are the unit of work). Then it squash-merges that PR with the footer:
 
 ```sh
 gh pr merge <n> --squash --body $'Sprint N exit check.\n\nRelease-As: X.Y.Z'
 ```
 
 No other card carries `Release-As`.
+
+Once the cut is recorded, the sprint's section moves to `docs/sprints-archive.md`, so `docs/sprints.md` holds only the current and planned sprints.
 
 ## History
 
