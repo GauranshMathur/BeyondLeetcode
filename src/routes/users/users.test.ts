@@ -3,14 +3,42 @@ import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { describe, expect, it, vi } from 'vitest';
 import type { Db } from '#lib/server/db.js';
 import type { createHandle } from '#lib/server/handle.js';
+import {
+	type AdminActions,
+	type AdminRefusalCode,
+	createAdminActions
+} from '#lib/server/identity/accounts.js';
+import { InvitesNotAdminError } from '#lib/server/identity/invites.js';
 import { createTestInstance } from '#lib/server/identity/test-auth.js';
-import { RegistrationNotAvailableError } from '#lib/server/instance.js';
 import { load as signupLoad } from '../signup/+page.server';
 import { actions, load } from './+page.server';
 
 // The Users page, through the real hook and the real Better Auth: who is let in, and what they see.
 
 const password = 'correct horse battery staple';
+
+const asAdmin = { learnerId: 'l', displayName: 'N', role: 'admin' as const };
+const asLearner = { ...asAdmin, role: 'learner' as const };
+
+/**
+ * A scripted Admin actions object: every method answers `answer` unless `script` gives it another, and
+ * counts its calls. The route is tested against this seam, not against Better Auth's plugin.
+ */
+function scripted(answer: unknown, script: Partial<Record<keyof AdminActions, unknown>> = {}) {
+	const methods = [
+		'listAccounts',
+		'resetPassword',
+		'removeAccount',
+		'createInvite',
+		'pendingInvites',
+		'cancelInvite',
+		'setRegistrationMode'
+	] as const;
+	return Object.fromEntries(
+		methods.map((name) => [name, vi.fn(async () => (name in script ? script[name] : answer))])
+	) as unknown as { [K in keyof AdminActions]: ReturnType<typeof vi.fn> } & AdminActions;
+}
+const refusal = (refused: AdminRefusalCode) => ({ refused });
 
 async function setup() {
 	const t = await createTestInstance();
@@ -170,28 +198,38 @@ describe('the load, if the hook ever let a request through', () => {
 		({
 			locals,
 			request: { headers: new Headers() },
-			setHeaders: vi.fn()
+			setHeaders: vi.fn(),
+			url: new URL('http://localhost/users')
 		}) as never;
 
-	const identity = (role: 'admin' | 'learner') => ({ learnerId: 'l', displayName: 'N', role });
-	const auth = { api: { listUsers: vi.fn() } };
-	const multiUser = { auth };
-
 	it('is 404 without Better Auth, as in Local Mode where the Local Learner is an admin', async () => {
-		await expect(load(event({ identity: identity('admin') }))).rejects.toMatchObject({
-			status: 404
-		});
+		await expect(load(event({ identity: asAdmin }))).rejects.toMatchObject({ status: 404 });
 	});
 
 	it('is 403 for nobody', async () => {
-		await expect(load(event({ multiUser }))).rejects.toMatchObject({ status: 403 });
-	});
-
-	it('is 403 for a learner, and reads nothing', async () => {
-		await expect(load(event({ multiUser, identity: identity('learner') }))).rejects.toMatchObject({
+		const adminActions = scripted(refusal('NOT_ADMIN'));
+		await expect(load(event({ multiUser: { adminActions } }))).rejects.toMatchObject({
 			status: 403
 		});
-		expect(auth.api.listUsers).not.toHaveBeenCalled();
+		expect(adminActions.listAccounts).not.toHaveBeenCalled();
+	});
+
+	it('is 403 when the Admin actions refuse, and reads no Invites', async () => {
+		const adminActions = scripted(refusal('NOT_ADMIN'));
+		await expect(
+			load(event({ multiUser: { adminActions }, identity: asLearner }))
+		).rejects.toMatchObject({ status: 403 });
+		expect(adminActions.pendingInvites).not.toHaveBeenCalled();
+	});
+
+	it('is 403 when only the Invites refuse, as when the admin was removed between the two reads', async () => {
+		const adminActions = scripted(null, {
+			listAccounts: [],
+			pendingInvites: refusal('NOT_ADMIN')
+		});
+		await expect(
+			load(event({ multiUser: { adminActions }, identity: asAdmin }))
+		).rejects.toMatchObject({ status: 403 });
 	});
 });
 
@@ -329,79 +367,63 @@ describe('the Registration switch', () => {
 });
 
 describe('the Registration action, if the hook ever let a request through', () => {
-	const admin = { learnerId: 'l', displayName: 'N', role: 'admin' as const };
-	const learner = { ...admin, role: 'learner' as const };
-
 	const request = (formData = vi.fn(async () => new URLSearchParams({ registration: 'open' }))) =>
 		({ formData }) as unknown as Request;
-
-	const instance = () => ({ setRegistrationMode: vi.fn(async () => {}) });
 	const call = (locals: Record<string, unknown>, req: Request) =>
 		actions.registration({ locals, request: req } as never);
 
-	it('is 403 for a learner, before it reads the form or touches the Instance', async () => {
-		const i = instance();
-		const formData = vi.fn();
+	it('is 403 when the Admin actions refuse', async () => {
+		const adminActions = scripted(refusal('NOT_ADMIN'));
 
 		await expect(
-			call({ multiUser: {}, identity: learner, instance: i }, request(formData as never))
+			call({ multiUser: { adminActions }, identity: asLearner }, request())
 		).rejects.toMatchObject({ status: 403 });
-
-		expect(formData).not.toHaveBeenCalled();
-		expect(i.setRegistrationMode).not.toHaveBeenCalled();
 	});
 
-	it('is 403 for nobody', async () => {
-		const i = instance();
+	it('is 403 for nobody, and asks the Admin actions nothing', async () => {
+		const adminActions = scripted({ registration: 'open' });
 
-		await expect(call({ multiUser: {}, instance: i }, request())).rejects.toMatchObject({
+		await expect(call({ multiUser: { adminActions } }, request())).rejects.toMatchObject({
 			status: 403
 		});
 
-		expect(i.setRegistrationMode).not.toHaveBeenCalled();
-	});
-
-	it('is 403 for any role that is not admin exactly', async () => {
-		const i = instance();
-		const odd = { ...admin, role: 'admin,learner' as never };
-
-		await expect(
-			call({ multiUser: {}, identity: odd, instance: i }, request())
-		).rejects.toMatchObject({
-			status: 403
-		});
-
-		expect(i.setRegistrationMode).not.toHaveBeenCalled();
+		expect(adminActions.setRegistrationMode).not.toHaveBeenCalled();
 	});
 
 	it('is 404 without Better Auth, as in Local Mode where the Local Learner is an admin', async () => {
-		const i = instance();
-
-		await expect(call({ identity: admin, instance: i }, request())).rejects.toMatchObject({
-			status: 404
-		});
-
-		expect(i.setRegistrationMode).not.toHaveBeenCalled();
+		await expect(call({ identity: asAdmin }, request())).rejects.toMatchObject({ status: 404 });
 	});
 
 	it('is 404 when the Instance says it has no Registration Mode to switch', async () => {
-		const i = {
-			setRegistrationMode: vi.fn(async () => {
-				throw new RegistrationNotAvailableError();
-			})
-		};
+		const adminActions = scripted(refusal('REGISTRATION_UNAVAILABLE'));
 
 		await expect(
-			call({ multiUser: {}, identity: admin, instance: i }, request())
+			call({ multiUser: { adminActions }, identity: asAdmin }, request())
 		).rejects.toMatchObject({ status: 404 });
 	});
 
-	it('hands the Instance only the value from the form', async () => {
-		const i = instance();
+	it('hands the Admin actions the asker and only the value from the form', async () => {
+		const adminActions = scripted({ registration: 'open' });
 
-		await call({ multiUser: {}, identity: admin, instance: i }, request());
+		const answer = await call({ multiUser: { adminActions }, identity: asAdmin }, request());
 
-		expect(i.setRegistrationMode).toHaveBeenCalledExactlyOnceWith('open');
+		expect(adminActions.setRegistrationMode).toHaveBeenCalledExactlyOnceWith({
+			who: asAdmin,
+			mode: 'open'
+		});
+		expect(answer).toEqual({ registration: 'open' });
+	});
+
+	it('answers a form value that is no mode with 400, and asks the Admin actions nothing', async () => {
+		const adminActions = scripted({ registration: 'open' });
+
+		const answer = await call(
+			{ multiUser: { adminActions }, identity: asAdmin },
+			request(vi.fn(async () => new URLSearchParams({ registration: 'nobody' })))
+		);
+
+		expect(answer).toMatchObject({ status: 400 });
+		expect(adminActions.setRegistrationMode).not.toHaveBeenCalled();
 	});
 });
 
@@ -538,24 +560,43 @@ describe('Invites on the Users page', () => {
 	});
 
 	it.each(['invite', 'cancel'] as const)(
-		'%s: is 403 for a non-admin, 404 without Invites, even past the hook',
+		'%s: is 403 when the Admin actions refuse, 403 for nobody, 404 without Better Auth, even past the hook',
 		async (name) => {
-			const learner = { learnerId: 'l', displayName: 'N', role: 'learner' as const };
-			const admin = { ...learner, role: 'admin' as const };
+			const adminActions = scripted(refusal('NOT_ADMIN'));
 			const event = (locals: Record<string, unknown>) =>
-				({ locals, setHeaders: vi.fn(), request: { formData: vi.fn() } }) as never;
+				({
+					locals,
+					setHeaders: vi.fn(),
+					request: { formData: async () => new URLSearchParams({ id: 'x' }) }
+				}) as never;
 
 			await expect(
-				actions[name](event({ identity: learner, multiUser: {} }))
-			).rejects.toMatchObject({
+				actions[name](event({ identity: asLearner, multiUser: { adminActions } }))
+			).rejects.toMatchObject({ status: 403 });
+			await expect(actions[name](event({ multiUser: { adminActions } }))).rejects.toMatchObject({
 				status: 403
 			});
-			await expect(actions[name](event({}))).rejects.toMatchObject({ status: 403 });
-			await expect(actions[name](event({ identity: admin }))).rejects.toMatchObject({
+			await expect(actions[name](event({ identity: asAdmin }))).rejects.toMatchObject({
 				status: 404
 			});
 		}
 	);
+
+	it('invite: answers 403 when the admin was removed between the session check and the Invite', async () => {
+		const { handle, admin, invites } = await setup();
+		vi.spyOn(invites, 'create').mockRejectedValueOnce(new InvitesNotAdminError());
+
+		await expect(post(handle, admin, 'invite')).rejects.toMatchObject({ status: 403 });
+	});
+
+	it('cancel: answers 403 when the admin was removed between the session check and the cancel', async () => {
+		const { handle, admin, invites } = await setup();
+		vi.spyOn(invites, 'cancel').mockRejectedValueOnce(new InvitesNotAdminError());
+
+		await expect(post(handle, admin, 'cancel', { id: 'x' })).rejects.toMatchObject({
+			status: 403
+		});
+	});
 });
 
 describe('Reset password on the Users page', () => {
@@ -659,19 +700,44 @@ describe('Reset password on the Users page', () => {
 		expect(resolve).not.toHaveBeenCalled();
 	});
 
-	it('is 403 for a non-admin and 404 without Better Auth, even past the hook, before the form is read', async () => {
-		const learner = { learnerId: 'l', displayName: 'N', role: 'learner' as const };
-		const admin = { ...learner, role: 'admin' as const };
-		const formData = vi.fn();
-		const event = (locals: Record<string, unknown>) =>
-			({ locals, request: { formData, headers: new Headers() } }) as never;
+	describe('against a scripted Admin actions object', () => {
+		const call = (locals: Record<string, unknown>) =>
+			actions.reset({
+				locals,
+				request: { formData: async () => new URLSearchParams({ id: 'u1' }), headers: new Headers() }
+			} as never);
 
-		await expect(actions.reset(event({ identity: learner, multiUser: {} }))).rejects.toMatchObject({
-			status: 403
+		it('is 403 when the Admin actions refuse, 403 for nobody, 404 without Better Auth', async () => {
+			const adminActions = scripted(refusal('NOT_ADMIN'));
+			await expect(
+				call({ identity: asLearner, multiUser: { adminActions } })
+			).rejects.toMatchObject({ status: 403 });
+			await expect(call({ multiUser: { adminActions } })).rejects.toMatchObject({ status: 403 });
+			await expect(call({ identity: asAdmin })).rejects.toMatchObject({ status: 404 });
 		});
-		await expect(actions.reset(event({}))).rejects.toMatchObject({ status: 403 });
-		await expect(actions.reset(event({ identity: admin }))).rejects.toMatchObject({ status: 404 });
-		expect(formData).not.toHaveBeenCalled();
+
+		it.each([
+			['UNKNOWN_ACCOUNT', 404, 'That user no longer exists.'],
+			['SELF_RESET', 400, 'You cannot reset your own password here.']
+		] as const)(
+			'maps %s to %i and its fixed text, on the row asked about',
+			async (code, status, text) => {
+				const adminActions = scripted(refusal(code));
+				const answer = await call({ identity: asAdmin, multiUser: { adminActions } });
+				expect(answer).toMatchObject({ status, data: { resetMessage: text, resetUserId: 'u1' } });
+			}
+		);
+
+		it('hands the Admin actions the asker, the request headers and the id, and answers the password', async () => {
+			const adminActions = scripted({ password: 'p4ss' });
+			const answer = await call({ identity: asAdmin, multiUser: { adminActions } });
+			expect(answer).toEqual({ reset: { userId: 'u1', password: 'p4ss' } });
+			expect(adminActions.resetPassword).toHaveBeenCalledExactlyOnceWith({
+				who: asAdmin,
+				headers: expect.any(Headers),
+				userId: 'u1'
+			});
+		});
 	});
 
 	it('answers a failed reset with a fixed message and no password', async () => {
@@ -776,21 +842,49 @@ describe('Remove on the Users page', () => {
 		expect(await s.db.user.count({ where: { id: s.linId } })).toBe(1);
 	});
 
-	it('is 403 for a non-admin and 404 without Better Auth or the remover, even past the hook, before the form is read', async () => {
-		const learner = { learnerId: 'l', displayName: 'N', role: 'learner' as const };
-		const admin = { ...learner, role: 'admin' as const };
-		const formData = vi.fn();
-		const event = (locals: Record<string, unknown>) =>
-			({ locals, request: { formData, headers: new Headers() } }) as never;
-		const deleteIt = async () => {};
-		await expect(
-			actions.remove(event({ identity: learner, multiUser: { deleteLearner: deleteIt } }))
-		).rejects.toMatchObject({ status: 403 });
-		await expect(actions.remove(event({}))).rejects.toMatchObject({ status: 403 });
-		await expect(actions.remove(event({ identity: admin }))).rejects.toMatchObject({
-			status: 404
+	describe('against a scripted Admin actions object', () => {
+		const call = (locals: Record<string, unknown>) =>
+			actions.remove({
+				locals,
+				request: { formData: async () => new URLSearchParams({ id: 'u1' }), headers: new Headers() }
+			} as never);
+
+		it('is 403 when the Admin actions refuse, 403 for nobody, 404 without Better Auth', async () => {
+			const adminActions = scripted(refusal('NOT_ADMIN'));
+			await expect(
+				call({ identity: asLearner, multiUser: { adminActions } })
+			).rejects.toMatchObject({ status: 403 });
+			await expect(call({ multiUser: { adminActions } })).rejects.toMatchObject({ status: 403 });
+			await expect(call({ identity: asAdmin })).rejects.toMatchObject({ status: 404 });
 		});
-		expect(formData).not.toHaveBeenCalled();
+
+		it.each([
+			['UNKNOWN_ACCOUNT', 404, 'That user no longer exists.'],
+			['SELF_REMOVE', 400, 'You cannot remove yourself.'],
+			[
+				'PROGRESS_NOT_REMOVED',
+				500,
+				'The account was removed, but its progress could not be deleted. It can no longer sign in.'
+			]
+		] as const)('maps %s to %i and its fixed text', async (code, status, text) => {
+			vi.spyOn(console, 'error').mockImplementation(() => {});
+			const adminActions = scripted(refusal(code));
+			const answer = await call({ identity: asAdmin, multiUser: { adminActions } });
+			expect(answer).toMatchObject({ status, data: { removeMessage: text } });
+			vi.restoreAllMocks();
+		});
+
+		it('answers removed when the Admin actions do', async () => {
+			const adminActions = scripted({ removed: true });
+			expect(await call({ identity: asAdmin, multiUser: { adminActions } })).toEqual({
+				removed: true
+			});
+			expect(adminActions.removeAccount).toHaveBeenCalledExactlyOnceWith({
+				who: asAdmin,
+				headers: expect.any(Headers),
+				userId: 'u1'
+			});
+		});
 	});
 
 	it('answers a failed removal with a fixed message, and logs only the kind of error', async () => {
@@ -823,9 +917,14 @@ describe('Remove on the Users page', () => {
 			{
 				multiUser: {
 					...s.multiUser,
-					deleteLearner: async () => {
-						throw new Error('/secret/path');
-					}
+					adminActions: createAdminActions({
+						auth: s.auth,
+						invites: s.invites,
+						instance: s.instance,
+						deleteLearner: async () => {
+							throw new Error('/secret/path');
+						}
+					})
 				}
 			}
 		);
@@ -833,7 +932,7 @@ describe('Remove on the Users page', () => {
 		expect(response.status).toBe(500);
 		expect(JSON.stringify(await response.json())).toContain('could not be deleted');
 		expect(JSON.stringify(quiet.mock.calls)).not.toContain('/secret/path');
-		expect(JSON.stringify(quiet.mock.calls)).toContain('ProgressNotRemovedError');
+		expect(JSON.stringify(quiet.mock.calls)).toContain('PROGRESS_NOT_REMOVED');
 		expect(await s.db.user.count({ where: { id: s.linId } })).toBe(0);
 		vi.restoreAllMocks();
 	});

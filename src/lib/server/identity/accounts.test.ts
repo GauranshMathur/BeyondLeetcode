@@ -138,37 +138,6 @@ describe('listAccounts', () => {
 	});
 
 	describe('who may ask', () => {
-		it('refuses a learner, and asks the plugin nothing', async () => {
-			const { auth, signUp, requestOf } = await setup();
-			await signUp('Ada Admin', 'ada@example.com', 'admin');
-			const learner = await signUp('Lin Learner', 'lin@example.com');
-			const listUsers = vi.spyOn(auth.api, 'listUsers');
-
-			await expect(listAccounts(auth, await requestOf(learner.cookie))).rejects.toBeInstanceOf(
-				NotAdminError
-			);
-
-			expect(listUsers).not.toHaveBeenCalled();
-		});
-
-		it('refuses a role that only contains admin ("admin,learner"), although the plugin would answer it', async () => {
-			const { auth, db, signUp, requestOf } = await setup();
-			await signUp('Ada Admin', 'ada@example.com', 'admin');
-			const sneaky = await signUp('Sam Sneaky', 'sam@example.com');
-			await db.user.update({
-				where: { email: 'sam@example.com' },
-				data: { role: 'admin,learner' }
-			});
-			const request = await requestOf(sneaky.cookie);
-
-			// The plugin splits the role on commas, so on its own check Sam may list every Account ...
-			const throughThePlugin = await auth.api.listUsers({ headers: request.headers, query: {} });
-			expect(throughThePlugin.users).toHaveLength(2);
-			// ... but Identity says learner, and that is what every admin action must go by.
-			expect(request.who.role).toBe('learner');
-			await expect(listAccounts(auth, request)).rejects.toBeInstanceOf(NotAdminError);
-		});
-
 		it('refuses when the plugin refuses, e.g. the admin session ended a moment ago', async () => {
 			const { auth, db, signUp, requestOf } = await setup();
 			const admin = await signUp('Ada Admin', 'ada@example.com', 'admin');
@@ -333,19 +302,6 @@ describe('resetPassword', () => {
 		});
 		// The admin keeps their session.
 		expect(await sessionOf(auth, admin.cookie)).not.toBeNull();
-	});
-
-	it('refuses a learner before anything is touched', async () => {
-		const { auth, db, lin, linRow, requestOf } = await twoAccounts();
-		const setUserPassword = vi.spyOn(auth.api, 'setUserPassword');
-
-		await expect(
-			resetPassword(auth, { ...(await requestOf(lin.cookie)), userId: linRow.id })
-		).rejects.toBeInstanceOf(NotAdminError);
-
-		expect(setUserPassword).not.toHaveBeenCalled();
-		expect(await db.session.count({ where: { userId: linRow.id } })).toBe(1);
-		await signIn(auth, 'lin@example.com', password);
 	});
 
 	it('refuses an admin session the plugin no longer knows', async () => {

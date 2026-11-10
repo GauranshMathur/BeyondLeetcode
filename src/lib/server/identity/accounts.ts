@@ -40,16 +40,14 @@ const PAGE_SIZE = 100;
  * Every Account, oldest first, for the admin. `who` is what Identity made of this request and
  * `headers` carry its session cookie, which the plugin reads again for its own check.
  *
- * Identity's role is the check that counts: it is `admin` exactly. The plugin's check alone is not
- * enough, because it splits a stored role on commas, so `admin,learner` passes it while the app
- * treats that user as a learner. A learner is refused before anything is read.
+ * The role check (`admin` exactly) is made by the Admin actions before this runs: the plugin's check
+ * alone is not enough, because it splits a stored role on commas, so `admin,learner` passes it while
+ * the app treats that user as a learner. The plugin's own refusal still maps to `NotAdminError`.
  */
 export async function listAccounts(
 	auth: Auth,
 	{ who, headers }: { who: Identity; headers: Headers }
 ): Promise<AccountRow[]> {
-	if (who.role !== 'admin') throw new NotAdminError();
-
 	// By id: a page boundary that moves while Accounts come and go must never show a row twice.
 	const rows = new Map<string, AccountRow>();
 	let total = Number.POSITIVE_INFINITY;
@@ -151,13 +149,13 @@ function oneTimePassword(): string {
  * to the password page, and no outcome leaves one alive with the flag unset. A failure part-way throws and no password
  * is returned: the admin tries again, and a retry redoes every step.
  *
- * Identity's role is the check that counts, as in `listAccounts`, and it is made before anything is read.
+ * The Admin actions check the role first, as for `listAccounts`; the fresh-session check below stays
+ * here, because only this function knows the request's cookie.
  */
 export async function resetPassword(
 	auth: Auth,
 	{ who, headers, userId }: { who: Identity; headers: Headers; userId: string }
 ): Promise<{ password: string }> {
-	if (who.role !== 'admin') throw new NotAdminError();
 	if (typeof userId !== 'string' || userId === '') throw new UnknownAccountError();
 
 	const { internalAdapter } = await auth.$context;
@@ -262,8 +260,8 @@ export async function resetAdminPassword(
  * An Account whose Learner row is missing (a sign-up that died between the user insert and the Learner
  * create) is removed the same way: deleting rows that are not there is not an error, and the email is free.
  *
- * Identity's role is the check that counts, as in `resetPassword`, and it is made before anything is
- * read. The asking admin is never removed (found by Learner, as for `you` on the Users page).
+ * The Admin actions check the role first, as for `resetPassword`. The asking admin is never removed
+ * (found by Learner, as for `you` on the Users page).
  */
 export async function removeAccount(
 	auth: Auth,
@@ -280,7 +278,6 @@ export async function removeAccount(
 		userId: string;
 	}
 ): Promise<void> {
-	if (who.role !== 'admin') throw new NotAdminError();
 	if (typeof userId !== 'string' || userId === '') throw new UnknownAccountError();
 
 	const { internalAdapter } = await auth.$context;
@@ -392,8 +389,8 @@ const refusalOfError = (error: unknown): AdminRefusal | null => {
  * The admin's Account management as one object: Better Auth, the Learner removal, the Invites and the
  * Instance's Registration Mode, built once by the Multi-user factory. The role check is made here, once,
  * before anything is read or written: `who.role` must be `admin` exactly (the plugin's own check alone
- * would let a stored `admin,learner` through). The functions above stay the implementation and still check
- * for themselves, so a refusal they throw comes back as its code.
+ * would let a stored `admin,learner` through). The functions above are the implementation and no longer
+ * check the role themselves; the refusals they throw come back as their codes.
  */
 export function createAdminActions({
 	auth,
