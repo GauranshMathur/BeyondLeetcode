@@ -91,6 +91,8 @@ describe('Engine attach', () => {
 			socket.once('data', () => {
 				socket.write('HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n');
 				const drip = setInterval(() => socket.write('x'), 30);
+				// A write can land after the engine hung up and before 'close' clears the timer.
+				socket.on('error', () => clearInterval(drip));
 				socket.once('close', () => clearInterval(drip));
 			});
 		}).listen(socketPath);
@@ -185,6 +187,7 @@ describe('Engine attach', () => {
 					() => socket.write(`${progress.length.toString(16)}\r\n${progress}\r\n`),
 					20
 				);
+				socket.on('error', () => clearInterval(drip));
 				socket.once('close', () => clearInterval(drip));
 			});
 
@@ -337,11 +340,44 @@ describe('Engine attach', () => {
 			reply(socket, polls.length < 3 ? '200 OK' : '404 Not Found');
 		});
 
-		expect(await createEngine(socketPath, 5_000).remove('x')).toBe(true);
+		expect(await createEngine(socketPath, 1_500).remove('x')).toBe(true);
 
 		expect(polls).toEqual(Array(3).fill('/containers/x/json'));
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		expect(polls).toHaveLength(3);
+	});
+
+	it('pauses between polls instead of asking the daemon in a tight loop', async () => {
+		let polls = 0;
+		const socketPath = await daemon((socket, head) => {
+			if (head.startsWith('DELETE')) return inProgress(socket);
+			polls++;
+			reply(socket, '200 OK');
+		});
+
+		await expect(createEngine(socketPath, 1_000).remove('x')).rejects.toThrow(/still in progress/);
+
+		// One poll per ~100 ms for a second; a loop with no pause would make hundreds.
+		expect(polls).toBeLessThanOrEqual(12);
+		expect(polls).toBeGreaterThanOrEqual(2);
+	});
+
+	it('fails at once on a 409 that is not a removal in progress, without polling', async () => {
+		const requests: string[] = [];
+		const socketPath = await daemon((socket, head) => {
+			requests.push(head.split(' ')[0]);
+			const body = '{"message":"conflict"}';
+			socket.end(
+				`HTTP/1.1 409 Conflict\r\nConnection: close\r\nContent-Length: ${body.length}\r\n\r\n${body}`
+			);
+		});
+
+		await expect(createEngine(socketPath, 1_500).remove('x')).rejects.toThrow(
+			/remove failed \(409\)/
+		);
+
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		expect(requests).toEqual(['DELETE']);
 	});
 
 	it('gives up on a removal the daemon reports as in progress for ever, within one deadline', async () => {

@@ -23,6 +23,8 @@ function fakeEngine(options: {
 	killFails?: boolean;
 	neverEnds?: boolean;
 	exitNever?: boolean;
+	/** How long the daemon takes to answer the wait request. */
+	waitMs?: number;
 }) {
 	const calls: string[] = [];
 	let end: () => void = () => {};
@@ -31,22 +33,31 @@ function fakeEngine(options: {
 	});
 	const engine = {
 		create: async () => 'c1',
-		wait: async () => ({
-			status: options.exitNever
-				? new Promise<number>(() => {})
-				: Promise.resolve(options.exitCode ?? 0)
-		}),
+		wait: async (id: string) => {
+			calls.push(`wait ${id}`);
+			if (options.waitMs) await new Promise((resolve) => setTimeout(resolve, options.waitMs));
+			return {
+				status: options.exitNever
+					? new Promise<number>(() => {})
+					: Promise.resolve(options.exitCode ?? 0)
+			};
+		},
 		attach: options.attach
 			? options.attach
-			: async (_id: string, onFrame: (s: 1 | 2, p: Buffer) => void) => ({
-					sendInput() {
-						if (options.output) onFrame(1, Buffer.from(`${options.output}\n`));
-						if (!options.neverEnds) end();
-					},
-					closed,
-					destroy: end
-				}),
-		start: async () => {},
+			: async (id: string, onFrame: (s: 1 | 2, p: Buffer) => void) => {
+					calls.push(`attach ${id}`);
+					return {
+						sendInput() {
+							if (options.output) onFrame(1, Buffer.from(`${options.output}\n`));
+							if (!options.neverEnds) end();
+						},
+						closed,
+						destroy: end
+					};
+				},
+		start: async (id: string) => {
+			calls.push(`start ${id}`);
+		},
 		kill: async (id: string) => {
 			calls.push(`kill ${id}`);
 			if (options.killFails) throw new Error('daemon down');
@@ -86,6 +97,48 @@ describe('Container: how it ends', () => {
 
 		expect(create.mock.calls[0][0]).toBe('img:1');
 		expect(create.mock.calls[0][1]).toEqual({ Cmd: ['b'], Env: ['A=1'], User: 'nobody' });
+	});
+
+	it("ignores keys of an override other than Cmd and Env, and an unset Cmd keeps the spec's", async () => {
+		const { engine } = fakeEngine({});
+		const create = vi.spyOn(engine, 'create');
+
+		await run(engine, {
+			spec: { Cmd: ['a'], Env: ['A=1'], Image: 'safe', HostConfig: { Memory: 1 } },
+			override: { Cmd: undefined, Image: 'evil', HostConfig: {} } as never
+		});
+
+		expect(create.mock.calls[0][1]).toEqual({
+			Cmd: ['a'],
+			Env: ['A=1'],
+			Image: 'safe',
+			HostConfig: { Memory: 1 }
+		});
+	});
+
+	it('waits for the exit status, attaches, then starts, and removes the container last', async () => {
+		const { engine, calls } = fakeEngine({});
+
+		await run(engine);
+
+		expect(calls).toEqual(['wait c1', 'attach c1', 'start c1', 'remove c1']);
+	});
+
+	it('refuses to start a container whose start-up outlasted the container clock', async () => {
+		vi.useFakeTimers();
+		try {
+			const { engine, calls } = fakeEngine({ waitMs: sandboxConfig.containerTimeoutMs + 1 });
+			const pending = run(engine);
+			const outcome = expect(pending).rejects.toThrow('Sandbox start-up exceeded the time limit');
+
+			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
+
+			await outcome;
+			expect(calls).not.toContain('start c1');
+			expect(calls).toContain('remove c1');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('ends hardStop, kills the container and removes it when the container clock runs out', async () => {
@@ -137,7 +190,19 @@ describe('Container: how it ends', () => {
 			};
 		}) as Engine['attach'];
 
-		const end = await run(engine, { frame: () => false });
+		vi.useFakeTimers();
+		let end: Awaited<ReturnType<typeof run>>;
+		try {
+			const pending = run(engine, { frame: () => false });
+			let settled = false;
+			void pending.then(() => (settled = true));
+			// No timer is advanced: the Run ends on the refused frame, not on the container clock.
+			await vi.advanceTimersByTimeAsync(0);
+			expect(settled).toBe(true);
+			end = await pending;
+		} finally {
+			vi.useRealTimers();
+		}
 
 		expect(end).toEqual({ kind: 'overflow' });
 		expect(destroyed).toBe(true);
