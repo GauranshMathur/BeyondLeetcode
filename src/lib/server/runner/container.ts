@@ -155,7 +155,12 @@ export type ContainerRun = {
  * either way.
  */
 export async function runContainer(engine: Engine, run: ContainerRun): Promise<ContainerEnd> {
-	const spec = { ...run.spec, ...run.override };
+	// Two keys taken by name: an override can neither swap the image's flags nor unset them.
+	const spec = {
+		...run.spec,
+		Cmd: run.override?.Cmd ?? run.spec.Cmd,
+		Env: run.override?.Env ?? run.spec.Env
+	};
 	// Named on our side: if the create call times out while the daemon completes it, the reply is
 	// lost but the name is not, and this Run can remove exactly that container. Random, so it
 	// clashes with no other Run's.

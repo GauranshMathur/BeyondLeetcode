@@ -17,7 +17,7 @@ import { createRegistration } from './registration.ts';
 import { sweepStaleSessions } from './session-binding.ts';
 import { createProviderStarts } from './throttle.ts';
 
-/** Better Auth, the account actions, the admin actions, Invites and the Learner removal: what the Multi-user routes use. */
+/** Better Auth, the account actions, the admin actions and Invites: what the Multi-user routes use. */
 export interface MultiUser {
 	auth: Auth;
 	/**
@@ -31,8 +31,6 @@ export interface MultiUser {
 	 */
 	adminActions: AdminActions;
 	invites: Invites;
-	/** `deleteLearner` of the progress module, bound to the database. */
-	deleteLearner: (learnerId: string) => Promise<void>;
 }
 
 export interface MultiUserInstanceOptions {
@@ -99,12 +97,11 @@ export async function createMultiUserInstance(
 		registrationOpen: () => instance.registrationMode() === 'open',
 		inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
 	});
-	const removeLearner = (learnerId: string) => deleteLearner(db, learnerId);
 	const adminActions = createAdminActions({
 		auth,
 		invites,
 		instance,
-		deleteLearner: removeLearner
+		deleteLearner: (learnerId) => deleteLearner(db, learnerId)
 	});
 	if (instance.mode() === 'multi') await repairStartup(db);
 	return {
@@ -112,8 +109,7 @@ export async function createMultiUserInstance(
 			auth,
 			accounts,
 			adminActions,
-			invites,
-			deleteLearner: removeLearner
+			invites
 		},
 		resolver: createMultiUserIdentity(auth)
 	};
