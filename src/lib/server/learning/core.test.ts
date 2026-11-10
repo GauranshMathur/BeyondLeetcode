@@ -12,7 +12,7 @@ import {
 	type LearningCoreDeps,
 	LearningError
 } from './core.ts';
-import { submitPlan } from './rules.ts';
+import { submitPlan } from './submission.ts';
 
 /**
  * The Learning core, with every Learner a test names given its row first: the database refuses
