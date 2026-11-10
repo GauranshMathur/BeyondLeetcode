@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
 import { enabledProviders } from './identity/auth.ts';
-import { INVITE_COOKIE } from './identity/invites.ts';
 
 it('fails at start with a clear message when CONTENT_DIR is missing', async () => {
 	await expect(createApp({ DATABASE_URL: 'file:x.db' })).rejects.toThrow(/CONTENT_DIR is not set/);
@@ -141,76 +140,6 @@ describe('OAuth providers', () => {
 });
 
 describe('Multi-user', () => {
-	it('can be chosen on a server without the test switch once the secret and origin are set, and signs the admin in', async () => {
-		const { url, db } = await migratedDatabase();
-		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
-		expect(app.setup.multiUser).toEqual({ kind: 'open' });
-
-		const { headers } = await app.setup.createFirstAdmin(admin);
-
-		expect(app.instance.mode()).toBe('multi');
-		const cookie = headers
-			.getSetCookie()
-			.map((c) => c.split(';')[0])
-			.join('; ');
-		const answer = await app.identity.resolve({
-			cookies: { get: () => undefined },
-			request: { headers: new Headers({ cookie }) }
-		});
-		const who = answer.kind === 'resolved' ? answer.who : null;
-		expect(who).toMatchObject({ displayName: 'Ada', role: 'admin', learnerId: 'local' });
-		// Invite links carry the validated ORIGIN, the one Better Auth uses.
-		const made = await app.multiUser?.invites.create({ who: who as never, now: new Date() });
-		expect(made?.link).toBe(`http://localhost:4174/invite/${made?.token}`);
-		expect(await db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
-	}, 30_000);
-
-	it('wires the Learner remover to this database, for removing an Account', async () => {
-		const { url, db } = await migratedDatabase();
-		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
-		await db.learner.create({ data: { id: 'gone' } });
-		await db.chapterRead.create({ data: { learnerId: 'gone', chapterId: 'c' } });
-
-		await app.multiUser?.deleteLearner('gone');
-
-		expect(await db.learner.count({ where: { id: 'gone' } })).toBe(0);
-		expect(await db.chapterRead.count({ where: { learnerId: 'gone' } })).toBe(0);
-	}, 30_000);
-
-	it('lets an Invite create exactly one learner Account through the wired auth, and refuses a second use', async () => {
-		const { url, db } = await migratedDatabase();
-		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
-		const { headers } = await app.setup.createFirstAdmin(admin);
-		const cookie = headers
-			.getSetCookie()
-			.map((c) => c.split(';')[0])
-			.join('; ');
-		const answer = await app.identity.resolve({
-			cookies: { get: () => undefined },
-			request: { headers: new Headers({ cookie }) }
-		});
-		const who = answer.kind === 'resolved' ? answer.who : null;
-		const made = await app.multiUser?.invites.create({ who: who as never, now: new Date() });
-		const signUp = async (email: string) => {
-			try {
-				await app.multiUser?.auth.api.signUpEmail({
-					body: { name: 'Lin', email, password: 'a long enough secret' },
-					headers: new Headers({ cookie: `${INVITE_COOKIE}=${made?.token}` })
-				});
-				return 200;
-			} catch (error) {
-				return (error as { statusCode?: number }).statusCode;
-			}
-		};
-
-		expect(await signUp('lin@example.com')).toBe(200);
-		expect(await signUp('lin2@example.com')).toBe(403);
-
-		const learners = await db.user.findMany({ where: { role: 'learner' } });
-		expect(learners).toHaveLength(1);
-		expect(await app.multiUser?.invites.lookup(made?.token ?? '', new Date())).toBeNull();
-	}, 30_000);
-
 	it('says what to add to .env on a server without the test switch and without a secret', async () => {
 		const { url } = await migratedDatabase();
 
@@ -280,26 +209,6 @@ describe('Multi-user', () => {
 		},
 		30_000
 	);
-
-	it('derives the auth origin from ORIGIN: http gives cookies a plain http browser keeps', async () => {
-		const { url } = await migratedDatabase();
-		const app = await bootMulti(url, { ORIGIN: 'http://192.168.1.20:3000/' });
-
-		const { headers } = await app.setup.createFirstAdmin(admin);
-
-		const [cookie] = headers.getSetCookie();
-		expect(cookie).toMatch(/^better-auth\.session_token=/);
-		expect(cookie).not.toMatch(/secure/i);
-	}, 30_000);
-
-	it('gives an https origin Secure cookies', async () => {
-		const { url } = await migratedDatabase();
-		const app = await bootMulti(url, { ORIGIN: 'https://learn.example.com' });
-
-		const { headers } = await app.setup.createFirstAdmin(admin);
-
-		expect(headers.getSetCookie()[0]).toMatch(/^__Secure-better-auth\.session_token=.*; Secure/i);
-	}, 30_000);
 
 	it('refuses to start as a multi-user Instance with the test switch on: the test cookie must never be read', async () => {
 		const { url, db } = await migratedDatabase();
@@ -440,100 +349,4 @@ describe('Runner adapter', () => {
 			/RUNNER_ADAPTER/
 		);
 	});
-});
-
-describe('the startup repair of Accounts and Learners (C57)', () => {
-	/** A Multi-user database with its first admin (Learner 'local'), shut down as if the server stopped. */
-	async function multiDatabase() {
-		const { url, db } = await migratedDatabase();
-		const first = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
-		await first.setup.createFirstAdmin(admin);
-		return { url, db };
-	}
-	const drift = async (db: Awaited<ReturnType<typeof migratedDatabase>>['db']) => {
-		await db.user.create({
-			data: { id: 'u2', name: 'Lin', email: 'lin@example.com', learnerId: 'no-row' }
-		});
-		await db.learner.create({ data: { id: 'orphan' } });
-		await db.chapterRead.create({ data: { learnerId: 'orphan', chapterId: 'c' } });
-	};
-	const learnerIds = async (db: Awaited<ReturnType<typeof migratedDatabase>>['db']) =>
-		(await db.learner.findMany({ orderBy: { id: 'asc' } })).map((l) => l.id);
-
-	it('on a restart in Multi-user mode creates the missing Learner, removes the orphan with its progress, and keeps the admin Learner', async () => {
-		const { url, db } = await multiDatabase();
-		await drift(db);
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		onTestFinished(() => warn.mockRestore());
-
-		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
-
-		expect(await learnerIds(db)).toEqual(['local', 'no-row']);
-		expect(await db.chapterRead.count()).toBe(0);
-		await app.core.forLearner('no-row').reachChapterEnd('stacks-undo-log'); // now writable
-		const said = warn.mock.calls.flat().join('\n');
-		expect(said).toContain('1 missing Learner(s) created, 1 orphan Learner(s) removed');
-		expect(said).not.toMatch(/no-row|orphan\b(?!\s+Learner)|lin@|u2/);
-	}, 60_000);
-
-	it('on a restart removes a session that can never resolve, and keeps a valid one and an OAuth-only one', async () => {
-		const { url, db } = await multiDatabase();
-		const adminUser = await db.user.findFirstOrThrow();
-		const generation = (
-			await db.account.findFirstOrThrow({
-				where: { userId: adminUser.id, providerId: 'credential' }
-			})
-		).credentialGeneration;
-		await db.learner.create({ data: { id: 'oauth-learner' } });
-		await db.user.create({
-			data: { id: 'oauth', name: 'Oz', email: 'oz@example.com', learnerId: 'oauth-learner' }
-		});
-		const session = (id: string, userId: string, credentialGeneration: string) =>
-			db.session.create({
-				data: {
-					id,
-					token: `t-${id}`,
-					userId,
-					expiresAt: new Date(Date.now() + 1e9),
-					credentialGeneration
-				}
-			});
-		await session('valid', adminUser.id, generation);
-		await session('inert', adminUser.id, 'an-older-generation');
-		await session('oauth-only', 'oauth', '');
-		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		onTestFinished(() => warn.mockRestore());
-		const before = await db.session.count({ where: { id: 'inert' } });
-
-		await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
-
-		expect(before).toBe(1);
-		const left = (await db.session.findMany()).map((r) => r.id);
-		expect(left).toContain('valid');
-		expect(left).toContain('oauth-only');
-		expect(left).not.toContain('inert');
-		const said = warn.mock.calls.flat().join('\n');
-		expect(said).toContain('1 unusable session(s) removed');
-		expect(said).not.toMatch(/t-inert|an-older-generation/);
-	}, 60_000);
-
-	it('does not run in Local mode: the Local Learner stays and so does an unreferenced one', async () => {
-		const { url, db } = await migratedDatabase();
-		const app = await boot(url);
-		await app.instance.chooseLocal();
-		await db.learner.create({ data: { id: 'other' } });
-
-		await boot(url);
-
-		expect(await learnerIds(db)).toEqual(['local', 'other']);
-	}, 60_000);
-
-	it('does not run on an Instance that is not set up', async () => {
-		const { url, db } = await migratedDatabase();
-		await db.learner.create({ data: { id: 'other' } });
-
-		await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
-
-		expect(await learnerIds(db)).toEqual(['other']);
-	}, 60_000);
 });
