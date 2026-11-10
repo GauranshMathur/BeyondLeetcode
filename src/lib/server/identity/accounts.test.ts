@@ -1,9 +1,7 @@
-import { createHmac } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
 import { createChangePassword } from '../../../routes/account/password/change-password.ts';
 import { deleteLearner } from '../learning/progress.ts';
-import { createAccountActions } from './account-actions.ts';
 import {
 	type AccountRow,
 	listAccounts,
@@ -15,22 +13,17 @@ import {
 	SelfResetError,
 	UnknownAccountError
 } from './accounts.ts';
-import type { Admission, Auth } from './auth.ts';
-import { createMultiUserIdentity } from './multi-user.ts';
-import { createTestAuth, TEST_SECRET } from './test-auth.ts';
-import { createProviderStarts } from './throttle.ts';
+import type { Auth } from './auth.ts';
+import { createTestInstance } from './test-auth.ts';
 
 const password = 'correct horse battery staple';
 
 async function setup() {
-	let admission: Admission = {};
-	const { auth, db, signUp: signUpAccount } = await createTestAuth({ admit: () => admission });
-	const resolver = createMultiUserIdentity(auth);
+	const { auth, db, resolver, multiUser, admin, learner, githubOnly } = await createTestInstance();
 
-	/** Signs an Account up (as an admin when asked) and returns the session cookie header it got. */
+	/** Makes an Account (the Instance's first admin when asked) and returns the session cookie header it got. */
 	async function signUp(name: string, email: string, role?: 'admin') {
-		admission = role ? { role } : {};
-		const { cookie } = await signUpAccount({ name, email, password });
+		const { cookie } = await (role ? admin : learner)({ name, email, password });
 		return { cookie };
 	}
 
@@ -45,7 +38,7 @@ async function setup() {
 		return { who, headers };
 	}
 
-	return { db, auth, resolver, signUp, requestOf };
+	return { db, auth, resolver, multiUser, signUp, requestOf, githubOnly };
 }
 
 describe('listAccounts', () => {
@@ -261,46 +254,31 @@ describe('resetPassword', () => {
 	it('gives an Account that signs in only with GitHub a working password, and its forced change clears the flag', async () => {
 		// Pins an internal branch of Better Auth 1.7.7 (setUserPassword creates a missing credential row,
 		// plugins/admin/routes.mjs), which resetPassword relies on: there is no code of ours for it.
-		const { auth, db, admin, requestOf } = await twoAccounts();
-		await db.learner.create({ data: { id: 'oz-learner' } });
-		await db.user.create({
-			data: { id: 'oz', name: 'Oz', email: 'oz@example.com', learnerId: 'oz-learner' }
-		});
-		await db.account.create({
-			data: { id: 'oz-gh', accountId: '99', providerId: 'github', userId: 'oz' }
-		});
-		expect(await db.account.count({ where: { userId: 'oz', providerId: 'credential' } })).toBe(0);
+		const { auth, db, admin, requestOf, githubOnly, multiUser } = await twoAccounts();
+		const oz = await githubOnly({ name: 'Oz', email: 'oz@example.com' });
+		expect(await db.account.count({ where: { userId: oz.id, providerId: 'credential' } })).toBe(0);
 
 		const { password: fresh } = await resetPassword(auth, {
 			...(await requestOf(admin.cookie)),
-			userId: 'oz'
+			userId: oz.id
 		});
 
-		expect(await db.account.count({ where: { userId: 'oz', providerId: 'credential' } })).toBe(1);
-		expect(await db.account.count({ where: { userId: 'oz', providerId: 'github' } })).toBe(1);
-		const signedIn = await signIn(auth, 'oz@example.com', fresh);
-		expect(signedIn.user.email).toBe('oz@example.com');
-		expect((await db.user.findUniqueOrThrow({ where: { id: 'oz' } })).mustChangePassword).toBe(
+		expect(await db.account.count({ where: { userId: oz.id, providerId: 'credential' } })).toBe(1);
+		expect(await db.account.count({ where: { userId: oz.id, providerId: 'github' } })).toBe(1);
+		const signedIn = await auth.api.signInEmail({
+			body: { email: 'oz@example.com', password: fresh },
+			returnHeaders: true
+		});
+		expect(signedIn.response.user.email).toBe('oz@example.com');
+		expect((await db.user.findUniqueOrThrow({ where: { id: oz.id } })).mustChangePassword).toBe(
 			true
 		);
 
-		// The learner comes back through GitHub: a session with the flag set, then the forced change.
-		// (A callback session is bound to the current credential generation; the row is made directly.)
-		const credential = await db.account.findFirstOrThrow({
-			where: { userId: 'oz', providerId: 'credential' }
-		});
-		const token = 'oz-github-session-token';
-		await db.session.create({
-			data: {
-				id: 'oz-gh-session',
-				token,
-				userId: 'oz',
-				expiresAt: new Date(Date.now() + 1e9),
-				credentialGeneration: credential.credentialGeneration
-			}
-		});
-		const signature = createHmac('sha256', TEST_SECRET).update(token).digest('base64');
-		const cookie = `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`;
+		// The reset revoked the GitHub session; the new password's session carries the flag, then the forced change.
+		const cookie = signedIn.headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
 		const { action } = createChangePassword();
 		const ev = {
 			request: new Request('http://localhost/account/password', {
@@ -312,24 +290,14 @@ describe('resetPassword', () => {
 					confirm: 'a brand new passphrase 42'
 				})
 			}),
-			locals: {
-				multiUser: {
-					auth,
-					accounts: createAccountActions({
-						auth,
-						providerStarts: createProviderStarts(),
-						registrationOpen: () => true,
-						inviteValid: async () => true
-					})
-				}
-			},
+			locals: { multiUser },
 			cookies: { set: vi.fn() },
 			url: new URL('http://localhost/account/password'),
 			getClientAddress: () => '10.0.0.1'
 		} as unknown as RequestEvent;
 		await expect(action(ev)).rejects.toMatchObject({ status: 303, location: '/' });
 
-		expect((await db.user.findUniqueOrThrow({ where: { id: 'oz' } })).mustChangePassword).toBe(
+		expect((await db.user.findUniqueOrThrow({ where: { id: oz.id } })).mustChangePassword).toBe(
 			false
 		);
 		await expect(signIn(auth, 'oz@example.com', 'a brand new passphrase 42')).resolves.toBeTruthy();

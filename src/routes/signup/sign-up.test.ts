@@ -2,11 +2,8 @@ import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadCatalogue } from '#lib/server/content/catalogue.js';
-import { createAccountActions } from '#lib/server/identity/account-actions.js';
 import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
-import { createRegistration } from '#lib/server/identity/registration.js';
-import { createTestAuth } from '#lib/server/identity/test-auth.js';
-import { createProviderStarts } from '#lib/server/identity/throttle.js';
+import { createTestInstance } from '#lib/server/identity/test-auth.js';
 import { createLearningCore } from '#lib/server/learning/core.js';
 import { createSignUp } from './sign-up';
 
@@ -25,45 +22,42 @@ function formOf(values: Form) {
 	return body;
 }
 
-/** The account actions over a stand-in Better Auth: the route is judged by what it makes of their answers. */
-const accountsOver = (auth: unknown, registrationOpen: () => boolean) =>
-	createAccountActions({
-		auth: auth as never,
-		providerStarts: createProviderStarts(),
-		registrationOpen,
-		inviteValid: async () => false
-	});
-
-/** The request event the sign-up action reads; `locals.multiUser.accounts` is built over whatever auth the test passes. */
-function harness(
+/**
+ * The request event the sign-up action reads, over the server's own wiring (`createTestInstance`). Better
+ * Auth's sign-up is replaced by `signUpEmail` (a session cookie by default) so each test can make it refuse.
+ */
+async function harness(
 	options: {
-		auth?: unknown;
+		/** Leaves `locals.multiUser` out, as a request has none on a Local Instance. */
+		noAuth?: boolean;
 		registration?: Registration;
 		identity?: unknown;
 		accounts?: unknown;
 		address?: string | (() => string);
+		signUpEmail?: (input: unknown) => Promise<unknown>;
 	} = {}
 ) {
-	const signUpEmail = vi.fn(async (_input: unknown) => {
-		const headers = new Headers();
-		headers.append('set-cookie', SESSION_COOKIE);
-		return { headers, response: {} };
-	});
-	const auth = 'auth' in options ? options.auth : { api: { signUpEmail } };
+	const { instance, multiUser, admin } = await createTestInstance();
+	await admin({ name: 'Admin', email: 'admin@example.com' });
+	await instance.setRegistrationMode(options.registration ?? 'open');
+	const signUpEmail = vi.spyOn(multiUser.auth.api, 'signUpEmail').mockImplementation(((
+		input: unknown
+	) =>
+		options.signUpEmail
+			? options.signUpEmail(input)
+			: Promise.resolve({
+					headers: new Headers([['set-cookie', SESSION_COOKIE]]),
+					response: {}
+				})) as never);
 	const signUp = createSignUp();
 	const cookies = { set: vi.fn() };
 	const setHeaders = vi.fn();
 	const address = options.address ?? '203.0.113.7';
-	const registrationMode = () => options.registration ?? 'open';
-	const accounts =
-		'accounts' in options
-			? options.accounts
-			: auth === undefined
-				? undefined
-				: accountsOver(auth, () => registrationMode() === 'open');
 	const locals = {
-		instance: { registrationMode },
-		multiUser: accounts === undefined ? undefined : { accounts },
+		instance,
+		multiUser: options.noAuth
+			? undefined
+			: { ...multiUser, accounts: options.accounts ?? multiUser.accounts },
 		identity: options.identity
 	};
 	const event = (values: Form) => ({
@@ -81,24 +75,33 @@ function harness(
 			throw thrown;
 		}
 	}
-	return { signUp, signUpEmail, cookies, setHeaders, post, locals, event };
+	return {
+		signUp,
+		signUpEmail,
+		cookies,
+		setHeaders,
+		post,
+		locals,
+		event,
+		accounts: multiUser.accounts
+	};
 }
 
 describe('the page', () => {
 	it('is open while the Registration Mode is open', async () => {
-		const { signUp, locals } = harness({ registration: 'open' });
+		const { signUp, locals } = await harness({ registration: 'open' });
 
 		expect(await signUp.load({ locals } as never)).toEqual({ open: true, minPasswordLength: 12 });
 	});
 
 	it('shows the closed state while the Registration Mode is invite-only', async () => {
-		const { signUp, locals } = harness({ registration: 'invite' });
+		const { signUp, locals } = await harness({ registration: 'invite' });
 
 		expect(await signUp.load({ locals } as never)).toEqual({ open: false, minPasswordLength: 12 });
 	});
 
 	it('sends someone who is already signed in to the Map', async () => {
-		const { signUp, locals } = harness({ identity: { learnerId: 'l1' } });
+		const { signUp, locals } = await harness({ identity: { learnerId: 'l1' } });
 
 		expect(() => signUp.load({ locals } as never)).toThrow(
 			expect.objectContaining({ status: 303, location: '/' })
@@ -108,7 +111,7 @@ describe('the page', () => {
 
 describe('creating an Account', () => {
 	it('signs up with the typed name, email and password, forwards the session cookie and lands on the Map', async () => {
-		const { post, signUpEmail, cookies } = harness();
+		const { post, signUpEmail, cookies } = await harness();
 
 		const result = await post({ ...ada, name: '  Ada Lovelace  ', email: ' ada@example.com ' });
 
@@ -122,7 +125,7 @@ describe('creating an Account', () => {
 	});
 
 	it('passes nothing else on: a client cannot add a role, a Learner or any other field', async () => {
-		const { post, signUpEmail } = harness();
+		const { post, signUpEmail } = await harness();
 
 		await post({ ...ada, role: 'admin', learnerId: 'local', mustChangePassword: 'false' });
 
@@ -134,15 +137,11 @@ describe('creating an Account', () => {
 		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
 			vi.spyOn(console, m).mockImplementation(() => {})
 		);
-		const { post } = harness();
+		const { post } = await harness();
 		await post(ada);
-		const failing = harness({
-			auth: {
-				api: {
-					signUpEmail: async () => {
-						throw new Error(`insert failed for ${ada.email} / ${ada.password} abc.def`);
-					}
-				}
+		const failing = await harness({
+			signUpEmail: async () => {
+				throw new Error(`insert failed for ${ada.email} / ${ada.password} abc.def`);
 			}
 		});
 		await failing.post(ada);
@@ -153,7 +152,7 @@ describe('creating an Account', () => {
 	});
 
 	it('redirects someone who is already signed in without creating anything', async () => {
-		const { post, signUpEmail } = harness({ identity: { learnerId: 'l1' } });
+		const { post, signUpEmail } = await harness({ identity: { learnerId: 'l1' } });
 
 		const result = await post(ada);
 
@@ -189,7 +188,7 @@ describe('what is wrong with the form', () => {
 	])(
 		'%s is refused on its field, keeping what was typed but never the password',
 		async (_, change, field, message) => {
-			const { post, signUpEmail } = harness();
+			const { post, signUpEmail } = await harness();
 			const values = { ...ada, ...change } as Record<string, string | undefined>;
 			for (const key of Object.keys(values)) if (values[key] === undefined) delete values[key];
 
@@ -206,10 +205,10 @@ describe('what is wrong with the form', () => {
 
 	describe('the name cap: 100 characters, counted in code points on the trimmed name', () => {
 		const emoji = '\u{1F600}';
-		const refusal = (values: Form) => harness().post(values);
+		const refusal = async (values: Form) => (await harness()).post(values);
 
 		it('refuses a longer name on its field before calling Better Auth, keeping what was typed', async () => {
-			const { post, signUpEmail } = harness();
+			const { post, signUpEmail } = await harness();
 			const name = 'x'.repeat(101);
 
 			const result = await post({ ...ada, name });
@@ -231,7 +230,7 @@ describe('what is wrong with the form', () => {
 			['101 characters with spaces around them', `  ${'x'.repeat(101)}   `, false],
 			['half a megabyte', 'x'.repeat(512 * 1024), false]
 		])('%s: %s', async (_label, name, accepted) => {
-			const { post, signUpEmail } = harness();
+			const { post, signUpEmail } = await harness();
 
 			await post({ ...ada, name });
 
@@ -250,7 +249,7 @@ describe('what is wrong with the form', () => {
 		});
 
 		it('counts the refused attempt against the limit like any other', async () => {
-			const throttled = harness();
+			const throttled = await harness();
 			for (let i = 1; i <= 20; i++) {
 				expect(
 					await throttled.post({ ...ada, name: 'x'.repeat(101) }),
@@ -268,16 +267,12 @@ describe('what is wrong with the form', () => {
 		});
 
 		it('maps Better Auth\u2019s own refusal of a blank name to the form\u2019s blank-name error', async () => {
-			const raced = harness({
-				auth: {
-					api: {
-						signUpEmail: async () => {
-							throw new APIError('BAD_REQUEST', {
-								message: 'Enter a name.',
-								code: 'NAME_REQUIRED'
-							});
-						}
-					}
+			const raced = await harness({
+				signUpEmail: async () => {
+					throw new APIError('BAD_REQUEST', {
+						message: 'Enter a name.',
+						code: 'NAME_REQUIRED'
+					});
 				}
 			});
 
@@ -288,16 +283,12 @@ describe('what is wrong with the form', () => {
 		});
 
 		it('maps Better Auth\u2019s own refusal of a long name to the same field error', async () => {
-			const raced = harness({
-				auth: {
-					api: {
-						signUpEmail: async () => {
-							throw new APIError('BAD_REQUEST', {
-								message: 'The name is too long.',
-								code: 'NAME_TOO_LONG'
-							});
-						}
-					}
+			const raced = await harness({
+				signUpEmail: async () => {
+					throw new APIError('BAD_REQUEST', {
+						message: 'The name is too long.',
+						code: 'NAME_TOO_LONG'
+					});
 				}
 			});
 
@@ -314,7 +305,7 @@ describe('what is wrong with the form', () => {
 		it.each([0x001f, 0x007f, 0x009f, 0x202a, 0x202e, 0x2066, 0x2069])(
 			'refuses U+%s on its field before calling Better Auth, keeping what was typed',
 			async (cp) => {
-				const { post, signUpEmail } = harness();
+				const { post, signUpEmail } = await harness();
 				const name = `Ada${String.fromCodePoint(cp)}Lovelace`;
 
 				const result = await post({ ...ada, name });
@@ -341,7 +332,7 @@ describe('what is wrong with the form', () => {
 			['U+200B', 'Ada\u200bLovelace', true],
 			['U+2060', 'Ada\u2060Lovelace', true]
 		])('%s: accepted=%s', async (_label, name, accepted) => {
-			const { post, signUpEmail } = harness();
+			const { post, signUpEmail } = await harness();
 
 			await post({ ...ada, name });
 
@@ -349,22 +340,20 @@ describe('what is wrong with the form', () => {
 		});
 
 		it('answers a long name before the characters', async () => {
-			expect(await harness().post({ ...ada, name: `${'x'.repeat(101)}\u202e` })).toMatchObject({
+			expect(
+				await (await harness()).post({ ...ada, name: `${'x'.repeat(101)}\u202e` })
+			).toMatchObject({
 				data: { message: 'Use at most 100 characters.' }
 			});
 		});
 
 		it('maps Better Auth\u2019s own refusal to the same field error', async () => {
-			const raced = harness({
-				auth: {
-					api: {
-						signUpEmail: async () => {
-							throw new APIError('BAD_REQUEST', {
-								message: MESSAGE,
-								code: 'NAME_INVALID_CHARACTERS'
-							});
-						}
-					}
+			const raced = await harness({
+				signUpEmail: async () => {
+					throw new APIError('BAD_REQUEST', {
+						message: MESSAGE,
+						code: 'NAME_INVALID_CHARACTERS'
+					});
 				}
 			});
 
@@ -377,7 +366,7 @@ describe('what is wrong with the form', () => {
 
 	it('accepts a password of exactly 12 and exactly 128 characters', async () => {
 		for (const password of ['x'.repeat(12), 'x'.repeat(128)]) {
-			const { post, signUpEmail } = harness();
+			const { post, signUpEmail } = await harness();
 			await post({ ...ada, password });
 			expect(signUpEmail, String(password.length)).toHaveBeenCalledOnce();
 		}
@@ -387,25 +376,21 @@ describe('what is wrong with the form', () => {
 describe('when Better Auth refuses', () => {
 	const refusing = (error: unknown) =>
 		harness({
-			auth: {
-				api: {
-					signUpEmail: async () => {
-						throw error;
-					}
-				}
+			signUpEmail: async () => {
+				throw error;
 			}
 		});
 
 	it('answers a closed registration with the closed message, whichever way it finds out', async () => {
 		// Closed when the form is posted ...
-		const closed = harness({ registration: 'invite' });
+		const closed = await harness({ registration: 'invite' });
 		expect(await closed.post(ada)).toMatchObject({
 			status: 403,
 			data: { message: 'Sign-up is closed.' }
 		});
 		expect(closed.signUpEmail).not.toHaveBeenCalled();
 		// ... and closed in the instant between the check and the sign-up.
-		const raced = refusing(new APIError('FORBIDDEN', { message: 'Sign-up is closed' }));
+		const raced = await refusing(new APIError('FORBIDDEN', { message: 'Sign-up is closed' }));
 		expect(await raced.post(ada)).toMatchObject({
 			status: 403,
 			data: { message: 'Sign-up is closed.' }
@@ -413,7 +398,7 @@ describe('when Better Auth refuses', () => {
 	});
 
 	it('words a taken email neutrally and answers it like any other field error', async () => {
-		const { post } = refusing(
+		const { post } = await refusing(
 			new APIError('UNPROCESSABLE_ENTITY', {
 				message: 'User already exists. Use another email.',
 				code: 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL'
@@ -434,7 +419,7 @@ describe('when Better Auth refuses', () => {
 		['PASSWORD_TOO_SHORT', 'password', 'Use at least 12 characters.'],
 		['PASSWORD_TOO_LONG', 'password', 'Use at most 128 characters.']
 	])('maps %s to its field with a fixed text', async (code, field, message) => {
-		const { post } = refusing(
+		const { post } = await refusing(
 			new APIError('BAD_REQUEST', { message: `Better Auth says ${code}`, code })
 		);
 
@@ -448,7 +433,7 @@ describe('when Better Auth refuses', () => {
 		const failure = Object.assign(new Error('SQLITE_BUSY at /data/app.db: INSERT INTO "User"'), {
 			code: 'SQLITE_BUSY'
 		});
-		const { post } = refusing(failure);
+		const { post } = await refusing(failure);
 
 		const result = await post(ada);
 
@@ -463,7 +448,7 @@ describe('when Better Auth refuses', () => {
 
 	it('hides a Better Auth error it does not know behind the same fixed message', async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
-		const { post } = refusing(
+		const { post } = await refusing(
 			new APIError('UNPROCESSABLE_ENTITY', {
 				message: 'Failed to create user',
 				code: 'FAILED_TO_CREATE_USER'
@@ -479,7 +464,7 @@ describe('when Better Auth refuses', () => {
 	});
 
 	it('is unavailable, not a crash, when the request has no Better Auth', async () => {
-		const { post } = harness({ auth: undefined });
+		const { post } = await harness({ noAuth: true });
 
 		expect(await post(ada)).toMatchObject({
 			status: 503,
@@ -500,7 +485,7 @@ describe('the sign-up limit', () => {
 	};
 
 	it('refuses the attempt after the limit with the message and Retry-After, creating nothing', async () => {
-		const { post, signUpEmail, setHeaders } = harness();
+		const { post, signUpEmail, setHeaders } = await harness();
 		for (let i = 1; i <= 20; i++) {
 			expect(await post(ada), `attempt ${i}`).toMatchObject({ status: 303 });
 		}
@@ -517,13 +502,13 @@ describe('the sign-up limit', () => {
 	});
 
 	it('counts every attempt: refused forms and a closed registration use up the limit too', async () => {
-		const { post, signUpEmail } = harness();
+		const { post, signUpEmail } = await harness();
 		await useUp(post);
 
 		expect(await post(ada)).toMatchObject({ status: 429 });
 		expect(signUpEmail).not.toHaveBeenCalled();
 
-		const closed = harness({ registration: 'invite' });
+		const closed = await harness({ registration: 'invite' });
 		for (let i = 1; i <= 20; i++) {
 			expect(await closed.post(ada), `attempt ${i}`).toMatchObject({ status: 403 });
 		}
@@ -531,7 +516,7 @@ describe('the sign-up limit', () => {
 	});
 
 	it('is kept per client address, and one address can only use up its own', async () => {
-		const first = harness({ address: '203.0.113.7' });
+		const first = await harness({ address: '203.0.113.7' });
 		await useUp(first.post);
 
 		expect(await first.post(ada)).toMatchObject({ status: 429 });
@@ -551,16 +536,8 @@ describe('the sign-up limit', () => {
 			throw new Error('no address');
 		};
 		// Two different requests, one set of account actions: neither names an address, so both count in one bucket.
-		const accounts = accountsOver(
-			{
-				api: {
-					signUpEmail: async () => ({ headers: new Headers(), response: {} })
-				}
-			},
-			() => true
-		);
-		const first = harness({ address: unreadable, accounts });
-		const second = harness({ address: unreadable, accounts });
+		const first = await harness({ address: unreadable });
+		const second = await harness({ address: unreadable, accounts: first.accounts });
 		for (let i = 1; i <= 10; i++) {
 			expect(await first.post({ ...ada, password: 'x' }), `first ${i}`).toMatchObject({
 				status: 400
@@ -575,7 +552,7 @@ describe('the sign-up limit', () => {
 	});
 
 	it('answers a body that does not parse as the action does today: the error, after the attempt is counted', async () => {
-		const { signUp, event, signUpEmail } = harness();
+		const { signUp, event, signUpEmail } = await harness();
 		const broken = {
 			...event(ada),
 			request: {
@@ -590,7 +567,7 @@ describe('the sign-up limit', () => {
 	});
 
 	it('charges a body that does not parse: it and 19 parseable attempts use up the limit', async () => {
-		const { signUp, event, post } = harness();
+		const { signUp, event, post } = await harness();
 		const broken = {
 			...event(ada),
 			request: {
@@ -612,18 +589,11 @@ describe('with Better Auth and the database', () => {
 	const origin = 'http://localhost:3000';
 
 	async function real(registration: Registration) {
-		const instance = {
-			mode: () => 'multi' as const,
-			registrationMode: () => registration
-		};
-		const { db, auth } = await createTestAuth({ admit: createRegistration({ instance }) });
+		const { db, instance, multiUser, admin } = await createTestInstance({ origin });
+		await admin({ name: 'Admin', email: 'admin@example.com' });
+		await instance.setRegistrationMode(registration);
+		const { auth } = multiUser;
 		const signUp = createSignUp();
-		const accounts = createAccountActions({
-			auth,
-			providerStarts: createProviderStarts(),
-			registrationOpen: () => registration === 'open',
-			inviteValid: async () => false
-		});
 		const jar: Record<string, string> = {};
 		const cookies = {
 			set: (name: string, value: string) => {
@@ -633,7 +603,7 @@ describe('with Better Auth and the database', () => {
 		const post = async (values: Form) => {
 			const event = {
 				request: { formData: async () => formOf(values) },
-				locals: { instance, multiUser: { accounts }, identity: undefined },
+				locals: { instance, multiUser, identity: undefined },
 				cookies,
 				setHeaders: () => {},
 				getClientAddress: () => '203.0.113.7'
@@ -689,8 +659,8 @@ describe('with Better Auth and the database', () => {
 		const result = await post(ada);
 
 		expect(result).toMatchObject({ status: 403, data: { message: 'Sign-up is closed.' } });
-		expect(await db.user.count()).toBe(0);
-		expect(await db.learner.count()).toBe(0);
+		expect(await db.user.count()).toBe(1);
+		expect(await db.learner.count()).toBe(1);
 		expect(cookieHeader()).toBe('');
 	});
 
@@ -704,8 +674,8 @@ describe('with Better Auth and the database', () => {
 			status: 400,
 			data: { field: 'email', message: 'This email cannot be used. Try a different one.' }
 		});
-		expect(await db.user.count()).toBe(1);
-		expect(await db.learner.count()).toBe(1);
+		expect(await db.user.count()).toBe(2);
+		expect(await db.learner.count()).toBe(2);
 	});
 
 	it('two people get two Learners, each with their own progress', async () => {
@@ -714,9 +684,9 @@ describe('with Better Auth and the database', () => {
 		await post(ada);
 		await post({ name: 'Grace', email: 'grace@example.com', password: 'another long password' });
 
-		const users = await db.user.findMany();
+		const users = await db.user.findMany({ where: { role: 'learner' } });
 		expect(users).toHaveLength(2);
 		expect(new Set(users.map((u) => u.learnerId)).size).toBe(2);
-		expect(await db.learner.count()).toBe(2);
+		expect(await db.learner.count()).toBe(3);
 	});
 });
