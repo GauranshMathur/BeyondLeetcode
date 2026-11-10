@@ -66,7 +66,9 @@ export type TestInput = z.infer<typeof testInputSchema>;
 /**
  * Per-run limits (ADR 0002): wall-clock timeout per Test, counted from the Test's start (not
  * container start-up or compilation), and a memory cap. CPU and pids limits are fixed by the
- * Runner, not sent per request.
+ * Runner, not sent per request. The per-Test limit sits inside one container clock that counts
+ * from the container's creation and includes the compile: when that clock runs out, the Tests
+ * still unanswered are reported as `timeout` with `cutOff` set.
  */
 const limitsSchema = z.object({
 	timeoutMs: z.number().int().positive(),
@@ -89,7 +91,12 @@ const testResultSchema = z.object({
 	id: z.string(),
 	status: testStatusSchema,
 	stdout: z.string(),
-	stderr: z.string()
+	stderr: z.string(),
+	/**
+	 * Set (true) on a `timeout` the container clock caused: the Test had no result when the
+	 * container was stopped, so it may never have started. Absent on a Test that hit its own limit.
+	 */
+	cutOff: z.boolean().optional()
 });
 export type TestStatus = TestResult['status'];
 export type TestResult = z.infer<typeof testResultSchema>;

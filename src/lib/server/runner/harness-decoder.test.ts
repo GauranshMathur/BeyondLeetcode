@@ -163,6 +163,10 @@ describe('harness decoder: output the Runner cannot trust', () => {
 		expect(() => decode([[1, ok(0) + output]], exited0)).toThrow(/unexpected line/);
 	});
 
+	it('fails the Run on a byte-order mark at the start of stdout, rather than dropping it', () => {
+		expect(() => decode([[1, `\uFEFF${ok(0)}${ok(1)}`]], exited0)).toThrow(/unexpected line/);
+	});
+
 	it('fails the Run on trailing output that no newline ends', () => {
 		expect(() => decode([[1, `${ok(0)}${ok(1)}{"i"`]], exited0)).toThrow(/unexpected line/);
 	});
@@ -228,10 +232,27 @@ describe('harness decoder: how the container ended', () => {
 	it('answers a missing result as a timeout after a hard stop', () => {
 		const result = decode([[1, ok(0)]], { kind: 'hardStop' });
 
-		expect(result.results.map((r) => [r.id, r.status, r.stdout, r.stderr])).toEqual([
-			['a', 'ok', 'hi', ''],
-			['b', 'timeout', '', '']
+		expect(result.results).toEqual([
+			{ id: 'a', status: 'ok', stdout: 'hi', stderr: '' },
+			{ id: 'b', status: 'timeout', stdout: '', stderr: '', cutOff: true }
 		]);
+	});
+
+	it('marks a Test that timed out by its own limit apart from one the hard stop cut off', () => {
+		const own = line({ i: 0, status: 'timeout', stdout: '', stderr: '' });
+
+		const result = decode([[1, own]], { kind: 'hardStop' });
+
+		expect(result.results.map((r) => [r.id, r.status, r.cutOff])).toEqual([
+			['a', 'timeout', undefined],
+			['b', 'timeout', true]
+		]);
+	});
+
+	it('marks no Test cut off when the container ended on its own', () => {
+		const result = decode([[1, ok(0) + ok(1)]], exited0);
+
+		expect(result.results.some((r) => 'cutOff' in r)).toBe(false);
 	});
 
 	it('answers every Test a timeout when a hard stop came before any output', () => {

@@ -11,7 +11,19 @@ function scriptFor(kind: ProgramKind): RunnerScript {
 		case 'unavailable':
 			return { unavailable: true };
 		case 'hang':
-			return { tests: { first: { status: 'timeout' } } };
+			return {
+				tests: {
+					first: { status: 'timeout' },
+					h0: { status: 'timeout' },
+					h1: { status: 'timeout' },
+					h2: { status: 'timeout' },
+					h3: { status: 'timeout' },
+					h4: { status: 'timeout', cutOff: true },
+					h5: { status: 'timeout', cutOff: true },
+					h6: { status: 'timeout', cutOff: true },
+					h7: { status: 'timeout', cutOff: true }
+				}
+			};
 		case 'mixed':
 			return {
 				tests: {
@@ -56,6 +68,19 @@ describe('scripted fake runner', () => {
 		expect(result).toEqual({
 			results: [{ id: 'a', status: 'ok', stdout: '', stderr: '' }]
 		});
+	});
+
+	it('reports a scripted cut-off as cutOff on that Test only', async () => {
+		const runner = createScriptedRunner({ tests: { b: { status: 'timeout', cutOff: true } } });
+
+		const result = await runner.execute(
+			request([
+				{ id: 'a', input: '' },
+				{ id: 'b', input: '' }
+			])
+		);
+
+		expect(result.results.map((r) => r.cutOff)).toEqual([undefined, true]);
 	});
 
 	it('records every request it receives', async () => {

@@ -4,6 +4,8 @@ export type ScriptedTest = {
 	status: TestStatus;
 	stdout?: string;
 	stderr?: string;
+	/** The container clock cut this Test off (use with status `timeout`). */
+	cutOff?: boolean;
 };
 
 export type RunnerScript = {
@@ -39,7 +41,8 @@ export function createScriptedRunner(script: RunnerScript = {}): ScriptedRunner 
 						id,
 						status: scripted?.status ?? 'ok',
 						stdout: scripted?.stdout ?? '',
-						stderr: scripted?.stderr ?? ''
+						stderr: scripted?.stderr ?? '',
+						...(scripted?.cutOff ? { cutOff: true } : {})
 					};
 				})
 			};

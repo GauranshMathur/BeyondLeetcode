@@ -6,7 +6,7 @@ import type { ExecuteResult, Files, Language, Limits, RunnerPort, TestInput } fr
  * - `echo`: writes the Test input to stdout unchanged and exits 0
  * - `mixed`: like `echo`, except a Test whose input is `crash` exits non-zero and one whose
  *   input is `hang` never finishes
- * - `hang`: never finishes, for every Test
+ * - `hang`: never finishes, for every Test (with enough Tests, the container clock stops it)
  * - `doesNotCompile`: has invalid syntax, so it fails to compile (Python: to parse)
  * - `unavailable`: the adapter cannot reach its Runner (HTTP adapter: nothing is listening)
  */
@@ -90,6 +90,23 @@ export function runnerContract(name: string, subject: ContractSubject): void {
 
 			expect(result.compileError).toBeUndefined();
 			expect(result.results.map((r) => [r.id, r.status])).toEqual([['first', 'timeout']]);
+		});
+
+		it('marks the Tests a stopped container left unanswered as cut off, and no others', async () => {
+			// Too many hanging Tests for one container clock: the first ones time out by their own
+			// limit, and the clock stops the container before the last ones are answered.
+			const tests = Array.from({ length: 8 }, (_, i) => ({ id: `h${i}`, input: '' }));
+
+			const result = await run('hang', tests);
+
+			expect(result.compileError).toBeUndefined();
+			expect(result.results.map((r) => r.id)).toEqual(tests.map((t) => t.id));
+			expect(result.results.every((r) => r.status === 'timeout')).toBe(true);
+			const cutOff = result.results.map((r) => r.cutOff === true);
+			expect(cutOff[0]).toBe(false);
+			expect(cutOff.at(-1)).toBe(true);
+			// Cut off Tests are the ones after the last Test to answer: a suffix.
+			expect(cutOff).toEqual([...cutOff].sort((a, b) => Number(a) - Number(b)));
 		});
 
 		it('reports code that does not compile as a compileError message and no results', async () => {

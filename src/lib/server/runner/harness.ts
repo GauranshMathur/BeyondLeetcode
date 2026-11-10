@@ -58,7 +58,7 @@ const stderrKeepChars = 4096;
 
 /**
  * One JSON line the harness prints: a Compile Error, or a Test's result. Strict: a line with an
- * unknown field is refused, and the Run fails (sandbox.ts).
+ * unknown field is refused, and the Run fails (createHarnessDecoder).
  */
 export const harnessLine = z.union([
 	z.strictObject({ compileError: z.string() }),
@@ -99,13 +99,14 @@ function safeJson(text: string): unknown {
 /**
  * The read side of the protocol, for one Run. One TextDecoder per stream, so a stderr frame that
  * ends mid-character cannot prefix the next stdout line. Rules, in the order `finish` applies them:
- * a non-zero exit makes the output untrusted; output past the cap fails the Run; a line that is not
+ * output past the cap fails the Run; a non-zero exit makes the output untrusted; a line that is not
  * a well-formed result, or bytes no newline ends (unless hard-stopped), fail it; so does a Test
  * index out of range or reported twice; the first compile error wins; a missing result is a
- * timeout only after a hard stop, a Runner error otherwise.
+ * timeout marked `cutOff` only after a hard stop, a Runner error otherwise.
  */
 export function createHarnessDecoder(tests: readonly { readonly id: string }[]): HarnessDecoder {
-	const stdoutText = new TextDecoder();
+	// ignoreBOM keeps a leading byte-order mark, so it fails the first line's parse.
+	const stdoutText = new TextDecoder('utf-8', { ignoreBOM: true });
 	const stderrText = new TextDecoder();
 	const lines: z.infer<typeof harnessLine>[] = [];
 	let partial = '';
@@ -175,7 +176,9 @@ export function createHarnessDecoder(tests: readonly { readonly id: string }[]):
 					if (found) {
 						return { id, status: found.status, stdout: found.stdout, stderr: found.stderr };
 					}
-					if (hardStopped) return { id, status: 'timeout', stdout: '', stderr: '' };
+					if (hardStopped) {
+						return { id, status: 'timeout', stdout: '', stderr: '', cutOff: true };
+					}
 					throw new Error(`Sandbox ended without a result for Test ${id}: ${stderr}`);
 				})
 			};
