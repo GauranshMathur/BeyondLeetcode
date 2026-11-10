@@ -146,6 +146,9 @@ export function createHarnessDecoder(tests: readonly { readonly id: string }[]):
 				throw new Error(`Sandbox harness exited with status ${end.code}: ${stderr}`);
 			}
 			const hardStopped = end.kind === 'hardStop';
+			// An incomplete UTF-8 sequence the stream decoder still holds is a trailing byte too.
+			const tail = stdoutText.decode();
+			if (tail !== '') partial += tail;
 			// Every harness line ends in a newline; bytes left over after a normal end are not its.
 			if (refusedLine || (!hardStopped && partial !== '')) {
 				throw new Error(`Sandbox harness printed an unexpected line: ${stderr}`);

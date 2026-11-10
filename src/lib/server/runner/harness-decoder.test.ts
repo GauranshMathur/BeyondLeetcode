@@ -167,6 +167,16 @@ describe('harness decoder: output the Runner cannot trust', () => {
 		expect(() => decode([[1, `${ok(0)}${ok(1)}{"i"`]], exited0)).toThrow(/unexpected line/);
 	});
 
+	it.each([
+		['exit 0', exited0, /unexpected line/],
+		['a hard stop', { kind: 'hardStop' } as HarnessEnd, undefined]
+	])('stdout ending in an incomplete UTF-8 sequence: %s', (_name, end, error) => {
+		const frames: Frame[] = [[1, new Uint8Array([...bytes(ok(0) + ok(1)), 0xc3])]];
+
+		if (error) expect(() => decode(frames, end)).toThrow(error);
+		else expect(decode(frames, end).results.map((r) => r.status)).toEqual(['ok', 'ok']);
+	});
+
 	it.each([2, -1, 7])('fails the Run on a result whose i (%i) is outside the Test count', (i) => {
 		expect(() =>
 			decode([[1, ok(0) + line({ i, status: 'ok', stdout: '', stderr: '' })]], exited0)
