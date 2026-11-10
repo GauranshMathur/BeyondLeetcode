@@ -1,16 +1,18 @@
-import { createHmac } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it, vi } from 'vitest';
-import { createAccountActions } from '#lib/server/identity/account-actions.js';
-import { createTestAuth, TEST_SECRET } from '#lib/server/identity/test-auth.js';
-import { createProviderStarts } from '#lib/server/identity/throttle.js';
+import type { MultiUser } from '#lib/server/identity/multi-user-instance.js';
+import { createTestInstance } from '#lib/server/identity/test-auth.js';
 import { createChangePassword } from './change-password';
 
 // The Change password action through the real Better Auth: what it changes, what it ends, what it refuses.
 
 const oldPassword = 'correct horse battery staple';
 const newPassword = 'a brand new passphrase 42';
-type Auth = Awaited<ReturnType<typeof createTestAuth>>['auth'];
+type Auth = MultiUser['auth'];
+
+/** The server's own Multi-user wiring of each Better Auth a test set up: its throttle outlasts a request. */
+const multiUsers = new WeakMap<object, MultiUser>();
+const accountsFor = (auth: Auth) => (multiUsers.get(auth) as MultiUser).accounts;
 
 const cookieOf = (headers: Headers) =>
 	headers
@@ -19,13 +21,15 @@ const cookieOf = (headers: Headers) =>
 		.join('; ');
 
 async function setup() {
-	const { auth, db, signUp } = await createTestAuth();
+	const { auth, multiUser, learner, githubOnly, admin } = await createTestInstance();
+	multiUsers.set(auth, multiUser);
+	await admin({ name: 'Admin', email: 'admin@example.com' });
 	let n = 0;
 	/** An Account with a session from its sign-up. `forced` sets the flag, as an admin's reset does. */
 	async function account(forced: boolean) {
 		n += 1;
 		const email = `user${n}@example.com`;
-		const { id, cookie } = await signUp({
+		const { id, cookie } = await learner({
 			name: `User ${n}`,
 			email,
 			password: oldPassword
@@ -47,48 +51,7 @@ async function setup() {
 	}
 	const sessionOf = async (cookie: string) =>
 		(await auth.api.getSession({ headers: new Headers({ cookie }) }))?.user ?? null;
-	/** An Account that signs in only with GitHub: no password Account, and a session as a callback makes it. */
-	async function providerOnly() {
-		await db.learner.create({ data: { id: 'oz-learner' } });
-		await db.user.create({
-			data: { id: 'oz', name: 'Oz', email: 'oz@example.com', learnerId: 'oz-learner' }
-		});
-		await db.account.create({
-			data: { id: 'oz-gh', accountId: '99', providerId: 'github', userId: 'oz' }
-		});
-		const token = 'oz-github-session-token';
-		await db.session.create({
-			data: {
-				id: 'oz-s',
-				token,
-				userId: 'oz',
-				expiresAt: new Date(Date.now() + 1e9),
-				credentialGeneration: ''
-			}
-		});
-		const signature = createHmac('sha256', TEST_SECRET).update(token).digest('base64');
-		return {
-			id: 'oz',
-			cookie: `better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`
-		};
-	}
-	return { auth, db, account, providerOnly, signIn, sessionOf };
-}
-
-/** One set of account actions per Auth, as the app builds one per process: the throttle outlasts a request. */
-const actionsOf = new WeakMap<object, ReturnType<typeof createAccountActions>>();
-function accountsFor(auth: Auth) {
-	let accounts = actionsOf.get(auth);
-	if (!accounts) {
-		accounts = createAccountActions({
-			auth,
-			providerStarts: createProviderStarts(),
-			registrationOpen: () => true,
-			inviteValid: async () => true
-		});
-		actionsOf.set(auth, accounts);
-	}
-	return accounts;
+	return { auth, account, providerOnly: githubOnly, signIn, sessionOf };
 }
 
 function event(
@@ -108,7 +71,7 @@ function event(
 			},
 			body: new URLSearchParams(fields)
 		}),
-		locals: { multiUser: auth ? { auth, accounts: accountsFor(auth) } : undefined },
+		locals: { multiUser: auth ? multiUsers.get(auth) : undefined },
 		cookies: { set },
 		url: new URL(`http://localhost/account/password${search}`),
 		getClientAddress: () => address
@@ -457,20 +420,9 @@ describe('changing a password', () => {
 		const { action } = createChangePassword();
 		const me = await account(false);
 		const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-		const broken = {
-			...auth,
-			api: {
-				getSession: auth.api.getSession,
-				changePassword: async () => {
-					throw new Error(`boom ${newPassword}`);
-				}
-			}
-		} as unknown as Auth;
+		vi.spyOn(auth.api, 'changePassword').mockRejectedValue(new Error(`boom ${newPassword}`));
 
-		const { result } = await run(
-			action,
-			event(broken, me.cookie, form(oldPassword, newPassword)).ev
-		);
+		const { result } = await run(action, event(auth, me.cookie, form(oldPassword, newPassword)).ev);
 
 		expect(result).toMatchObject({ status: 500, data: { field: null } });
 		expect(JSON.stringify(log.mock.calls)).not.toContain(newPassword);
