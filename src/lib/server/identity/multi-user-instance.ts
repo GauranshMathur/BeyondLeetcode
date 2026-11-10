@@ -2,7 +2,13 @@ import type { Db } from '../db.ts';
 import type { Instance } from '../instance.ts';
 import { deleteLearner } from '../learning/progress.ts';
 import { type AccountActions, createAccountActions } from './account-actions.ts';
-import { type Auth, createAuth, socialProvidersFrom } from './auth.ts';
+import {
+	type AdmitSignUp,
+	type Auth,
+	type CreateAuthOptions,
+	createAuth,
+	socialProvidersFrom
+} from './auth.ts';
 import type { IdentityResolver } from './index.ts';
 import { createInvites, type Invites } from './invites.ts';
 import { createMultiUserIdentity, repairLearners } from './multi-user.ts';
@@ -32,6 +38,13 @@ export interface MultiUserInstanceOptions {
 	origin: string;
 	/** The OAuth provider variables; a provider with only one of its two is left out. */
 	providerEnv: Record<string, string | undefined>;
+	/** Replaces Better Auth's scrypt; for tests that sign up many Accounts. Left out, the production hasher runs. */
+	passwordHasher?: CreateAuthOptions['passwordHasher'];
+	/**
+	 * Wraps the production admission rule, given as `inner`; it never replaces it, so a test overrides
+	 * one rule and keeps the rest. Left out, the production rule decides alone.
+	 */
+	admit?: (inner: AdmitSignUp) => AdmitSignUp;
 }
 
 export interface MultiUserInstance {
@@ -52,17 +65,19 @@ export interface MultiUserInstance {
 export async function createMultiUserInstance(
 	options: MultiUserInstanceOptions
 ): Promise<MultiUserInstance> {
-	const { db, instance, secret, origin, providerEnv } = options;
+	const { db, instance, secret, origin, providerEnv, passwordHasher, admit } = options;
 	// Invite links name the same ORIGIN the cookies and the origin check use. The one Invites module
 	// serves the Users page and, through the gate and the claim, sign-up.
 	const invites = createInvites({ db, origin });
 	// One per Instance: the Sign in page and the auth callback share it.
 	const providerStarts = createProviderStarts();
+	const registration = createRegistration({ instance, invites });
 	const auth = createAuth({
 		db,
 		origin,
 		secret,
-		admitSignUp: createRegistration({ instance, invites }),
+		admitSignUp: admit ? admit(registration) : registration,
+		...(passwordHasher ? { passwordHasher } : {}),
 		socialProviders: socialProvidersFrom(providerEnv),
 		claimInvite: (token, now) => invites.claim(token, now),
 		providerStarts

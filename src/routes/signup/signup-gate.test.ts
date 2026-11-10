@@ -1,16 +1,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { expect, it, vi } from 'vitest';
-import type { App } from '#lib/server/app.js';
-import { createHandle } from '#lib/server/handle.js';
-import { createAccountActions } from '#lib/server/identity/account-actions.js';
-import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
-import { createInvites } from '#lib/server/identity/invites.js';
-import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
-import { createRegistration } from '#lib/server/identity/registration.js';
-import { createTestAuth } from '#lib/server/identity/test-auth.js';
-import { createProviderStarts } from '#lib/server/identity/throttle.js';
-import { createInstance } from '#lib/server/instance.js';
+import { createTestInstance } from '#lib/server/identity/test-auth.js';
 
 // /signup is judged by the gate (gate.ts) before the page or its action runs. These tests pin what the
 // gate answers for it, through the real hook, so the Sign up code never has to guard against them.
@@ -18,47 +9,10 @@ import { createInstance } from '#lib/server/instance.js';
 type ResolveFn = (event: RequestEvent, opts?: ResolveOptions) => Promise<Response>;
 
 async function app(mode: 'local' | 'multi' | null) {
-	// The instance is built on the harness's database, and Sign up asks it who may register.
-	let registration!: ReturnType<typeof createRegistration>;
-	const { auth, db } = await createTestAuth({
-		admit: (attempt) => registration(attempt)
-	});
-	const instance = await createInstance(db);
-	registration = createRegistration({ instance });
-	const identity = await createLocalIdentity(db);
-	let multiUser: App['multiUser'] = null;
-	if (mode === 'local') {
-		await instance.chooseLocal();
-		await identity.ensureLocalLearner();
-	}
-	if (mode === 'multi') {
-		await instance.chooseMulti();
-		const invites = createInvites({ db, origin: 'http://localhost:3000' });
-		multiUser = {
-			auth,
-			accounts: createAccountActions({
-				auth,
-				providerStarts: createProviderStarts(),
-				registrationOpen: () => instance.registrationMode() === 'open',
-				inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
-			}),
-			invites,
-			deleteLearner: async () => {}
-		};
-	}
-	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-	const setup = { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup'];
-	return createHandle({
-		instance,
-		identity: createIdentity({
-			instance,
-			local: identity,
-			multi: multiUser ? createMultiUserIdentity(multiUser.auth) : null
-		}),
-		core,
-		multiUser,
-		setup
-	});
+	const t = await createTestInstance();
+	if (mode === 'local') await t.chooseLocal();
+	if (mode === 'multi') await t.instance.chooseMulti();
+	return t.handle;
 }
 
 function visit(method: 'GET' | 'POST') {

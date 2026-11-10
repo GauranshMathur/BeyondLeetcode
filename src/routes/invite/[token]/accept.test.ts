@@ -2,9 +2,8 @@ import { inspect } from 'node:util';
 import { isRedirect } from '@sveltejs/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAccountActions } from '#lib/server/identity/account-actions.js';
-import { createInvites, INVITE_COOKIE, INVITE_LIFETIME_MS } from '#lib/server/identity/invites.js';
-import { createRegistration } from '#lib/server/identity/registration.js';
-import { createTestAuth } from '#lib/server/identity/test-auth.js';
+import { INVITE_COOKIE, INVITE_LIFETIME_MS } from '#lib/server/identity/invites.js';
+import { createTestInstance } from '#lib/server/identity/test-auth.js';
 import { createProviderStarts } from '#lib/server/identity/throttle.js';
 import { createAccept } from './accept';
 
@@ -34,27 +33,9 @@ const accountsOver = (
 	});
 
 async function real() {
-	// Invites and the Registration rule are built on the harness's database, after it.
-	let invites!: ReturnType<typeof createInvites>;
-	let registration!: ReturnType<typeof createRegistration>;
-	const instance = { mode: () => 'multi' as const, registrationMode: () => 'invite' as const };
-	const { auth, db } = await createTestAuth({
-		origin,
-		admit: (attempt) => registration(attempt),
-		claimInvite: (token, now) => invites.claim(token, now)
-	});
-	await db.learner.create({ data: { id: 'local' } });
-	await db.user.create({
-		data: {
-			id: 'u-admin',
-			name: 'Ada',
-			email: 'admin@example.com',
-			role: 'admin',
-			learnerId: 'local'
-		}
-	});
-	invites = createInvites({ db, origin });
-	registration = createRegistration({ instance, invites });
+	const { db, instance, multiUser, admin: signUpAdmin } = await createTestInstance({ origin });
+	await signUpAdmin({ name: 'Ada', email: 'admin@example.com' });
+	const { invites } = multiUser;
 	const accept = createAccept();
 	const jar = new Map<string, string>();
 	const cookies = {
@@ -63,7 +44,7 @@ async function real() {
 	};
 	const locals = {
 		instance,
-		multiUser: { auth, invites, accounts: accountsOver(auth, invites) },
+		multiUser: { ...multiUser },
 		identity: undefined as unknown
 	};
 	const event = (token: string, values: Form = {}) => ({
@@ -84,7 +65,7 @@ async function real() {
 		}
 	};
 	const create = () => invites.create({ who: admin, now: new Date() });
-	return { db, invites, accept, cookies, jar, locals, event, post, create };
+	return { db, instance, invites, accept, cookies, jar, locals, event, post, create };
 }
 
 describe('the page', () => {
@@ -421,8 +402,8 @@ describe('accepting', () => {
 	});
 
 	it('spends the Invite when registration is open too', async () => {
-		const { post, create, locals, invites } = await real();
-		(locals.instance as { registrationMode: () => string }).registrationMode = () => 'open';
+		const { post, create, invites, instance } = await real();
+		await instance.setRegistrationMode('open');
 		const { token } = await create();
 
 		expect(await post(token, lin)).toMatchObject({ status: 303 });

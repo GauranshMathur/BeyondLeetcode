@@ -1,39 +1,14 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { describe, expect, it, vi } from 'vitest';
-import type { App } from './app.ts';
 import { createHandle } from './handle.ts';
-import { createAccountActions } from './identity/account-actions.ts';
-import { createIdentity, createLocalIdentity } from './identity/index.ts';
-import { createInvites } from './identity/invites.ts';
-import { createMultiUserIdentity } from './identity/multi-user.ts';
-import { createRegistration } from './identity/registration.ts';
-import { createFirstAdmin } from './identity/setup.ts';
-import { createTestAuth } from './identity/test-auth.ts';
-import { createProviderStarts } from './identity/throttle.ts';
-import { createInstance } from './instance.ts';
-import { createTestDb } from './test-db.ts';
+import { createIdentity } from './identity/index.ts';
+import { createTestInstance } from './identity/test-auth.ts';
 
 async function setup(options: { local?: boolean } = {}) {
-	const db = await createTestDb();
-	const instance = await createInstance(db);
-	const identity = await createLocalIdentity(db);
-	if (options.local) {
-		await instance.chooseLocal();
-		await identity.ensureLocalLearner();
-	}
-	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-	const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
-	return {
-		db,
-		handle: createHandle({
-			instance,
-			identity: createIdentity({ instance, local: identity, multi: null }),
-			core,
-			multiUser: null,
-			setup: setupPort
-		})
-	};
+	const { db, handle, chooseLocal } = await createTestInstance();
+	if (options.local) await chooseLocal();
+	return { db, handle };
 }
 
 function request(path: string, routeId: string | null, method = 'GET', headers = new Headers()) {
@@ -186,50 +161,13 @@ it('a Learner who chose a theme gets it on <html> in the render', async () => {
 
 describe('Multi-user Mode', () => {
 	async function multiSetup(options: { testLearnerCookie?: boolean } = {}) {
-		let registration: ReturnType<typeof createRegistration> | undefined;
-		const { auth, db } = await createTestAuth({
-			admit: (attempt) => (registration as NonNullable<typeof registration>)(attempt)
-		});
-		const instance = await createInstance(db);
-		registration = createRegistration({ instance });
-		const { headers } = await createFirstAdmin(
-			{ instance, auth, db },
-			{ name: 'Ada', email: 'ada@example.com', password: 'correct horse battery' }
-		);
-		const cookie = headers
-			.getSetCookie()
-			.map((c) => c.split(';')[0])
-			.join('; ');
-		const identity = await createLocalIdentity(db, options);
-		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-		const invites = createInvites({ db, origin: 'http://localhost:3000' });
-		const multiUser = {
-			auth,
-			accounts: createAccountActions({
-				auth,
-				providerStarts: createProviderStarts(),
-				registrationOpen: () => instance.registrationMode() === 'open',
-				inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
-			}),
-			invites,
-			deleteLearner: async () => {}
-		};
-		const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
+		const { db, auth, handle, admin } = await createTestInstance(options);
+		const { cookie } = await admin();
 		return {
 			db,
 			auth,
 			cookie,
-			handle: createHandle({
-				instance,
-				identity: createIdentity({
-					instance,
-					local: identity,
-					multi: createMultiUserIdentity(auth)
-				}),
-				core,
-				multiUser,
-				setup: setupPort
-			}),
+			handle,
 			asking: (path: string, routeId: string | null, cookieHeader = cookie) =>
 				request(path, routeId, 'GET', new Headers(cookieHeader ? { cookie: cookieHeader } : {}))
 		};
@@ -619,16 +557,12 @@ describe('Multi-user Mode', () => {
 	});
 
 	it('fails closed when a multi Instance has no Better Auth', async () => {
-		const db = await createTestDb();
-		const instance = await createInstance(db);
-		await instance.chooseMulti();
-		const identity = await createLocalIdentity(db, { testLearnerCookie: true });
+		const t = await createTestInstance({ testLearnerCookie: true });
+		await t.instance.chooseMulti();
 		const handle = createHandle({
-			instance,
-			identity: createIdentity({ instance, local: identity, multi: null }),
-			core: {} as App['core'],
-			multiUser: null,
-			setup: {} as App['setup']
+			...t.app,
+			identity: createIdentity({ instance: t.instance, local: t.local, multi: null }),
+			multiUser: null
 		});
 		const { event, resolve } = request('/', '/');
 
