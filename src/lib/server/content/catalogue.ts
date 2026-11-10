@@ -3,7 +3,8 @@ import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
 import { LANGUAGE_IDS, type Language } from '../../languages.ts';
 import { sandboxConfig } from '../runner/config.ts';
-import { MAX_BUILD_BYTES, submitPlan } from '../submit-plan.ts';
+import { worstCaseBodyBytes } from '../runner/http-adapter.ts';
+import { batchRequest, submitPlan } from '../submit-plan.ts';
 import { chapterManifest, contentManifest, problemManifest, topicManifest } from './schema.ts';
 
 export type { Language };
@@ -356,18 +357,13 @@ export async function loadCatalogue(dir: string): Promise<Catalogue> {
 	return catalogue;
 }
 
-/** `"":"",` around one file's path and contents. */
-const FILE_JSON_OVERHEAD = 8;
-
 /**
  * Submit sends each batch to the Runner as one request, and the Runner refuses one past its body
  * limit, so a Topic whose batch is over would answer RunnerUnavailable on every Submit. Hidden
  * Tests are cut into batches of `hiddenBatchTests`, which is below the Runner's Test limit
  * (`maxTests`, pinned in a test), so only the body size can be over. The
- * content check runs the Sandbox directly and would not see it. The body is measured as the
- * adapter sends it (the JSON of the request, `files` empty), plus room for the largest Build a
- * Learner may save at its worst JSON escaping (a control character becomes 6 bytes, `\u00XX`) and
- * the per-file JSON syntax, so the answer holds for any code.
+ * content check runs the Sandbox directly and would not see it. Each batch is measured as the
+ * request `batchRequest` builds, through the adapter's own worst case for any Build.
  */
 function checkSubmitBatches(plan: {
 	visible: readonly Pick<Test, 'id' | 'input'>[];
@@ -381,6 +377,7 @@ function checkSubmitBatches(plan: {
 		);
 	}
 	const { maxTests, requestBodyMaxBytes, testTimeoutMs, memoryMb } = sandboxConfig;
+	const limits = { timeoutMs: testTimeoutMs, memoryMb };
 	for (const [name, batch] of [
 		['visible', plan.visible] as const,
 		...plan.hidden.map((tests) => ['hidden', tests] as const)
@@ -391,14 +388,7 @@ function checkSubmitBatches(plan: {
 				`Submit's ${name} batch has ${batch.length} Tests, over the Runner's limit of ${maxTests}`
 			);
 		}
-		const body = JSON.stringify({
-			language: LONGEST_LANGUAGE_ID,
-			files: {},
-			tests: batch.map(({ id, input }) => ({ id, input })),
-			limits: { timeoutMs: testTimeoutMs, memoryMb }
-		});
-		const bytes =
-			Buffer.byteLength(body) + MAX_BUILD_BYTES * 6 + sandboxConfig.maxFiles * FILE_JSON_OVERHEAD;
+		const bytes = worstCaseBodyBytes(batchRequest(LANGUAGE_IDS[0], {}, batch, limits));
 		if (bytes > requestBodyMaxBytes) {
 			messages.push(
 				`Submit's ${name} batch is ${bytes} bytes as a Runner request, over the limit of ${requestBodyMaxBytes}`
@@ -407,9 +397,6 @@ function checkSubmitBatches(plan: {
 	}
 	return messages;
 }
-
-/** The longest Language id, which makes the largest Runner request body. */
-const LONGEST_LANGUAGE_ID = LANGUAGE_IDS.reduce((a, b) => (b.length > a.length ? b : a));
 
 /** Every Prerequisite is a Topic, and Prerequisites never form a cycle. */
 function checkPrerequisites(

@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { sandboxConfig } from '../runner/config.ts';
-import { MAX_BUILD_BYTES, submitPlan } from '../submit-plan.ts';
+import { worstCaseBodyBytes } from '../runner/http-adapter.ts';
+import { batchRequest, submitPlan } from '../submit-plan.ts';
 import { type Catalogue, ContentError, loadCatalogue, type MainLinePlace } from './catalogue.ts';
 
 const fixtureDir = fileURLToPath(new URL('./fixture', import.meta.url));
@@ -514,8 +515,15 @@ describe('malformed content', () => {
 	});
 
 	describe("Submit's batches against the Runner's limits", () => {
-		/** What the Tests may weigh once room for the largest Build is reserved (see the guard). */
-		const room = sandboxConfig.requestBodyMaxBytes - MAX_BUILD_BYTES * 6;
+		/** What the Tests may weigh once the adapter's worst case for any Build is reserved. */
+		const room =
+			sandboxConfig.requestBodyMaxBytes -
+			worstCaseBodyBytes(
+				batchRequest('python', {}, [], {
+					timeoutMs: sandboxConfig.testTimeoutMs,
+					memoryMb: sandboxConfig.memoryMb
+				})
+			);
 		const hiddenDir = (dir: string) => join(pushProblem(dir), 'tests/hidden');
 		/** Adds `count` Hidden Tests to stacks-push, each with `bytes` of input. */
 		const addHidden = async (dir: string, count: number, bytes: number) => {
