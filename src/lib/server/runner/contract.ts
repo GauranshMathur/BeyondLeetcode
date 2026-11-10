@@ -93,8 +93,8 @@ export function runnerContract(name: string, subject: ContractSubject): void {
 		});
 
 		it('marks the Tests a stopped container left unanswered as cut off, and no others', async () => {
-			// Too many hanging Tests for one container clock: the first ones time out by their own
-			// limit, and the clock stops the container before the last ones are answered.
+			// Too many hanging Tests for one container clock: the clock stops the container before the
+			// last one is answered. A slow start may cut off every Test, so how many answered is not fixed.
 			const tests = Array.from({ length: 8 }, (_, i) => ({ id: `h${i}`, input: '' }));
 
 			const result = await run('hang', tests);
@@ -103,7 +103,6 @@ export function runnerContract(name: string, subject: ContractSubject): void {
 			expect(result.results.map((r) => r.id)).toEqual(tests.map((t) => t.id));
 			expect(result.results.every((r) => r.status === 'timeout')).toBe(true);
 			const cutOff = result.results.map((r) => r.cutOff === true);
-			expect(cutOff[0]).toBe(false);
 			expect(cutOff.at(-1)).toBe(true);
 			// Cut off Tests are the ones after the last Test to answer: a suffix.
 			expect(cutOff).toEqual([...cutOff].sort((a, b) => Number(a) - Number(b)));
