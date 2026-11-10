@@ -320,6 +320,30 @@ describe('Engine attach', () => {
 		expect(heads[0]).toBe('/containers/..%2Fimages%2Fx%3Fy?force=true&v=true');
 	});
 
+	const inProgress = (socket: { end(data: string): void }) => {
+		const body = '{"message":"removal of container x is already in progress"}';
+		socket.end(
+			`HTTP/1.1 409 Conflict\r\nConnection: close\r\nContent-Length: ${body.length}\r\n\r\n${body}`
+		);
+	};
+	const reply = (socket: { end(data: string): void }, status: string) =>
+		socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 2\r\n\r\n{}`);
+
+	it('keeps polling while the daemon says the container still exists, and stops once it is gone', async () => {
+		const polls: string[] = [];
+		const socketPath = await daemon((socket, head) => {
+			if (head.startsWith('DELETE')) return inProgress(socket);
+			polls.push(head.split(' ')[1]);
+			reply(socket, polls.length < 3 ? '200 OK' : '404 Not Found');
+		});
+
+		expect(await createEngine(socketPath, 5_000).remove('x')).toBe(true);
+
+		expect(polls).toEqual(Array(3).fill('/containers/x/json'));
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(polls).toHaveLength(3);
+	});
+
 	it('gives up on a removal the daemon reports as in progress for ever, within one deadline', async () => {
 		let requests = 0;
 		const socketPath = await daemon((socket, head) => {
