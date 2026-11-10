@@ -133,6 +133,21 @@ export const isBusy = (s: Session) =>
 const halted = (s: Session) => s.save === 'conflict' || s.save === 'signedOut';
 const blocked = (s: Session) => halted(s) || s.save === 'rejected';
 
+/**
+ * What the Learner may do now: the one read of the Session that `transition` guards on and the
+ * screen binds its controls to, so a button is shut exactly when the machine would refuse it.
+ */
+export function may(s: Session) {
+	const busy = isBusy(s);
+	return {
+		run: !busy && !blocked(s) && !s.switching && !s.restarting,
+		submit: !busy && !blocked(s) && !s.switching && !s.restarting,
+		switch: !busy && !s.switching && !s.restarting,
+		restart: !busy && !halted(s) && !s.switching && !s.restarting,
+		readOnly: s.save === 'conflict' || s.switching || s.restarting
+	};
+}
+
 /** Sends the request that got no reply again, as it was; `then` is what waits for its answer. */
 function resend(s: Session, lost: Unreplied, then?: Session['queued']): Step {
 	const queued = then ?? s.queued;
@@ -210,7 +225,7 @@ function follow(s: Session, failed: boolean): Step {
 export function transition(s: Session, event: Event): Step {
 	switch (event.type) {
 		case 'edit':
-			if (s.save === 'conflict' || s.restarting) return { state: s };
+			if (may(s).readOnly) return { state: s };
 			// Signed out: the code is kept for the Learner, but nothing is scheduled.
 			if (s.save === 'signedOut') return { state: { ...s, files: event.files, dirty: true } };
 			return {
@@ -226,7 +241,7 @@ export function transition(s: Session, event: Event): Step {
 
 		case 'run':
 		case 'submit': {
-			if (isBusy(s) || blocked(s) || s.switching || s.restarting) return { state: s };
+			if (!may(s)[event.type]) return { state: s };
 			const pending = {
 				...s,
 				outcome: { kind: event.type === 'run' ? 'running' : 'submitting' } as Outcome
@@ -237,8 +252,7 @@ export function transition(s: Session, event: Event): Step {
 		}
 
 		case 'switch': {
-			if (isBusy(s) || s.switching || s.restarting || event.language === s.build.language)
-				return { state: s };
+			if (!may(s).switch || event.language === s.build.language) return { state: s };
 			const next = { ...s, switching: true, switchFailed: false };
 			if (s.inFlight)
 				return { state: { ...next, queued: { switchTo: event.language } }, timer: 'cancel' };
@@ -247,7 +261,7 @@ export function transition(s: Session, event: Event): Step {
 
 		case 'restart': {
 			// Not in conflict (reload first) or signed out; a rejected save is the very case it is for.
-			if (isBusy(s) || halted(s) || s.switching || s.restarting) return { state: s };
+			if (!may(s).restart) return { state: s };
 			const next = { ...s, restarting: true, restartFailed: false };
 			// An autosave is on the wire: this must carry the revision it produces, so it waits.
 			if (s.inFlight) return { state: { ...next, queued: 'restart' }, timer: 'cancel' };
