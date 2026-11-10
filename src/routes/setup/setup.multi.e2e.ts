@@ -122,7 +122,7 @@ test('once set up, a visitor without the admin session is sent to Sign in, test 
 	await context.close();
 });
 
-test('Better Auth answers over HTTP on this server, but not to a password sign-in, and nothing can be framed', async ({
+test('Better Auth serves only a few endpoints over HTTP, not a password sign-in, and nothing can be framed', async ({
 	request
 }) => {
 	const headers = { origin: 'http://localhost:4174' };
@@ -135,10 +135,10 @@ test('Better Auth answers over HTTP on this server, but not to a password sign-i
 	expect(signIn.status()).toBe(404);
 	expect(signIn.headers()['set-cookie']).toBeUndefined();
 
-	// The rest of its API is served, and every answer refuses framing. No session, so no one is signed in.
+	// Only the provider callback, sign-up and sign-out are served: an endpoint outside that list answers 404, and
+	// every answer, that one too, refuses framing.
 	const session = await request.get('/api/auth/get-session', { headers });
-	expect(session.status()).toBe(200);
-	expect(await session.json()).toBeNull();
+	expect(session.status()).toBe(404);
 	expect(session.headers()['x-frame-options']).toBe('DENY');
 	expect(session.headers()['content-security-policy']).toBe("frame-ancestors 'none'");
 
