@@ -15,7 +15,7 @@ const CLEARED = 'better-auth.session_token=; Max-Age=0; Path=/; HttpOnly; SameSi
 async function multi(stubs: { signOut?: unknown; getSession?: unknown } = {}) {
 	const instance = await createTestInstance();
 	await instance.admin();
-	const { api } = instance.multiUser.auth;
+	const { api } = instance.auth;
 	if (stubs.signOut) vi.spyOn(api, 'signOut').mockImplementation(stubs.signOut as never);
 	if (stubs.getSession) vi.spyOn(api, 'getSession').mockImplementation(stubs.getSession as never);
 	return { ...instance, locals: { multiUser: instance.multiUser } };

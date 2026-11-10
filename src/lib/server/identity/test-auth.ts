@@ -133,8 +133,7 @@ export async function createTestInstance({
 			return (attempt) => (forcing ? {} : rule(attempt));
 		}
 	});
-	const { multiUser, resolver } = built;
-	const { auth } = multiUser;
+	const { multiUser, resolver, auth } = built;
 	const local = await createLocalIdentity(db, { testLearnerCookie });
 	const setup: App['setup'] = {
 		multiUser: { kind: 'open' },

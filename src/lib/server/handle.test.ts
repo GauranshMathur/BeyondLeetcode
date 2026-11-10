@@ -178,11 +178,12 @@ describe('Multi-user Mode', () => {
 		const { event, locals, resolve } = asking('/', '/');
 		await handle({ event, resolve });
 		expect(locals.multiUser).toMatchObject({
-			auth: expect.anything(),
+			handleAuth: expect.any(Function),
 			accounts: expect.anything(),
 			adminActions: expect.anything(),
 			invites: expect.anything()
 		});
+		expect(locals.multiUser).not.toHaveProperty('auth');
 		expect(locals).not.toHaveProperty('auth');
 		expect(locals).not.toHaveProperty('invites');
 
@@ -255,14 +256,16 @@ describe('Multi-user Mode', () => {
 	});
 
 	it('lets the auth route through to a signed-out visitor, with the Multi-user object on locals', async () => {
-		const { handle, asking, auth } = await multiSetup();
+		const { handle, asking } = await multiSetup();
 		const { event, locals, resolve } = asking('/api/auth/get-session', '/api/auth/[...all]', '');
 
 		const response = await handle({ event, resolve });
 
 		expect(response.status).toBe(200);
 		expect(Object.fromEntries(response.headers)).toMatchObject(framing);
-		expect((locals.multiUser as { auth?: unknown } | undefined)?.auth).toBe(auth);
+		expect((locals.multiUser as { handleAuth?: unknown } | undefined)?.handleAuth).toBeTypeOf(
+			'function'
+		);
 		expect(locals.identity).toBeUndefined();
 	});
 

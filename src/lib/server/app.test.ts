@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createApp } from './app.ts';
 import { createDb } from './db.ts';
-import { enabledProviders } from './identity/auth.ts';
 
 it('fails at start with a clear message when CONTENT_DIR is missing', async () => {
 	await expect(createApp({ DATABASE_URL: 'file:x.db' })).rejects.toThrow(/CONTENT_DIR is not set/);
@@ -99,7 +98,7 @@ describe('OAuth providers', () => {
 	const providersOf = async (extra: Record<string, string | undefined>) => {
 		const { url } = await migratedDatabase();
 		const app = await bootMulti(url, extra);
-		return app.multiUser ? enabledProviders(app.multiUser.auth) : null;
+		return app.multiUser ? app.multiUser.accounts.providers().map((p) => p.id) : null;
 	};
 	beforeEach(() => {
 		// The process environment is the fallback, so the tests start from a clean one.

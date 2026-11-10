@@ -16,7 +16,7 @@ declare global {
 			instance: Instance;
 			/** What the Setup screen needs: the Multi-user choice and creating the first admin. */
 			setup: Setup;
-			/** Better Auth, the account actions, Invites and the Learner removal; set only in Multi-user Mode. */
+			/** The account actions, admin actions, Invites and the auth HTTP handler; set only in Multi-user Mode. */
 			multiUser?: MultiUser;
 			/**
 			 * Who this request is, from Identity. Unset where nobody is resolved: /setup before the Instance is

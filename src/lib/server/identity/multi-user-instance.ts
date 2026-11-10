@@ -10,6 +10,7 @@ import {
 	createAuth,
 	socialProvidersFrom
 } from './auth.ts';
+import { handleAuthRequest } from './auth-handler.ts';
 import type { IdentityResolver } from './index.ts';
 import { createInvites, type Invites } from './invites.ts';
 import { createMultiUserIdentity, repairLearners } from './multi-user.ts';
@@ -17,9 +18,13 @@ import { createRegistration } from './registration.ts';
 import { sweepStaleSessions } from './session-binding.ts';
 import { createProviderStarts } from './throttle.ts';
 
-/** Better Auth, the account actions, the admin actions and Invites: what the Multi-user routes use. */
+/** The account actions, the admin actions, Invites and the auth HTTP handler: what the Multi-user routes use. */
 export interface MultiUser {
-	auth: Auth;
+	/**
+	 * Better Auth's HTTP endpoints. `clientAddress` is the caller's address from SvelteKit ('' when it
+	 * cannot tell), which becomes the rate limiter's bucket; a client-supplied copy is overwritten.
+	 */
+	handleAuth(request: Request, clientAddress: string): Promise<Response>;
 	/**
 	 * Sign in, sign up, change password and sign out, built once so each form's throttle is the process's.
 	 * Always set by `createApp`.
@@ -53,6 +58,8 @@ export interface MultiUserInstanceOptions {
 
 export interface MultiUserInstance {
 	multiUser: MultiUser;
+	/** Better Auth itself, for boot (the first admin) and tests; no request path reads it. */
+	auth: Auth;
 	/** The Multi-user adapter of the Identity module: who is it, from the session cookie. */
 	resolver: IdentityResolver;
 }
@@ -105,8 +112,9 @@ export async function createMultiUserInstance(
 	});
 	if (instance.mode() === 'multi') await repairStartup(db);
 	return {
+		auth,
 		multiUser: {
-			auth,
+			handleAuth: (request, clientAddress) => handleAuthRequest(auth, request, clientAddress),
 			accounts,
 			adminActions,
 			invites

@@ -1,15 +1,16 @@
 import { error } from '@sveltejs/kit';
-import { handleAuthRequest } from '#lib/server/identity/auth-handler.js';
+import { clientAddress } from '#lib/server/identity/client-address.js';
 import type { RequestHandler } from './$types';
 
 /**
  * Better Auth's HTTP endpoints. A route, not a path check in the hook, so the gate judges it by route
  * id like every page: 404 in Local Mode, Setup before the Instance is set up, public in Multi-user.
- * The hook sets `locals.multiUser` only in Multi-user Mode; its `auth` goes to Identity's handler untouched.
+ * The hook sets `locals.multiUser` only in Multi-user Mode; the request goes to its bound handler,
+ * which is given the address SvelteKit resolved ('' when it cannot tell).
  */
-const handler: RequestHandler = ({ request, locals, getClientAddress }) => {
-	if (!locals.multiUser) error(404, 'Not found');
-	return handleAuthRequest(locals.multiUser.auth, request, getClientAddress());
+const handler: RequestHandler = (event) => {
+	if (!event.locals.multiUser) error(404, 'Not found');
+	return event.locals.multiUser.handleAuth(event.request, clientAddress(event));
 };
 
 export const GET = handler;

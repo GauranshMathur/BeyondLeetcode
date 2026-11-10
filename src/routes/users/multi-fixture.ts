@@ -140,9 +140,7 @@ export async function openMultiUserDatabase(target: ServerTarget = serverEnviron
 	// already ran it, and four workers share this database, so a second repair could delete a Learner
 	// another worker's sign-up has made but not yet given to its Account.
 	const instance = await createInstance(db as unknown as Db);
-	const {
-		multiUser: { auth }
-	} = await createMultiUserInstance({
+	const { auth } = await createMultiUserInstance({
 		db: db as unknown as Db,
 		instance: { ...instance, mode: () => 'local' as const },
 		secret,

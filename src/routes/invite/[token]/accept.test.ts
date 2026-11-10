@@ -19,7 +19,13 @@ const formOf = (values: Form) => {
 };
 
 async function real() {
-	const { db, instance, multiUser, admin: signUpAdmin } = await createTestInstance({ origin });
+	const {
+		db,
+		instance,
+		multiUser,
+		auth,
+		admin: signUpAdmin
+	} = await createTestInstance({ origin });
 	await signUpAdmin({ name: 'Ada', email: 'admin@example.com' });
 	const { invites } = multiUser;
 	const accept = createAccept();
@@ -51,7 +57,7 @@ async function real() {
 		}
 	};
 	const create = () => invites.create({ who: admin, now: new Date() });
-	return { db, instance, invites, accept, cookies, jar, locals, event, post, create };
+	return { db, instance, auth, invites, accept, cookies, jar, locals, event, post, create };
 }
 
 describe('the page', () => {
@@ -246,7 +252,7 @@ describe('accepting', () => {
 	});
 
 	it('maps Better Auth name codes when the form checks are bypassed', async () => {
-		const { post, create, locals } = await real();
+		const { post, create, auth } = await real();
 		const { token } = await create();
 		const { APIError } = await import('better-auth/api');
 		for (const [code, field] of [
@@ -254,7 +260,7 @@ describe('accepting', () => {
 			['NAME_INVALID_CHARACTERS', 'name'],
 			['NAME_REQUIRED', 'name']
 		] as const) {
-			vi.spyOn(locals.multiUser.auth.api, 'signUpEmail').mockRejectedValue(
+			vi.spyOn(auth.api, 'signUpEmail').mockRejectedValue(
 				new APIError('BAD_REQUEST', { message: 'x', code })
 			);
 			expect(await post(token, lin)).toMatchObject({ status: 400, data: { field } });
@@ -336,11 +342,9 @@ describe('accepting', () => {
 		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
 			vi.spyOn(console, m).mockImplementation(() => {})
 		);
-		const { post, create, locals } = await real();
+		const { post, create, auth } = await real();
 		const { token } = await create();
-		vi.spyOn(locals.multiUser.auth.api, 'signUpEmail').mockRejectedValue(
-			new Error(`boom ${token} ${lin.password}`)
-		);
+		vi.spyOn(auth.api, 'signUpEmail').mockRejectedValue(new Error(`boom ${token} ${lin.password}`));
 
 		expect(await post(token, lin)).toMatchObject({ status: 500 });
 

@@ -57,14 +57,14 @@ export async function startMultiUserServer(): Promise<MultiUserServer> {
 	const db = createDb(database);
 	try {
 		const instance = await createInstance(db);
-		const { multiUser } = await createMultiUserInstance({
+		const { auth } = await createMultiUserInstance({
 			db,
 			instance,
 			secret: SECRET,
 			origin,
 			providerEnv: {}
 		});
-		await createFirstAdmin({ instance, auth: multiUser.auth, db }, OWN_SERVER_ADMIN);
+		await createFirstAdmin({ instance, auth, db }, OWN_SERVER_ADMIN);
 	} finally {
 		await db.$disconnect();
 	}
