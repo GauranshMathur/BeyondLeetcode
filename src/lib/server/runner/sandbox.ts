@@ -2,29 +2,16 @@
  * The Runner's engine room: one fresh, hardened container per request (ADR 0002), removed
  * afterwards whatever happened. Python, TypeScript and Go.
  */
-import { randomBytes } from 'node:crypto';
 import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs } from './config';
-import {
-	type AttachedContainer,
-	type Engine,
-	ImageMissingError,
-	NameConflictError,
-	parseImageRef
-} from './engine';
-import {
-	createHarnessDecoder,
-	type HarnessEnd,
-	harnessEnv,
-	harnessInput,
-	harnessScript
-} from './harness';
+import { removeContainer, runContainer } from './container';
+import { type Engine, parseImageRef } from './engine';
+import { createHarnessDecoder, harnessEnv, harnessInput, harnessScript } from './harness';
 import type { ExecuteRequest, ExecuteResult, Language, RunnerPort } from './port';
 
 const nobody = '65534:65534';
 const mib = 1024 * 1024;
-const removeAttempts = 3;
-/** Three attempts at this each, plus the pauses between them, keep the whole cleanup under about 30 s. */
-export const removeAttemptTimeoutMs = 9_000;
+
+export { removeAttemptTimeoutMs } from './container';
 
 /** The Sandbox image for a Language, or undefined where the Runner has none yet. */
 function imageFor(language: Language): string | undefined {
@@ -98,188 +85,25 @@ async function execute(
 	const testTimeoutMs = Math.min(sandboxConfig.testTimeoutMs, request.limits.timeoutMs);
 	const memoryMb = Math.min(sandboxConfig.memoryMb, request.limits.memoryMb);
 
-	const input = harnessInput(
-		request.files,
-		request.tests.map((test) => test.input)
-	);
-
 	const decoder = createHarnessDecoder(request.tests);
-	let overflow = false;
-
-	// Named on our side: if the create call times out while the daemon completes it, the reply is
-	// lost but the name is not, and this Run can remove exactly that container. Random, so it
-	// clashes with no other Run's.
-	const name = `bl-${instanceId}-${randomBytes(8).toString('hex')}`;
-	let id: string;
-	try {
-		id = await engine.create(
-			image,
-			containerSpec(request.language, instanceId, request.tests.length, testTimeoutMs, memoryMb),
-			name
-		);
-	} catch (error) {
-		if (error instanceof ImageMissingError) {
-			// The image vanished after its Language went ready. Fail this Run as a Runner error and
-			// hand the image back to the pull loop; nothing here pulls. A 404 made no container.
-			onImageMissing?.(request.language);
-		} else if (!(error instanceof NameConflictError)) {
-			// (A name clash means the name is taken by a container that is not ours to remove.)
-			// A create that timed out (or failed after the daemon began it) may still have made
-			// the container, in the Created state, which AutoRemove never touches. Remove this Run's
-			// own name, never a prefix or a label; a 404 means nothing was made. Best effort.
-			await removeCreatedByName(engine, name);
-		}
-		throw error;
-	}
-	let timedOut = false;
-	let attached: AttachedContainer | undefined;
-	// The wall clock covers attach and start-up too: it starts as soon as the container exists.
-	const hardStop = setTimeout(() => {
-		timedOut = true;
-		// Not awaited and never throws, but not silent: a kill that fails or takes seconds is what
-		// holds up the forced remove (docs/research/fork-bomb-teardown.md).
-		const killStarted = performance.now();
-		engine
-			.kill(id)
-			.then(
-				() =>
-					console.warn(
-						`Kill of container ${id} answered after ${Math.round(performance.now() - killStarted)} ms`
-					),
-				(error) => console.error(`Could not kill container ${id}`, error)
-			)
-			.catch(() => {});
-		attached?.destroy();
-	}, sandboxConfig.containerTimeoutMs);
-	try {
-		// Registered before start, so the exit status is ours even if the container removes itself.
-		const { status: exitStatus } = await engine.wait(id);
-		attached = await engine.attach(
-			id,
-			(stream, payload) => {
-				if (!overflow && !decoder.frame(stream, payload)) {
-					overflow = true;
-					attached?.destroy();
-				}
-			},
-			sandboxConfig.attachTimeoutMs
-		);
-		if (timedOut) throw new Error('Sandbox start-up exceeded the time limit');
-		await engine.start(id);
-		attached.sendInput(input);
-		await attached.closed;
-		const end: HarnessEnd = overflow
-			? { kind: 'overflow' }
-			: timedOut
-				? { kind: 'hardStop' }
-				: {
-						kind: 'exited',
-						code: await within(
-							exitStatus,
-							sandboxConfig.exitStatusTimeoutMs,
-							'Timed out waiting for the Sandbox exit'
-						)
-					};
-		return decoder.finish(end);
-	} finally {
-		clearTimeout(hardStop);
-		attached?.destroy();
-		await removeContainer(engine, id);
-	}
-}
-
-/** Settles with `promise`, or rejects with `message` after `ms`. */
-function within<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => reject(new Error(message)), ms);
-		promise.then(
-			(value) => {
-				clearTimeout(timer);
-				resolve(value);
-			},
-			(error) => {
-				clearTimeout(timer);
-				reject(error);
-			}
-		);
+	const end = await runContainer(engine, {
+		instanceId,
+		image,
+		spec: containerSpec(
+			request.language,
+			instanceId,
+			request.tests.length,
+			testTimeoutMs,
+			memoryMb
+		),
+		input: harnessInput(
+			request.files,
+			request.tests.map((test) => test.input)
+		),
+		frame: (stream, payload) => decoder.frame(stream, payload),
+		onImageMissing: () => onImageMissing?.(request.language)
 	});
-}
-
-/** Retries, logs, never throws: it runs while the real error is already on its way. */
-async function removeContainer(engine: Engine, id: string): Promise<void> {
-	for (let attempt = 1; attempt <= removeAttempts; attempt++) {
-		try {
-			await within(engine.remove(id), removeAttemptTimeoutMs, `Docker remove of ${id} timed out`);
-			return;
-		} catch (error) {
-			console.error(
-				`Could not remove container ${id} (attempt ${attempt}/${removeAttempts})`,
-				error
-			);
-			if (attempt < removeAttempts)
-				await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
-		}
-	}
-}
-
-/** Pauses before each try at removing a container by the name it was created under. */
-const removeByNamePausesMs = [0, 50, 100, 250, 500, 1_000, 2_000];
-/** One last try, in the background, for a daemon that is still stuck in the create after all of those. */
-const removeByNameLateMs = 30_000;
-/** Longest one try at it may take. */
-const removeByNameAttemptMs = 4_000;
-/** Longest the whole cleanup may take, tries and pauses together: a 404 that takes 4 s is not retried for ever. */
-const removeByNameTotalMs = 8_000;
-/** Most late removes waiting at once, per Engine: a daemon that is down fails every Run fast, and each would leave a timer. */
-const maxPendingLateRemoves = 64;
-const pendingLateRemoves = new WeakMap<Engine, number>();
-
-/**
- * Removes the container a timed-out create may have made, by the name this Run gave it. The
- * daemon can still be finishing that create when we ask, and until it has registered the name a
- * remove answers 404 (measured on real Docker: the first remove 404s, one ~35 ms later finds it).
- * So a 404 is retried, but all tries together stop after `removeByNameTotalMs`; an error or a
- * stalled daemon ends the tries at the first one. Best effort: logs, never throws.
- */
-async function removeCreatedByName(engine: Engine, name: string): Promise<void> {
-	const started = performance.now(); // monotonic: a stepped host clock must not move the deadline
-	for (const pause of removeByNamePausesMs) {
-		let left = removeByNameTotalMs - (performance.now() - started);
-		if (pause > 0 && left > 0)
-			await new Promise((resolve) => setTimeout(resolve, Math.min(pause, left)));
-		left = removeByNameTotalMs - (performance.now() - started);
-		if (left <= 0) break;
-		try {
-			if (
-				(await within(
-					engine.remove(name),
-					Math.min(removeByNameAttemptMs, left),
-					`Docker remove of ${name} timed out`
-				)) !== false
-			)
-				return;
-		} catch (error) {
-			// A stalled or failing daemon (likely why the create timed out) will not answer a retry
-			// either: stop at once. The background try below and the sweep are what is left.
-			console.error(`Could not remove container ${name} after a failed create`, error);
-			break;
-		}
-	}
-	// Still nothing: the daemon may be stuck in the create. One more try later, off this Run, so it
-	// holds no Run slot; if that misses too, the next instance's sweep removes it by age. Capped, so
-	// a stream of failing Runs cannot pile up timers; past the cap the sweep is the only backstop.
-	const pending = pendingLateRemoves.get(engine) ?? 0;
-	if (pending >= maxPendingLateRemoves) return;
-	pendingLateRemoves.set(engine, pending + 1);
-	const late = setTimeout(() => {
-		// Counted until the engine's own remove settles (every engine call has a deadline), not
-		// until the timer fires or a `within` gives up on it: the request is still out until then.
-		engine
-			.remove(name)
-			.catch(() => {})
-			.finally(() => pendingLateRemoves.set(engine, (pendingLateRemoves.get(engine) ?? 1) - 1));
-	}, removeByNameLateMs);
-	late.unref?.();
+	return decoder.finish(end);
 }
 
 /**
