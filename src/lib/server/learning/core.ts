@@ -4,8 +4,7 @@ import type { BuildFiles, Catalogue, Language } from '../content/catalogue.ts';
 import type { Db } from '../db.ts';
 import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
-import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
-import { batchRequest } from '../submit-plan.ts';
+import type { RunnerPort } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 import {
 	buildStep,
@@ -44,7 +43,7 @@ import {
 	topicView,
 	validateBuild
 } from './rules.ts';
-import { judgeSubmission } from './submission.ts';
+import { judgeSubmission, runBatch } from './submission.ts';
 
 export { LearningError, type LearningErrorCode } from './errors.ts';
 export type {
@@ -186,24 +185,6 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 	const running = new Map<string, number>();
 	return {
 		forLearner: (learnerId) => {
-			/** Sends code and Test inputs (never expected outputs) to the Runner; any failure is RunnerUnavailable. */
-			const execute = async (
-				language: Language,
-				files: BuildFiles,
-				tests: readonly { id: string; input: string }[]
-			): Promise<ExecuteResult> => {
-				if (!deps.runner) throw new LearningError('RunnerUnavailable');
-				try {
-					return await deps.runner.execute(
-						batchRequest(language, files, tests, {
-							timeoutMs: sandboxConfig.testTimeoutMs,
-							memoryMb: sandboxConfig.memoryMb
-						})
-					);
-				} catch {
-					throw new LearningError('RunnerUnavailable');
-				}
-			};
 			/**
 			 * Holds one of the Learner's Run/Submit places while `work` runs and frees it on every path.
 			 * A Learner at the cap is refused as RunnerUnavailable (the saved code stays, as for any outage).
@@ -263,7 +244,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					return await act(build, revision);
 				} catch (e) {
 					if (e instanceof LearningError && e.code === 'RunnerUnavailable')
-						throw new LearningError(e.code, revision);
+						throw new LearningError(e.code, revision, e.cause);
 					throw e;
 				}
 			};
@@ -353,7 +334,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					saveThen(build, files, ({ problemId, language }, revision) =>
 						withRunPlace(async () => {
 							const tests = deps.catalogue.problem(problemId)?.exampleTests ?? [];
-							return runView(tests, await execute(language, files, tests), revision);
+							return runView(tests, await runBatch(deps.runner, language, files, tests), revision);
 						})
 					),
 				switchLanguage: async (problemId, language) => {
