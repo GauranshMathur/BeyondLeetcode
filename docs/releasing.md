@@ -25,8 +25,8 @@ The board's `Release` field (id `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY`) has one option
 | `R v1.19.3: Sprint 16 · Languages and the Learning core` | `07c751bf` |
 | `R v1.19.4: Sprint 17 · Runner and CI hardening` | `ece5dfa8` |
 | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | `d6739981` |
-| `R v1.19.6: Sprint 19 · Runner and the Build` | `ba3b24a7` |
-| `R v1.19.7: Sprint 20 · Identity forms and policy` | `41225006` |
+| `R v1.19.6: Sprint 19 · Accessibility` (renamed 2026-11-10; was `Runner and the Build`) | `ba3b24a7` |
+| `R v1.19.7: Sprint 20 · Drifted rules and docs` (renamed 2026-11-10; was `Identity forms and policy`) | `41225006` |
 | `R v1.19.8: Sprint 21 · Accessibility` | `647d8bbc` |
 | `R v1.19.9: Sprint 22 · Tests, CI and docs` | `30fe09ec` |
 | `R v1.19.10: Sprint 23 · The Learning core and the Problem screen` | `59e6d8b2` |
@@ -43,11 +43,11 @@ The `sprint-planner` adds a row for each sprint it plans.
 | 16 · Languages and the Learning core | `R v1.19.3: Sprint 16 · Languages and the Learning core` | 1.19.3 | cut 2026-11-05 |
 | 17 · Runner and CI hardening | `R v1.19.4: Sprint 17 · Runner and CI hardening` | 1.19.4 | cut 2026-11-08 |
 | 18 · Submission, Runner and Identity seams | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | 1.19.5 | planned |
-| 19 · Runner and the Build | `R v1.19.6: Sprint 19 · Runner and the Build` | 1.19.6 | planned |
-| 20 · Identity forms and policy | `R v1.19.7: Sprint 20 · Identity forms and policy` | 1.19.7 | planned |
-| 21 · Accessibility | `R v1.19.8: Sprint 21 · Accessibility` | 1.19.8 | planned |
-| 22 · Tests, CI and docs | `R v1.19.9: Sprint 22 · Tests, CI and docs` | 1.19.9 | planned |
-| 23 · The Learning core and the Problem screen | `R v1.19.10: Sprint 23 · The Learning core and the Problem screen` | 1.19.10 | planned |
+| 19 · Accessibility | `R v1.19.6: Sprint 19 · Accessibility` | 1.19.6 | planned (re-planned 2026-11-10) |
+| 20 · Drifted rules and docs | `R v1.19.7: Sprint 20 · Drifted rules and docs` | 1.19.7 | planned (re-planned 2026-11-10) |
+| 21 · Accessibility | `R v1.19.8: Sprint 21 · Accessibility` | 1.19.8 | no cards: option kept, unplanned since 2026-11-10 |
+| 22 · Tests, CI and docs | `R v1.19.9: Sprint 22 · Tests, CI and docs` | 1.19.9 | no cards: option kept, unplanned since 2026-11-10 |
+| 23 · The Learning core and the Problem screen | `R v1.19.10: Sprint 23 · The Learning core and the Problem screen` | 1.19.10 | no cards: option kept, unplanned since 2026-11-10 |
 
 ## The last card
 
