@@ -140,7 +140,7 @@ describe('createMultiUserInstance', () => {
 	});
 });
 
-describe('the startup repair of Accounts and Learners (C57)', () => {
+describe('the startup repair of Accounts and Learners', () => {
 	/** A Multi-user database with its first admin (Learner 'local'), shut down as if the server stopped. */
 	async function multiDatabase() {
 		const first = await boot();
