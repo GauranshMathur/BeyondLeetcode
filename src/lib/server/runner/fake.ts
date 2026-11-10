@@ -5,7 +5,7 @@ export type ScriptedTest = {
 	stdout?: string;
 	stderr?: string;
 	/** The container clock cut this Test off (use with status `timeout`). */
-	cutOff?: boolean;
+	cutOff?: true;
 };
 
 export type RunnerScript = {

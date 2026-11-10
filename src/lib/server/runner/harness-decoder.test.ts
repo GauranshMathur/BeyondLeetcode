@@ -158,7 +158,11 @@ describe('harness decoder: output the Runner cannot trust', () => {
 		['a line that is not JSON', 'not json\n'],
 		['a result with an unknown status', line({ i: 0, status: 'maybe', stdout: '', stderr: '' })],
 		['a result with a fractional i', line({ i: 0.5, status: 'ok', stdout: '', stderr: '' })],
-		['a result with a missing field', line({ i: 0, status: 'ok', stdout: '' })]
+		['a result with a missing field', line({ i: 0, status: 'ok', stdout: '' })],
+		[
+			'a result line that claims cutOff',
+			line({ i: 0, status: 'timeout', stdout: '', stderr: '', cutOff: true })
+		]
 	])('fails the Run on %s', (_name, output) => {
 		expect(() => decode([[1, ok(0) + output]], exited0)).toThrow(/unexpected line/);
 	});

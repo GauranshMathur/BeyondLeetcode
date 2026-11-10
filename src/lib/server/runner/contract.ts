@@ -83,6 +83,8 @@ export function runnerContract(name: string, subject: ContractSubject): void {
 			}
 			expect(result.results[0].stdout).toBe('ok\n');
 			expect(result.results[3].stdout).toBe('ok again\n');
+			// A Test that hit its own limit is a plain timeout, never a cut-off.
+			expect(result.results.some((r) => 'cutOff' in r)).toBe(false);
 		});
 
 		it('reports a program that outlives the time limit as timeout', async () => {

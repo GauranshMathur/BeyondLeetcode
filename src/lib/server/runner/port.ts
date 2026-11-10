@@ -87,17 +87,22 @@ export type ExecuteRequest = z.infer<typeof executeRequestSchema>;
 /** How one Test ended; the harness's result line uses the same set. */
 export const testStatusSchema = z.enum(['ok', 'runtimeError', 'timeout']);
 
-const testResultSchema = z.object({
-	id: z.string(),
-	status: testStatusSchema,
-	stdout: z.string(),
-	stderr: z.string(),
-	/**
-	 * Set (true) on a `timeout` the container clock caused: the Test had no result when the
-	 * container was stopped, so it may never have started. Absent on a Test that hit its own limit.
-	 */
-	cutOff: z.boolean().optional()
-});
+const testResultSchema = z
+	.object({
+		id: z.string(),
+		status: testStatusSchema,
+		stdout: z.string(),
+		stderr: z.string(),
+		/**
+		 * Set (true) on a `timeout` with no result when the container was stopped, so the Test may
+		 * never have started. An own-limit timeout whose result line had not reached the Runner by
+		 * the stop is reported as cut off too. Absent otherwise.
+		 */
+		cutOff: z.literal(true).optional()
+	})
+	.refine((r) => r.cutOff === undefined || r.status === 'timeout', {
+		message: 'cutOff is only set on a timeout'
+	});
 export type TestStatus = TestResult['status'];
 export type TestResult = z.infer<typeof testResultSchema>;
 
