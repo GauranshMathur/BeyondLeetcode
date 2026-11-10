@@ -91,3 +91,28 @@ export function submitPlan(
 	for (let i = 0; i < hidden.length; i += size) batches.push(hidden.slice(i, i + size));
 	return { visible: testsOf(problemId, 'example'), hidden: batches };
 }
+
+/**
+ * The Runner request for one batch of a Submission (or Run): code and Test inputs, never an
+ * expected output. Built here so the Learning core, the content check and the catalogue's guard
+ * send the same request. `L` is the Runner's Language id, kept generic so this leaf imports no
+ * types from the Runner.
+ */
+export function batchRequest<L extends string>(
+	language: L,
+	files: Readonly<Record<string, string>>,
+	tests: readonly { readonly id: string; readonly input: string }[],
+	limits: { readonly timeoutMs: number; readonly memoryMb: number }
+): {
+	language: L;
+	files: Record<string, string>;
+	tests: { id: string; input: string }[];
+	limits: { timeoutMs: number; memoryMb: number };
+} {
+	return {
+		language,
+		files: { ...files },
+		tests: tests.map(({ id, input }) => ({ id, input })),
+		limits: { timeoutMs: limits.timeoutMs, memoryMb: limits.memoryMb }
+	};
+}
