@@ -11,3 +11,8 @@ prisma/generated
 test-results
 playwright-report
 **/__pycache__
+**/*.test.ts
+**/*.sandbox.test.ts
+**/*.testutil.ts
+**/*.bun-check.ts
+src/lib/server/content/fixture
