@@ -4,8 +4,10 @@ import type { BuildRef, RunView, SubmitView } from '#lib/server/learning/core.js
 import {
 	begin,
 	type Event,
+	may,
 	RETRY_DELAY_MS,
 	SAVE_DELAY_MS,
+	type SaveState,
 	type Session,
 	type Step,
 	transition
@@ -808,5 +810,67 @@ describe('a request that got no reply (it may have committed)', () => {
 			respond(ok({ revision: 4 }))
 		);
 		expect(sent.map((r) => r.kind)).toEqual(['save', 'save', 'switch']);
+	});
+});
+
+describe('what the Learner may do now', () => {
+	const saveStates: SaveState[] = [
+		'saved',
+		'edited',
+		'saving',
+		'failed',
+		'rejected',
+		'conflict',
+		'signedOut'
+	];
+	const shut = (s: Session) => {
+		const result = (event: Event) => play(s, event).sent.length > 0 || play(s, event).state !== s;
+		return {
+			run: !result({ type: 'run' }),
+			submit: !result({ type: 'submit' }),
+			switch: !result({ type: 'switch', language: 'go' }),
+			restart: !result({ type: 'restart' }),
+			readOnly: play(s, { type: 'edit', files: { 'main.py': 'z' } }).state === s
+		};
+	};
+	const closed = (s: Session) => {
+		const m = may(s);
+		return {
+			run: !m.run,
+			submit: !m.submit,
+			switch: !m.switch,
+			restart: !m.restart,
+			readOnly: m.readOnly
+		};
+	};
+	const conditions: [string, Partial<Session>][] = [
+		['idle', {}],
+		['running', { outcome: { kind: 'running' } }],
+		['submitting', { outcome: { kind: 'submitting' } }],
+		['mid-switch', { switching: true }],
+		['mid-restart', { restarting: true }]
+	];
+
+	it.each(
+		saveStates.flatMap((save) => conditions.map(([name, extra]) => [save, name, extra] as const))
+	)('shuts the controls exactly where the machine refuses (%s, %s)', (save, _name, extra) => {
+		const s: Session = { ...fresh(), save, ...extra };
+		expect(closed(s)).toEqual(shut(s));
+	});
+
+	it.each([
+		['saved', { run: false, submit: false, switch: false, restart: false, readOnly: false }],
+		['edited', { run: false, submit: false, switch: false, restart: false, readOnly: false }],
+		['saving', { run: false, submit: false, switch: false, restart: false, readOnly: false }],
+		['failed', { run: false, submit: false, switch: false, restart: false, readOnly: false }],
+		['rejected', { run: true, submit: true, switch: false, restart: false, readOnly: false }],
+		['conflict', { run: true, submit: true, switch: false, restart: true, readOnly: true }],
+		['signedOut', { run: true, submit: true, switch: false, restart: true, readOnly: false }]
+	] as const)('with a %s save, the controls show what the Learner sees', (save, expected) => {
+		expect(closed({ ...fresh(), save })).toEqual(expected);
+	});
+
+	it('shuts the language switch while a restart is under way', () => {
+		expect(may({ ...fresh(), restarting: true }).switch).toBe(false);
 	});
 });

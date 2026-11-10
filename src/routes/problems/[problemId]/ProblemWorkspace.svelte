@@ -11,7 +11,7 @@ import { page } from '$app/state';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
 import { afterOutcome, PANES, type ViewState } from './view';
-import { begin, type Event, isBusy, type Request, type SaveState, transition } from './workspace';
+import { begin, type Event, may, type Request, type SaveState, transition } from './workspace';
 
 let {
 	problem,
@@ -106,7 +106,6 @@ async function post(request: Request): Promise<Reply> {
 // mounted (the editor is hidden by CSS, never destroyed), so unsaved code and the state machine are untouched.
 const NAMES = { problem: 'Problem', code: 'Code', tests: 'Tests' } as const;
 
-const busy = $derived(isBusy(session));
 const paths = $derived(Object.keys(problem.files));
 
 // The Language picker: a pick waits for the inline confirm; switching saves first, then reloads the Problem.
@@ -117,13 +116,7 @@ const confirming = $derived(choice !== problem.build.language);
 
 // Start from reference code: the same inline confirm; the Learner's Submissions are kept.
 let confirmingRestart = $state(false);
-const restartLocked = $derived(
-	busy ||
-		session.switching ||
-		session.restarting ||
-		session.save === 'conflict' ||
-		session.save === 'signedOut'
-);
+const allowed = $derived(may(session));
 
 function onchange(files: Record<string, string>) {
 	dispatch({ type: 'edit', files });
@@ -163,8 +156,8 @@ const label: Record<SaveState, string> = {
 {/snippet}
 
 {#snippet runAndSubmit()}
-	<button type="button" class="run mono" disabled={busy} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
-	<button type="button" class="run submit mono" disabled={busy} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
+	<button type="button" class="run mono" disabled={!allowed.run} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
+	<button type="button" class="run submit mono" disabled={!allowed.submit} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
 {/snippet}
 
 {#snippet crumbs()}
@@ -206,14 +199,14 @@ const label: Record<SaveState, string> = {
 						</div>
 						<div class="confirm-actions">
 							<button type="button" class="cancel mono" onclick={() => (picked = undefined)} disabled={session.switching}>Cancel</button>
-							<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} disabled={session.switching || busy}>{session.switching ? 'Switching…' : 'Switch language'}</button>
+							<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} disabled={!allowed.switch}>{session.switching ? 'Switching…' : 'Switch language'}</button>
 						</div>
 					</div>
 				{/if}
 				{@render saveNotice('signedOut')}
 				<div class="reference">
 					<span id="ref-help" class="mono help">Replaces your code for this step with the known-good build after the previous Problem (empty on a Topic's first Problem). Your submissions are kept.{session.restartFailed ? ' It did not go through; try again.' : ''}</span>
-					<button type="button" class="run mono" aria-describedby="ref-help" disabled={restartLocked || confirmingRestart} onclick={() => (confirmingRestart = true)}>Start from reference code</button>
+					<button type="button" class="run mono" aria-describedby="ref-help" disabled={!allowed.restart || confirmingRestart} onclick={() => (confirmingRestart = true)}>Start from reference code</button>
 				</div>
 				{#if confirmingRestart}
 					<div class="confirm" role="group" aria-label="Start from reference code">
@@ -223,13 +216,13 @@ const label: Record<SaveState, string> = {
 						</div>
 						<div class="confirm-actions">
 							<button type="button" class="cancel mono" onclick={() => (confirmingRestart = false)}>Cancel</button>
-							<button type="button" class="run mono" aria-describedby="restart-note" disabled={restartLocked} onclick={() => { confirmingRestart = false; dispatch({ type: 'restart' }); }}>Replace my code</button>
+							<button type="button" class="run mono" aria-describedby="restart-note" disabled={!allowed.restart} onclick={() => { confirmingRestart = false; dispatch({ type: 'restart' }); }}>Replace my code</button>
 						</div>
 					</div>
 				{/if}
 				<div class="editor-slot">
 					{#key session.restarts}
-						<CodeEditor files={session.files} {onchange} readonly={session.save === 'conflict' || session.switching || session.restarting} />
+						<CodeEditor files={session.files} {onchange} readonly={allowed.readOnly} />
 					{/key}
 				</div>
 				</div>
