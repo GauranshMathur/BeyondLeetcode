@@ -6,13 +6,13 @@ import { isRedirect } from '@sveltejs/kit';
 import { expect, it, onTestFinished } from 'vitest';
 import { createApp } from '#lib/server/app.js';
 import { createHandle } from '#lib/server/handle.js';
+import { TEST_SECRET } from '#lib/server/identity/test-auth.js';
 import { actions as settingsActions } from '../settings/+page.server';
 import { createSignIn } from './sign-in';
 
 // The whole path a released Instance takes, with no test switch anywhere: Setup offers Multi-user, the first
 // admin is created, signs out and signs back in through the Sign in action, and the hook sees who they are.
 
-const secret = 'a-test-secret-of-at-least-thirty-two-characters';
 const admin = { name: 'Ada', email: 'ada@example.com', password: 'correct horse battery' };
 
 const cookieHeader = (setCookies: string[]) => setCookies.map((c) => c.split(';')[0]).join('; ');
@@ -31,7 +31,7 @@ it('a fresh Instance without the test switch: choose Multi-user, create the admi
 		DATABASE_URL: url,
 		RUNNER_URL: 'http://127.0.0.1:1',
 		RUNNER_TOKEN: 'test-token',
-		BETTER_AUTH_SECRET: secret,
+		BETTER_AUTH_SECRET: TEST_SECRET,
 		ORIGIN: 'http://localhost:3000'
 	});
 	expect(app.setup.multiUser).toEqual({ kind: 'open' });
