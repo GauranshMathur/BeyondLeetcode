@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sandboxConfig } from './config';
-import { deadline, runContainer } from './container';
+import { runContainer } from './container';
+import { deadline } from './deadline';
 import { type Engine, ImageMissingError, NameConflictError } from './engine';
 
 /** Runs a container with an empty spec; a test overrides only what it is about. */

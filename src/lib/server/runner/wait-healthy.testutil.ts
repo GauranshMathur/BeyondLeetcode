@@ -1,7 +1,8 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { freePort } from '../../test/free-port.ts';
 import { containerLabel, sandboxConfig } from './config';
-import { createEngine } from './engine';
+import { type ContainerEnd, runContainer } from './container';
+import { type ContainerSpec, createEngine, type Engine } from './engine';
 import { createHttpRunner } from './http-adapter';
 import type { RunnerPort } from './port';
 
@@ -130,4 +131,33 @@ export async function containersOwnedBy(
 	return (await engine.listContainers(containerLabel))
 		.filter(({ labels }) => labels[containerLabel] === instanceId)
 		.map(({ id }) => id);
+}
+
+/**
+ * Runs one container the way the Runner does (its create, wait, attach, start, stdin and removal
+ * go through the container module) and returns how it ended with what it printed. `override`
+ * replaces the spec's `Cmd` or `Env`. Frames are kept in order so a caller can replay them into
+ * the Runner's own decoder.
+ */
+export async function runCaptured(
+	engine: Engine,
+	run: {
+		image: string;
+		spec: ContainerSpec;
+		input: Uint8Array;
+		override?: { Cmd?: string[]; Env?: string[] };
+	}
+): Promise<{ end: ContainerEnd; stdout: string; frames: [1 | 2, Buffer][] }> {
+	const frames: [1 | 2, Buffer][] = [];
+	let stdout = '';
+	const end = await runContainer(engine, {
+		instanceId: 'test-instance',
+		...run,
+		frame: (stream, payload) => {
+			frames.push([stream, payload]);
+			if (stream === 1) stdout += payload.toString('utf8');
+			return true;
+		}
+	});
+	return { end, stdout, frames };
 }
