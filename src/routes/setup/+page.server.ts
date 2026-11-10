@@ -12,9 +12,8 @@ import { AccountsExistError, InstanceAlreadySetUpError } from '#lib/server/insta
 import { logFailure } from '#lib/server/logging.js';
 import type { Actions, PageServerLoad } from './$types';
 
-/** Why Multi-user cannot be chosen here: what to add to `.env`. (`later` is never produced, see `MultiUserChoice`.) */
-const unavailable = (choice: Exclude<MultiUserChoice, { kind: 'open' }>) =>
-	choice.kind === 'needs-env' ? choice.message : 'Multi-user is not available on this server.';
+/** Why Multi-user cannot be chosen here: what to add to `.env`. */
+const unavailable = (choice: Exclude<MultiUserChoice, { kind: 'open' }>) => choice.message;
 
 /** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
 const FIELD_MESSAGES = {

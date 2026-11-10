@@ -6,10 +6,7 @@ import { createCatalogueScriptedRunner } from '../runner/scripted-catalogue.ts';
 import { createFileTestDb } from '../test-db.ts';
 import { enabledProviders } from './auth.ts';
 import { INVITE_COOKIE } from './invites.ts';
-import {
-	createMultiUserInstance,
-	type MultiUserInstanceOptions
-} from './multi-user-instance.ts';
+import { createMultiUserInstance, type MultiUserInstanceOptions } from './multi-user-instance.ts';
 import { createFirstAdmin } from './setup.ts';
 import type { ProviderStarts } from './throttle.ts';
 
@@ -245,11 +242,16 @@ describe('the options a test may pass', () => {
 	it('signs Accounts up with the given password hasher', async () => {
 		const booted = await boot({
 			admit: () => () => ({}),
-			passwordHasher: { hash: async (p) => `plain:${p}`, verify: async ({ hash, password }) => hash === `plain:${password}` }
+			passwordHasher: {
+				hash: async (p) => `plain:${p}`,
+				verify: async ({ hash, password }) => hash === `plain:${password}`
+			}
 		});
 		await signUp(booted);
 
-		const account = await booted.db.account.findFirstOrThrow({ where: { providerId: 'credential' } });
+		const account = await booted.db.account.findFirstOrThrow({
+			where: { providerId: 'credential' }
+		});
 		expect(account.password).toBe('plain:a long enough secret');
 	});
 });
