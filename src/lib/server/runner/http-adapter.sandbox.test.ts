@@ -716,6 +716,10 @@ describe('Runner: python in a fresh Sandbox per run', { timeout: 60_000 }, () =>
 		const result = await run({ 'main.py': 'while True:\n    pass\n' }, tests);
 
 		expect(result.results.map((r) => r.status)).toEqual(tests.map(() => 'timeout'));
+		// The Tests unanswered when the clock fired are cut off, and they follow the answered ones.
+		const cutOff = result.results.map((r) => r.cutOff === true);
+		expect(cutOff.at(-1)).toBe(true);
+		expect(cutOff).toEqual([...cutOff].sort((x, y) => Number(x) - Number(y)));
 		expect(Date.now() - started).toBeLessThan(sandboxConfig.containerTimeoutMs + 5000);
 		expect(await containersOwnedBy(engine, instanceId)).toEqual([]);
 	});

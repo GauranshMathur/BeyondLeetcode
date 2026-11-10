@@ -66,7 +66,9 @@ export type TestInput = z.infer<typeof testInputSchema>;
 /**
  * Per-run limits (ADR 0002): wall-clock timeout per Test, counted from the Test's start (not
  * container start-up or compilation), and a memory cap. CPU and pids limits are fixed by the
- * Runner, not sent per request.
+ * Runner, not sent per request. The per-Test limit sits inside one container clock that counts
+ * from the container's creation and includes the compile: when that clock runs out, the Tests
+ * still unanswered are reported as `timeout` with `cutOff` set.
  */
 const limitsSchema = z.object({
 	timeoutMs: z.number().int().positive(),
@@ -85,12 +87,22 @@ export type ExecuteRequest = z.infer<typeof executeRequestSchema>;
 /** How one Test ended; the harness's result line uses the same set. */
 export const testStatusSchema = z.enum(['ok', 'runtimeError', 'timeout']);
 
-const testResultSchema = z.object({
-	id: z.string(),
-	status: testStatusSchema,
-	stdout: z.string(),
-	stderr: z.string()
-});
+const testResultSchema = z
+	.object({
+		id: z.string(),
+		status: testStatusSchema,
+		stdout: z.string(),
+		stderr: z.string(),
+		/**
+		 * Set (true) on a `timeout` with no result when the container was stopped, so the Test may
+		 * never have started. An own-limit timeout whose result line had not reached the Runner by
+		 * the stop is reported as cut off too. Absent otherwise.
+		 */
+		cutOff: z.literal(true).optional()
+	})
+	.refine((r) => r.cutOff === undefined || r.status === 'timeout', {
+		message: 'cutOff is only set on a timeout'
+	});
 export type TestStatus = TestResult['status'];
 export type TestResult = z.infer<typeof testResultSchema>;
 
