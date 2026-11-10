@@ -5,6 +5,7 @@ import type { Db } from '../db.ts';
 import { renderMarkdown } from '../markdown.ts';
 import { sandboxConfig } from '../runner/config.ts';
 import type { ExecuteResult, RunnerPort } from '../runner/port.ts';
+import { batchRequest } from '../submit-plan.ts';
 import { LearningError } from './errors.ts';
 import {
 	buildStep,
@@ -25,7 +26,6 @@ import {
 	chapterView,
 	type HintsView,
 	hintsView,
-	judge,
 	type MapView,
 	mapView,
 	type ProblemView,
@@ -34,18 +34,17 @@ import {
 	type RunView,
 	referenceStartOf,
 	requireOpenTopic,
-	runSubmission,
 	runView,
 	type SolutionView,
 	type SubmitView,
 	sameBuild,
 	seedSourceOf,
 	solutionView,
-	submitPlan,
 	type TopicView,
 	topicView,
 	validateBuild
 } from './rules.ts';
+import { judgeSubmission } from './submission.ts';
 
 export { LearningError, type LearningErrorCode } from './errors.ts';
 export type {
@@ -195,12 +194,12 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 			): Promise<ExecuteResult> => {
 				if (!deps.runner) throw new LearningError('RunnerUnavailable');
 				try {
-					return await deps.runner.execute({
-						language,
-						files,
-						tests: tests.map(({ id, input }) => ({ id, input })),
-						limits: { timeoutMs: sandboxConfig.testTimeoutMs, memoryMb: sandboxConfig.memoryMb }
-					});
+					return await deps.runner.execute(
+						batchRequest(language, files, tests, {
+							timeoutMs: sandboxConfig.testTimeoutMs,
+							memoryMb: sandboxConfig.memoryMb
+						})
+					);
 				} catch {
 					throw new LearningError('RunnerUnavailable');
 				}
@@ -390,19 +389,14 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				submit: (build, files) =>
 					saveThen(build, files, ({ problemId, language }, revision) =>
 						withRunPlace(async () => {
-							// Visible Tests in one container, then the hidden ones in containers of at most
-							// `hiddenBatchTests`: nothing a Hidden Test runs shares one with a Test whose output is shown.
-							const plan = submitPlan(
-								deps.catalogue,
+							const { verdict, failure, failingProblemId } = await judgeSubmission({
+								catalogue: deps.catalogue,
 								problemId,
-								deps.hiddenBatchTests ?? sandboxConfig.hiddenBatchTests
-							);
-							const batches = await runSubmission(plan, (tests) => execute(language, files, tests));
-							const { verdict, failure, failingProblemId } = judge(
-								batches,
-								problemId,
-								(id) => deps.catalogue.problem(id)?.title ?? id
-							);
+								language,
+								files,
+								runner: deps.runner,
+								hiddenBatchTests: deps.hiddenBatchTests
+							});
 							const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
 							const { submissionId, solved, accepted } = await recordSubmission(deps, learnerId, {
 								learnerId,

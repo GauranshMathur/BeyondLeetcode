@@ -7,17 +7,11 @@ import {
 	type Topic,
 	type TopicSummary
 } from '../content/catalogue.ts';
-import {
-	type ExecuteResult,
-	MAX_BUILD_FILES,
-	MAX_PATH_BYTES,
-	type TestResult
-} from '../runner/port.ts';
+import { MAX_BUILD_FILES, MAX_PATH_BYTES } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 import {
 	acceptedDiff,
 	chapterView,
-	judge,
 	MAX_BUILD_BYTES,
 	mapView,
 	normaliseOutput,
@@ -26,8 +20,6 @@ import {
 	reachChapter,
 	requireOpenTopic,
 	runView,
-	type SubmitTest,
-	submitPlan,
 	topicView,
 	validateBuild
 } from './rules.ts';
@@ -526,219 +518,7 @@ const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url))
 // Top-level await: the it.each tables below read the catalogue while they are collected.
 const catalogue = await loadCatalogue(fixtureDir);
 
-describe('judge()', () => {
-	const test = (
-		id: string,
-		{ problemId = 'p', kind = 'example' as SubmitTest['kind'] } = {}
-	): SubmitTest => ({
-		id,
-		name: id.slice(id.lastIndexOf('/') + 1),
-		input: `in ${id}`,
-		expected: 'ok\n',
-		problemId,
-		kind
-	});
-	const raw = (id: string, status: TestResult['status'], stdout = 'ok\n'): TestResult => ({
-		id,
-		status,
-		stdout,
-		stderr: `err ${id}`
-	});
-	const batch = (tests: SubmitTest[], ...results: TestResult[]) => ({
-		tests,
-		result: { results } as ExecuteResult
-	});
-	const title = (id: string) => `Title of ${id}`;
-
-	const a = test('p/example/a');
-	const b = test('p/hidden/b', { kind: 'hidden' });
-	const c = test('p/hidden/c', { kind: 'hidden' });
-
-	it.each([
-		['every Test passes', [raw(a.id, 'ok'), raw(b.id, 'ok')], 'Accepted'],
-		['a wrong answer', [raw(a.id, 'ok'), raw(b.id, 'ok', 'no\n')], 'Wrong Answer'],
-		[
-			'a runtime error beats a wrong answer',
-			[raw(a.id, 'ok', 'no\n'), raw(b.id, 'runtimeError')],
-			'Runtime Error'
-		],
-		[
-			'a timeout beats a runtime error and a wrong answer',
-			[raw(a.id, 'ok', 'no\n'), raw(b.id, 'runtimeError'), raw(c.id, 'timeout')],
-			'Time Limit Exceeded'
-		]
-	])('across batches: %s', (_name, results, verdict) => {
-		const batches = [
-			batch([a], results[0]),
-			batch([b], results[1]),
-			...(results[2] ? [batch([c], results[2])] : [])
-		];
-
-		expect(judge(batches, 'p', title).verdict).toBe(verdict);
-	});
-
-	it('answers a compile error over every other outcome, with its message', () => {
-		const batches = [
-			batch([a], raw(a.id, 'timeout')),
-			{ tests: [b], result: { compileError: 'boom', results: [] } }
-		];
-
-		expect(judge(batches, 'p', title)).toEqual({
-			verdict: 'Compile Error',
-			failure: { kind: 'compile', message: 'boom' }
-		});
-	});
-
-	it('shows the first failing Test in run order', () => {
-		const first = batch([a], raw(a.id, 'ok', 'x'));
-		const second = batch([b], raw(b.id, 'ok', 'y'));
-
-		expect(judge([first, second], 'p', title)).toMatchObject({
-			failure: { kind: 'example', name: 'a', actual: 'x' }
-		});
-		expect(judge([second, first], 'p', title)).toMatchObject({
-			failure: { kind: 'hidden', problemId: 'p' }
-		});
-	});
-
-	it('picks the first Test with the winning outcome, not the first failure', () => {
-		const batches = [batch([a], raw(a.id, 'ok', 'wrong')), batch([b], raw(b.id, 'timeout'))];
-
-		expect(judge(batches, 'p', title).failure).toEqual({ kind: 'hidden', problemId: 'p' });
-	});
-
-	it.each([
-		[
-			'example',
-			test('p/example/a'),
-			{
-				kind: 'example',
-				name: 'a',
-				input: 'in p/example/a',
-				expected: 'ok\n',
-				actual: 'bad',
-				stderr: 'err p/example/a'
-			}
-		],
-		['hidden', test('p/hidden/b', { kind: 'hidden' }), { kind: 'hidden', problemId: 'p' }],
-		[
-			'earlierStep',
-			test('q/hidden/z', { problemId: 'q', kind: 'hidden' }),
-			{ kind: 'earlierStep', problemId: 'q', problemTitle: 'Title of q' }
-		],
-		[
-			'earlierStep for an earlier Example Test',
-			test('q/example/z', { problemId: 'q' }),
-			{ kind: 'earlierStep', problemId: 'q', problemTitle: 'Title of q' }
-		]
-	])('shows a %s failure as much as the Learner may see', (_name, failing, failure) => {
-		const verdict = judge([batch([failing], raw(failing.id, 'ok', 'bad'))], 'p', title);
-
-		expect(verdict.failure).toEqual(failure);
-	});
-
-	it('answers RunnerUnavailable when a result misses a Test', () => {
-		expect(() => judge([batch([a, b], raw(a.id, 'ok'))], 'p', title)).toThrow(
-			expect.objectContaining({ code: 'RunnerUnavailable' })
-		);
-	});
-});
-
 describe('Fixture rules', () => {
-	describe('submitPlan()', () => {
-		/** The fixture's Stacks with a middle Core Problem, a copy of stacks-pop, between push and pop. */
-		const withMiddle = () => {
-			const pop = catalogue.problem('stacks-pop');
-			const topic = catalogue.topic('stacks');
-			if (!pop || !topic) throw new Error('fixture changed');
-			const mainLine = ['stacks-push', 'stacks-mid', 'stacks-pop'];
-			return {
-				mainLinePlace: (id: string) =>
-					placeOf(
-						mainLine,
-						id,
-						catalogue.problem(id)?.kind === 'extra' ? 'stacks-push' : undefined
-					),
-				problem: (id: string) =>
-					id === 'stacks-mid'
-						? {
-								...pop,
-								id,
-								exampleTests: pop.exampleTests.map((t) => ({ ...t, id: `${id}/example/01` }))
-							}
-						: catalogue.problem(id),
-				hiddenTests: (id: string) =>
-					id === 'stacks-mid'
-						? catalogue.hiddenTests('stacks-pop')?.map((t) => ({ ...t, id: `${id}/hidden/01` }))
-						: id === 'stacks-peek'
-							? [
-									{
-										id: 'stacks-peek/hidden/01',
-										name: '01',
-										kind: 'hidden' as const,
-										input: 'in',
-										expected: 'out'
-									}
-								]
-							: catalogue.hiddenTests(id)
-			};
-		};
-		const ids = (tests: readonly SubmitTest[]) => tests.map((t) => t.id);
-
-		it.each([
-			[
-				'a first Core Problem',
-				'stacks-push',
-				1,
-				['stacks-push/example/01'],
-				[['stacks-push/hidden/01']]
-			],
-			[
-				'a middle Core Problem',
-				'stacks-mid',
-				1,
-				['stacks-mid/example/01'],
-				[['stacks-push/example/01'], ['stacks-push/hidden/01'], ['stacks-mid/hidden/01']]
-			],
-			[
-				'a last Core Problem, cut at 2',
-				'stacks-pop',
-				2,
-				['stacks-pop/example/01'],
-				[
-					['stacks-push/example/01', 'stacks-push/hidden/01'],
-					['stacks-mid/example/01', 'stacks-mid/hidden/01'],
-					['stacks-pop/hidden/01']
-				]
-			],
-			[
-				'an Extra, which runs up to its parent then itself',
-				'stacks-peek',
-				10,
-				['stacks-peek/example/01'],
-				[['stacks-push/example/01', 'stacks-push/hidden/01', 'stacks-peek/hidden/01']]
-			]
-		])('plans %s', (_name, problemId, size, visible, hidden) => {
-			const plan = submitPlan(withMiddle(), problemId, size);
-
-			expect(ids(plan.visible)).toEqual(visible);
-			expect(plan.hidden.map(ids)).toEqual(hidden);
-		});
-
-		it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-			'refuses a batch size of %s',
-			(size) => {
-				expect(() => submitPlan(catalogue, 'stacks-push', size)).toThrow(RangeError);
-			}
-		);
-
-		it('refuses an unknown Problem', () => {
-			expect(() => submitPlan(catalogue, 'nope', 5)).toThrow(
-				expect.objectContaining({ code: 'NotFound' })
-			);
-		});
-	});
-
 	describe('problemView()', () => {
 		const render = (markdown: string) => markdown;
 		const step = (files: Record<string, string>, revision = 1) => ({ files, revision });

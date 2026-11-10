@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
-import { judge, runSubmission, submitPlan } from '../learning/rules.ts';
+import { judge, runSubmission, submitPlan } from '../learning/submission.ts';
 import { sandboxConfig } from './config.ts';
 import { createEngine } from './engine.ts';
 import type { Language } from './port.ts';
