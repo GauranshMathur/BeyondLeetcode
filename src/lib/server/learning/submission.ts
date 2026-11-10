@@ -70,7 +70,7 @@ export async function judgeSubmission(input: SubmissionInput): Promise<Judgement
 }
 
 /** The Tests a Submission runs (see the leaf module); throws NotFound for an unknown Problem. */
-export function submitPlan(
+function submitPlan(
 	catalogue: SubmitCatalogue,
 	problemId: string,
 	maxBatchTests: number
@@ -102,7 +102,7 @@ function timedOut(tests: readonly SubmitTest[], result: ExecuteResult): boolean 
  * visible batch is the Verdict and stops the run; in a hidden batch it came from running Hidden
  * inputs, so it is not the Learner's to see: RunnerUnavailable.
  */
-export async function runSubmission(
+async function runSubmission(
 	plan: SubmitPlan,
 	execute: (tests: readonly SubmitTest[]) => Promise<ExecuteResult>
 ): Promise<{ tests: readonly SubmitTest[]; result: ExecuteResult }[]> {
@@ -128,7 +128,7 @@ export async function runSubmission(
  * Accepted; the failure shown is the first Test, in run order, with the winning outcome. A
  * Runner answer that misses a Test is a failed Runner (RunnerUnavailable).
  */
-export function judge(
+function judge(
 	batches: readonly { tests: readonly SubmitTest[]; result: ExecuteResult }[],
 	problemId: string,
 	titleOf: (problemId: string) => string
