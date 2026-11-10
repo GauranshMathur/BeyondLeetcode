@@ -680,13 +680,13 @@ describe('a provider sign-in that completes gives its start back', () => {
 		};
 	}
 
-	// 30 full sign-ins (start, callback, a new session) on a file database: it took 5192 ms
-	// on CI under vitest's default 5 s (#555), so the timeout is sized for 30 round trips.
+	// One person signs in 30 times: the throttle rule is about starts and callbacks from one address, and a
+	// sign-in of someone known writes only a session, where a new person also writes an Account and a Learner.
 	it('lets 30 sign-ins from one address each complete with a new session', async () => {
 		const { db, press, callback, next } = await world();
+		next();
 
 		for (let i = 0; i < 30; i++) {
-			next();
 			const start = await press();
 			expect(start.started, `start ${i + 1}`).toBe(true);
 			if (!start.started) return;
@@ -695,7 +695,7 @@ describe('a provider sign-in that completes gives its start back', () => {
 		}
 
 		expect(await db.session.count({ where: { user: { role: 'learner' } } })).toBe(30);
-	}, 30_000);
+	});
 
 	it('still refuses the 21st start when none completes a callback', async () => {
 		const { press } = await world();
