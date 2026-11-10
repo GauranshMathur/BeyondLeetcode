@@ -140,6 +140,36 @@ describe('OAuth providers', () => {
 });
 
 describe('Multi-user', () => {
+	it('can be chosen on a server without the test switch once the secret and origin are set, and signs the admin in through the app', async () => {
+		const { url } = await migratedDatabase();
+		const app = await boot(url, { BETTER_AUTH_SECRET: secret, ORIGIN: 'http://localhost:4174' });
+		expect(app.setup.multiUser).toEqual({ kind: 'open' });
+
+		const { headers } = await app.setup.createFirstAdmin(admin);
+
+		const cookie = headers
+			.getSetCookie()
+			.map((c) => c.split(';')[0])
+			.join('; ');
+		const answer = await app.identity.resolve({
+			cookies: { get: () => undefined },
+			request: { headers: new Headers({ cookie }) }
+		});
+		const who = answer.kind === 'resolved' ? answer.who : null;
+		expect(who).toMatchObject({ displayName: 'Ada', role: 'admin', learnerId: 'local' });
+	}, 30_000);
+
+	it('derives the auth origin from ORIGIN: http gives cookies a plain http browser keeps', async () => {
+		const { url } = await migratedDatabase();
+		const app = await bootMulti(url, { ORIGIN: 'http://192.168.1.20:3000/' });
+
+		const { headers } = await app.setup.createFirstAdmin(admin);
+
+		const [cookie] = headers.getSetCookie();
+		expect(cookie).toMatch(/^better-auth\.session_token=/);
+		expect(cookie).not.toMatch(/secure/i);
+	}, 30_000);
+
 	it('says what to add to .env on a server without the test switch and without a secret', async () => {
 		const { url } = await migratedDatabase();
 

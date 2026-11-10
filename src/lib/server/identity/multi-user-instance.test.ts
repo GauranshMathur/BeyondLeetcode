@@ -1,10 +1,51 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
+import { loadCatalogue } from '../content/catalogue.ts';
 import { createInstance } from '../instance.ts';
+import { createLearningCore } from '../learning/core.ts';
+import { createCatalogueScriptedRunner } from '../runner/scripted-catalogue.ts';
 import { createFileTestDb } from '../test-db.ts';
 import { enabledProviders } from './auth.ts';
 import { INVITE_COOKIE } from './invites.ts';
 import { createMultiUserInstance } from './multi-user-instance.ts';
 import { createFirstAdmin } from './setup.ts';
+import type { ProviderStarts } from './throttle.ts';
+
+const made = vi.hoisted(() => ({
+	starts: [] as ProviderStarts[],
+	auth: [] as unknown[],
+	accounts: [] as unknown[]
+}));
+vi.mock('./throttle.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./throttle.ts')>();
+	return {
+		...actual,
+		createProviderStarts: (...args: Parameters<typeof actual.createProviderStarts>) => {
+			const starts = actual.createProviderStarts(...args);
+			made.starts.push(starts);
+			return starts;
+		}
+	};
+});
+vi.mock('./auth.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./auth.ts')>();
+	return {
+		...actual,
+		createAuth: (options: Parameters<typeof actual.createAuth>[0]) => {
+			made.auth.push(options.providerStarts);
+			return actual.createAuth(options);
+		}
+	};
+});
+vi.mock('./account-actions.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./account-actions.ts')>();
+	return {
+		...actual,
+		createAccountActions: (options: Parameters<typeof actual.createAccountActions>[0]) => {
+			made.accounts.push(options.providerStarts);
+			return actual.createAccountActions(options);
+		}
+	};
+});
 
 const secret = 'a-test-secret-of-at-least-thirty-two-characters';
 const origin = 'http://localhost:4174';
@@ -131,12 +172,29 @@ describe('createMultiUserInstance', () => {
 		]);
 	});
 
-	it('gives every Instance its own provider starts', async () => {
-		const first = await boot();
-		const second = await boot();
+	it('gives every Instance its own provider starts, shared by Better Auth and the account actions', async () => {
+		made.starts.length = made.auth.length = made.accounts.length = 0;
+		const github = { GITHUB_CLIENT_ID: 'id', GITHUB_CLIENT_SECRET: 's' };
+		const first = await boot({ providerEnv: github });
+		await boot({ providerEnv: github });
+		const [one, two] = made.starts;
 
-		expect(first.multiUser.accounts).not.toBe(second.multiUser.accounts);
-		expect(first.multiUser.auth).not.toBe(second.multiUser.auth);
+		await first.multiUser.accounts.startProvider({
+			provider: 'github',
+			next: '/',
+			address: '1.1.1.1'
+		});
+
+		expect(made.starts).toHaveLength(2);
+		expect(one?.size()).toBe(1);
+		expect(two?.size()).toBe(0);
+		// A refund through the object Better Auth's callback hook was given reaches the start the account
+		// actions recorded: both were handed the one object of this Instance.
+		expect(made.auth[0]).toBe(one);
+		expect(made.accounts[0]).toBe(one);
+		expect(made.auth[1]).toBe(two);
+		expect(made.accounts[1]).toBe(two);
+		expect(made.auth[0]).not.toBe(made.auth[1]);
 	});
 });
 
@@ -171,6 +229,14 @@ describe('the startup repair of Accounts and Learners', () => {
 
 		expect(await learnerIds(first.db)).toEqual(['local', 'no-row']);
 		expect(await first.db.chapterRead.count()).toBe(0);
+		// The created Learner is writable now.
+		const catalogue = await loadCatalogue('src/lib/server/content/fixture');
+		const core = createLearningCore({
+			catalogue,
+			db: first.db,
+			runner: createCatalogueScriptedRunner(catalogue)
+		});
+		await core.forLearner('no-row').reachChapterEnd('stacks-undo-log');
 		const said = warn.mock.calls.flat().join('\n');
 		expect(said).toContain('1 missing Learner(s) created, 1 orphan Learner(s) removed');
 		expect(said).not.toMatch(/no-row|orphan\b(?!\s+Learner)|lin@|u2/);
@@ -203,9 +269,11 @@ describe('the startup repair of Accounts and Learners', () => {
 		await session('inert', adminUser.id, 'an-older-generation');
 		await session('oauth-only', 'oauth', '');
 		const warn = silenced();
+		const before = await db.session.count({ where: { id: 'inert' } });
 
 		await restart(first);
 
+		expect(before).toBe(1);
 		const left = (await db.session.findMany()).map((r) => r.id);
 		expect(left).toContain('valid');
 		expect(left).toContain('oauth-only');
