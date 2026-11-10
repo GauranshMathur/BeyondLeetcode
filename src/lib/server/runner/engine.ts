@@ -5,6 +5,7 @@
 import { type ClientRequest, request } from 'node:http';
 import { connect } from 'node:net';
 import { engineCallTimeoutMs } from './config';
+import { deadline } from './container';
 
 export type ContainerSpec = Record<string, unknown>;
 
@@ -91,23 +92,31 @@ export class ImageMissingError extends Error {
  * anything the request emits afterwards (a late 'error', a late response) lands on a settled guard.
  */
 function guard(req: ClientRequest, ms: number, what: string, reject: (error: Error) => void) {
-	let timer: ReturnType<typeof setTimeout> | undefined;
+	let release: (() => void) | undefined;
 	let expired = false;
+	function clear(): void {
+		release?.();
+		release = undefined;
+	}
 	function arm(): void {
-		clearTimeout(timer);
+		clear();
 		if (expired) return;
-		timer = setTimeout(() => {
-			expired = true;
-			reject(new Error(`${what} timed out`));
-			req.destroy();
-		}, ms);
+		// The deadline's timer ends when `release` settles this promise, or rejects at `ms`.
+		const cleared = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		deadline(ms)
+			.bound(cleared, `${what} timed out`)
+			.catch((error: Error) => {
+				expired = true;
+				reject(error);
+				req.destroy();
+			});
 	}
 	return {
 		/** (Re)starts the clock: the first call sets an absolute deadline, a later one makes it an idle timeout. */
 		arm,
-		clear(): void {
-			clearTimeout(timer);
-		},
+		clear,
 		/** True once the deadline has fired: a reply that arrives after it is discarded. */
 		get expired(): boolean {
 			return expired;
@@ -433,26 +442,21 @@ export function createEngine(
 		async remove(id: string): Promise<boolean> {
 			// Encoded: the argument is an id or a name, and never decides the path.
 			const ref = encodeURIComponent(id);
-			// Monotonic: a host clock that steps back must not stretch the deadline.
-			const deadline = performance.now() + callTimeoutMs;
+			const end = deadline(callTimeoutMs);
 			const reply = await call('DELETE', `/containers/${ref}?force=true&v=true`);
 			if (reply.status === 409 && /already in progress/.test(reply.body)) {
 				// The daemon is already removing it (AutoRemove): wait until it is gone.
 				// One overall deadline from the start of the remove (the call timeout), so a daemon that never finishes cannot hold
 				// the caller, or a late-remove slot, for 50 polls of a full call timeout each.
-				while (deadline - performance.now() > minPollMs) {
-					const left = deadline - performance.now();
+				while (end.left() > minPollMs) {
+					const left = end.left();
 					try {
 						if ((await call('GET', `/containers/${ref}/json`, undefined, left)).status === 404)
 							return true;
 					} catch (error) {
 						// A poll cut short by the deadline is the deadline (its timer can fire a hair early);
 						// any other failure stands.
-						if (
-							performance.now() < deadline &&
-							!/timed out/.test(String((error as Error)?.message))
-						)
-							throw error;
+						if (end.left() > 0 && !/timed out/.test(String((error as Error)?.message))) throw error;
 						break;
 					}
 					await new Promise((resolve) => setTimeout(resolve, Math.min(100, left)));
