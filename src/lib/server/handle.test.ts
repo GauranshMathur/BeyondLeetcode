@@ -180,12 +180,11 @@ describe('Multi-user Mode', () => {
 		expect(locals.multiUser).toMatchObject({
 			auth: expect.anything(),
 			accounts: expect.anything(),
-			invites: expect.anything(),
-			deleteLearner: expect.any(Function)
+			adminActions: expect.anything(),
+			invites: expect.anything()
 		});
 		expect(locals).not.toHaveProperty('auth');
 		expect(locals).not.toHaveProperty('invites');
-		expect(locals).not.toHaveProperty('deleteLearner');
 
 		const local = await setup({ local: true });
 		const asked = request('/', '/');

@@ -122,17 +122,6 @@ describe('createMultiUserInstance', () => {
 		expect(await booted.db.learner.findMany()).toEqual([expect.objectContaining({ id: 'local' })]);
 	});
 
-	it('wires the Learner remover to this database, for removing an Account', async () => {
-		const { db, multiUser } = await boot();
-		await db.learner.create({ data: { id: 'gone' } });
-		await db.chapterRead.create({ data: { learnerId: 'gone', chapterId: 'c' } });
-
-		await multiUser.deleteLearner('gone');
-
-		expect(await db.learner.count({ where: { id: 'gone' } })).toBe(0);
-		expect(await db.chapterRead.count({ where: { learnerId: 'gone' } })).toBe(0);
-	});
-
 	it('lets an Invite create exactly one learner Account through the wired auth, and refuses a second use', async () => {
 		const booted = await boot();
 		const cookie = await chooseAdmin(booted);
