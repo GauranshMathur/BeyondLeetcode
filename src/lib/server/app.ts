@@ -18,12 +18,6 @@ import { createCatalogueScriptedRunner } from './runner/scripted-catalogue.ts';
 /** Whether Setup can offer Multi-user on this server, and if not, why. */
 export type MultiUserChoice =
 	| { kind: 'open' }
-	/**
-	 * Never produced since C32: every Instance with what Better Auth needs is `open`. Only still named
-	 * because test stubs outside Setup's files (`signup-gate.test.ts`, `users.test.ts`) build one; delete
-	 * the variant, and the handling of it in Setup, once they stop.
-	 */
-	| { kind: 'later' }
 	/** `message` says what to add to `.env`. */
 	| { kind: 'needs-env'; message: string };
 

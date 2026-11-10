@@ -1,81 +1,24 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { ResolveOptions } from '@sveltejs/kit/hooks';
 import { describe, expect, it, vi } from 'vitest';
-import type { App } from '#lib/server/app.js';
 import type { Db } from '#lib/server/db.js';
-import { createHandle } from '#lib/server/handle.js';
-import { createAccountActions } from '#lib/server/identity/account-actions.js';
-import { createIdentity, createLocalIdentity } from '#lib/server/identity/index.js';
-import { createInvites } from '#lib/server/identity/invites.js';
-import { createMultiUserIdentity } from '#lib/server/identity/multi-user.js';
-import { createRegistration } from '#lib/server/identity/registration.js';
-import { createFirstAdmin } from '#lib/server/identity/setup.js';
-import { createTestAuth } from '#lib/server/identity/test-auth.js';
-import { createProviderStarts } from '#lib/server/identity/throttle.js';
-import { createInstance, RegistrationNotAvailableError } from '#lib/server/instance.js';
-import { deleteLearner } from '#lib/server/learning/progress.js';
-import { createFileTestDb } from '#lib/server/test-db.js';
+import type { createHandle } from '#lib/server/handle.js';
+import { createTestInstance } from '#lib/server/identity/test-auth.js';
+import { RegistrationNotAvailableError } from '#lib/server/instance.js';
 import { load as signupLoad } from '../signup/+page.server';
 import { actions, load } from './+page.server';
 
 // The Users page, through the real hook and the real Better Auth: who is let in, and what they see.
 
 const password = 'correct horse battery staple';
-const cookieOf = (headers: Headers) =>
-	headers
-		.getSetCookie()
-		.map((c) => c.split(';')[0])
-		.join('; ');
 
 async function setup() {
-	let open = false;
-	let registration!: ReturnType<typeof createRegistration>;
-	const {
-		auth,
-		db,
-		signUp: signUpAccount
-	} = await createTestAuth({ admit: (attempt) => (open ? {} : registration(attempt)) });
-	const instance = await createInstance(db);
-	registration = createRegistration({ instance });
-	const { headers } = await createFirstAdmin(
-		{ instance, auth, db },
-		{ name: 'Ada Admin', email: 'ada@example.com', password }
-	);
-	const admin = cookieOf(headers);
-
-	async function learner(name: string, email: string) {
-		open = true;
-		const { cookie } = await signUpAccount({ name, email, password });
-		open = false;
-		return cookie;
-	}
-
-	const invites = createInvites({ db, origin: 'http://localhost:3000' });
-	const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-	const setupPort = { multiUser: { kind: 'open' }, createFirstAdmin: vi.fn() } as App['setup'];
-	const multiUser = {
-		auth,
-		accounts: createAccountActions({
-			auth,
-			providerStarts: createProviderStarts(),
-			registrationOpen: () => instance.registrationMode() === 'open',
-			inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
-		}),
-		invites,
-		deleteLearner: (id: string) => deleteLearner(db, id)
-	};
-	const handle = createHandle({
-		instance,
-		identity: createIdentity({
-			instance,
-			local: await createLocalIdentity(db),
-			multi: createMultiUserIdentity(auth)
-		}),
-		core,
-		multiUser,
-		setup: setupPort
-	});
-	return { db, auth, instance, admin, learner, handle, invites, multiUser };
+	const t = await createTestInstance();
+	const { cookie: admin } = await t.admin({ name: 'Ada Admin', password });
+	const learner = async (name: string, email: string) =>
+		(await t.learner({ name, email, password })).cookie;
+	const { db, auth, instance, handle, multiUser } = t;
+	return { db, auth, instance, admin, learner, handle, invites: multiUser.invites, multiUser };
 }
 
 /** Runs one request through the hook; the page's load runs where SvelteKit would run it. */
@@ -212,19 +155,8 @@ describe('the Users page in Multi-user Mode', () => {
 
 describe('the Users page in Local Mode', () => {
 	it('does not exist: 404 for the Local Learner, whatever they are', async () => {
-		const db = await createFileTestDb();
-		const instance = await createInstance(db);
-		await instance.chooseLocal();
-		const identity = await createLocalIdentity(db);
-		await identity.ensureLocalLearner();
-		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-		const handle = createHandle({
-			instance,
-			identity: createIdentity({ instance, local: identity, multi: null }),
-			core,
-			multiUser: null,
-			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']
-		});
+		const { chooseLocal, handle } = await createTestInstance();
+		await chooseLocal();
 
 		const { response, resolve } = await visit(handle, '/users', '');
 
@@ -384,19 +316,8 @@ describe('the Registration switch', () => {
 	});
 
 	it('does not exist in Local Mode: 404 for the Local Learner, who is an admin there, and nothing changes', async () => {
-		const db = await createFileTestDb();
-		const instance = await createInstance(db);
-		await instance.chooseLocal();
-		const identity = await createLocalIdentity(db);
-		await identity.ensureLocalLearner();
-		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-		const handle = createHandle({
-			instance,
-			identity: createIdentity({ instance, local: identity, multi: null }),
-			core,
-			multiUser: null,
-			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']
-		});
+		const { db, instance, handle, chooseLocal } = await createTestInstance();
+		await chooseLocal();
 
 		const { response, resolve } = await submit(handle, '', { registration: 'open' });
 
@@ -606,19 +527,8 @@ describe('Invites on the Users page', () => {
 	);
 
 	it.each(['invite', 'cancel'] as const)('%s: does not exist in Local Mode', async (name) => {
-		const db = await createFileTestDb();
-		const instance = await createInstance(db);
-		await instance.chooseLocal();
-		const identity = await createLocalIdentity(db);
-		await identity.ensureLocalLearner();
-		const core = { forLearner: (learnerId: string) => ({ learnerId }) } as unknown as App['core'];
-		const handle = createHandle({
-			instance,
-			identity: createIdentity({ instance, local: identity, multi: null }),
-			core,
-			multiUser: null,
-			setup: { multiUser: { kind: 'later' }, createFirstAdmin: vi.fn() } as App['setup']
-		});
+		const { db, handle, chooseLocal } = await createTestInstance();
+		await chooseLocal();
 
 		const { response, resolve } = await post(handle, '', name, { id: 'x' });
 
