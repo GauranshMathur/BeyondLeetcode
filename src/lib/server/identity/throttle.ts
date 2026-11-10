@@ -381,6 +381,3 @@ export const createProviderStarts = ({
 		size: () => started.size
 	};
 };
-
-/** The one set of provider starts of this process: the Sign in page and the auth callback share it. */
-export const providerStarts = createProviderStarts();

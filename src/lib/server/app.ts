@@ -1,23 +1,16 @@
 import { type Catalogue, loadCatalogue } from './content/catalogue.ts';
-import { createDb, type Db } from './db.ts';
-import { type AccountActions, createAccountActions } from './identity/account-actions.ts';
-import { type Auth, createAuth, socialProvidersFrom } from './identity/auth.ts';
+import { createDb } from './db.ts';
 import { createIdentity, createLocalIdentity, type InstanceIdentity } from './identity/index.ts';
-import { createInvites, type Invites } from './identity/invites.ts';
-import { createMultiUserIdentity, repairLearners } from './identity/multi-user.ts';
+import { createMultiUserInstance, type MultiUser } from './identity/multi-user-instance.ts';
 import { parseOrigin } from './identity/origin.ts';
-import { createRegistration } from './identity/registration.ts';
 import { MIN_SECRET_LENGTH, secretProblem } from './identity/secret.ts';
-import { sweepStaleSessions } from './identity/session-binding.ts';
 import {
 	createFirstAdmin,
 	type FirstAdminInput,
 	MultiUserNotAvailableError
 } from './identity/setup.ts';
-import { providerStarts } from './identity/throttle.ts';
 import { createInstance, type Instance } from './instance.ts';
 import { createLearningCore, type LearningCore } from './learning/core.ts';
-import { deleteLearner } from './learning/progress.ts';
 import { createHttpRunner } from './runner/http-adapter.ts';
 import type { RunnerPort } from './runner/port.ts';
 import { createCatalogueScriptedRunner } from './runner/scripted-catalogue.ts';
@@ -41,18 +34,7 @@ export interface Setup {
 	createFirstAdmin(input: FirstAdminInput): Promise<{ headers: Headers }>;
 }
 
-/** Better Auth, the account actions, Invites and the Learner removal: what the Multi-user routes use. */
-export interface MultiUser {
-	auth: Auth;
-	/**
-	 * Sign in, sign up, change password and sign out, built once so each form's throttle is the process's.
-	 * Always set by `createApp`.
-	 */
-	accounts: AccountActions;
-	invites: Invites;
-	/** `deleteLearner` of the progress module, bound to the database. */
-	deleteLearner: (learnerId: string) => Promise<void>;
-}
+export type { MultiUser };
 
 export interface App {
 	core: LearningCore;
@@ -103,8 +85,7 @@ export async function createApp(env: {
 	const runner = chooseRunner(env, catalogue);
 	const db = createDb(env.DATABASE_URL);
 	const instance = await createInstance(db);
-	const auth = buildAuth(env, db, instance);
-	const multiUser = auth.kind === 'built' ? chooseMultiUser(auth) : null;
+	const auth = multiUserEnvironment(env);
 	if (instance.mode() === 'multi') {
 		// The test cookie is read only by the Local adapter, which a multi-user Instance never consults;
 		// refuse the combination anyway. The browser tests' Multi-user server boots empty and becomes multi.
@@ -116,16 +97,11 @@ export async function createApp(env: {
 		if (auth.kind === 'missing') {
 			throw new Error(`This Instance is Multi-user, but ${auth.message}`);
 		}
-		// Before any request: no sign-up or removal is in flight, so the repair cannot race one.
-		const { created, removed } = await repairLearners(db);
-		if (created > 0 || removed > 0) {
-			console.warn(
-				`Multi-user startup repair: ${created} missing Learner(s) created, ${removed} orphan Learner(s) removed.`
-			);
-		}
-		const swept = await sweepStaleSessions(db);
-		if (swept > 0) console.warn(`Multi-user startup repair: ${swept} unusable session(s) removed.`);
 	}
+	// Built once per process; on a multi-user Instance this also runs the start-up repair.
+	const multi =
+		auth.kind === 'ready' ? await createMultiUserInstance({ db, instance, ...auth.options }) : null;
+	const multiUser = multi?.multiUser ?? null;
 	const local = await createLocalIdentity(db, {
 		testLearnerCookie: env.IDENTITY_TEST_LEARNER === '1'
 	});
@@ -142,16 +118,16 @@ export async function createApp(env: {
 		identity: createIdentity({
 			instance,
 			local,
-			multi: multiUser ? createMultiUserIdentity(multiUser.auth) : null
+			multi: multi?.resolver ?? null
 		}),
 		multiUser,
 		setup: {
 			multiUser: choice(auth),
 			async createFirstAdmin(input) {
-				if (auth.kind !== 'built') {
+				if (!multiUser) {
 					throw new MultiUserNotAvailableError();
 				}
-				return createFirstAdmin({ instance, auth: auth.auth, db }, input);
+				return createFirstAdmin({ instance, auth: multiUser.auth, db }, input);
 			}
 		},
 		core: createLearningCore({ catalogue, db, runner })
@@ -167,7 +143,7 @@ export async function createApp(env: {
  * environment that misses a variable would let it through.
  *
  * BETTER_AUTH_URL, PUBLIC_BETTER_AUTH_URL and BASE_URL are not on the list: Better Auth reads them
- * only when no base URL is passed, and `buildAuth` always passes ORIGIN. AUTH_SECRET is read only
+ * only when no base URL is passed, and the factory always gets ORIGIN. AUTH_SECRET is read only
  * when no secret is passed. BETTER_AUTH_TELEMETRY does not touch the secret, the origin or the cookies.
  */
 const AUTH_ENV_OVERRIDES: Record<string, string> = {
@@ -184,27 +160,25 @@ function refuseAuthEnvOverrides(): void {
 	}
 }
 
-type BuiltAuth =
+type MultiUserEnvironment =
 	| {
-			kind: 'built';
-			auth: Auth;
-			accounts: AccountActions;
-			invites: Invites;
-			deleteLearner: (learnerId: string) => Promise<void>;
+			kind: 'ready';
+			options: Pick<
+				Parameters<typeof createMultiUserInstance>[0],
+				'secret' | 'origin' | 'providerEnv'
+			>;
 	  }
 	| { kind: 'missing'; message: string };
 
 /**
- * Better Auth, when the secret is set and long enough and ORIGIN is a real http(s) URL. Never with an
- * empty origin: in the image that gives Secure cookies a plain-http browser drops. ORIGIN is the only
- * source: PROTOCOL_HEADER and HOST_HEADER name a different origin per request, which a cookie's Secure
- * flag and Better Auth's origin check cannot follow.
+ * What Multi-user needs from the environment, when the secret is set and long enough and ORIGIN is a
+ * real http(s) URL. Never with an empty origin: in the image that gives Secure cookies a plain-http
+ * browser drops. ORIGIN is the only source: PROTOCOL_HEADER and HOST_HEADER name a different origin per
+ * request, which a cookie's Secure flag and Better Auth's origin check cannot follow.
  */
-function buildAuth(
-	env: { BETTER_AUTH_SECRET?: string; ORIGIN?: string } & Record<string, string | undefined>,
-	db: Db,
-	instance: Instance
-): BuiltAuth {
+function multiUserEnvironment(
+	env: { BETTER_AUTH_SECRET?: string; ORIGIN?: string } & Record<string, string | undefined>
+): MultiUserEnvironment {
 	const secret = env.BETTER_AUTH_SECRET ?? '';
 	const problem = secretProblem(secret);
 	if (problem === 'missing') {
@@ -235,30 +209,7 @@ function buildAuth(
 				'Multi-user needs ORIGIN, the public URL of this Instance (for example https://learn.example.com), in your .env; PROTOCOL_HEADER and HOST_HEADER are not enough. Then restart.'
 		};
 	}
-	// Invite links name the same ORIGIN the cookies and the origin check use. The one Invites module
-	// serves the Users page and, through the gate and the claim, sign-up.
-	const invites = createInvites({ db, origin });
-	const auth = createAuth({
-		db,
-		origin,
-		secret,
-		admitSignUp: createRegistration({ instance, invites }),
-		socialProviders: socialProvidersFrom(providerEnvironment(env)),
-		claimInvite: (token, now) => invites.claim(token, now),
-		providerStarts
-	});
-	return {
-		kind: 'built',
-		invites,
-		deleteLearner: (learnerId) => deleteLearner(db, learnerId),
-		auth,
-		accounts: createAccountActions({
-			auth,
-			providerStarts,
-			registrationOpen: () => instance.registrationMode() === 'open',
-			inviteValid: async (token) => (await invites.lookup(token, new Date())) !== null
-		})
-	};
+	return { kind: 'ready', options: { secret, origin, providerEnv: providerEnvironment(env) } };
 }
 
 /**
@@ -280,16 +231,9 @@ function providerEnvironment(
 	return out;
 }
 
-const chooseMultiUser = (built: Extract<BuiltAuth, { kind: 'built' }>): MultiUser => ({
-	auth: built.auth,
-	accounts: built.accounts,
-	invites: built.invites,
-	deleteLearner: built.deleteLearner
-});
-
 /** Multi-user is open to every Instance that has what Better Auth needs; otherwise Setup says what to add. */
-function choice(auth: BuiltAuth): MultiUserChoice {
-	return auth.kind === 'built' ? { kind: 'open' } : { kind: 'needs-env', message: auth.message };
+function choice(auth: MultiUserEnvironment): MultiUserChoice {
+	return auth.kind === 'ready' ? { kind: 'open' } : { kind: 'needs-env', message: auth.message };
 }
 
 /** The HTTP adapter unless RUNNER_ADAPTER=scripted, which only the e2e server may turn on. */
