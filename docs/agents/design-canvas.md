@@ -43,7 +43,7 @@ Every light artboard declares `theme` and `accent` props and reads every color f
 ```js
 tokens(theme, accent) {
 var d = theme === 'dark';
-var acc = { vermilion: ['#B4421F', '#E0704A'], blue: ['#1F4E8C', '#7FA8E0'], green: ['#2F6B3A', '#7DB88A'] }[accent] || ['#B4421F', '#E0704A'];
+var acc = { vermilion: ['#AE3F1D', '#E0704A'], blue: ['#1F4E8C', '#7FA8E0'], green: ['#2F6B3A', '#7DB88A'] }[accent] || ['#AE3F1D', '#E0704A'];
 return { paper: d ? '#171512' : '#F3EEE4', panel: d ? '#211E1A' : '#ECE5D8', field: d ? '#1C1915' : '#FBF8F2', ink: d ? '#ECE5D8' : '#1C1A17', body: d ? '#CFC6B8' : '#3A352E', muted: d ? '#A89F92' : '#5B5348', rule: d ? '#3A352E' : '#D9CFBE', onInk: d ? '#171512' : '#F3EEE4', accent: acc[d ? 1 : 0] };
 }
 renderVals() {
