@@ -223,7 +223,7 @@ export function createSessionBinding(db: Db) {
 /**
  * Deletes the sessions that can never resolve: those whose credential generation is not their user's current
  * one (a sign-in that lost a race with a password write and could not remove its own row, a session whose
- * deletion failed, or one the C58 migration marked as superseded). One statement, so nothing lands between the
+ * deletion failed, or one the migration to credential generations marked as superseded). One statement, so nothing lands between the
  * check and the delete; a user without a password Account has generation "", and so do their sessions, which
  * are kept. Run at startup of a Multi-user Instance, next to `repairLearners`. Returns the count only.
  */

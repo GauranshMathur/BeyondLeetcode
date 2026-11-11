@@ -342,7 +342,7 @@ describe('Runner adapter', () => {
 			IDENTITY_TEST_LEARNER: '1'
 		});
 
-		// Progress needs its Learner's row (C56); the web server's identity makes it, the test makes it here.
+		// Progress needs its Learner's row; the web server's identity makes it, the test makes it here.
 		const db = createDb(DATABASE_URL);
 		onTestFinished(() => db.$disconnect());
 		await db.learner.create({ data: { id: 'someone' } });

@@ -20,7 +20,7 @@ export interface Instance {
 	/** Sets the Instance up as Local. Throws if it is already set up; never overwrites. */
 	chooseLocal(): Promise<void>;
 	/**
-	 * Makes the Instance multi: creates the row when there is none, or converts a Local one (C39), which
+	 * Makes the Instance multi: creates the row when there is none, or converts a Local one, which
 	 * takes effect in this process at once and only if the stored mode is `local` and no Account exists,
 	 * checked in the one statement that writes it. Throws if it is already multi or the conversion is
 	 * refused. The result's `undo` puts it back as it was (Local stays Local, never unset), for a setup that fails.
@@ -194,7 +194,7 @@ export async function createInstance(db: Db): Promise<Instance> {
  * (the row is gone). So once a User exists no clear can happen. It does not cover Setup's own two steps:
  * `createFirstAdmin` claims the mode and then inserts the User, and a clear landing between them leaves an
  * admin Account on a not-set-up Instance (after a restart Setup's Local choice does not check Accounts, and
- * Setup cannot make a new admin). Follow-up card C54. A sign-up that a still-running server lets through
+ * Setup cannot make a new admin). A sign-up that a still-running server lets through
  * after the clear is another case, which is why the command tells the owner to restart straight away.
  */
 export async function clearEmptyMultiInstance(db: Db): Promise<boolean> {
@@ -206,7 +206,7 @@ export async function clearEmptyMultiInstance(db: Db): Promise<boolean> {
 /**
  * For the `reset-admin-password` command: stores mode multi when an Account with role exactly `admin`
  * exists and no mode is stored, the state a clear that landed between Setup's mode claim and its User
- * insert leaves behind (C54). One statement holds both conditions, as in `clearEmptyMultiInstance`.
+ * insert leaves behind. One statement holds both conditions, as in `clearEmptyMultiInstance`.
  * Returns whether it restored; false changes nothing. The running server caches the mode, so it needs a restart.
  */
 export async function restoreMultiInstance(db: Db): Promise<boolean> {

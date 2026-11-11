@@ -10,7 +10,7 @@ import { createInstance } from '../../lib/server/instance.ts';
 // own database file from the test process, with a second Better Auth instance built from the server's own
 // settings, and make the Accounts and sessions with that. The server then sees ordinary rows and ordinary
 // signed cookies. Finding the file needs the server's environment, which only /proc has: a fixed path in
-// playwright.config.ts would replace that (see the PR for C34a).
+// playwright.config.ts would replace that.
 
 const MULTI_PORT = '4174';
 

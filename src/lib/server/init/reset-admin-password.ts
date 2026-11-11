@@ -78,7 +78,7 @@ export async function runResetAdminPassword(
 
 	let restored = false;
 	try {
-		// An admin Account with no stored mode (a clear that landed during Setup, C54): store multi again
+		// An admin Account with no stored mode (a clear that landed during Setup): store multi again
 		// first, so a failed reset below still leaves the Instance usable. Narrow and atomic, see instance.ts.
 		restored = await restoreMultiInstance(db);
 		const reset = await resetAdminPassword(auth);

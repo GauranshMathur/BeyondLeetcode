@@ -60,7 +60,7 @@ export async function createLocalIdentity(
 		resolve: async ({ cookies }) => {
 			const asked = options.testLearnerCookie ? cookies.get(TEST_LEARNER_COOKIE) : undefined;
 			if (asked && TEST_LEARNER_ID.test(asked)) {
-				// The database refuses progress for a Learner with no row (C56), so the e2e Learner gets one.
+				// The database refuses progress for a Learner with no row, so the e2e Learner gets one.
 				await db.learner.upsert({ where: { id: asked }, update: {}, create: { id: asked } });
 				return { learnerId: asked, displayName: 'Local', role: 'learner' };
 			}

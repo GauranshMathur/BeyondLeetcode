@@ -89,7 +89,7 @@ test.describe('a link clicked while the Chapter is being marked Read', () => {
 	});
 });
 
-// C47: the Chapter below 768 px. The fixture Chapters carry no code, table or margin note, so the
+// The Chapter below 768 px. The fixture Chapters carry no code, table or margin note, so the
 // document is served with a code block and a table added to the body, built by renderMarkdown, so the test checks
 // what the server sends; the rest is the real page.
 test.describe('the Chapter on a phone', () => {
@@ -185,7 +185,7 @@ test.describe('the Chapter on a phone', () => {
 	});
 });
 
-// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
+// Tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
 test.describe('the Chapter on a phone, as a flow', () => {
 	test.use({ storageState: asLearner('e2e-chapter-flow') });
 

@@ -74,7 +74,7 @@ for (const form of forms) {
 	});
 }
 
-// C169 (#325, option 2): what a visitor types before the page has hydrated is still there afterwards. The
+// What a visitor types before the page has hydrated is still there afterwards. The
 // page's `/_app/` scripts are held back until every field is typed into, then let load.
 
 type Field = { label: string; value: string };

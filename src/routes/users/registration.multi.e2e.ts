@@ -9,7 +9,7 @@ import {
 } from './multi-fixture.ts';
 import { OWN_SERVER_ADMIN, startMultiUserServer } from './multi-server.ts';
 
-// The Registration section of the Users page (C34b).
+// The Registration section of the Users page.
 //
 // Every test here runs on a Multi-user server of its own (multi-server.ts): same build, fresh database,
 // one running server from start to finish. Not on the shared one (4174): files run in parallel there,

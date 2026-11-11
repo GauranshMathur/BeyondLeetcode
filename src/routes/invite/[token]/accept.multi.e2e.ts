@@ -7,7 +7,7 @@ import {
 } from '../../users/multi-fixture.ts';
 import { OWN_SERVER_ADMIN, startMultiUserServer } from '../../users/multi-server.ts';
 
-// The Accept invite page (C35b). On a Multi-user server of its own (fresh database, invite-only), so the
+// The Accept invite page. On a Multi-user server of its own (fresh database, invite-only), so the
 // Accounts and Invites made here are seen by no other file.
 
 type Own = ServerTarget & { url: string };

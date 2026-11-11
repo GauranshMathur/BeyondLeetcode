@@ -300,7 +300,7 @@ base.describe('Sign in on a phone, on an Instance with GitHub and Google', () =>
 });
 
 onOpen.describe('a user who must change their password', () => {
-	// C36a sets the flag and C36b adds /account/password; until then the 404 page is where they are sent.
+	// A user whose password must change is sent to /account/password and held there.
 	// The flag is set on the own server's database, between two requests, as an admin's reset would.
 	onOpen(
 		'is held to that page: no page, no load data, and no Settings data through the sign-out exception',
@@ -513,22 +513,19 @@ base.describe('the shared Multi-user server', () => {
 		expect(response.headers()['set-cookie']).toBeUndefined();
 	});
 
-	base(
-		'serves only the provider callback, sign-up and sign-out of Better Auth over HTTP',
-		async ({ request }) => {
-			const headers = { origin: 'http://localhost:4174' };
+	base('serves only the provider callback of Better Auth over HTTP', async ({ request }) => {
+		const headers = { origin: 'http://localhost:4174' };
 
-			for (const path of ['/get-session', '/list-sessions', '/ok', '/callback']) {
-				const response = await request.get(`/api/auth${path}`, { headers, maxRedirects: 0 });
-				expect(response.status(), path).toBe(404);
-			}
-			// A provider's redirect back is passed on to Better Auth; with no provider configured it answers
-			// with a redirect carrying an error, never the route's own 404.
-			const callback = await request.get('/api/auth/callback/github', { headers, maxRedirects: 0 });
-			expect(callback.status()).toBe(302);
-			expect(callback.headers().location).toContain('error=');
+		for (const path of ['/get-session', '/list-sessions', '/ok', '/callback']) {
+			const response = await request.get(`/api/auth${path}`, { headers, maxRedirects: 0 });
+			expect(response.status(), path).toBe(404);
 		}
-	);
+		// A provider's redirect back is passed on to Better Auth; with no provider configured it answers
+		// with a redirect carrying an error, never the route's own 404.
+		const callback = await request.get('/api/auth/callback/github', { headers, maxRedirects: 0 });
+		expect(callback.status()).toBe(302);
+		expect(callback.headers().location).toContain('error=');
+	});
 
 	base(
 		'gives the admin Users, their name and Sign out in the nav, in that order',
@@ -588,7 +585,7 @@ base.describe('a fresh Instance started like a released one, with no test switch
 	);
 });
 
-// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts). It uses the
+// Tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts). It uses the
 // Multi-user server on 4174 and its admin, like the tests above; the project depends on "setup-multi" for that.
 base.describe('Sign in on a phone, as a flow', () => {
 	base(

@@ -20,7 +20,7 @@ export interface FirstAdminInput {
 	email: string;
 	password: string;
 	/**
-	 * The caller is converting a Local Instance (C39): only then may a stored `local` mode be claimed.
+	 * The caller is converting a Local Instance: only then may a stored `local` mode be claimed.
 	 * Set by the Setup route from `?convert`; left out, a Local Instance is refused as before.
 	 */
 	convert?: boolean;
@@ -72,11 +72,10 @@ function validate({ name, email, password }: Pick<FirstAdminInput, 'name' | 'ema
  * (so Local progress carries over). Returns the sign-up response's headers: their `Set-Cookie`
  * signs the admin in.
  *
- * Only an Instance with no stored mode can be claimed, or a Local one when `input.convert` says so
- * (C39). One that is multi (with Accounts or without), or that has any Account, is refused
+ * Only an Instance with no stored mode can be claimed, or a Local one when `input.convert` says so. One that is multi (with Accounts or without), or that has any Account, is refused
  * (InstanceAlreadySetUpError). The check is made inside the lock, so it cannot race another call or a
  * Local choice; the Local conversion also checks the stored mode and the Accounts in the statement that
- * writes it (see `chooseMulti`). Getting back into a multi Instance with no Accounts is C42's. If
+ * writes it (see `chooseMulti`). Getting back into a multi Instance with no Accounts is the reset command's job. If
  * sign-up fails after the claim, the half-made Account is removed (never the Learner or its progress)
  * and the Instance is put back as it was: not set up, or Local when it was converted. If that cleanup
  * fails too, the error is logged and the Instance stays multi (closed).
@@ -88,7 +87,7 @@ export async function createFirstAdmin(
 	validate(input);
 	return exclusively(async () => {
 		// Before the claim, so an Instance that has Accounts but no stored mode (the state the reset command
-		// repairs, C54) never gets a mode row that this call would take away again: a reset landing in
+		// repairs) never gets a mode row that this call would take away again: a reset landing in
 		// between would see the row, skip its restore, and be undone by the rollback below.
 		if ((await db.user.count()) > 0) throw new InstanceAlreadySetUpError();
 		const claim = await claimInstance(instance, input.convert === true);

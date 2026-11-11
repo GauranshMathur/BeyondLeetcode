@@ -1,6 +1,6 @@
 /**
  * Run under Bun (`bun run test:bun`), not vitest: vitest runs under Node, where a destroyed request
- * emits 'error'. On Bun 1.2.19, the production runtime, `req.destroy(err)` does not (#284), so a call
+ * emits 'error'. On Bun 1.2.19, the production runtime, `req.destroy(err)` does not, so a call
  * that relied on it never settled. This script holds the engine to its call timeout on the real runtime.
  */
 import { mkdtempSync, rmSync } from 'node:fs';

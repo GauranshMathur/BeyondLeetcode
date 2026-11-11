@@ -40,7 +40,7 @@ test('a fresh Instance shows Setup everywhere; Multi-user needs the admin form, 
 	await gotoHydrated(page, '/setup');
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Set up this instance.');
 
-	// C172 (#325, option 2): the page's `/_app/` scripts are held back, so Continue is a plain POST and the
+	// The page's `/_app/` scripts are held back, so Continue is a plain POST and the
 	// admin form arrives without them. What is typed into the name and email before hydration is still there
 	// once the scripts load.
 	let release: () => void = () => {};
@@ -135,7 +135,7 @@ test('Better Auth serves only a few endpoints over HTTP, not a password sign-in,
 	expect(signIn.status()).toBe(404);
 	expect(signIn.headers()['set-cookie']).toBeUndefined();
 
-	// Only the provider callback, sign-up and sign-out are served: an endpoint outside that list answers 404, and
+	// Only the provider callback is served (sign-up and sign-out are closed over HTTP): an endpoint outside that list answers 404, and
 	// every answer, that one too, refuses framing.
 	const session = await request.get('/api/auth/get-session', { headers });
 	expect(session.status()).toBe(404);

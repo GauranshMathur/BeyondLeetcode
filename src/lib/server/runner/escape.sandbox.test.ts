@@ -577,10 +577,10 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
 		expect(elapsedMs).toBeLessThan(designBoundMs);
 		// The container's own life: the hard stop plus one remove attempt. Past this, the container
-		// outlived the first forced remove (#435). CI's runs so far all ended before the hard stop
+		// outlived the first forced remove. CI's runs so far all ended before the hard stop
 		// (the kernel ended PID 1, exit 137), so this guards the hard-stop path without measuring it.
 		expect(lifetimeMs).toBeLessThan(sandboxConfig.containerTimeoutMs + removeAttemptTimeoutMs);
-		// The other reading of #435: the container died promptly and the daemon removed it slowly.
+		// The other way the teardown can run long: the container died promptly and the daemon removed it slowly.
 		expect(times?.destroyMs).toBeDefined();
 		expect(times?.destroyMs).toBeLessThan(
 			sandboxConfig.containerTimeoutMs + removeAttemptTimeoutMs + destroySlackMs

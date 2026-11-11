@@ -23,7 +23,7 @@ export function createMultiUserIdentity(auth: Auth): IdentityResolver {
 }
 
 /**
- * Brings Accounts and Learners back in step, at startup of a Multi-user Instance (C57). Two single
+ * Brings Accounts and Learners back in step, at startup of a Multi-user Instance. Two single
  * statements, so no write can land between a check and its repair: a Learner is created for any
  * User whose learnerId names none (Better Auth dropped its sign-up hook), and any Learner no User
  * references is deleted, its progress with it by the foreign keys (a removal whose deleteLearner

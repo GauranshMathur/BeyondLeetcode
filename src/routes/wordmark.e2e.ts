@@ -6,7 +6,7 @@ import { gotoHydrated } from '../lib/test/hydrated.ts';
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-wordmark') });
 
-// C173: where the wordmark reads "BLC" its name starts with that text and says where it goes (WCAG 2.5.3).
+// Where the wordmark reads "BLC" its name starts with that text and says where it goes (WCAG 2.5.3).
 test.describe('on a phone', () => {
 	test.use({ ...phone });
 
