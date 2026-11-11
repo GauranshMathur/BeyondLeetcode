@@ -138,6 +138,80 @@ Release `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams`, version
 - Sprint 19 does not start until the maintainer answers the wontfix proposals for the open `architecture` issues (2026-11-10).
 - The orchestrator cuts 1.19.5 from release PR #554 (`docs/releasing.md`) and records the cut. Releases stay `1.x`.
 
+**Status (2026-11-11):** exit met.
+- **Cards:** all 30 Sprint 18 cards are Done. The exit line says 29: C346 joined after the line was written, when C342's review found an arm64 gap (#598).
+- **Issues:** 16 closed, each by its last card: #512, #513, #518, #521, #555, #556, #557, #558, #559, #563, #564, #591, #592, #593, #594 and #598. #581 stays open (C240 did its auth-route item; the rest waits for the maintainer's wontfix answer). Two issues were filed during the sprint: #598, fixed by C346, and #616 (`needs-triage`).
+- **CI:** `ci` is green on `main` at 293b8d9, the last code card's merge.
+- **Checks:**
+  - C342's verdict is on #592. `grep -rnE '(//|#|\*).*(\bC[0-9]{2,3}[a-z]?\b|#[0-9]{2,3}\b)' src --include=*.ts --include=*.svelte --include=*.py` prints nothing. The 30-sign-in test (`sign-in.test.ts`) declares no timeout of its own and runs in about 0.7 s.
+  - `rules.ts` has no `runSubmission`, `judge` or `submitPlan` export, and `content-check.sandbox.test.ts` imports `judgeSubmission` from `learning/submission.ts`, nothing from `rules.ts`.
+  - `catalogue.ts` names neither `LONGEST_LANGUAGE_ID` nor `FILE_JSON_OVERHEAD`. `sandbox.ts` names none of `TextDecoder`, `harnessLine`, `removeCreatedByName` or `function within`.
+  - `submission.test.ts` and `core.test.ts` script a cut-off and get RunnerUnavailable, the answer chosen for #556.
+  - ci's `e2e` job neither pulls an image nor runs `build-sandbox-images.sh`, and the Dockerfile names no single file under `src/lib/server/identity/`.
+  - `grep -rn "kind: 'later'\|multiUser\.auth" src` prints nothing. `grep -rln "createAccountActions(" src` lists the three files the exit line names and also `multi-user-instance.test.ts`: there it is a `vi.mock` wrapper that records the factory's options and calls the real one, not a second place that builds the actions. Accepted (C234).
+  - `auth-handler.test.ts` shows every Better Auth endpoint outside the allowlist answering 404. After C244 and C245 the allowlist is `/callback/:id` alone, and `/sign-out` and `/sign-up/email` are in `disabledPaths` too.
+- **Release:** this card's merge carries `Release-As: 1.19.5`. The orchestrator then cuts 1.19.5 from release PR #554 and records the cut in `docs/releasing.md`.
+- **Reviews:**
+  - **`sandbox-security-reviewer`** before merge on C223, C225, C229, C231, C233, C235, C237, C239, C343, C345 and C346, and C342 itself reviewed C222's seccomp filter (aae47f5). C342 found the arm64 gap that became #598 and C346.
+  - **The orchestrator's two-reader review** (Fable and Codex) on C230, C232, C236, C238, C240, C242, C244 and C245. C244 and C245 each went back once: C244 to put `/sign-out` in `disabledPaths` as well; C245 for two tests that had stopped covering what they named (the router's error path, and the headers of a refused sign-up).
+- **Flakes:** three, none caused by a card. C228's first `sandbox` run hit the known fork-bomb overrun (one re-run). Release PR #554's `sandbox` run hit a Docker kill stall on the runner (one re-run). #606's `unit` run hit an EPIPE from `engine.test.ts`'s trickling fake daemon; C237 fixed it.
+
+| Card | PR | What landed |
+|---|---|---|
+| C223 | #585 | One module, `learning/submission.ts`, judges a Submission; `submit-plan.ts` builds each batch's Runner request. |
+| C224 | #584 | The 30-sign-in test got a longer timeout. The maintainer rejected it; C344 replaced it. |
+| C225 | #588 | `harness.ts` decodes the harness transcript, one decoder per stream. A duplicate `i` fails the Run. |
+| C226 | #586 | ci's e2e job stops pulling and building Sandbox images. |
+| C227 | #589 | `core.test.ts`'s batch and Verdict tests move to the Submission module. |
+| C228 | #587 | The Dockerfile copies the server source whole. |
+| C229 | #597 | A result marks the Tests the container cut off. |
+| C230 | #590 | One factory builds the Multi-user Instance. |
+| C231 | #596 | The content check judges through the Submission module. |
+| C232 | #600 | The Identity test harness is the factory's test variant. |
+| C233 | #608 | The catalogue's batch guard measures the Submission module's requests through the HTTP adapter's body size. |
+| C234 | #603 | Every route test runs the factory's wiring. |
+| C235 | #606 | One module, `runner/container.ts`, runs a container. |
+| C236 | #607 | One Admin actions object. |
+| C237 | #610 | The Engine's deadlines use the container module's primitive, in a leaf `deadline.ts`. |
+| C238 | #609 | The Users route calls the Admin actions. |
+| C239 | #613 | The sandbox test helpers run containers through the container module and decode with the Runner's decoder. |
+| C240 | #612 | The auth route gets a bound handler, and Locals holds no Better Auth. |
+| C241 | #611 | A batch the container cut off is RunnerUnavailable. |
+| C242 | #614 | The auth route serves an allowlist; every other Better Auth path answers 404 first. |
+| C243 | #602 | The Problem screen reads once what the Learner may do now. |
+| C244 | #615 | `/sign-out` is closed over HTTP, at the allowlist and in `disabledPaths`; OAuth callback errors land on Sign in. |
+| C245 | #617 | `/sign-up/email` is closed over HTTP; `beforeSignUp` and its rate rule go; `user.create.before` is the one backstop. |
+| C246 | this PR | Exit check and `Release-As: 1.19.5`; the Admin refactor goes on the candidates list. |
+| C341 | #595 | Issues are the unit of work, the planner runs on Fable, small cards share a PR, exited sprints move to the archive. |
+| C342 | none | `sandbox-security-reviewer` on C222's seccomp filter; verdict on #592. It found the arm64 gap (#598). |
+| C343 | #604 | `engine.ts`'s remove poll gets a test. |
+| C344 | #605 | The 30-sign-in test signs the same person in 30 times and runs under the default timeout. |
+| C345 | #618 | Code comments give reasons, not card or issue ids. |
+| C346 | #599 | The seccomp filter refuses `ptrace`, closing the arm64 gap. |
+
+Decided along the way. Each decision was taken under the maintainer's rule to take the recommended option, and is recorded on its card and issue:
+- **#556:** a batch the container cut off is RunnerUnavailable, in Run and in Submit (C241). Open trade-off, noted on #556: Learner code that forces a cut-off now gets RunnerUnavailable instead of Time Limit Exceeded.
+- **#558:** `/sign-out` and `/sign-up/email` are closed over HTTP (C244, C245). Sign out is Settings' `?/signout` action; sign-up is the forms. `onAPIError.errorURL` is `/signin`, so an OAuth callback error before the state is read lands on Sign in.
+- **#521:** a duplicate `i` fails the Run (C225).
+- **C224 then C344:** the maintainer rejected a longer timeout for the 30-sign-in test; C344 made it fast.
+- **C232:** the factory refuses `passwordHasher` and `admit` overrides in production.
+- **Files lines widened by the orchestrator:** C240 (seven files the bound handler reached), C242 (`setup.multi.e2e.ts`, which now expects 404 for `/get-session`), C244 (`handle.test.ts`, `auth.test.ts`), C245 (`signout.test.ts`), C246 (`docs/architecture-candidates.md`).
+
+Not carded, recorded here:
+- The Admin error classes stay exported, and the free `listAccounts`, `resetPassword` and `removeAccount` have no role check of their own; making them private behind the Admin actions is a refactor, so it is on `docs/architecture-candidates.md` (C238's review).
+- `setup/+page.svelte` keeps a fallback text no state reaches (C232's review).
+- `content-check.sandbox.test.ts` does not assert that `languages` is non-empty (C231's review).
+- A stdout line with no newline is rescanned on each frame (`harness.ts`), bounded by the 32 MiB cap and the wall clock; only a compromised harness reaches it (C225's review).
+- A must-change Account's sign-out with the real Better Auth is covered by e2e only (C244's review).
+- `sandbox.ts`'s comment says the seccomp filter refuses `prlimit64` on `RLIMIT_CORE`; it refuses only a call that sets a new limit, and a read is allowed (C345's review).
+
+For the maintainer:
+- **`.wontfix-proposals.md`:** 28 `architecture` issues proposed for wontfix. Sprint 19 does not start until you answer.
+- **#535:** the Tailscale OAuth client, and a GitHub App or RELEASE_PAT (C220, C221, C340).
+- **#529:** axe is a new dependency, a hard call.
+- **#616:** triage (narrow-screen Sign out for an Account that must change its password).
+- **GitGuardian:** 39252375, 39260283 and 39899211 are false positives only you can mark.
+
 **Not in the sprint:**
 - **#556's larger step**, where the Runner owns how many Tests fit a container and the core sends isolation groups: speculative, size L, and it touches `maxSubmitCalls` and the adapter-timeout arithmetic. It is not planned, and #566 (the budget module where it would start) is proposed for wontfix.
 - **#570**, the release webhook's shared notify script: card C340, with no Sprint. It edits `notify.yml` and `release.yml`, as C220 and C221 do, so it goes after them. C220 and C221 stay Todo with no Sprint, waiting on the maintainer's answer to #535.
