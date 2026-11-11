@@ -2,6 +2,7 @@
 import { reportIssueUrl } from '#lib/issue-link.js';
 import ProblemTable from '#lib/problems/ProblemTable.svelte';
 import { enhance, type SubmitFunction } from '$app/forms';
+import { invalidateAll } from '$app/navigation';
 import { navigating } from '$app/state';
 import type { PageProps } from './$types';
 
@@ -9,12 +10,13 @@ let { data }: PageProps = $props();
 const chapter = $derived(data.chapter);
 
 // A failed save must not replace the Chapter with an error page; reopening the Chapter retries.
-// update() re-runs the load, which would cancel a link the Learner clicked meanwhile; that link
-// loads the next page fresh anyway, so skip the re-run then.
+// Re-running the load would cancel a link the Learner clicked meanwhile; that link loads the next
+// page fresh anyway, so skip the re-run then. The action's result is not applied (update() would),
+// because applying it moves focus to the top of the page, away from a link the Learner has reached.
 const saveRead: SubmitFunction =
 	() =>
-	async ({ result, update }) => {
-		if (result.type === 'success' && !navigating.to) await update();
+	async ({ result }) => {
+		if (result.type === 'success' && !navigating.to) await invalidateAll();
 	};
 
 let endForm = $state<HTMLFormElement>();
