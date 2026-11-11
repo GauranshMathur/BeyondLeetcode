@@ -1,8 +1,5 @@
 # BeyondLeetcode, written by `docker run <image> init`. Settings come from the .env next to this file.
 # Start: docker compose up -d. Stop: docker compose down (add -v to delete the database volume too).
-#
-# Until the Runner pulls its own sandbox image (card C4d), pull it once on this machine:
-#   docker pull python:3.13-slim
 
 services:
   web:
@@ -52,6 +49,8 @@ services:
     command: runner
     environment:
       RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env}
+      # Empty keeps the default, one run per CPU.
+      RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}
     volumes:
       # The only container with the engine socket. It runs learner code in sandboxes.
       - /var/run/docker.sock:/var/run/docker.sock
