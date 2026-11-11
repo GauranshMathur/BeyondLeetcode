@@ -506,7 +506,7 @@ describe('createFirstAdmin', () => {
 		expect(await db.instance.count()).toBe(0);
 	});
 
-	it('refuses a real sign-up made while the first-admin scope is live, over HTTP and auth.api', async () => {
+	it('refuses a real sign-up made while the first-admin scope is live', async () => {
 		let gate: AdmitSignUp = () => null;
 		let release: () => void = () => {};
 		const latch = new Promise<void>((resolve) => {
@@ -526,41 +526,27 @@ describe('createFirstAdmin', () => {
 		const instance = await createInstance(db);
 		gate = createRegistration({ instance });
 		const eve = { name: 'Eve', email: 'eve@example.com', password: 'correct horse battery' };
-		const http = auth.handler(
-			new Request('http://localhost:3000/api/auth/sign-up/email', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
-				body: JSON.stringify(eve)
-			})
-		);
-		const direct = auth.api.signUpEmail({ body: { ...eve, email: 'eve2@example.com' } });
+		const other = auth.api.signUpEmail({ body: eve });
+		const another = auth.api.signUpEmail({ body: { ...eve, email: 'eve2@example.com' } });
 
-		const [first, httpRes, directRes] = await Promise.allSettled([
+		const [first, otherRes, anotherRes] = await Promise.allSettled([
 			createFirstAdmin({ instance, auth, db }, admin),
-			http,
-			direct
+			other,
+			another
 		]);
 
 		expect(first.status).toBe('fulfilled');
-		expect(httpRes.status === 'fulfilled' && httpRes.value.status).toBe(403);
-		expect(directRes.status).toBe('rejected');
+		expect(otherRes).toMatchObject({ status: 'rejected', reason: { statusCode: 403 } });
+		expect(anotherRes).toMatchObject({ status: 'rejected', reason: { statusCode: 403 } });
 		expect((await db.user.findMany()).map((u) => u.email)).toEqual([admin.email]);
 	});
 
-	it('leaves a plain sign-up refused afterwards, over HTTP and through auth.api', async () => {
+	it('leaves a plain sign-up refused afterwards', async () => {
 		const { db, auth, instance } = await setup();
 		await createFirstAdmin({ instance, auth, db }, admin);
 		const other = { name: 'Eve', email: 'eve@example.com', password: 'correct horse battery' };
 
 		await expect(auth.api.signUpEmail({ body: other })).rejects.toMatchObject({ statusCode: 403 });
-		const res = await auth.handler(
-			new Request('http://localhost:3000/api/auth/sign-up/email', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
-				body: JSON.stringify(other)
-			})
-		);
-		expect(res.status).toBe(403);
 		expect(await db.user.count()).toBe(1);
 	});
 });

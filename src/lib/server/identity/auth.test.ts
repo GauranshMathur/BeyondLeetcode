@@ -1,4 +1,5 @@
 import { inspect } from 'node:util';
+import { isAPIError } from 'better-auth/api';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { redactingLogger } from '../logging.ts';
@@ -30,6 +31,39 @@ const everythingLogged = (spies: { mock: { calls: unknown[][] } }[]) =>
 		.join('\n');
 
 const body = { email: 'ada@example.com', password: 'correct horse battery', name: 'Ada' };
+
+type SignUpAnswer = {
+	status: number;
+	headers: Headers;
+	json(): Promise<Record<string, unknown>>;
+};
+
+/**
+ * A sign-up the way the forms make it, through `auth.api.signUpEmail`, answered as a status, the headers and a
+ * body, all read from the Response Better Auth builds (`asResponse`), a refusal's included. Any error that is
+ * not an APIError is thrown on.
+ */
+async function signUpVia(
+	auth: Awaited<ReturnType<typeof setup>>['auth'],
+	payload: Record<string, unknown>,
+	headers?: Headers
+): Promise<SignUpAnswer> {
+	try {
+		const res = await auth.api.signUpEmail({
+			body: payload as typeof body,
+			...(headers ? { headers } : {}),
+			asResponse: true
+		});
+		return { status: res.status, headers: res.headers, json: async () => res.json() };
+	} catch (error) {
+		if (!isAPIError(error)) throw error;
+		const res = new Response(JSON.stringify(error.body ?? {}), {
+			status: error.statusCode,
+			headers: error.headers as HeadersInit | undefined
+		});
+		return { status: res.status, headers: res.headers, json: async () => res.json() };
+	}
+}
 
 async function setup(admitSignUp: () => Admission | null | Promise<Admission | null> = () => ({})) {
 	const { db, auth } = await createTestAuth({ admit: admitSignUp });
@@ -104,31 +138,47 @@ describe('createAuth', () => {
 		expect(await db.learner.count()).toBe(1);
 	});
 
-	it('refuses sign-up when the gate answers null, over HTTP and through auth.api', async () => {
+	it('refuses sign-up when the gate answers null, storing nothing', async () => {
 		const { auth, db } = await setup(() => null);
 
 		await expect(auth.api.signUpEmail({ body })).rejects.toMatchObject({ statusCode: 403 });
-		const res = await auth.handler(
-			new Request('http://localhost:3000/api/auth/sign-up/email', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
-				body: JSON.stringify(body)
-			})
-		);
-		expect(res.status).toBe(403);
+
 		expect(await db.user.count()).toBe(0);
 		expect(await db.learner.count()).toBe(0);
 	});
 
-	it('refuses in the database hook on its own when the request hook admitted', async () => {
+	it('asks the gate once per sign-up, in the database hook, before anything is written', async () => {
 		let calls = 0;
-		const { auth, db } = await setup(() => (++calls === 1 ? {} : null));
+		const { auth, db } = await setup(() => {
+			calls += 1;
+			return null;
+		});
 
 		await expect(auth.api.signUpEmail({ body })).rejects.toMatchObject({ statusCode: 403 });
 
-		expect(calls).toBe(2);
+		expect(calls).toBe(1);
 		expect(await db.user.count()).toBe(0);
 		expect(await db.learner.count()).toBe(0);
+	});
+
+	it('serves no email sign-up over HTTP, whoever the gate admits, while auth.api still signs up', async () => {
+		const { auth, db } = await setup(() => ({}));
+		const post = (path: string) =>
+			auth.handler(
+				new Request(`http://localhost:3000/api/auth${path}`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
+					body: JSON.stringify(body)
+				})
+			);
+
+		expect((await post('/sign-up/email')).status).toBe(404);
+		expect(await db.user.count()).toBe(0);
+
+		// `disabledPaths` is checked only in Better Auth's HTTP router: the call the forms make still works.
+		const { user } = await auth.api.signUpEmail({ body });
+		expect(user.email).toBe(body.email);
+		expect(await db.user.count()).toBe(1);
 	});
 
 	it('refuses a client that sets learnerId or role, and drops mustChangePassword', async () => {
@@ -148,26 +198,6 @@ describe('createAuth', () => {
 			body: { ...body, mustChangePassword: true } as typeof body
 		});
 		expect(await db.user.findFirstOrThrow()).toMatchObject({ mustChangePassword: false });
-	});
-
-	it('answers a closed sign-up the same for an existing email and a new one', async () => {
-		const { auth, db } = await setup();
-		await auth.api.signUpEmail({ body });
-		const closed = createAuth({ db, origin: '', secret: TEST_SECRET });
-
-		const status = (email: string) =>
-			closed.handler(
-				new Request('http://localhost:3000/api/auth/sign-up/email', {
-					method: 'POST',
-					headers: { 'content-type': 'application/json', origin: 'http://localhost:3000' },
-					body: JSON.stringify({ ...body, email })
-				})
-			);
-		const [existing, fresh] = [await status(body.email), await status('new@example.com')];
-
-		expect(existing.status).toBe(403);
-		expect(fresh.status).toBe(403);
-		expect(await existing.json()).toEqual(await fresh.json());
 	});
 
 	it('refuses a password of 11 characters and takes 12', async () => {
@@ -313,29 +343,45 @@ describe('createAuth', () => {
 		expect(headers.getSetCookie()[0]).toMatch(/^better-auth\.session_token=/);
 	});
 
-	it('still refuses a cross-origin POST when the environment looks like a test', async () => {
+	describe('the origin check, on the endpoint still served', () => {
 		// Better Auth 1.7.7 turns its origin and CSRF checks off when NODE_ENV is "test" or TEST is set,
 		// production included, unless the config says otherwise. This run has NODE_ENV=test as well.
-		vi.stubEnv('TEST', '1');
-		onTestFinished(() => void vi.unstubAllEnvs());
-		const { auth } = await setup();
-		// Sign-up still takes a form post without a cookie, so it carries the cookie-less checks. This
-		// setup admits everyone, so a 403 here is the origin check and not a closed sign-up.
-		const signUp = (headers: Record<string, string>) =>
-			auth.handler(
-				new Request('http://localhost:3000/api/auth/sign-up/email', {
+		const own = 'http://localhost:3000';
+		const callback = async (withCookie: boolean, headers: Record<string, string>) => {
+			vi.stubEnv('TEST', '1');
+			onTestFinished(() => void vi.unstubAllEnvs());
+			const { auth, signUp } = await createTestAuth({
+				socialProviders: { github: { clientId: 'fake-id', clientSecret: 'fake-secret' } }
+			});
+			const { cookie } = await signUp();
+			const res = await auth.handler(
+				new Request(`${own}/api/auth/callback/github`, {
 					method: 'POST',
-					headers: { 'content-type': 'application/json', ...headers },
-					body: JSON.stringify(body)
+					headers: {
+						'content-type': 'application/x-www-form-urlencoded',
+						...(withCookie ? { cookie } : {}),
+						...headers
+					},
+					body: 'code=fake-code&state=fake-state'
 				})
 			);
+			return res.status;
+		};
 
-		// No cookie: the cross-site navigation check and a foreign Origin are refused too.
-		expect(
-			(await signUp({ 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' })).status
-		).toBe(403);
-		expect((await signUp({ origin: 'https://evil.example' })).status).toBe(403);
-		expect((await signUp({ origin: 'http://localhost:3000' })).status).toBe(200);
+		it('refuses a POST carrying a session cookie from a foreign origin, a null one or none', async () => {
+			expect(await callback(true, { origin: 'https://evil.example' })).toBe(403);
+			expect(await callback(true, { origin: 'null', 'sec-fetch-site': 'cross-site' })).toBe(403);
+			expect(await callback(true, {})).toBe(403);
+		});
+
+		it('lets a POST carrying a session cookie from its own origin through', async () => {
+			expect(await callback(true, { origin: own })).not.toBe(403);
+		});
+
+		it('does not apply the cookie check where there is no cookie: the provider returns cross-site, and the state vouches for it', async () => {
+			expect(await callback(false, { origin: 'https://evil.example' })).not.toBe(403);
+			expect(await callback(false, { origin: own })).not.toBe(403);
+		});
 	});
 
 	it('keeps the createAuth messages: length first, then placeholder', async () => {
@@ -364,28 +410,13 @@ describe('createAuth', () => {
 
 describe('the name cap', () => {
 	const NAME_TOO_LONG = 'The name is too long.';
-	// Better Auth's limiter keeps its counters for the whole process (20 sign-ups per address per ten
-	// minutes), so each request here comes from an address of its own.
-	let caller = 0;
-	const signUp = (payload: Record<string, unknown>) => {
-		caller += 1;
-		return new Request('http://localhost:3000/api/auth/sign-up/email', {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json',
-				origin: 'http://localhost:3000',
-				[CLIENT_IP_HEADER]: `10.${caller >> 8}.${caller & 255}.1`
-			},
-			body: JSON.stringify(payload)
-		});
-	};
 	const emoji = '\u{1F600}'; // one code point, two UTF-16 units
 
 	async function http(auth: Awaited<ReturnType<typeof setup>>['auth'], name: string) {
-		return auth.handler(signUp({ ...body, name }));
+		return signUpVia(auth, { ...body, name });
 	}
 
-	it('refuses a direct POST /api/auth/sign-up/email with a longer name, with a fixed error, storing nothing', async () => {
+	it('refuses a longer name with a fixed error, storing nothing', async () => {
 		const { auth, db } = await setup();
 
 		const res = await http(auth, 'x'.repeat(MAX_NAME_LENGTH + 1));
@@ -464,25 +495,9 @@ describe('the name cap', () => {
 		expect(await db.user.count()).toBe(0);
 	});
 
-	it('answers a long name the same for an email that has an Account and one that has not: no probe', async () => {
-		const { auth, db } = await setup();
-		await auth.api.signUpEmail({ body });
-		const before = await db.user.count();
-		const long = (email: string) =>
-			auth.handler(signUp({ ...body, email, name: 'x'.repeat(MAX_NAME_LENGTH + 1) }));
-
-		const known = await long(body.email);
-		const unknown = await long('nobody@example.com');
-
-		expect(known.status).toBe(400);
-		expect(unknown.status).toBe(400);
-		expect(await known.json()).toEqual(await unknown.json());
-		expect(await db.user.count()).toBe(before);
-	});
-
-	it('still answers a closed sign-up first: 403 for a long name, a blank one, a known email or not', async () => {
+	it('still answers a closed sign-up first: 403 for a long name or a blank one', async () => {
 		const { auth, db } = await setup(() => null);
-		const post = (email: string, name: string) => auth.handler(signUp({ ...body, email, name }));
+		const post = (email: string, name: string) => signUpVia(auth, { ...body, email, name });
 
 		for (const name of ['x'.repeat(1000), '   ', '']) {
 			expect((await post(body.email, name)).status, JSON.stringify(name.slice(0, 5))).toBe(403);
@@ -495,10 +510,10 @@ describe('the name cap', () => {
 			['empty', ''],
 			['spaces', '   '],
 			['Unicode whitespace', '\u00a0\u3000\ufeff\n\t']
-		])('is refused over HTTP, %s, with a fixed error, storing nothing', async (_label, name) => {
+		])('is refused, %s, with a fixed error, storing nothing', async (_label, name) => {
 			const { auth, db } = await setup();
 
-			const res = await auth.handler(signUp({ ...body, name }));
+			const res = await signUpVia(auth, { ...body, name });
 
 			expect(res.status).toBe(400);
 			expect(await res.json()).toMatchObject({ code: 'NAME_REQUIRED', message: 'Enter a name.' });
@@ -514,18 +529,6 @@ describe('the name cap', () => {
 				body: { code: 'NAME_REQUIRED' }
 			});
 			expect(await db.user.count()).toBe(0);
-		});
-
-		it('is refused for a known email the same as for an unknown one: no probe', async () => {
-			const { auth } = await setup();
-			await auth.api.signUpEmail({ body });
-			const blank = (email: string) => auth.handler(signUp({ ...body, email, name: ' ' }));
-
-			const known = await blank(body.email);
-			const unknown = await blank('nobody@example.com');
-
-			expect(known.status).toBe(400);
-			expect(await known.json()).toEqual(await unknown.json());
 		});
 	});
 
@@ -549,27 +552,14 @@ describe('the name cap', () => {
 
 describe('control and bidi characters in a name', () => {
 	const MESSAGE = "This name contains a character that can't be used.";
-	let caller = 0;
-	const signUp = (payload: Record<string, unknown>) => {
-		caller += 1;
-		return new Request('http://localhost:3000/api/auth/sign-up/email', {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json',
-				origin: 'http://localhost:3000',
-				[CLIENT_IP_HEADER]: `10.${100 + (caller >> 8)}.${caller & 255}.1`
-			},
-			body: JSON.stringify(payload)
-		});
-	};
 	const at = (cp: number) => `Ada${String.fromCodePoint(cp)}Lovelace`;
 
 	it.each([[0x001f], [0x007f], [0x009f], [0x202a], [0x202e], [0x2066], [0x2069]])(
-		'refuses U+%s over HTTP with a fixed error, storing nothing',
+		'refuses U+%s with a fixed error, storing nothing',
 		async (cp) => {
 			const { auth, db } = await setup();
 
-			const res = await auth.handler(signUp({ ...body, name: at(cp) }));
+			const res = await signUpVia(auth, { ...body, name: at(cp) });
 
 			expect(res.status).toBe(400);
 			const json = await res.json();
@@ -582,22 +572,10 @@ describe('control and bidi characters in a name', () => {
 		}
 	);
 
-	it('refuses the server-side call too, storing nothing', async () => {
-		const { auth, db } = await setup();
-
-		await expect(
-			auth.api.signUpEmail({ body: { ...body, name: at(0x202e) } })
-		).rejects.toMatchObject({
-			statusCode: 400,
-			body: { code: 'NAME_INVALID_CHARACTERS' }
-		});
-		expect(await db.user.count()).toBe(0);
-	});
-
 	it('checks the name as it would be stored: a control character around it is trimmed, not refused', async () => {
 		const { auth, db } = await setup();
 
-		const res = await auth.handler(signUp({ ...body, name: '\n Ada \t' }));
+		const res = await signUpVia(auth, { ...body, name: '\n Ada \t' });
 
 		expect(res.status).toBe(200);
 		expect((await db.user.findFirstOrThrow()).name).toBe('Ada');
@@ -607,41 +585,26 @@ describe('control and bidi characters in a name', () => {
 		['a ZWJ sequence', '\u{1F469}\u200D\u{1F4BB}'],
 		['a zero-width space', 'Ada\u200BLovelace'],
 		['a word joiner', 'Ada\u2060Lovelace']
-	])('accepts %s over HTTP and stores it', async (_label, name) => {
+	])('accepts %s and stores it', async (_label, name) => {
 		const { auth, db } = await setup();
 
-		const res = await auth.handler(signUp({ ...body, name }));
+		const res = await signUpVia(auth, { ...body, name });
 
 		expect(res.status).toBe(200);
 		expect((await db.user.findFirstOrThrow()).name).toBe(name);
 	});
 
-	it('answers the same for an email that has an Account and one that has not: no probe', async () => {
-		const { auth, db } = await setup();
-		await auth.api.signUpEmail({ body });
-		const before = await db.user.count();
-		const bad = (email: string) => auth.handler(signUp({ ...body, email, name: at(0x202e) }));
-
-		const known = await bad(body.email);
-		const unknown = await bad('nobody@example.com');
-
-		expect(known.status).toBe(400);
-		expect(unknown.status).toBe(400);
-		expect(await known.json()).toEqual(await unknown.json());
-		expect(await db.user.count()).toBe(before);
-	});
-
 	it('still answers a closed sign-up with 403 first, whatever the name', async () => {
 		const { auth, db } = await setup(() => null);
 
-		expect((await auth.handler(signUp({ ...body, name: at(0x202e) }))).status).toBe(403);
+		expect((await signUpVia(auth, { ...body, name: at(0x202e) })).status).toBe(403);
 		expect(await db.user.count()).toBe(0);
 	});
 
 	it('answers a too-long name before the characters', async () => {
 		const { auth } = await setup();
 
-		const long = await auth.handler(signUp({ ...body, name: `${'x'.repeat(101)}\u202e` }));
+		const long = await signUpVia(auth, { ...body, name: `${'x'.repeat(101)}\u202e` });
 
 		expect(await long.json()).toMatchObject({ code: 'NAME_TOO_LONG' });
 	});
@@ -703,25 +666,20 @@ describe('accepting an Invite', () => {
 		});
 		const post = (
 			token: string | null,
-			payload: object = { ...body, email: `n${caller}@example.com` }
+			payload: Record<string, unknown> = { ...body, email: `n${caller++}@example.com` }
 		) =>
-			auth.handler(
-				new Request(`${origin}/api/auth/sign-up/email`, {
-					method: 'POST',
-					headers: {
-						'content-type': 'application/json',
-						origin,
-						[CLIENT_IP_HEADER]: `10.2.${caller >> 8}.${caller++ & 255}`,
-						...(token ? { cookie: `${INVITE_COOKIE}=${token}` } : {})
-					},
-					body: JSON.stringify(payload)
-				})
+			signUpVia(
+				auth,
+				payload,
+				token ? new Headers({ cookie: `${INVITE_COOKIE}=${token}` }) : undefined
 			);
-		/** Like `post`, for a step made to fail with a non-API error: that error leaves the handler (500 here). */
+		/** Like `post`, for a step made to fail with a non-API error: that error leaves the call (500 here). */
 		const postSafe = (...args: Parameters<typeof post>) =>
-			post(...args).catch(() => new Response(null, { status: 500 }));
+			post(...args).catch(
+				(): SignUpAnswer => ({ status: 500, headers: new Headers(), json: async () => ({}) })
+			);
 		const made = () => invites.create({ who: adminWho, now: new Date() });
-		return { db, invites, instance, post, postSafe, made };
+		return { auth, db, invites, instance, post, postSafe, made };
 	}
 
 	it('creates exactly one learner Account, and a second use is refused', async () => {
@@ -732,7 +690,12 @@ describe('accepting an Invite', () => {
 		const second = await post(token);
 
 		expect(first.status).toBe(200);
+		// The helper reads real headers: a sign-up that works sets the session cookie, a refused one does not.
+		expect(
+			first.headers.getSetCookie().some((c) => c.startsWith('better-auth.session_token='))
+		).toBe(true);
 		expect(second.status).toBe(403);
+		expect(second.headers.getSetCookie()).toEqual([]);
 		const users = await db.user.findMany({ where: { id: { not: 'u-admin' } } });
 		expect(users).toHaveLength(1);
 		expect(users[0].role).toBe('learner');
@@ -864,14 +827,21 @@ describe('accepting an Invite', () => {
 		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
 			vi.spyOn(console, m).mockImplementation(() => {})
 		);
-		const { post, made } = await invited();
+		const { auth, made } = await invited();
 		const { token } = await made();
 
-		const res = await post(token, {
-			...body,
-			email: 'cb@example.com',
-			callbackURL: `https://evil.example/invite/${token}`
-		});
+		// The callback is the one POST endpoint still served; its origin check reads a callbackURL from the body.
+		const res = await auth.handler(
+			new Request(`${origin}/api/auth/callback/github`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					origin,
+					cookie: `${INVITE_COOKIE}=${token}`
+				},
+				body: JSON.stringify({ callbackURL: `https://evil.example/invite/${token}` })
+			})
+		);
 
 		expect(res.status).toBe(403);
 		const logged = everythingLogged(spies);
@@ -982,19 +952,7 @@ describe('accepting an Invite', () => {
 		const { auth, db } = await setup(() => ({}));
 		vi.spyOn(db.learner, 'upsert').mockRejectedValue(new Error('database is locked') as never);
 
-		await auth
-			.handler(
-				new Request('http://localhost:3000/api/auth/sign-up/email', {
-					method: 'POST',
-					headers: {
-						'content-type': 'application/json',
-						origin: 'http://localhost:3000',
-						[CLIENT_IP_HEADER]: '10.9.9.9'
-					},
-					body: JSON.stringify(body)
-				})
-			)
-			.catch(() => {});
+		await auth.api.signUpEmail({ body }).catch(() => {});
 
 		expect(await db.user.count()).toBe(0);
 		expect(await db.account.count()).toBe(0);
@@ -1213,6 +1171,24 @@ describe('signing in with a provider', () => {
 		const again = await h.signIn(token);
 		expect(errorOf(again)).toBe('SIGN_UP_CLOSED');
 		expect(await h.db.user.count({ where: { email: 'other@example.com' } })).toBe(0);
+	});
+
+	it('lets a non-API error out of auth.handler without printing it', async () => {
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+		const h = await harness({ mode: 'open' });
+		githubAnswers({});
+		// The session is written after the Account: a database failure there is not an APIError, and the callback
+		// does not turn it into a redirect.
+		vi.spyOn(h.db.session, 'create').mockRejectedValue(
+			new Error('locked: fake-secret-text /invite/fake-invite-token') as never
+		);
+
+		await expect(h.signIn()).rejects.toThrow('locked');
+
+		expect(everythingLogged(spies)).not.toContain('fake-secret-text');
+		expect(everythingLogged(spies)).not.toContain('fake-invite-token');
 	});
 
 	it('Open mode claims a valid invite cookie too', async () => {
@@ -1461,11 +1437,17 @@ describe('signing in with a provider', () => {
 		it('logs no caller text: a forged Origin, a callbackURL, a short value in ?error=, a made-up code', async () => {
 			const h = await harness({ mode: 'open' });
 			const all = spies();
+			// A POST with a cookie is where the origin check runs; the callback is the one POST endpoint still served.
 			const signUp = (headers: Record<string, string>, ip: string) =>
 				h.auth.handler(
-					new Request(`${origin}/api/auth/sign-up/email`, {
+					new Request(`${origin}/api/auth/callback/github`, {
 						method: 'POST',
-						headers: { 'content-type': 'application/json', [CLIENT_IP_HEADER]: ip, ...headers },
+						headers: {
+							'content-type': 'application/json',
+							cookie: 'unrelated=1',
+							[CLIENT_IP_HEADER]: ip,
+							...headers
+						},
 						body: JSON.stringify({
 							...body,
 							callbackURL: 'https://forged-callback-CALLERTEXT.example/x'

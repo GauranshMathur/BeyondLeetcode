@@ -6,24 +6,18 @@ import { createTestAuth, TEST_ORIGIN } from './test-auth.ts';
 const origin = TEST_ORIGIN;
 
 async function setup() {
-	// No sign-up is admitted: the limiter tests below depend on the 403.
-	const { db, auth } = await createTestAuth({ admit: () => null });
+	const { db, auth } = await createTestAuth();
 	return { db, auth };
 }
 
-// Password sign-in and change-password are not served over HTTP (the forms are the one way, see auth.ts), so
-// these tests post to /sign-up/email: it stays served, and `createAuth` gives it 20 requests per 10 minutes
-// per address. With no sign-up admitted it answers 403 to everyone, so a 429 is the limiter alone.
-const BUDGET = 20;
+// Only the provider callback is served over HTTP (the forms call `auth.api`, see auth.ts), so these tests get
+// at the limiter through GET /callback/github, under Better Auth's default budget of 100 requests per 10
+// seconds per address and path. The provider is not configured, so the callback answers the same every time
+// and a 429 is the limiter alone.
+const BUDGET = 100;
 const limited = (headers: Record<string, string> = {}) =>
-	new Request(`${origin}/api/auth/sign-up/email`, {
-		method: 'POST',
-		headers: { 'content-type': 'application/json', origin, ...headers },
-		body: JSON.stringify({
-			name: 'Ada',
-			email: 'ada@example.com',
-			password: 'correct horse battery'
-		})
+	new Request(`${origin}/api/auth/callback/github?code=fake-code&state=fake-state`, {
+		headers
 	});
 
 describe('handleAuthRequest', () => {
@@ -124,31 +118,6 @@ describe('handleAuthRequest', () => {
 		expect(res.status).toBe(429);
 	});
 
-	it('gives a direct POST to /sign-up/email the form budget: 20 per 10 minutes per address', async () => {
-		const { auth } = await setup();
-		const signUp = () =>
-			new Request(`${origin}/api/auth/sign-up/email`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json', origin },
-				body: JSON.stringify({
-					name: 'Ada',
-					email: 'ada@example.com',
-					password: 'correct horse battery'
-				})
-			});
-
-		const statuses = [];
-		for (let i = 0; i < 21; i++) {
-			statuses.push((await handleAuthRequest(auth, signUp(), '192.0.2.50')).status);
-		}
-		const other = await handleAuthRequest(auth, signUp(), '192.0.2.51');
-
-		// Sign-up is closed in this setup (403), so the first twenty are answered, not limited.
-		expect(statuses.slice(0, 20)).not.toContain(429);
-		expect(statuses[20]).toBe(429);
-		expect(other.status).not.toBe(429);
-	});
-
 	it('answers with headers the caller can still add to', async () => {
 		const { auth } = await setup();
 
@@ -162,7 +131,6 @@ describe('handleAuthRequest', () => {
 describe('the served paths', () => {
 	// Every endpoint the Better Auth instance has, read from the instance itself, so one that an upgrade adds
 	// is in the table without anyone listing it.
-	const served = ['/sign-up/email'];
 	const endpoints = async () => {
 		const { auth } = await setup();
 		const paths = Object.values(auth.api as Record<string, { path?: string }>)
@@ -187,7 +155,8 @@ describe('the served paths', () => {
 				'/sign-in/email',
 				'/admin/list-users',
 				'/sign-out',
-				...served
+				'/sign-up/email',
+				'/callback/:id'
 			])
 		);
 	});
@@ -197,7 +166,7 @@ describe('the served paths', () => {
 		const outside = paths
 			// A path with a parameter is asked with a value.
 			.map((path) => path.replace(/:[A-Za-z]+/g, 'x'))
-			.filter((path) => !served.includes(path) && path !== '/callback/x');
+			.filter((path) => path !== '/callback/x');
 		const { auth, handler } = reached();
 
 		for (const path of outside) {
@@ -209,6 +178,7 @@ describe('the served paths', () => {
 
 		expect(outside).toContain('/get-session');
 		expect(outside).toContain('/sign-out');
+		expect(outside).toContain('/sign-up/email');
 		expect(handler).not.toHaveBeenCalled();
 	});
 
@@ -247,15 +217,36 @@ describe('the served paths', () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it('answers 404 for POST /api/auth/sign-out, with or without a query string', async () => {
+	it('answers 404 for POST /api/auth/sign-out and POST /api/auth/sign-up/email, with or without a query string', async () => {
 		const { auth, handler } = reached();
 
-		for (const path of ['/sign-out', '/sign-out?x=1']) {
+		for (const path of ['/sign-out', '/sign-out?x=1', '/sign-up/email', '/sign-up/email?x=1']) {
 			const res = await handleAuthRequest(auth, ask(path), '192.0.2.73');
 			expect(res.status, path).toBe(404);
 		}
 
 		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it('answers 404 for POST /api/auth/sign-up/email through the real Better Auth too, with a sign-up admitted', async () => {
+		const { auth, db } = await createTestAuth({ admit: () => ({}) });
+
+		const res = await handleAuthRequest(
+			auth,
+			new Request(`${origin}/api/auth/sign-up/email`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', origin },
+				body: JSON.stringify({
+					name: 'Ada',
+					email: 'ada@example.com',
+					password: 'correct horse battery'
+				})
+			}),
+			'192.0.2.75'
+		);
+
+		expect(res.status).toBe(404);
+		expect(await db.user.count()).toBe(0);
 	});
 
 	it('decides on the path alone: a query string does not change it', async () => {
@@ -277,20 +268,19 @@ describe('the served paths', () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
-	it('passes the provider callback and sign-up to Better Auth', async () => {
+	it('passes the provider callback to Better Auth', async () => {
 		const { auth, handler } = reached();
 
 		for (const [method, path] of [
 			['GET', '/callback/github'],
 			['GET', '/callback/google'],
-			['POST', '/callback/github'],
-			['POST', '/sign-up/email']
+			['POST', '/callback/github']
 		]) {
 			const res = await handleAuthRequest(auth, ask(path, method), '192.0.2.72');
 			expect(await res.text(), `${method} ${path}`).toBe('reached');
 		}
 
-		expect(handler).toHaveBeenCalledTimes(4);
+		expect(handler).toHaveBeenCalledTimes(3);
 	});
 });
 
