@@ -15,20 +15,40 @@ const passedCount = $derived(
 	outcome?.kind === 'result' ? outcome.view.tests.filter((t) => t.passed).length : 0
 );
 const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 0);
+
+const live = $derived.by((): { text: string; fail?: boolean; muted?: boolean } => {
+	if (outcome?.kind === 'running') return { text: 'Running', muted: true };
+	if (outcome?.kind === 'submitting') return { text: 'Submitting', muted: true };
+	if (outcome?.kind === 'result') {
+		return outcome.view.compileError
+			? { text: 'no tests ran', fail: true }
+			: { text: `${passedCount} of ${total} passed`, fail: passedCount < total };
+	}
+	if (outcome?.kind === 'verdict') {
+		const { verdict, failure } = outcome.view;
+		const detail =
+			failure?.kind === 'compile'
+				? 'Compile error'
+				: failure?.kind === 'example'
+					? `Failed Example Test ${failure.name}`
+					: failure?.kind === 'hidden'
+						? 'Failed a hidden test'
+						: failure?.kind === 'earlierStep'
+							? `Broke an earlier step: ${failure.problemTitle}`
+							: verdict === 'Accepted'
+								? 'all tests passed'
+								: '';
+		return { text: detail ? `${verdict} · ${detail}` : verdict, fail: verdict !== 'Accepted' };
+	}
+	return { text: '' };
+});
 </script>
 
 <section class="console" aria-label="Console">
 	<div class="head">
 		<span class="tab mono">Tests</span>
-		{#if outcome?.kind === 'result' && !outcome.view.compileError}
-			<span class="mono" class:fail={passedCount < total} role="status">{passedCount} of {total} passed</span>
-		{:else if outcome?.kind === 'result'}
-			<span class="mono fail" role="status">no tests ran</span>
-		{:else if outcome?.kind === 'running'}
-			<span class="mono muted" role="status">Running</span>
-		{:else if outcome?.kind === 'submitting'}
-			<span class="mono muted" role="status">Submitting</span>
-		{/if}
+		<!-- Always in the page, so a screen reader hears each change of its text. -->
+		<span class="mono" class:fail={live.fail} class:muted={live.muted} role="status">{live.text}</span>
 	</div>
 
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -39,13 +59,13 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 			<p class="muted mono">Waiting for the runner…</p>
 		{:else if outcome.kind === 'verdict'}
 			{@const { verdict, failure } = outcome.view}
-			<div class="state mono" class:fail={verdict !== 'Accepted'} aria-label="Verdict">
+			<div class="state mono" class:fail={verdict !== 'Accepted'} role="group" aria-label="Verdict">
 				<span>{verdict}</span>
 				{#if verdict === 'Accepted'}<span class="muted">all tests passed</span>{/if}
 			</div>
 			{#if outcome.view.accepted}
 				{@const { accepted } = outcome.view}
-				<div class="accepted" aria-label="Accepted panel">
+				<div class="accepted" role="group" aria-label="Accepted panel">
 					{#if accepted.topicCompleted}
 						<div class="unlock-note">
 							<span class="label">Topic complete</span>
@@ -64,9 +84,9 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 				</div>
 			{/if}
 			{#if failure?.kind === 'compile'}
-				<pre class="mono block" aria-label="Compile error">{failure.message}</pre>
+				<pre class="mono block" role="group" aria-label="Compile error">{failure.message}</pre>
 			{:else if failure?.kind === 'example'}
-				<pre class="mono block" aria-label="Failed Example Test {failure.name}"><span class="muted">case</span>
+				<pre class="mono block" role="group" aria-label="Failed Example Test {failure.name}"><span class="muted">case</span>
 {failure.name}<span class="muted">input</span>
 {failure.input}<span class="muted">expected</span>
 {failure.expected}<span class="muted">got</span>
@@ -84,7 +104,7 @@ const total = $derived(outcome?.kind === 'result' ? outcome.view.tests.length : 
 			<p class="mono fail" role="alert">The runner is unavailable. Try again.</p>
 		{:else if outcome.view.compileError}
 			<div class="state fail mono">Compile error</div>
-			<pre class="mono block" aria-label="Compile error">{outcome.view.compileError}</pre>
+			<pre class="mono block" role="group" aria-label="Compile error">{outcome.view.compileError}</pre>
 		{:else}
 			<ul aria-label="Example Test results">
 				{#each outcome.view.tests as test (test.name)}
