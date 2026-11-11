@@ -118,21 +118,117 @@ describe('renderMarkdown raw HTML and link targets', () => {
 	});
 });
 
-describe('renderMarkdown character references in targets', () => {
-	const refs: [string, string][] = [
-		['a hex reference', '[x](java&#x73;cript:alert(1))'],
-		['a decimal reference', '![x](java&#115;cript:alert(1))'],
-		['a named reference', '[x](javascript&colon;alert(1))'],
-		['a reference link', '[x][r]\n\n[r]: java&#x73;cript:alert(1)']
+describe('renderMarkdown text after an open raw tag', () => {
+	const cases: [string, string, string][] = [
+		['an open pre tag', 'a <pre>x & y < z', '<p>a &lt;pre&gt;x &amp; y &lt; z</p>\n'],
+		[
+			'an open pre tag around a tag',
+			'a <pre>x <b>y</b>',
+			'<p>a &lt;pre&gt;x &lt;b&gt;y&lt;/b&gt;</p>\n'
+		],
+		[
+			'an inline script',
+			'a <script>alert(1)</script> b',
+			'<p>a &lt;script&gt;alert(1)&lt;/script&gt; b</p>\n'
+		],
+		[
+			'an open script tag',
+			'a <script>if (a < b && c) x',
+			'<p>a &lt;script&gt;if (a &lt; b &amp;&amp; c) x</p>\n'
+		]
 	];
-	it.each(refs)('%s cannot spell a scheme', (_n, md) => {
-		const html = renderMarkdown(md);
-		expect(html).not.toMatch(/(href|src)="[^"]*&(?!amp;)/);
+	it.each(cases)('%s is escaped to the character', (_n, md, expected) => {
+		expect(renderMarkdown(md)).toBe(expected);
+	});
+});
+
+describe('renderMarkdown ampersands in targets', () => {
+	const exact: [string, string, string][] = [
+		[
+			'an angle autolink',
+			'<https://x/?a=1&b=2>',
+			'<a href="https://x/?a=1&amp;b=2">https://x/?a=1&amp;b=2</a>'
+		],
+		[
+			'a bare URL',
+			'https://x/?a=1&b=2',
+			'<a href="https://x/?a=1&amp;b=2">https://x/?a=1&amp;b=2</a>'
+		],
+		[
+			'a www address',
+			'www.x.com/?a=1&b=2',
+			'<a href="http://www.x.com/?a=1&amp;b=2">www.x.com/?a=1&amp;b=2</a>'
+		],
+		['an inline link with &', '[a](https://x/?a=1&b=2)', '<a href="https://x/?a=1&amp;b=2">a</a>'],
+		[
+			'an inline link with &amp;',
+			'[a](https://x/?a=1&amp;b=2)',
+			'<a href="https://x/?a=1&amp;b=2">a</a>'
+		],
+		[
+			'an inline image with &',
+			'![a](https://x/i.png?a=1&b=2)',
+			'<img src="https://x/i.png?a=1&amp;b=2" alt="a">'
+		],
+		['a quote in the target', '[a](<https://x/a"b>)', '<a href="https://x/a%22b">a</a>'],
+		[
+			'a hostile title',
+			'[x](https://x "\\" onerror=alert(1)")',
+			'<a href="https://x" title="&quot; onerror=alert(1)">x</a>'
+		],
+		[
+			'hostile alt text',
+			'![a"><script>](https://x/i.png)',
+			'<img src="https://x/i.png" alt="a&quot;&gt;&lt;script&gt;">'
+		],
+		[
+			'a hex reference',
+			'[x](java&#x73;cript:alert(1))',
+			'<a href="java&amp;#x73;cript:alert(1)">x</a>'
+		],
+		[
+			'an escaped hex reference',
+			'[x](java&amp;#x73;cript:alert(1))',
+			'<a href="java&amp;#x73;cript:alert(1)">x</a>'
+		],
+		[
+			'a decimal reference',
+			'![x](java&#115;cript:alert(1))',
+			'<img src="java&amp;#115;cript:alert(1)" alt="x">'
+		],
+		[
+			'a named reference',
+			'[x](javascript&colon;alert(1))',
+			'<a href="javascript&amp;colon;alert(1)">x</a>'
+		],
+		[
+			'a reference link',
+			'[x][r]\n\n[r]: java&#x73;cript:alert(1)',
+			'<a href="java&amp;#x73;cript:alert(1)">x</a>'
+		]
+	];
+	it.each(exact)('%s renders exactly', (_n, md, expected) => {
+		expect(renderMarkdown(md)).toContain(expected);
+		expect(renderMarkdown(md).trim()).toBe(`<p>${expected}</p>`);
 	});
 
-	it('keeps a query string readable to the browser', () => {
-		expect(renderMarkdown('[a](https://example.com/?x=1&y=2)')).toBe(
-			'<p><a href="https://example.com/?x=1&amp;y=2">a</a></p>\n'
+	it('leaves no target that decodes to a scheme other than http(s)', () => {
+		const decode = (s: string) =>
+			s.replace(
+				/&(amp|lt|gt|quot|#39);/g,
+				(_m, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e as string] as string
+			);
+		for (const [, md] of exact.map((e) => e)) {
+			for (const m of renderMarkdown(md).matchAll(/(?:href|src)="([^"]*)"/g)) {
+				const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(decode(m[1]));
+				expect(scheme === null || /^https?$/i.test(scheme[1])).toBe(true);
+			}
+		}
+	});
+
+	it('names a fence language without letting it out of the attribute', () => {
+		expect(renderMarkdown('```a"><script>\nx\n```')).toBe(
+			`${PRE}<code class="language-a&quot;&gt;&lt;script&gt;">x\n</code></pre>\n`
 		);
 	});
 });

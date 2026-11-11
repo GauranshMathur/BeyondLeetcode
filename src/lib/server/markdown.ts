@@ -24,9 +24,14 @@ function isSafeTarget(href: string): boolean {
 }
 
 // marked keeps a character reference such as &#x73; in an href as it is, and the browser decodes
-// it, so a scheme could be spelled around the check. Escaping every & makes the browser read the
-// target exactly as it was checked.
-const literalAmpersands = (href: string) => href.replace(/&/g, '&amp;');
+// it, so a scheme could be spelled around the check. An author's &amp; is read as the & it
+// stands for, and then every & is written once as &amp;: the browser reads the target exactly as
+// it was checked, and a reference like &amp;#x73; stays inert text. An autolink is already
+// escaped by marked and has no references to read.
+const checkedHref = (token: Tokens.Link | Tokens.Image) =>
+	token.type === 'link' && token.autolink
+		? token.href
+		: token.href.replace(/&amp;/g, '&').replace(/&/g, '&amp;');
 
 const marked = new Marked({
 	renderer: {
@@ -43,11 +48,11 @@ const marked = new Marked({
 		},
 		link(token) {
 			if (!isSafeTarget(token.href)) return this.parser.parseInline(token.tokens);
-			return Renderer.prototype.link.call(this, { ...token, href: literalAmpersands(token.href) });
+			return Renderer.prototype.link.call(this, { ...token, href: checkedHref(token) });
 		},
 		image(token) {
 			if (!isSafeTarget(token.href)) return escapeHtml(token.text);
-			return Renderer.prototype.image.call(this, { ...token, href: literalAmpersands(token.href) });
+			return Renderer.prototype.image.call(this, { ...token, href: checkedHref(token) });
 		},
 		code(token) {
 			return Renderer.prototype.code
