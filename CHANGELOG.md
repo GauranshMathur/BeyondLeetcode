@@ -2,39 +2,59 @@
 
 ## [1.19.6](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.5...v1.19.6) (2026-11-11)
 
+### Highlights
 
-### Fixes
+Sprint 19 fixes the findings of the accessibility audit. A screen reader now hears Running, Submitting and the Verdict, and keyboard focus stays where you are working across the Problem screen, Chapters, Settings and Users. The Theme and Registration choices wait for Save. Chapters no longer lose words written in angle brackets, and unsafe links in content are shown as plain text.
 
-* **beyondleetcode:** C347, C348 Problem screen has a main landmark and tab switches keep focus ([#627](https://github.com/GauranshMathur/BeyondLeetcode/issues/627)) ([45771bd](https://github.com/GauranshMathur/BeyondLeetcode/commit/45771bd09ab3aa9a920d96d4f4e31c202d9441f3))
-* **beyondleetcode:** C349 Markdown renderer escapes raw HTML and drops unsafe link targets ([#626](https://github.com/GauranshMathur/BeyondLeetcode/issues/626)) ([40aeff3](https://github.com/GauranshMathur/BeyondLeetcode/commit/40aeff32f9ca77123b99bd22109f66625551f1d5))
-* **beyondleetcode:** C350 one console live region, and real roles for the Verdict and the Accepted panel ([#628](https://github.com/GauranshMathur/BeyondLeetcode/issues/628)) ([be5e0a7](https://github.com/GauranshMathur/BeyondLeetcode/commit/be5e0a728576806f0fbd0a5db9b66da24114a37e))
-* **beyondleetcode:** C351 Markdown drops a leading h1 that repeats the page's title ([#629](https://github.com/GauranshMathur/BeyondLeetcode/issues/629)) ([8083e9e](https://github.com/GauranshMathur/BeyondLeetcode/commit/8083e9ed2e74647c523203ca8625bbe94e726b81))
-* **beyondleetcode:** C352 a busy control keeps focus, and focus moves to what replaces a removed one ([#630](https://github.com/GauranshMathur/BeyondLeetcode/issues/630)) ([2297a6d](https://github.com/GauranshMathur/BeyondLeetcode/commit/2297a6db09ca02e47cb247b1660344fb1840031a))
-* **beyondleetcode:** C353, C354 focus stays put at a Chapter's end and the Map's current Topic has a focus mark ([#633](https://github.com/GauranshMathur/BeyondLeetcode/issues/633)) ([5f13c6e](https://github.com/GauranshMathur/BeyondLeetcode/commit/5f13c6e5da3841ff614a7521e1653161f2c4c424))
-* **beyondleetcode:** C355 autosave announces only a failed save and a conflict ([#635](https://github.com/GauranshMathur/BeyondLeetcode/issues/635)) ([0535cf0](https://github.com/GauranshMathur/BeyondLeetcode/commit/0535cf0d0c0aa145901a6f520a4bfa7e68129ac3))
-* **beyondleetcode:** C356 the Theme select waits for Save and focus stays on what was used ([#636](https://github.com/GauranshMathur/BeyondLeetcode/issues/636)) ([5574eb3](https://github.com/GauranshMathur/BeyondLeetcode/commit/5574eb367318d39431be427f0301a43ff66623a5))
-* **beyondleetcode:** C357 Users: each action names the user or Invite it acts on ([#638](https://github.com/GauranshMathur/BeyondLeetcode/issues/638)) ([f31b013](https://github.com/GauranshMathur/BeyondLeetcode/commit/f31b013c9f1a3f56db0147dfbb7613c809f48a64))
-* **beyondleetcode:** C358 the light accent is #ae3f1d, and a test holds the contrast pairs ([#639](https://github.com/GauranshMathur/BeyondLeetcode/issues/639)) ([2897173](https://github.com/GauranshMathur/BeyondLeetcode/commit/289717383953fb82af916bdd82bf25054c646d8f))
-* **beyondleetcode:** C359 Users: the Registration select waits for Save ([#642](https://github.com/GauranshMathur/BeyondLeetcode/issues/642)) ([b5020af](https://github.com/GauranshMathur/BeyondLeetcode/commit/b5020afe55fc1863d883c612f01e6c4b0a5de03c))
-* **beyondleetcode:** C360 a root error page with a title, one main and one h1 ([#641](https://github.com/GauranshMathur/BeyondLeetcode/issues/641)) ([06a532e](https://github.com/GauranshMathur/BeyondLeetcode/commit/06a532e5a0c7d8d82208fd6c17bbbcec8a5e1413))
-* **beyondleetcode:** C361 Users: focus goes to what an action shows ([#648](https://github.com/GauranshMathur/BeyondLeetcode/issues/648)) ([2da0e08](https://github.com/GauranshMathur/BeyondLeetcode/commit/2da0e08bf9c3e791e3141f520f677466359bfb95))
-* **beyondleetcode:** C363 the editor's selection match and the Problem's Language select pass contrast ([#646](https://github.com/GauranshMathur/BeyondLeetcode/issues/646)) ([9ef2ebb](https://github.com/GauranshMathur/BeyondLeetcode/commit/9ef2ebb87bce018e940e18e7faffa9535c194833))
-* **beyondleetcode:** C364 Problem screen: at a short phone the bars give the statement room ([#650](https://github.com/GauranshMathur/BeyondLeetcode/issues/650)) ([3b2c279](https://github.com/GauranshMathur/BeyondLeetcode/commit/3b2c279a65f43320285c7e49abca9e29c8285f53))
-* **beyondleetcode:** C384 a held Account can sign out from the Change password page at every width ([#645](https://github.com/GauranshMathur/BeyondLeetcode/issues/645)) ([ae4f4b1](https://github.com/GauranshMathur/BeyondLeetcode/commit/ae4f4b116109d3306d1f0be56f61cc36052e8fa2))
+### Added
 
+Nothing new to use in this release.
 
-### Documentation
+### Fixed
 
-* **beyondleetcode:** C365 Sprint 19: exit check and Release-As 1.19.6 ([#653](https://github.com/GauranshMathur/BeyondLeetcode/issues/653)) ([64b67ea](https://github.com/GauranshMathur/BeyondLeetcode/commit/64b67ea874747c6be96222ba01060e706786485e))
-* **beyondleetcode:** every issue gets a Backlog ticket, and critical work joins the current sprint ([#625](https://github.com/GauranshMathur/BeyondLeetcode/issues/625)) ([9fbabd6](https://github.com/GauranshMathur/BeyondLeetcode/commit/9fbabd65df0443cdda6ffb3316ff3ddbefbf510d))
-* **beyondleetcode:** record the 1.19.5 cut ([#620](https://github.com/GauranshMathur/BeyondLeetcode/issues/620)) ([384cadc](https://github.com/GauranshMathur/BeyondLeetcode/commit/384cadc0867d6ae9a6994b2aff83e983d62ec791))
-* **beyondleetcode:** Sprint 19 plan: [#616](https://github.com/GauranshMathur/BeyondLeetcode/issues/616) added, and C351's review ([#622](https://github.com/GauranshMathur/BeyondLeetcode/issues/622)) ([4fbece5](https://github.com/GauranshMathur/BeyondLeetcode/commit/4fbece5746c89d0a6f466cc90d47fa0a75d9b494))
+**Screen readers**
 
+- A screen reader now announces Running, Submitting and the Verdict on the Problem screen. (C350, #628)
+- A screen reader no longer announces every autosave, only a failed save or an edit made elsewhere. (C355, #635)
+- The Problem screen now has a main landmark, so a screen reader can jump straight to it. (C347, #627)
+- On the Users page, screen readers now hear whose row each Reset password, Remove and Cancel invite button belongs to. (C357, #638)
+- Error pages now have a page title, a main landmark and a heading, and a link back to the Map. (C360, #641)
+- Chapter and Problem pages show their title once instead of twice. (C351, #629)
 
-### Tests
+**Keyboard focus**
 
-* **beyondleetcode:** C362 every screen has one main, a title and one h1, in light and dark, on desktop and phone ([#644](https://github.com/GauranshMathur/BeyondLeetcode/issues/644)) ([c6351ca](https://github.com/GauranshMathur/BeyondLeetcode/commit/c6351ca6a4c88d622572e959a4a206903841bc90))
-* **beyondleetcode:** C385 hold the Submit answer until Submitting has been seen ([#632](https://github.com/GauranshMathur/BeyondLeetcode/issues/632)) ([3d11edf](https://github.com/GauranshMathur/BeyondLeetcode/commit/3d11edfc704fc6ef4381f8dc800406aaa70dbc68))
+- Buttons on the Problem screen keep keyboard focus while they work, and focus moves to the new Hint or the editor when a control goes away. (C352, #630)
+- Switching between the Problem, Hints and Solution tabs no longer loses keyboard focus. (C348, #627)
+- Reaching the end of a Chapter no longer sends keyboard focus back to the top of the page. (C353, #633)
+- The Settings Theme choice now waits for Save, and keyboard focus stays where you were. (C356, #636)
+- On the Users page, focus now moves to the invite link, the one-time password or the Remove confirmation after you use them. (C361, #648)
+
+**Contrast and small screens**
+
+- Links and accents in the light theme are slightly darker so they are easier to read. (C358, #639)
+- The editor's highlighted matches and the Language select are easier to see. (C363, #646)
+- The Map's current Topic shows a distinct focus ring when focused with the keyboard. (C354, #633)
+- On a short phone screen, the Problem page's header scrolls away and the bars shrink so the statement has room. (C364, #650)
+- A signed-in person who must change their password can now sign out from that page on a phone. (C384, #645)
+
+### Changed
+
+Nothing changed in how it works.
+
+### Content
+
+- Three Chapters show words that were being dropped because they were written in angle brackets: "Linux lockdep: the shortest way round a cycle" (Graphs), "Java: chains that become trees" (Hash tables) and "Go: one pointer reads, one pointer writes" (Two pointers). The Chapters' text did not change. (C349, #626)
+
+### Security
+
+- Raw HTML in Chapter and Problem text is now shown as text and never run, and a link or image whose target is not `http`, `https` or a path on this site is shown as plain words. (C349, #626)
+- On the Users page, choosing a Registration option no longer takes effect until you press Save, so arrowing through the list cannot open or close sign-up by accident. (C359, #642)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.19.6` (or `latest`), then run `docker compose pull && docker compose up -d`.
+
+If you write your own content: an HTML tag in a Chapter or Problem now appears as text, and a `mailto:` or `tel:` link appears without its target. Write such text inside backticks, and give addresses as plain text.
 
 ## [1.19.5](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.4...v1.19.5) (2026-11-11)
 
