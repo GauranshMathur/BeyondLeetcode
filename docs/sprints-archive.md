@@ -965,3 +965,211 @@ For the maintainer:
   - #533, the Markdown renderer's raw HTML and `javascript:` links.
 - **#535's part 2,** the GitHub App: the maintainer's call. C221 waits for it, with no Sprint.
 - **The deferred items in Sprints 14 to 16's "Not in the sprint"** stay as written there.
+
+## Sprint 18 · Submission, Runner and Identity seams
+
+**Goal:** the architecture review's first steps, in the order it recommends. A Submission is judged by one module that seam 3 also runs, and a container cut-off is no longer the Learner's Time Limit Exceeded. The Runner's harness transcript and its container lifecycle each have one home. The Multi-user Instance is built by one Identity factory that tests share, the Admin actions are one object, and Better Auth's HTTP surface is an allowlist. Beside them land the review's cheap wins and the sign-in flake.
+
+Release `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams`, version 1.19.5 (patch, because no card is `feat`: the cards are `fix`, `refactor`, `test`, `ci`, `build` and `docs`). release-please's #554 already proposes 1.19.5.
+
+- **One backlog plan, Sprints 18 to 23.** On 2026-11-10 the orchestrator asked the `sprint-planner` to plan every open engineering issue, under the maintainer's standing rule:
+  - the separate architecture review after Sprint 17 (2026-11-10): #556 to #578, and the grouped smaller findings #579 to #582. Thirteen older issues got a comment from it that extends them;
+  - the architecture issues of 2026-11-08: #500 to #505 and #512 to #521;
+  - the docs issues #507 to #511, the accessibility issues #522 to #529, and #533;
+  - #555, a flake on main.
+
+  Sprint 18 takes the review's recommended order. Sprints 19 to 23 took the rest; on 2026-11-10 they were re-planned issue first as Sprints 19 and 20, below. #570 is a card with no Sprint (see Not in the sprint), and the content issues are not engineering work. Each issue was read against `main` at 8a877f0.
+- **Twenty-nine cards: C223 to C246, then C341 to C345.** The maintainer added C341 to C345 on 2026-11-10, which takes the sprint past the usual 25.
+  - **Process** (#591): C341 makes issues the unit of work and has the sprint-planner run on Fable. The same PR batches small cards, caps the architecture review, bans card and issue ids in code comments, and moves the exited sprints to `docs/sprints-archive.md`. It is the sprint's first card. The orchestrator works it.
+  - **The maintainer's code follow-ups:**
+    - C342 checks C222's seccomp filter against the kernel headers (#592). It is a `sandbox-security-reviewer` run by the orchestrator, with no PR.
+    - C343 adds a test for `engine.ts`'s remove poll (#593), before C237.
+    - C344 makes the 30-sign-in test fast and drops its own timeout (#555, reopened), after C234.
+    - C345 is the comments-only small-fixes PR (#594), after every other code card.
+  - **Submission** (`learning/`, the content check, the catalogue's guard):
+    - C223 makes one module, `learning/submission.ts`, judge a Submission, and `submit-plan.ts` builds each batch's Runner request (#518).
+    - Then C227 moves `core.test.ts`'s batch and Verdict tests to it, C231 runs the content check through it, and C233 makes the catalogue's guard measure its requests through the HTTP adapter's body size (#518).
+    - C241 decides what a cut-off means, after C229 marks one (#556). It waits for the maintainer's answer.
+  - **Runner** (`runner/`):
+    - C225 moves the harness transcript's read rules into a decoder in `harness.ts`, one decoder per stream (#521).
+    - Then C229: a result marks the Tests the container cut off (#556).
+    - Then C235: one module runs a container (#557), and C237 moves the Engine's deadlines onto its primitive.
+    - C239 makes the sandbox test helpers run containers through that module and decode with the Runner's decoder (#557, #521).
+  - **Identity** (`identity/`, `app.ts`, the Users and auth routes):
+    - C230: one factory builds the Multi-user Instance (#513).
+    - Then C232 makes the test harness the factory's test variant, and C234 moves every other route test onto it (#513).
+    - Then C236: one Admin actions object, C238: the Users route calls it, and C240: the auth route gets a bound handler, so Locals holds no Better Auth (#512).
+    - Then C242: the auth route serves an allowlist, and C244 and C245 close `/sign-out` and `/sign-up/email` over HTTP (#558). Both wait for the maintainer's answer.
+  - **Cheap wins:**
+    - C224 gives sign-in.test.ts's 30-sign-in test its own timeout (#555);
+    - C226 stops the e2e job building Sandbox images (#564);
+    - C228 makes the Dockerfile copy the server source whole (#563);
+    - C243 gives the Problem screen one read of what the Learner may do now (#559).
+  - **Last:** C246, the exit check and `Release-As: 1.19.5` (`docs/releasing.md`, The last card).
+- **Issues → cards.** Each issue closes when its last card merges (`docs/agents/board.md`, Issues are the unit of work). The milestone `Sprint 18 · Submission, Runner and Identity seams` holds each of these issues.
+
+  | Issue | Cards, in order | Last card | Lane |
+  |---|---|---|---|
+  | #591 Process: issues are the unit of work | C341 | C341 | orchestrator |
+  | #592 C222's seccomp filter checked | C342 | C342 | orchestrator (review) |
+  | #518 One module judges a Submission | C223, C227, C231, C233 | C233 | A |
+  | #521 The harness transcript decoder | C225, then C239 | C239 | A |
+  | #556 A container cut-off is not TLE | C229, C241 | C241 | A |
+  | #593 The remove poll's test | C343 | C343 | A |
+  | #557 One module runs a container | C235, C237, C239 | C239 | A |
+  | #559 What the Learner may do now | C243 | C243 | A |
+  | #564 e2e builds no Sandbox images | C226 | C226 | B |
+  | #563 The Dockerfile copies whole | C228 | C228 | B |
+  | #513 One Multi-user factory | C230, C232, C234 | C234 | B |
+  | #512 One Admin actions object | C236, C238, C240 | C240 | B |
+  | #558 The auth route's allowlist | C242, C244, C245 | C245 | B |
+  | #555 The 30-sign-in test | C224 (timeout; rejected), then C344 (fast) | C344 | B |
+  | #594 No ids in code comments | C345 | C345 | last |
+
+  - C239 completes both #521 and #557. Its `Issue` field holds #557, and its `Refs` line names both.
+  - C240 also does the auth-route item of #581, which stays open. #581 is proposed for wontfix once C240 lands (2026-11-10), so it has no milestone.
+  - C241 closes #556 with its small step. The issue's larger step, where the Runner owns how many Tests fit a container, is not planned.
+  - C246, the exit check, has no issue.
+  - #581 stays open: C240 does its auth-route item; the rest waits for the maintainer's wontfix answer.
+- **Waiting on the maintainer**, each with a recommended answer the orchestrator takes unless the maintainer says otherwise (none is a hard call):
+  - **#556: what does a cut-off mean to the Learner?** Recommended: RunnerUnavailable, in Run and in Submit. It never shows a false Verdict, records nothing, adds no Runner call, and leaves `maxSubmitCalls` and the catalogue's guard as they are. The other options were a re-run of the batch, or TLE only when the cut Test was the Learner's own. C241 waits for it.
+  - **#558: close `/sign-up/email` and `/sign-out` over HTTP?** Recommended: close both. No screen uses either, every form calls `auth.api` server-side, and `user.create.before` stays the backstop. C244 and C245 wait for it. If the two security readers split on either card, it waits for the maintainer.
+  - **#521: does a duplicate `i` fail the Run?** Recommended: yes, as #482's "fail loudly" decided for the other malformed lines. It is part of C225.
+- **Reviews.**
+  - `sandbox-security-reviewer` before merge: C225, C229, C231, C233, C235, C237 and C239. They are every card under `src/lib/server/runner/`.
+  - The orchestrator's two-reader review (Fable and Codex): C230, C236, C238, C240, C242, C244 and C245. They are every card that moves Identity wiring, the gate or the auth surface.
+  - C232 and C234 are test code and a dead type variant, as C139 and C143 were in Sprint 14. C228 changes the app image, not a Sandbox image or a flag, and the Runner role's files are already copied whole.
+- **Shared files**, each an ordered chain:
+  - `learning/submission.ts`: C223, then C241. `learning/submission.test.ts`: C223, C227, then C241.
+  - `learning/core.ts`: C223, then C241. `learning/core.test.ts`: C227, then C241.
+  - `docs/module-map.md`: C223, C233, then C241.
+  - `runner/harness.ts`, `harness-decoder.test.ts` (new in C225) and `port.ts`: C225, then C229.
+  - `runner/sandbox.ts` and `sandbox.test.ts`: C225, then C235.
+  - `runner/container.ts` (new in C235): C235, then C237.
+  - `runner/http-adapter.sandbox.test.ts`: C229, then C239.
+  - `routes/signin/sign-in.test.ts`: C224, then C234.
+  - `lib/server/app.ts`: C230, C232, C238, then C240.
+  - `identity/multi-user-instance.ts` (new in C230): C230, C236, C238, then C240.
+  - `routes/users/users.test.ts`: C232, then C238.
+  - `identity/accounts.ts`: C236, then C238. `identity/accounts.test.ts`: C234, then C236.
+  - `src/app.d.ts`: C238, then C240.
+  - `identity/auth-handler.ts` and its test: C240, C242, C244, then C245. `identity/auth.ts`: C244, then C245.
+  - C236 also waits for C228, because `accounts.ts` is in `reset-admin-password`'s import graph, which the Dockerfile then copies whole.
+- **Two lanes a round** (`docs/agents/board.md`, Resources). Lane A holds the Submission and Runner cards, one at a time, because the `sandbox` tests share one lock. Lane B starts with the cheap wins, then runs the Identity chain.
+
+  | Round | A · Submission and Runner | B · Cheap wins, then Identity |
+  |---|---|---|
+  | 1 | C223 Submission module (#518) | C224 sign-in timeout (#555) |
+  | 2 | C225 transcript decoder (#521) | C226 e2e builds no images (#564) |
+  | 3 | C227 batch tests move (#518) | C228 Dockerfile copies whole (#563) |
+  | 4 | C229 cut-off mark (#556) | C230 Multi-user factory (#513) |
+  | 5 | C231 content check (#518) | C232 harness is the factory's variant (#513) |
+  | 6 | C233 guard measures the requests (#518) | C234 every route test on it (#513) |
+  | 7 | C235 container module (#557) | C236 Admin actions (#512) |
+  | 8 | C237 Engine deadlines (#557) | C238 Users route (#512) |
+  | 9 | C239 sandbox helpers (#557, #521) | C240 auth route handler (#512) |
+  | 10 | C241 cut-off is RunnerUnavailable (#556) | C242 allowlist (#558) |
+  | 11 | C243 what the Learner may do (#559) | C244 `/sign-out` closed (#558) |
+  | 12 | | C245 `/sign-up/email` closed (#558) |
+  | 13 | C246 exit check and `Release-As: 1.19.5` | |
+
+  If the maintainer has not answered by round 10, lane A runs C243 first.
+- **Rounds: 28.**
+  - The longest chain is nine cards (C230 to C245 in lane B), and lane B's twelve cards set the build: twelve rounds.
+  - There are 14 reviews: seven sandbox and seven security. A review of one lane's card can run while the other lane builds.
+  - The last card and the cut add one round each.
+- **No limit, flag or image changes.** ADR 0002 stands: one fresh hardened container per Run, with the same flags. C228 changes what the app image copies, not what it runs.
+
+**Exit:**
+- All 29 Sprint 18 cards are Done, and `ci` is green on `main`. The sprint's Status counts both issues closed and cards done.
+- C342's review verdict is on #592. `grep -rnE '(//|#|\*).*(\bC[0-9]{2,3}[a-z]?\b|#[0-9]{2,3}\b)' src --include=*.ts --include=*.svelte --include=*.py` prints no comment line. The 30-sign-in test declares no timeout of its own.
+- `grep -n "runSubmission\|export function judge\|export function submitPlan" src/lib/server/learning/rules.ts` prints nothing, and `content-check.sandbox.test.ts` imports nothing from `learning/rules.ts`.
+- `grep -n "LONGEST_LANGUAGE_ID\|FILE_JSON_OVERHEAD" src/lib/server/content/catalogue.ts` prints nothing.
+- `grep -n "TextDecoder\|harnessLine\|removeCreatedByName\|function within" src/lib/server/runner/sandbox.ts` prints nothing.
+- A seam-1 test scripts a cut-off and gets the answer the maintainer chose (recommended: RunnerUnavailable).
+- ci's `e2e` job neither pulls an image nor calls `build-sandbox-images.sh`, and the Dockerfile names no single file under `src/lib/server/identity/`.
+- `grep -rln "createAccountActions(" src` lists only `account-actions.ts`, `account-actions.test.ts` and `multi-user-instance.ts`, and `grep -rn "kind: 'later'\|multiUser\.auth" src` prints nothing.
+- `auth-handler.test.ts` shows a Better Auth path outside the allowlist answering 404.
+- #512, #513, #518, #521, #555, #556, #557, #558, #559, #563, #564, #591, #592, #593 and #594 are closed, 15 issues. #581 stays open.
+- Sprint 19 does not start until the maintainer answers the wontfix proposals for the open `architecture` issues (2026-11-10).
+- The orchestrator cuts 1.19.5 from release PR #554 (`docs/releasing.md`) and records the cut. Releases stay `1.x`.
+
+**Status (2026-11-11):** exit met.
+- **Cards:** all 30 Sprint 18 cards are Done. The exit line says 29: C346 joined after the line was written, when C342's review found an arm64 gap (#598).
+- **Issues:** 16 closed, each by its last card: #512, #513, #518, #521, #555, #556, #557, #558, #559, #563, #564, #591, #592, #593, #594 and #598. #581 stays open (C240 did its auth-route item; the rest waits for the maintainer's wontfix answer). Two issues were filed during the sprint: #598, fixed by C346, and #616 (`needs-triage`).
+- **CI:** `ci` is green on `main` at 293b8d9, the last code card's merge.
+- **Checks:**
+  - C342's verdict is on #592. `grep -rnE '(//|#|\*).*(\bC[0-9]{2,3}[a-z]?\b|#[0-9]{2,3}\b)' src --include=*.ts --include=*.svelte --include=*.py` prints nothing. The 30-sign-in test (`sign-in.test.ts`) declares no timeout of its own and runs in about 0.7 s.
+  - `rules.ts` has no `runSubmission`, `judge` or `submitPlan` export, and `content-check.sandbox.test.ts` imports `judgeSubmission` from `learning/submission.ts`, nothing from `rules.ts`.
+  - `catalogue.ts` names neither `LONGEST_LANGUAGE_ID` nor `FILE_JSON_OVERHEAD`. `sandbox.ts` names none of `TextDecoder`, `harnessLine`, `removeCreatedByName` or `function within`.
+  - `submission.test.ts` and `core.test.ts` script a cut-off and get RunnerUnavailable, the answer chosen for #556.
+  - ci's `e2e` job neither pulls an image nor runs `build-sandbox-images.sh`, and the Dockerfile names no single file under `src/lib/server/identity/`.
+  - `grep -rn "kind: 'later'\|multiUser\.auth" src` prints nothing. `grep -rln "createAccountActions(" src` lists the three files the exit line names and also `multi-user-instance.test.ts`: there it is a `vi.mock` wrapper that records the factory's options and calls the real one, not a second place that builds the actions. Accepted (C234).
+  - `auth-handler.test.ts` shows every Better Auth endpoint outside the allowlist answering 404. After C244 and C245 the allowlist is `/callback/:id` alone, and `/sign-out` and `/sign-up/email` are in `disabledPaths` too.
+- **Release:** this card's merge carries `Release-As: 1.19.5`. The orchestrator then cuts 1.19.5 from release PR #554 and records the cut in `docs/releasing.md`.
+- **Reviews:**
+  - **`sandbox-security-reviewer`** before merge on C223, C225, C229, C231, C233, C235, C237, C239, C343, C345 and C346, and C342 itself reviewed C222's seccomp filter (aae47f5). C342 found the arm64 gap that became #598 and C346.
+  - **The orchestrator's two-reader review** (Fable and Codex) on C230, C232, C236, C238, C240, C242, C244 and C245. C244 and C245 each went back once: C244 to put `/sign-out` in `disabledPaths` as well; C245 for two tests that had stopped covering what they named (the router's error path, and the headers of a refused sign-up).
+- **Flakes:** three, none caused by a card. C228's first `sandbox` run hit the known fork-bomb overrun (one re-run). Release PR #554's `sandbox` run hit a Docker kill stall on the runner (one re-run). #606's `unit` run hit an EPIPE from `engine.test.ts`'s trickling fake daemon; C237 fixed it.
+
+| Card | PR | What landed |
+|---|---|---|
+| C223 | #585 | One module, `learning/submission.ts`, judges a Submission; `submit-plan.ts` builds each batch's Runner request. |
+| C224 | #584 | The 30-sign-in test got a longer timeout. The maintainer rejected it; C344 replaced it. |
+| C225 | #588 | `harness.ts` decodes the harness transcript, one decoder per stream. A duplicate `i` fails the Run. |
+| C226 | #586 | ci's e2e job stops pulling and building Sandbox images. |
+| C227 | #589 | `core.test.ts`'s batch and Verdict tests move to the Submission module. |
+| C228 | #587 | The Dockerfile copies the server source whole. |
+| C229 | #597 | A result marks the Tests the container cut off. |
+| C230 | #590 | One factory builds the Multi-user Instance. |
+| C231 | #596 | The content check judges through the Submission module. |
+| C232 | #600 | The Identity test harness is the factory's test variant. |
+| C233 | #608 | The catalogue's batch guard measures the Submission module's requests through the HTTP adapter's body size. |
+| C234 | #603 | Every route test runs the factory's wiring. |
+| C235 | #606 | One module, `runner/container.ts`, runs a container. |
+| C236 | #607 | One Admin actions object. |
+| C237 | #610 | The Engine's deadlines use the container module's primitive, in a leaf `deadline.ts`. |
+| C238 | #609 | The Users route calls the Admin actions. |
+| C239 | #613 | The sandbox test helpers run containers through the container module and decode with the Runner's decoder. |
+| C240 | #612 | The auth route gets a bound handler, and Locals holds no Better Auth. |
+| C241 | #611 | A batch the container cut off is RunnerUnavailable. |
+| C242 | #614 | The auth route serves an allowlist; every other Better Auth path answers 404 first. |
+| C243 | #602 | The Problem screen reads once what the Learner may do now. |
+| C244 | #615 | `/sign-out` is closed over HTTP, at the allowlist and in `disabledPaths`; OAuth callback errors land on Sign in. |
+| C245 | #617 | `/sign-up/email` is closed over HTTP; `beforeSignUp` and its rate rule go; `user.create.before` is the one backstop. |
+| C246 | this PR | Exit check and `Release-As: 1.19.5`; the Admin refactor goes on the candidates list. |
+| C341 | #595 | Issues are the unit of work, the planner runs on Fable, small cards share a PR, exited sprints move to the archive. |
+| C342 | none | `sandbox-security-reviewer` on C222's seccomp filter; verdict on #592. It found the arm64 gap (#598). |
+| C343 | #604 | `engine.ts`'s remove poll gets a test. |
+| C344 | #605 | The 30-sign-in test signs the same person in 30 times and runs under the default timeout. |
+| C345 | #618 | Code comments give reasons, not card or issue ids. |
+| C346 | #599 | The seccomp filter refuses `ptrace`, closing the arm64 gap. |
+
+Decided along the way. Each decision was taken under the maintainer's rule to take the recommended option, and is recorded on its card and issue:
+- **#556:** a batch the container cut off is RunnerUnavailable, in Run and in Submit (C241). Open trade-off, noted on #556: Learner code that forces a cut-off now gets RunnerUnavailable instead of Time Limit Exceeded.
+- **#558:** `/sign-out` and `/sign-up/email` are closed over HTTP (C244, C245). Sign out is Settings' `?/signout` action; sign-up is the forms. `onAPIError.errorURL` is `/signin`, so an OAuth callback error before the state is read lands on Sign in.
+- **#521:** a duplicate `i` fails the Run (C225).
+- **C224 then C344:** the maintainer rejected a longer timeout for the 30-sign-in test; C344 made it fast.
+- **C232:** the factory refuses `passwordHasher` and `admit` overrides in production.
+- **Files lines widened by the orchestrator:** C240 (seven files the bound handler reached), C242 (`setup.multi.e2e.ts`, which now expects 404 for `/get-session`), C244 (`handle.test.ts`, `auth.test.ts`), C245 (`signout.test.ts`), C246 (`docs/architecture-candidates.md`).
+
+Not carded, recorded here:
+- The Admin error classes stay exported, and the free `listAccounts`, `resetPassword` and `removeAccount` have no role check of their own; making them private behind the Admin actions is a refactor, so it is on `docs/architecture-candidates.md` (C238's review).
+- `setup/+page.svelte` keeps a fallback text no state reaches (C232's review).
+- `content-check.sandbox.test.ts` does not assert that `languages` is non-empty (C231's review).
+- A stdout line with no newline is rescanned on each frame (`harness.ts`), bounded by the 32 MiB cap and the wall clock; only a compromised harness reaches it (C225's review).
+- A must-change Account's sign-out with the real Better Auth is covered by e2e only (C244's review).
+- `sandbox.ts`'s comment says the seccomp filter refuses `prlimit64` on `RLIMIT_CORE`; it refuses only a call that sets a new limit, and a read is allowed (C345's review).
+
+For the maintainer:
+- **`.wontfix-proposals.md`:** 28 `architecture` issues proposed for wontfix. Sprint 19 does not start until you answer.
+- **#535:** the Tailscale OAuth client, and a GitHub App or RELEASE_PAT (C220, C221, C340).
+- **#529:** axe is a new dependency, a hard call.
+- **#616:** triage (narrow-screen Sign out for an Account that must change its password).
+- **GitGuardian:** 39252375, 39260283 and 39899211 are false positives only you can mark.
+
+**Not in the sprint:**
+- **#556's larger step**, where the Runner owns how many Tests fit a container and the core sends isolation groups: speculative, size L, and it touches `maxSubmitCalls` and the adapter-timeout arithmetic. It is not planned, and #566 (the budget module where it would start) is proposed for wontfix.
+- **#570**, the release webhook's shared notify script: card C340, with no Sprint. It edits `notify.yml` and `release.yml`, as C220 and C221 do, so it goes after them. C220 and C221 stay Todo with no Sprint, waiting on the maintainer's answer to #535.
+- **Content and the spec:** #113, #252 to #268 and #24 are not engineering work. They stay open, `ready-for-human` or `ready-for-agent` as they are.
+- **Everything else in the backlog** is planned in Sprints 19 and 20, below, re-planned issue first by the Fable sprint-planner on 2026-11-10 (the maintainer's rule, #591). The 28 `architecture` issues proposed for wontfix wait for the maintainer and are in no sprint.
