@@ -81,16 +81,24 @@ const makeInvite: SubmitFunction = () => {
 // `reset: false` keeps a control edited while the request was out, and a refused or failed action may still
 // have changed the mode (a write can commit and the answer fail) without reloading the page's data. So a
 // failure reloads it first. An error result shows the error page, which a reload would replace.
-const switchRegistration: SubmitFunction = ({ formElement }) => {
+// One save at a time: two in flight could reach the server in reverse order and leave the earlier choice stored.
+let saving = $state(false);
+const switchRegistration: SubmitFunction = ({ formElement, cancel }) => {
+	if (saving) {
+		cancel();
+		return;
+	}
+	saving = true;
 	return async ({ result, update }) => {
-		await update({ reset: false });
 		try {
+			await update({ reset: false });
 			if (result.type === 'failure') await invalidateAll();
 		} finally {
 			const select = formElement.elements.namedItem('registration');
 			if (select instanceof HTMLSelectElement) select.value = data.registration;
 			// A finished submission sends focus to the top of the page; the select was what was used.
 			registrationSelect?.focus();
+			saving = false;
 		}
 	};
 };
@@ -119,7 +127,7 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 					<option value="open" selected={data.registration === 'open'}>Open</option>
 				</select>
 			</label>
-			<button type="submit">Save registration</button>
+			<button type="submit" aria-disabled={saving}>Save registration</button>
 			<p class="lead" aria-live="polite">{explanation[data.registration]}</p>
 			{#if form && 'message' in form}<p class="error" role="alert">{form.message}</p>{/if}
 		</form>

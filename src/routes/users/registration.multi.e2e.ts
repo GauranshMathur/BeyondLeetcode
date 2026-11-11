@@ -381,7 +381,27 @@ test.describe('on a Multi-user server of its own', () => {
 		}
 	});
 
-	test('a choice edited while a save is on its way does not outlast the answer', async ({
+	// Holds the registration POST until `release()`, and says when it has arrived.
+	async function holdPost(page: Page) {
+		let release: () => void = () => {};
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let arrived: () => void = () => {};
+		const reached = new Promise<void>((resolve) => {
+			arrived = resolve;
+		});
+		const posts: string[] = [];
+		await page.route('**/users?/registration', async (route) => {
+			posts.push(route.request().postData() ?? '');
+			arrived();
+			await held;
+			await route.continue();
+		});
+		return { release, reached, posts };
+	}
+
+	test('a choice made while a save is on its way is replaced by the stored mode when the answer arrives', async ({
 		browser,
 		playwright,
 		own
@@ -389,31 +409,60 @@ test.describe('on a Multi-user server of its own', () => {
 		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
 		try {
 			const page = await context.newPage();
-			let release: () => void = () => {};
-			const held = new Promise<void>((resolve) => {
-				release = resolve;
-			});
-			let arrived: () => void = () => {};
-			const reached = new Promise<void>((resolve) => {
-				arrived = resolve;
-			});
-			await page.route('**/users?/registration', async (route) => {
-				arrived();
-				await held;
-				await route.continue();
-			});
+			const hold = await holdPost(page);
 			await gotoHydrated(page, '/users');
 			const select = registration(page);
-			await select.selectOption({ label: 'Open' });
+			// Invite only is stored; saving it unchanged leaves the page data as it is, so only the restore
+			// can move the select back.
 			await page.getByRole('button', { name: 'Save registration' }).click();
-			await reached;
+			await hold.reached;
+			await select.selectOption({ label: 'Open' });
+			hold.release();
+
+			await expect(select).toBeFocused();
+			await expect(select).toHaveValue('invite');
+			expect(await storedMode()).toBe('invite');
+			expect(await signupFor(playwright, own.url)).toBe('closed');
+		} finally {
+			try {
+				await backToInvite(own);
+			} finally {
+				await context.close();
+			}
+		}
+	});
+
+	test('a second Save while one is on its way sends nothing, and the select, the stored mode and /signup agree', async ({
+		browser,
+		playwright,
+		own
+	}) => {
+		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
+		try {
+			const page = await context.newPage();
+			const hold = await holdPost(page);
+			await gotoHydrated(page, '/users');
+			const select = registration(page);
+			const save = page.getByRole('button', { name: 'Save registration' });
+			await select.selectOption({ label: 'Open' });
+			await save.click();
+			await hold.reached;
+			await expect(save).toHaveAttribute('aria-disabled', 'true');
+			// Playwright treats aria-disabled as not enabled, but a person can still press it.
+			await save.click({ force: true });
 			await select.selectOption({ label: 'Invite only' });
-			release();
+			await save.click({ force: true });
+			// A post would be sent straight away; give one a moment to show up.
+			await page.waitForTimeout(500);
+			expect(hold.posts).toHaveLength(1);
+			hold.release();
 
 			await expect(page.getByText(OPEN)).toBeVisible();
-			expect(await storedMode()).toBe('open');
+			await expect(save).toHaveAttribute('aria-disabled', 'false');
+			expect(hold.posts).toHaveLength(1);
 			await expect(select).toHaveValue('open');
-			await expect(select).toBeFocused();
+			expect(await storedMode()).toBe('open');
+			expect(await signupFor(playwright, own.url)).toBe('form');
 		} finally {
 			try {
 				await backToInvite(own);
