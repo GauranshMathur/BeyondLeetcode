@@ -1,10 +1,13 @@
 <script lang="ts">
 import { enhance, type SubmitFunction } from '$app/forms';
+import { invalidateAll } from '$app/navigation';
 import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
 
-// Without JavaScript the select needs its button; with it, choosing submits.
+let registrationSelect = $state<HTMLSelectElement>();
+
+// The copy and Done buttons only work with JavaScript, so they show only once the page has hydrated.
 let enhanced = $state(false);
 $effect(() => {
 	enhanced = true;
@@ -74,14 +77,28 @@ const makeInvite: SubmitFunction = () => {
 	};
 };
 
-// A refused or failed switch changed nothing: the select goes back to what the Instance holds, so it
-// never shows a mode that is not in force.
-const switchRegistration: SubmitFunction = ({ formElement }) => {
+// Whatever the outcome, the select ends on the mode the Instance holds, never one that is not in force:
+// `reset: false` keeps a control edited while the request was out, and a refused or failed action may still
+// have changed the mode (a write can commit and the answer fail) without reloading the page's data. So a
+// failure reloads it first. An error result shows the error page, which a reload would replace.
+// One save at a time: two in flight could reach the server in reverse order and leave the earlier choice stored.
+let saving = $state(false);
+const switchRegistration: SubmitFunction = ({ formElement, cancel }) => {
+	if (saving) {
+		cancel();
+		return;
+	}
+	saving = true;
 	return async ({ result, update }) => {
-		await update({ reset: false });
-		const select = formElement.elements.namedItem('registration');
-		if (result.type !== 'success' && select instanceof HTMLSelectElement) {
-			select.value = data.registration;
+		try {
+			await update({ reset: false });
+			if (result.type === 'failure') await invalidateAll();
+		} finally {
+			const select = formElement.elements.namedItem('registration');
+			if (select instanceof HTMLSelectElement) select.value = data.registration;
+			// A finished submission sends focus to the top of the page; the select was what was used.
+			registrationSelect?.focus();
+			saving = false;
 		}
 	};
 };
@@ -105,17 +122,12 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		<form class="control" method="POST" action="?/registration" use:enhance={switchRegistration}>
 			<label>
 				Registration
-				<select
-					name="registration"
-					onchange={(e) => enhanced && e.currentTarget.form?.requestSubmit()}
-				>
+				<select name="registration" autocomplete="off" bind:this={registrationSelect}>
 					<option value="invite" selected={data.registration === 'invite'}>Invite only</option>
 					<option value="open" selected={data.registration === 'open'}>Open</option>
 				</select>
 			</label>
-			{#if !enhanced}
-				<button type="submit">Save registration</button>
-			{/if}
+			<button type="submit" aria-disabled={saving}>Save registration</button>
 			<p class="lead" aria-live="polite">{explanation[data.registration]}</p>
 			{#if form && 'message' in form}<p class="error" role="alert">{form.message}</p>{/if}
 		</form>
