@@ -697,6 +697,7 @@ const label: Record<SaveState, string> = {
 		}
 		.editor-slot :global(.cm-editor) {
 			height: auto;
+			min-height: 132px;
 		}
 		.strip {
 			padding: 4px var(--size-gutter);
