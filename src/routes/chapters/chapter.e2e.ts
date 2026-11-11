@@ -89,6 +89,34 @@ test.describe('a link clicked while the Chapter is being marked Read', () => {
 	});
 });
 
+// Reaching the end posts reach-end and refreshes the page's data. That refresh must not send focus back
+// to the top of the page, where a keyboard Learner reading the links would lose their place.
+test.describe('a link focused while the Chapter is being marked Read', () => {
+	test.use({ storageState: asLearner('e2e-chapter-focus') });
+
+	test('keeps its focus', async ({ page }) => {
+		let releaseReachEnd = () => {};
+		const reachEndHeld = new Promise<void>((resolve) => (releaseReachEnd = resolve));
+		await page.route(/\/chapters\/stacks-undo-log\?\/reachEnd/, async (route) => {
+			await reachEndHeld;
+			await route.continue();
+		});
+
+		const reachEndPosted = page.waitForRequest(/\?\/reachEnd/);
+		await gotoHydrated(page, '/chapters/stacks-undo-log');
+		await reachEndPosted;
+		const link = page.getByRole('link', { name: 'Push and size' });
+		await link.focus();
+		await expect(link).toBeFocused();
+		const reachEndDone = page.waitForResponse(/\?\/reachEnd/);
+		releaseReachEnd();
+		await reachEndDone;
+		// The refreshed data shows the Chapter as read, so the refresh has been applied.
+		await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
+		await expect(link).toBeFocused();
+	});
+});
+
 // The Chapter below 768 px. The fixture Chapters carry no code, table or margin note, so the
 // document is served with a code block and a table added to the body, built by renderMarkdown, so the test checks
 // what the server sends; the rest is the real page.
