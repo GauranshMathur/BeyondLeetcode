@@ -39,3 +39,81 @@ describe('renderMarkdown scroll boxes', () => {
 		expect(renderMarkdown(md)).toBe(defaultHtml(md));
 	});
 });
+
+describe('renderMarkdown raw HTML and link targets', () => {
+	const escaped: [string, string, string][] = [
+		[
+			'angle words in a sentence',
+			'a <prev> -> <next> edge',
+			'<p>a &lt;prev&gt; -&gt; &lt;next&gt; edge</p>'
+		],
+		[
+			'a generic type in prose',
+			'class C implements Comparable<C> here',
+			'<p>class C implements Comparable&lt;C&gt; here</p>'
+		],
+		['an unknown tag', '<x>', '&lt;x&gt;'],
+		[
+			'an image with a handler',
+			'<img src=x onerror=alert(1)>',
+			'&lt;img src=x onerror=alert(1)&gt;'
+		],
+		[
+			'an inline script',
+			'a <script>alert(1)</script> b',
+			'a &lt;script&gt;alert(1)&lt;/script&gt; b'
+		],
+		[
+			'a block of HTML',
+			'<div onclick="x()">hi</div>',
+			'&lt;div onclick=&quot;x()&quot;&gt;hi&lt;/div&gt;'
+		],
+		['a comment', 'a <!-- hidden --> b', 'a &lt;!-- hidden --&gt; b']
+	];
+	it.each(escaped)('%s is shown as text', (_n, md, expected) => {
+		const html = renderMarkdown(md);
+		expect(html).toContain(expected);
+		expect(html).not.toMatch(/<(img|script|div|x|prev|next)[\s>]/i);
+	});
+
+	it('keeps text typed after an open raw tag escaped', () => {
+		const html = renderMarkdown('<pre>a <img src=x onerror=alert(1) b');
+		expect(html).not.toMatch(/<img/i);
+		expect(html).not.toMatch(/<pre/i);
+	});
+
+	it('leaves code spans and fences as marked renders them', () => {
+		expect(renderMarkdown('Use `<div>` here.')).toBe(defaultHtml('Use `<div>` here.'));
+		expect(renderMarkdown('```html\n<b>x</b>\n```')).toContain('&lt;b&gt;x&lt;/b&gt;');
+	});
+
+	const kept: [string, string][] = [
+		['an https link', '[a](https://example.com/x?y=1)'],
+		['an http link', '[a](http://example.com)'],
+		['a relative path', '[a](/chapters/trees-traversal)'],
+		['a relative file', '[a](../x.md)'],
+		['an anchor', '[a](#top)'],
+		['an https image', '![alt](https://example.com/i.png)'],
+		['a link with a title', '[a](https://example.com "t")']
+	];
+	it.each(kept)('%s is Marked default', (_n, md) => {
+		expect(renderMarkdown(md)).toBe(defaultHtml(md));
+	});
+
+	const dropped: [string, string, string][] = [
+		['a javascript link', '[click](javascript:alert(1))', '<p>click</p>'],
+		['a mixed-case scheme', '[click](JaVaScRiPt:alert(1))', '<p>click</p>'],
+		['a scheme with a tab', '[click](<java\tscript:alert(1)>)', '<p>click</p>'],
+		['a data link', '[click](data:text/html;base64,PHNjcmlwdD4=)', '<p>click</p>'],
+		['a vbscript link', '[click](vbscript:x)', '<p>click</p>'],
+		['a file link', '[click](file:///etc/passwd)', '<p>click</p>'],
+		['an autolink', '<javascript:alert(1)>', '<p>javascript:alert(1)</p>'],
+		['a reference link', '[click][r]\n\n[r]: javascript:alert(1)', '<p>click</p>'],
+		['a javascript image', '![alt text](javascript:alert(1))', '<p>alt text</p>']
+	];
+	it.each(dropped)('%s keeps its words and loses its target', (_n, md, expected) => {
+		const html = renderMarkdown(md);
+		expect(html.trim()).toBe(expected);
+		expect(html).not.toMatch(/href|src=/i);
+	});
+});
