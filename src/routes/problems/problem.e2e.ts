@@ -13,8 +13,10 @@ import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-problem') });
 
-// The Problem screen has two live regions: the save status by the editor and the console's.
-const saveStatus = (page: Page) => page.getByRole('status').and(page.locator('.status'));
+// The Problem screen has two live regions: the console's and one that carries only the save states
+// that need action. The visible save status is plain text, so it is found by its class.
+const saveStatus = (page: Page) => page.locator('.status:visible');
+const saveAnnouncement = (page: Page) => page.getByRole('status').and(page.locator('.live'));
 const consoleStatus = (page: Page) =>
 	page.getByRole('region', { name: 'Console' }).getByRole('status');
 
@@ -47,6 +49,41 @@ test('a Problem shows its statement and Example Tests, and typed code survives a
 	await expect(page.getByLabel('Code: main.py')).toContainText('print(42)');
 });
 
+test('typing and saving change the visible save status but announce nothing', async ({ page }) => {
+	await gotoHydrated(page, '/problems/stacks-pop');
+	await expect(saveStatus(page)).toHaveText('saved');
+	await expect(saveAnnouncement(page)).toHaveText('');
+
+	await typeInEditor(page, '# quiet');
+	await expect(saveStatus(page)).toHaveText('edited');
+	await expect(saveAnnouncement(page)).toHaveText('');
+	await expect(saveStatus(page)).toHaveText('saved');
+	await expect(saveAnnouncement(page)).toHaveText('');
+});
+
+test('a failed save is announced', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?/save', (route) => route.abort());
+	await gotoHydrated(page, '/problems/stacks-pop');
+	await typeInEditor(page, '# offline');
+	await expect(saveStatus(page)).toHaveText('not saved · retrying');
+	await expect(saveAnnouncement(page)).toHaveText('not saved · retrying');
+});
+
+test('signed out while saving is announced by the alert, not the status', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?/save', (route) =>
+		route.fulfill({
+			status: 200,
+			contentType: 'application/json',
+			body: JSON.stringify({ type: 'redirect', status: 303, location: '/signin' })
+		})
+	);
+	await gotoHydrated(page, '/problems/stacks-pop');
+	await typeInEditor(page, '# gone');
+	await expect(saveStatus(page)).toHaveText('not saved — signed out');
+	await expect(page.getByRole('alert')).toContainText('You are signed out');
+	await expect(saveAnnouncement(page)).toHaveText('');
+});
+
 test('a second tab with a stale revision is told to reload', async ({ page, context }) => {
 	await gotoHydrated(page, '/problems/stacks-pop');
 	const other = await context.newPage();
@@ -57,6 +94,7 @@ test('a second tab with a stale revision is told to reload', async ({ page, cont
 
 	await typeInEditor(other, '# two');
 	await expect(saveStatus(other)).toHaveText('edited elsewhere — reload');
+	await expect(saveAnnouncement(other)).toHaveText('edited elsewhere — reload');
 
 	await reloadHydrated(other);
 	await expect(other.getByLabel('Code: main.py')).toContainText('# one');
