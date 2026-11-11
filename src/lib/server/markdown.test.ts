@@ -232,3 +232,72 @@ describe('renderMarkdown ampersands in targets', () => {
 		);
 	});
 });
+
+describe('renderMarkdown leading heading that repeats the page title', () => {
+	it('drops a leading h1 equal to the title and keeps the rest', () => {
+		expect(renderMarkdown('# Push and size\n\nBody text.\n', 'Push and size')).toBe(
+			'<p>Body text.</p>\n'
+		);
+	});
+	it('ignores blank lines before the heading and spaces around the title', () => {
+		expect(renderMarkdown('\n\n#  Push and size  \n\nBody', 'Push and size')).toBe('<p>Body</p>\n');
+	});
+	it('keeps the heading when no title is given', () => {
+		expect(renderMarkdown('# Push and size\n\nBody')).toBe(defaultHtml('# Push and size\n\nBody'));
+	});
+	it('keeps a leading h1 that differs from the title', () => {
+		const md = '# Something else\n\nBody';
+		expect(renderMarkdown(md, 'Push and size')).toBe(defaultHtml(md));
+	});
+	it('keeps an h2 with the title text', () => {
+		const md = '## Push and size\n\nBody';
+		expect(renderMarkdown(md, 'Push and size')).toBe(defaultHtml(md));
+	});
+	it('drops only the leading heading, not a later h1 with the same text', () => {
+		expect(renderMarkdown('# Title\n\nIntro\n\n# Title\n\nMore', 'Title')).toBe(
+			'<p>Intro</p>\n<h1>Title</h1>\n<p>More</p>\n'
+		);
+	});
+	it('keeps an h1 that is not first', () => {
+		const md = 'Intro\n\n# Title\n';
+		expect(renderMarkdown(md, 'Title')).toBe(defaultHtml(md));
+	});
+	it('compares the heading source, so formatting is not equal to plain text', () => {
+		const md = '# **Title**\n\nBody';
+		expect(renderMarkdown(md, 'Title')).toBe(defaultHtml(md));
+	});
+	it('never puts the title in the output', () => {
+		const title = '<img src=x onerror=alert(1)>';
+		const html = renderMarkdown('# Other\n\nBody', title);
+		expect(html).not.toContain('onerror');
+		expect(html).toBe(defaultHtml('# Other\n\nBody'));
+	});
+	it('still escapes raw HTML in what remains', () => {
+		expect(renderMarkdown('# T\n\n<script>x</script>', 'T')).not.toContain('<script>');
+	});
+});
+
+describe('renderMarkdown leading heading, boundaries', () => {
+	it('drops a setext h1 that matches', () => {
+		expect(renderMarkdown('T\n=\n\nBody', 'T')).toBe('<p>Body</p>\n');
+	});
+	it('keeps an h1 that follows an HTML comment', () => {
+		const html = renderMarkdown('<!-- note -->\n\n# T\n\nBody', 'T');
+		expect(html).toContain('<h1>T</h1>');
+		expect(html).not.toContain('<!--');
+	});
+	it('still drops an unsafe reference-style link target after the dropped heading', () => {
+		expect(renderMarkdown('# T\n\n[a][r]\n\n[r]: javascript:alert(1)', 'T')).toBe('<p>a</p>\n');
+	});
+	it('still writes one &amp; per & in a reference-style target after the dropped heading', () => {
+		expect(renderMarkdown('# T\n\n[a][r]\n\n[r]: https://x/?a=1&b=2', 'T')).toBe(
+			'<p><a href="https://x/?a=1&amp;b=2">a</a></p>\n'
+		);
+	});
+	it('removes nothing for an empty title', () => {
+		expect(renderMarkdown('# T\n\nBody', '')).toBe(defaultHtml('# T\n\nBody'));
+	});
+	it('matches the heading source, so a bold heading equals a bold title', () => {
+		expect(renderMarkdown('# **T**\n\nBody', '**T**')).toBe('<p>Body</p>\n');
+	});
+});

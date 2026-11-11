@@ -16,7 +16,7 @@ test('reaching the end of a Chapter marks it Read on the Topic', async ({ page }
 
 	await page.getByRole('link', { name: 'An undo log' }).click();
 	await expect(page).toHaveURL('/chapters/stacks-undo-log');
-	await expect(page.getByRole('heading', { level: 1, name: 'An undo log' }).first()).toBeVisible();
+	await expect(page.getByRole('heading', { level: 1, name: 'An undo log' })).toBeVisible();
 	await expect(page.getByText('Placeholder fixture text')).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Push and size' })).toHaveAttribute(
 		'href',

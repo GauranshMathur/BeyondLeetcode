@@ -57,9 +57,9 @@ vi.mock('../markdown.ts', async (original) => {
 	const actual = await original<typeof import('../markdown.ts')>();
 	return {
 		...actual,
-		renderMarkdown: (markdown: string) => {
+		renderMarkdown: (markdown: string, pageTitle?: string) => {
 			rendered.calls++;
-			return actual.renderMarkdown(markdown);
+			return actual.renderMarkdown(markdown, pageTitle);
 		}
 	};
 });
@@ -229,7 +229,7 @@ describe('learner.chapter() and learner.reachChapterEnd()', () => {
 			title: 'An undo log',
 			topicId: 'stacks',
 			topicTitle: 'Stacks',
-			bodyHtml: expect.stringContaining('<h1>An undo log</h1>'),
+			bodyHtml: expect.stringContaining('<p>Placeholder fixture text'),
 			read: false,
 			problems: [
 				{ id: 'stacks-push', title: 'Push and size', kind: 'Core', status: 'Untouched' },
