@@ -166,7 +166,7 @@ const label: Record<SaveState, string> = {
 	</nav>
 {/snippet}
 
-<div class="page" data-tab={view.pane}>
+<main class="page" data-tab={view.pane}>
 	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
 	<div class="grid">
@@ -245,7 +245,7 @@ const label: Record<SaveState, string> = {
 			<button type="button" aria-pressed={view.pane === pane} onclick={() => onview({ ...view, pane })}>{NAMES[pane]}</button>
 		{/each}
 	</nav>
-</div>
+</main>
 
 <style>
 	.page {

@@ -29,9 +29,9 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 		{#snippet statement()}
 			<div class="left">
 				<nav class="tabs mono" aria-label="Problem sections">
-					<a href="/problems/{problem.id}" data-sveltekit-noscroll aria-current={view.section === 'problem' ? 'page' : undefined}>Problem</a>
-					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-noscroll aria-current={view.section === 'hints' ? 'page' : undefined}>Hints</a>
-					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-noscroll data-sveltekit-preload-data="off" aria-current={view.section === 'solution' ? 'page' : undefined}>Solution</a>
+					<a href="/problems/{problem.id}" data-sveltekit-reset="false" aria-current={view.section === 'problem' ? 'page' : undefined}>Problem</a>
+					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-reset="false" aria-current={view.section === 'hints' ? 'page' : undefined}>Hints</a>
+					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-reset="false" data-sveltekit-preload-data="off" aria-current={view.section === 'solution' ? 'page' : undefined}>Solution</a>
 				</nav>
 				<!-- The pane scrolls on its own; tabindex lets the keyboard reach it. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
