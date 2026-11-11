@@ -7,8 +7,8 @@ import {
 	type Topic,
 	type TopicSummary
 } from '../content/catalogue.ts';
-import { MAX_BUILD_FILES, MAX_PATH_BYTES } from '../runner/port.ts';
 import { renderMarkdown } from '../markdown.ts';
+import { MAX_BUILD_FILES, MAX_PATH_BYTES } from '../runner/port.ts';
 import { LearningError } from './errors.ts';
 import {
 	acceptedDiff,
