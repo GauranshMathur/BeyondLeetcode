@@ -5,9 +5,8 @@ import { type FreshServer, startFreshServer } from './signin/fresh-server.ts';
 
 // One table of every Local screen (each route under src/routes with a page) in light and dark, on a desktop
 // and on the phone: one main, a non-empty title and one h1. A screen that fails gets a `fixme` row with its
-// reason, so the file passes and the gap stays visible. The error pages are asserted in error.e2e.ts, and the
-// Multi-user screens in a11y.multi.e2e.ts. Sign in, Sign up, Users, Change password and Accept invite do not
-// exist on a Local Instance (they answer 404), so they are only in the Multi-user file.
+// reason, so the file passes and the gap stays visible. The Multi-user screens are in a11y.multi.e2e.ts: Sign in, Sign up,
+// Users, Change password and Accept invite do not exist on a Local Instance (they answer 404).
 //
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 
@@ -18,7 +17,10 @@ const SCREENS: Screen[] = [
 	{ name: 'a Topic', path: '/topics/stacks' },
 	{ name: 'a Chapter', path: '/chapters/stacks-undo-log' },
 	{ name: 'a Problem', path: '/problems/stacks-push' },
-	{ name: 'Settings', path: '/settings' }
+	{ name: 'Settings', path: '/settings' },
+	// The root error page, which no page file renders: an unknown path and a Locked Topic.
+	{ name: 'a Not Found error', path: '/no/such/page' },
+	{ name: 'a Locked Topic error', path: '/topics/queues' }
 ];
 
 const test = base.extend<object, { fresh: FreshServer }>({
