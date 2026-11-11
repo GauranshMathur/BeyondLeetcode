@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.19.5](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.4...v1.19.5) (2026-11-11)
+
+### Highlights
+
+Sprint 18 rebuilt the seams under Submissions, the Runner and Identity, so most of it does not show. What does: when the sandbox has to stop a whole batch of tests, you now see "Runner unavailable, try again" instead of a wrong Time Limit Exceeded, and Run, Submit and the language switch look shut whenever they would do nothing. The sign-in system now answers only the provider's sign-in redirect over HTTP.
+
+### Added
+
+Nothing new to use in this release.
+
+### Fixed
+
+- Code that runs past the sandbox's time for a whole batch of tests now shows "Runner unavailable, try again" instead of a wrong Time Limit Exceeded on an earlier step. (C241, #611)
+- Run, Submit and the language switch now look shut whenever they would do nothing. (C243, #602)
+
+### Changed
+
+Nothing changed in how it works.
+
+### Content
+
+No content changes in this release.
+
+### Security
+
+- The sign-up forms are now the only way to create an Account; the direct sign-up endpoint answers 404. Better Auth's HTTP routes are now an allowlist that serves only an OAuth provider's redirect back; sign-out is the Settings page's Sign out. (C242, C244, C245; #614, #615, #617)
+- On arm64 hosts, the sandbox's seccomp filter now refuses `ptrace`, which closes a way for code under test to get around the core-dump limit. x86_64 hosts were not affected. (C346, #599)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.19.5` (or `latest`), then run `docker compose pull && docker compose up -d`.
+
+If you call Better Auth's endpoints under `/api/auth/` directly (for example `sign-up/email`, `sign-out` or `get-session`), they now answer 404. Use the app's Sign up, Accept invite and Settings pages instead. A provider's redirect back to `/api/auth/callback/<provider>` works as before.
+
 ## [1.19.4](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.3...v1.19.4) (2026-11-08)
 
 ### Highlights
