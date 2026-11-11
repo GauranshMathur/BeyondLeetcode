@@ -23,6 +23,11 @@ function isSafeTarget(href: string): boolean {
 	return scheme === null || /^https?$/i.test(scheme[1]);
 }
 
+// marked keeps a character reference such as &#x73; in an href as it is, and the browser decodes
+// it, so a scheme could be spelled around the check. Escaping every & makes the browser read the
+// target exactly as it was checked.
+const literalAmpersands = (href: string) => href.replace(/&/g, '&amp;');
+
 const marked = new Marked({
 	renderer: {
 		// Raw HTML, block or inline, becomes text. The word-for-word source is kept so a
@@ -37,10 +42,12 @@ const marked = new Marked({
 			return Renderer.prototype.text.call(this, { ...token, escaped: false } as Tokens.Text);
 		},
 		link(token) {
-			return isSafeTarget(token.href) ? false : this.parser.parseInline(token.tokens);
+			if (!isSafeTarget(token.href)) return this.parser.parseInline(token.tokens);
+			return Renderer.prototype.link.call(this, { ...token, href: literalAmpersands(token.href) });
 		},
 		image(token) {
-			return isSafeTarget(token.href) ? false : escapeHtml(token.text);
+			if (!isSafeTarget(token.href)) return escapeHtml(token.text);
+			return Renderer.prototype.image.call(this, { ...token, href: literalAmpersands(token.href) });
 		},
 		code(token) {
 			return Renderer.prototype.code

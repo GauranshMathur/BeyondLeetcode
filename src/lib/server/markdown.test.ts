@@ -117,3 +117,22 @@ describe('renderMarkdown raw HTML and link targets', () => {
 		expect(html).not.toMatch(/href|src=/i);
 	});
 });
+
+describe('renderMarkdown character references in targets', () => {
+	const refs: [string, string][] = [
+		['a hex reference', '[x](java&#x73;cript:alert(1))'],
+		['a decimal reference', '![x](java&#115;cript:alert(1))'],
+		['a named reference', '[x](javascript&colon;alert(1))'],
+		['a reference link', '[x][r]\n\n[r]: java&#x73;cript:alert(1)']
+	];
+	it.each(refs)('%s cannot spell a scheme', (_n, md) => {
+		const html = renderMarkdown(md);
+		expect(html).not.toMatch(/(href|src)="[^"]*&(?!amp;)/);
+	});
+
+	it('keeps a query string readable to the browser', () => {
+		expect(renderMarkdown('[a](https://example.com/?x=1&y=2)')).toBe(
+			'<p><a href="https://example.com/?x=1&amp;y=2">a</a></p>\n'
+		);
+	});
+});
