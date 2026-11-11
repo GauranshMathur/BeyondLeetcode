@@ -111,6 +111,48 @@ Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because 
 - **The 28 `architecture` refactor issues** (#500 to #505, #515, #516, #519, #520, #560, #561, #562, #566 to #569, #571, #573 to #582): none is wontfix (the maintainer's decision, 2026-11-11). Each has a Backlog ticket, and later sprints draw from them.
 - **The plan was re-checked on 2026-11-11** under the Backlog rule. The one security card, C349 (the renderer escapes raw HTML), runs in round 1. No Backlog ticket is critical, so none joins this sprint.
 
+**Status (2026-11-11):** exit met.
+- **Cards:** all 26 Sprint 19 cards are Done. The exit line says 25: C385 joined during the sprint as critical work, when `ci` failed on `main` (#631).
+- **Issues:** 10 closed, each by its last card: #522, #523, #524, #525, #526, #527, #528, #533, #616 and #631. #529 stays open for the maintainer's answer on axe; its no-dependency half is done (C358, C362).
+- **CI:** `ci` is green on `main` at 3b2c279, the last code card's merge.
+- **Checks:**
+  - `markdown.test.ts` pins raw HTML escaped to text and a `javascript:` link rendered without its target, with exact output. `graphs-lockdep` renders `<prev> -> <next>` as text.
+  - `a11y.e2e.ts` and `a11y.multi.e2e.ts` find one `main`, a non-empty title and one h1 on every screen, in both themes, on desktop and phone. No screen failed.
+  - `contrast.test.ts` passes (45 tests). It reads the pairs from `tokens.css`, and holds the light accent `#ae3f1d`, the `--selection-match` token under ink, muted and accent, and the ink border.
+  - `problem.e2e.ts` checks focus after Run, Submit, Reveal hint, both Cancels, a restart and a Language switch, and at 320×256 finds the statement's scroll box 158 px tall (29 px before).
+  - `grep -rn "data-sveltekit-noscroll" src` prints nothing.
+  - `password.multi.e2e.ts` signs a held Account out from the Change password page at the phone viewport, and a protected page then sends it to Sign in.
+- **Release:** this card's merge carries `Release-As: 1.19.6`. The orchestrator then cuts 1.19.6 from release PR #621 and records the cut in `docs/releasing.md`.
+- **Reviews:**
+  - **The orchestrator's two-reader review** (Fable and Codex) on C349, C351 and C359. None merged until both agreed.
+    - **C349** went back once: autolink targets were escaped twice, and three tests did not pin what they named. Neither reader found a way to produce active content or an unsafe URL (Codex ran 8,232 inputs on the final head).
+    - **C351** went back once, for tests only: nothing proved the Problem view passed its title.
+    - **C359** took five rounds. Each of the first four found something that was then fixed: the test cleanup reset the database but not the running server; a save that committed and then failed left the select on the old mode; an edit made during a save was not restored; and two saves could be in flight at once. The fifth settled a finding that is on `main` and not from the card (without JavaScript, two saves in quick succession are stored in arrival order): it is #647, and both readers agreed the PR itself introduces nothing.
+  - **No `sandbox-security-reviewer`:** no card touched `src/lib/server/runner/`.
+- **Flakes:** three.
+  - **The Submit test's "Submitting" assertion** failed on `main` twice (be5e0a7, 8083e9e). C350 had added it, and it raced the Verdict. Filed as #631, cut into the sprint as C385 under the critical rule, and fixed by holding the request until the state is seen.
+  - **`change-password.test.ts`'s eight-changes test** timed out once in `unit` on 3d11edf; re-run. It is #634, in the Backlog.
+  - **`.github/ci-gate.test.sh`** failed once in `lint` on PR #644 and passed on a re-run. It is #651, in the Backlog.
+- **Decisions and accepted changes from the cards:**
+  - **The Backlog rule** (the maintainer, 2026-11-11, #625): nothing is wontfix for being only a refactor; every open issue has a Backlog ticket; only critical work joins the sprint in progress. The sprint started when the maintainer lifted the hold.
+  - **C347:** the Problem screen's `main` is the inner grid of panes, not the whole page, so the app header stays the page's banner. C364 keeps that at the short phone with a plain wrapper that scrolls.
+  - **C349:** three Chapters' rendered text changed, not two: `two-pointers-go-compact` also had text swallowed as a tag.
+  - **C351:** the match is on the heading's Markdown source. A heading written with an entity keeps both h1s; no content file does that today.
+  - **C355:** "signed out" is announced by the existing alert, not by the new live region, so it is not read twice.
+  - **C360:** no new copy. The h1 is the message the error carries, so a Locked Topic reads `TopicLocked`, as the default page did. The wording is #643, for the maintainer.
+  - **C358:** `docs/agents/design-canvas.md` was added to its Files line, for the `tokens()` block's light accent. The logo files keep `#B4421F`, as F20 says.
+  - **C363 and C364** ran in lane B's free slot, since lane B's own cards were done and neither shared a file with C359.
+  - **C385:** its "10 times in a row" could not be run as written, because the test solves the Problem and a repeat on the same database fails later for that reason. The assertion it fixes passed in every iteration.
+  - **Design cards:** F20, F21, P12, S3 and AC3 are on the canvas (version 64). No board was rendered and looked at; the designers checked geometry by arithmetic.
+- **Filed during the sprint, in the Backlog:** #623 and #624 (the two lines of the removed candidates file), #634, #637, #640, #643 (`needs-triage`), #647 (`needs-triage`), #649, #651 and #652.
+- **Waiting on the maintainer:**
+  - **#643:** the 403 and 404 wording on the error page.
+  - **#647:** whether the Registration action gets a server-side guard against two saves, and which kind.
+  - **#529:** axe is a new dependency, a hard call.
+  - **#535:** the Tailscale OAuth client, and a GitHub App or RELEASE_PAT (C220, C221, C340).
+  - **Auto-intake:** a hook on the Hermes host, or a workflow with a `project`-scoped token, to create a Backlog ticket when an issue opens. Until then the orchestrator does it each round.
+  - **GitGuardian:** 39252375, 39260283 and 39899211 are false positives only the maintainer can mark.
+
 ## Sprint 20 · Drifted rules and docs
 
 **Goal:** four rules that drifted from their one home are put back, and the five docs an agent or operator reads first say what the code does. What a valid new Account looks like is one check that Setup and Sign up share, and every sign-up refusal has one total answer; the scripted Runner reads the Main Line from the catalogue; every Runner failure is logged by kind on both sides, and the core's rule stays RunnerUnavailable; the Map's current Topic is decided once and is always open. The module map, mvp1.md's Shipping section, the sandbox reviewer's checklist, the ADRs, the compose file `init` writes and self-hosting match the code, with a Runner troubleshooting section built on the new logs.
