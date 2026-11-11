@@ -8,10 +8,12 @@ import {
 	type TopicSummary
 } from '../content/catalogue.ts';
 import { MAX_BUILD_FILES, MAX_PATH_BYTES } from '../runner/port.ts';
+import { renderMarkdown } from '../markdown.ts';
 import { LearningError } from './errors.ts';
 import {
 	acceptedDiff,
 	chapterView,
+	hintsView,
 	MAX_BUILD_BYTES,
 	mapView,
 	normaliseOutput,
@@ -20,6 +22,7 @@ import {
 	reachChapter,
 	requireOpenTopic,
 	runView,
+	solutionView,
 	topicView,
 	validateBuild
 } from './rules.ts';
@@ -627,5 +630,48 @@ describe('validateBuild()', () => {
 		['a null content', { 'main.py': null }]
 	])('refuses %s', (_name, files) => {
 		expect(() => validateBuild(files)).toThrow(expect.objectContaining({ code: 'InvalidBuild' }));
+	});
+});
+
+describe('a leading h1 that repeats the page title', () => {
+	const problemId = 'stacks-push';
+	const chapterId = 'stacks-undo-log';
+	const title = catalogue.problem(problemId)?.title as string;
+	const chapterTitle = catalogue.chapter(chapterId)?.title as string;
+	const withHeadings = {
+		...catalogue,
+		chapter: (id: string) => {
+			const c = catalogue.chapter(id);
+			return c && { ...c, body: `# ${c.title}\n\nChapter text` };
+		},
+		problem: (id: string) => {
+			const p = catalogue.problem(id);
+			return (
+				p && {
+					...p,
+					statement: `# ${p.title}\n\nStatement text`,
+					hints: [`# ${p.title}\n\nHint text`],
+					solution: `# ${p.title}\n\nSolution text`
+				}
+			);
+		}
+	};
+
+	it('is dropped from the Chapter body', () => {
+		const view = chapterView(withHeadings, none, chapterId, renderMarkdown);
+		expect(view.bodyHtml).toBe('<p>Chapter text</p>\n');
+		expect(view.title).toBe(chapterTitle);
+	});
+
+	it('is dropped from the Problem statement', () => {
+		const view = problemView(withHeadings, none, problemId, 'typescript', {}, renderMarkdown);
+		expect(view.statementHtml).toBe('<p>Statement text</p>\n');
+	});
+
+	it('is kept in a Hint and in the Solution', () => {
+		const hints = hintsView(withHeadings, none, problemId, 1, renderMarkdown);
+		expect(hints.revealed[0].html).toBe(`<h1>${title}</h1>\n<p>Hint text</p>\n`);
+		const solution = solutionView(withHeadings, none, problemId, renderMarkdown);
+		expect(solution.explanationHtml).toBe(`<h1>${title}</h1>\n<p>Solution text</p>\n`);
 	});
 });

@@ -70,8 +70,12 @@ const marked = new Marked({
  * Renders Markdown content to HTML. A page already shows its own title as the h1, so when the
  * page's title is given, a first heading that is an h1 with exactly that text is left out. That
  * is decided from the parsed tokens, and the title is only compared, never written to the output.
+ * The comparison is against the heading's trimmed Markdown source, not its displayed text, so
+ * a heading with formatting only matches a title written the same way.
  */
 export function renderMarkdown(markdown: string, pageTitle?: string): string {
+	// lexer and parser run without marked's parse-level hooks and walkTokens, so a later hardening
+	// belongs in a renderer override above, or has to run on these tokens.
 	const tokens = marked.lexer(markdown);
 	if (pageTitle !== undefined) {
 		const first = tokens.findIndex((t) => t.type !== 'space');
