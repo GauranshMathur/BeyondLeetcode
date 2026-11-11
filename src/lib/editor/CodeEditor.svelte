@@ -46,7 +46,8 @@ const theme = EditorView.theme({
 	'&.cm-focused': { outline: '2px solid var(--accent)', outlineOffset: '-2px' },
 	'.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
 		backgroundColor: 'var(--rule)'
-	}
+	},
+	'.cm-selectionMatch': { backgroundColor: 'var(--selection-match)' }
 });
 const highlight = HighlightStyle.define([
 	{ tag: [tags.keyword, tags.operatorKeyword, tags.definitionKeyword], color: 'var(--muted)' },
