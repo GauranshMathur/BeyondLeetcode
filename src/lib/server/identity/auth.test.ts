@@ -40,7 +40,8 @@ type SignUpAnswer = {
 
 /**
  * A sign-up the way the forms make it, through `auth.api.signUpEmail`, answered as a status, the headers and a
- * body. A refusal is an APIError and answers with its status and body; any other error is thrown on.
+ * body, all read from the Response Better Auth builds (`asResponse`), a refusal's included. Any error that is
+ * not an APIError is thrown on.
  */
 async function signUpVia(
 	auth: Awaited<ReturnType<typeof setup>>['auth'],
@@ -48,19 +49,19 @@ async function signUpVia(
 	headers?: Headers
 ): Promise<SignUpAnswer> {
 	try {
-		const done = await auth.api.signUpEmail({
+		const res = await auth.api.signUpEmail({
 			body: payload as typeof body,
 			...(headers ? { headers } : {}),
-			returnHeaders: true
+			asResponse: true
 		});
-		return { status: 200, headers: done.headers, json: async () => ({ ...done.response }) };
+		return { status: res.status, headers: res.headers, json: async () => res.json() };
 	} catch (error) {
 		if (!isAPIError(error)) throw error;
-		return {
+		const res = new Response(JSON.stringify(error.body ?? {}), {
 			status: error.statusCode,
-			headers: new Headers(),
-			json: async () => ({ ...error.body })
-		};
+			headers: error.headers as HeadersInit | undefined
+		});
+		return { status: res.status, headers: res.headers, json: async () => res.json() };
 	}
 }
 
@@ -689,7 +690,12 @@ describe('accepting an Invite', () => {
 		const second = await post(token);
 
 		expect(first.status).toBe(200);
+		// The helper reads real headers: a sign-up that works sets the session cookie, a refused one does not.
+		expect(
+			first.headers.getSetCookie().some((c) => c.startsWith('better-auth.session_token='))
+		).toBe(true);
 		expect(second.status).toBe(403);
+		expect(second.headers.getSetCookie()).toEqual([]);
 		const users = await db.user.findMany({ where: { id: { not: 'u-admin' } } });
 		expect(users).toHaveLength(1);
 		expect(users[0].role).toBe('learner');
@@ -1165,6 +1171,24 @@ describe('signing in with a provider', () => {
 		const again = await h.signIn(token);
 		expect(errorOf(again)).toBe('SIGN_UP_CLOSED');
 		expect(await h.db.user.count({ where: { email: 'other@example.com' } })).toBe(0);
+	});
+
+	it('lets a non-API error out of auth.handler without printing it', async () => {
+		const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+		const h = await harness({ mode: 'open' });
+		githubAnswers({});
+		// The session is written after the Account: a database failure there is not an APIError, and the callback
+		// does not turn it into a redirect.
+		vi.spyOn(h.db.session, 'create').mockRejectedValue(
+			new Error('locked: fake-secret-text /invite/fake-invite-token') as never
+		);
+
+		await expect(h.signIn()).rejects.toThrow('locked');
+
+		expect(everythingLogged(spies)).not.toContain('fake-secret-text');
+		expect(everythingLogged(spies)).not.toContain('fake-invite-token');
 	});
 
 	it('Open mode claims a valid invite cookie too', async () => {

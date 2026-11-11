@@ -222,8 +222,9 @@ export function createAuth({
 			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER], ipv6Subnet: 64 }
 		},
 		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
-		// Instance). Covers requests through `auth.handler`, which now serves only the provider callback;
-		// server-side `auth.api` calls skip it and carry the per-address and per-Account limits of `throttle.ts`.
+		// Instance). Covers requests through `auth.handler`, which serves only the provider callback.
+		// Server-side `auth.api` calls skip it: the Sign up and Accept invite forms carry the per-address limits of
+		// `throttle.ts`, and Setup's first admin needs none, since it can make one Account only and then refuses.
 		rateLimit: { enabled: true, storage: 'memory' },
 		logger: redactingLogger(INVITE_LOG_PATTERNS),
 		// An error that is not an APIError (a database failure) is rethrown to the caller, so SvelteKit's
