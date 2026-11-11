@@ -514,6 +514,23 @@ base.describe('the shared Multi-user server', () => {
 	});
 
 	base(
+		'serves only the provider callback, sign-up and sign-out of Better Auth over HTTP',
+		async ({ request }) => {
+			const headers = { origin: 'http://localhost:4174' };
+
+			for (const path of ['/get-session', '/list-sessions', '/ok', '/callback']) {
+				const response = await request.get(`/api/auth${path}`, { headers, maxRedirects: 0 });
+				expect(response.status(), path).toBe(404);
+			}
+			// A provider's redirect back is passed on to Better Auth; with no provider configured it answers
+			// with a redirect carrying an error, never the route's own 404.
+			const callback = await request.get('/api/auth/callback/github', { headers, maxRedirects: 0 });
+			expect(callback.status()).toBe(302);
+			expect(callback.headers().location).toContain('error=');
+		}
+	);
+
+	base(
 		'gives the admin Users, their name and Sign out in the nav, in that order',
 		async ({ page }) => {
 			await gotoHydrated(page, '/signin');
