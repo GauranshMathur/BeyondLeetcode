@@ -1,4 +1,10 @@
-import { test as base, expect, type Page, type PlaywrightWorkerArgs } from '@playwright/test';
+import {
+	type Browser,
+	test as base,
+	expect,
+	type Page,
+	type PlaywrightWorkerArgs
+} from '@playwright/test';
 import { expectNoSidewaysScroll, phone } from '../../lib/e2e-phone.ts';
 import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 import {
@@ -196,18 +202,37 @@ test.describe('on a Multi-user server of its own', () => {
 		await visitorContext.close();
 	});
 
+	// The running server answers from memory, so a test that leaves it Open must switch it back through the
+	// app, not only in the database.
+	async function backToInvite(own: Own) {
+		const context = await browserOf.newContext({ baseURL: own.url, storageState: admin });
+		try {
+			const response = await context.request.post('/users?/registration', {
+				headers: { origin: own.url, accept: 'text/html' },
+				form: { registration: 'invite' }
+			});
+			expect(response.status()).toBe(200);
+		} finally {
+			await context.close();
+		}
+	}
+	let browserOf: Browser;
+	test.beforeEach(({ browser }) => {
+		browserOf = browser;
+	});
+
 	test('arrowing through the Registration select changes nothing until Save, and focus stays on the select', async ({
 		browser,
 		playwright,
 		own
 	}) => {
 		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
-		const page = await context.newPage();
 		const posts: string[] = [];
-		page.on('request', (r) => {
-			if (r.method() === 'POST') posts.push(r.url());
-		});
 		try {
+			const page = await context.newPage();
+			page.on('request', (r) => {
+				if (r.method() === 'POST') posts.push(r.url());
+			});
 			await gotoHydrated(page, '/users');
 			const select = registration(page);
 			await select.focus();
@@ -225,6 +250,7 @@ test.describe('on a Multi-user server of its own', () => {
 			await expect(page.getByText(OPEN)).toBeVisible();
 			await expect(select).toBeFocused();
 			expect(await storedMode()).toBe('open');
+			await expect(select).toHaveValue('open');
 
 			await select.selectOption({ label: 'Invite only' });
 			await page.getByRole('button', { name: 'Save registration' }).click();
@@ -232,13 +258,82 @@ test.describe('on a Multi-user server of its own', () => {
 			await expect(page.getByText(INVITE_ONLY)).toBeVisible();
 			await expect(select).toBeFocused();
 			expect(await storedMode()).toBe('invite');
+			await expect(select).toHaveValue('invite');
 		} finally {
-			// Back to invite-only whatever happened, so nothing later depends on this test's end state.
-			await fixture.db.instance.update({
-				where: { id: 'instance' },
-				data: { registrationMode: 'invite' }
+			try {
+				await backToInvite(own);
+			} finally {
+				await context.close();
+			}
+			expect(await storedMode()).toBe('invite');
+			expect(await signupFor(playwright, own.url)).toBe('closed');
+		}
+	});
+
+	test('pressing Enter on the select posts nothing', async ({ browser, playwright, own }) => {
+		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
+		const posts: string[] = [];
+		try {
+			const page = await context.newPage();
+			page.on('request', (r) => {
+				if (r.method() === 'POST') posts.push(r.url());
 			});
-			await context.close();
+			await gotoHydrated(page, '/users');
+			const select = registration(page);
+			await select.focus();
+			await page.keyboard.press('ArrowDown');
+			await page.keyboard.press('Enter');
+			// A post would be sent straight away; give it a moment to show up.
+			await page.waitForTimeout(500);
+			expect(posts).toEqual([]);
+			expect(await storedMode()).toBe('invite');
+		} finally {
+			try {
+				await backToInvite(own);
+			} finally {
+				await context.close();
+			}
+			expect(await storedMode()).toBe('invite');
+			expect(await signupFor(playwright, own.url)).toBe('closed');
+		}
+	});
+
+	test('a save that fails leaves the select on the mode in force, with focus on it', async ({
+		browser,
+		playwright,
+		own
+	}) => {
+		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
+		try {
+			const page = await context.newPage();
+			// The server never sees this post.
+			await page.route('**/users?/registration', (route) =>
+				route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						type: 'failure',
+						status: 400,
+						data: JSON.stringify([{ message: 1 }, 'Choose invite only or open.'])
+					})
+				})
+			);
+			await gotoHydrated(page, '/users');
+			const select = registration(page);
+			await select.selectOption({ label: 'Open' });
+			await page.getByRole('button', { name: 'Save registration' }).click();
+
+			await expect(page.getByRole('alert').filter({ hasText: 'Choose invite only' })).toBeVisible();
+			await expect(select).toHaveValue('invite');
+			await expect(select).toBeFocused();
+			expect(await storedMode()).toBe('invite');
+			expect(await signupFor(playwright, own.url)).toBe('closed');
+		} finally {
+			try {
+				await backToInvite(own);
+			} finally {
+				await context.close();
+			}
 		}
 	});
 

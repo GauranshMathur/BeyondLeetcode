@@ -1,5 +1,6 @@
 <script lang="ts">
 import { enhance, type SubmitFunction } from '$app/forms';
+import { invalidateAll } from '$app/navigation';
 import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
@@ -76,14 +77,16 @@ const makeInvite: SubmitFunction = () => {
 	};
 };
 
-// A refused or failed switch changed nothing: the select goes back to what the Instance holds, so it
-// never shows a mode that is not in force.
+// A refused or failed switch may still have changed the mode (a write can commit and the answer fail), and a
+// failed action does not reload the page's data. So the page data is reloaded first, and the select then
+// shows what the Instance holds, never a mode that is not in force.
 const switchRegistration: SubmitFunction = ({ formElement }) => {
 	return async ({ result, update }) => {
 		await update({ reset: false });
-		const select = formElement.elements.namedItem('registration');
-		if (result.type !== 'success' && select instanceof HTMLSelectElement) {
-			select.value = data.registration;
+		if (result.type !== 'success') {
+			await invalidateAll();
+			const select = formElement.elements.namedItem('registration');
+			if (select instanceof HTMLSelectElement) select.value = data.registration;
 		}
 		// A finished submission sends focus to the top of the page; the select was what was used.
 		registrationSelect?.focus();
@@ -109,7 +112,7 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		<form class="control" method="POST" action="?/registration" use:enhance={switchRegistration}>
 			<label>
 				Registration
-				<select name="registration" bind:this={registrationSelect}>
+				<select name="registration" autocomplete="off" bind:this={registrationSelect}>
 					<option value="invite" selected={data.registration === 'invite'}>Invite only</option>
 					<option value="open" selected={data.registration === 'open'}>Open</option>
 				</select>
