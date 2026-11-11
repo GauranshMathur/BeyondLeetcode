@@ -13,3 +13,7 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the right-hand column to match whatever vocabulary you actually use.
+
+## Intake
+
+Triage ends with the issue's ticket on the board (`board.md`, Issues are the unit of work, Intake): a draft item `[#N] <title>` with Status Backlog, the `Issue` field and a `Refs #N` line. No issue is labelled `wontfix` because it is only a refactor. `wontfix` is the maintainer's label.
