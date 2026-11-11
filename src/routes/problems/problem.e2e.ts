@@ -13,6 +13,11 @@ import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-problem') });
 
+// The Problem screen has two live regions: the save status by the editor and the console's.
+const saveStatus = (page: Page) => page.getByRole('status').and(page.locator('.status'));
+const consoleStatus = (page: Page) =>
+	page.getByRole('region', { name: 'Console' }).getByRole('status');
+
 // Click into the editor, wait until CodeMirror has focus, then type at a human pace. Typing with
 // no delay straight after the click races CodeMirror's selection sync and can move the cursor.
 async function typeInEditor(page: Page, text: string) {
@@ -32,11 +37,11 @@ test('a Problem shows its statement and Example Tests, and typed code survives a
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Push and size');
 	await expect(page.getByText('Example 1')).toBeVisible();
 	await expect(page.locator('pre').filter({ hasText: 'push 1' })).toContainText('Output');
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('saved');
 
 	await typeInEditor(page, 'print(42)');
-	await expect(page.getByRole('status')).toHaveText('edited');
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('edited');
+	await expect(saveStatus(page)).toHaveText('saved');
 
 	await reloadHydrated(page);
 	await expect(page.getByLabel('Code: main.py')).toContainText('print(42)');
@@ -48,10 +53,10 @@ test('a second tab with a stale revision is told to reload', async ({ page, cont
 	await gotoHydrated(other, '/problems/stacks-pop');
 
 	await typeInEditor(page, '# one');
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('saved');
 
 	await typeInEditor(other, '# two');
-	await expect(other.getByRole('status')).toHaveText('edited elsewhere — reload');
+	await expect(saveStatus(other)).toHaveText('edited elsewhere — reload');
 
 	await reloadHydrated(other);
 	await expect(other.getByLabel('Code: main.py')).toContainText('# one');
@@ -119,7 +124,7 @@ test('Run shows pass for a correct solution and fail for a wrong one', async ({ 
 	await page.getByRole('button', { name: 'Run' }).click();
 	const row = page.getByRole('listitem', { name: 'Example Test 01' });
 	await expect(row).toContainText('pass', { timeout: 60_000 });
-	await expect(page.getByText('1 of 1 passed')).toBeVisible();
+	await expect(consoleStatus(page)).toHaveText('1 of 1 passed');
 	await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
 
 	await setCode(page, 'print(99)\n');
@@ -147,7 +152,7 @@ test('Run shows a runtime error and a compile error block', async ({ page }) => 
 
 	await setCode(page, 'def (:\n');
 	await page.getByRole('button', { name: 'Run' }).click();
-	await expect(page.getByLabel('Compile error')).toContainText('SyntaxError', {
+	await expect(page.getByRole('group', { name: 'Compile error' })).toContainText('SyntaxError', {
 		timeout: 60_000
 	});
 });
@@ -159,8 +164,11 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 
 	await setCode(page, 'print(99)\n');
 	await page.getByRole('button', { name: 'Submit' }).click();
-	const verdict = page.getByLabel('Verdict');
+	const status = consoleStatus(page);
+	await expect(status).toHaveText('Submitting');
+	const verdict = page.getByRole('group', { name: 'Verdict' });
 	await expect(verdict).toHaveText('Wrong Answer', { timeout: 60_000 });
+	await expect(status).toHaveText('Wrong Answer · Failed Example Test 01');
 	await expect(page.getByLabel('Failed Example Test 01')).toContainText('99');
 	await expect(page.getByRole('button', { name: 'Submit' })).toBeEnabled();
 
@@ -171,7 +179,8 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await setCode(page, correct);
 	await page.getByRole('button', { name: 'Submit' }).click();
 	await expect(verdict).toContainText('Accepted', { timeout: 60_000 });
-	const panel = page.getByLabel('Accepted panel');
+	await expect(status).toHaveText('Accepted · all tests passed');
+	const panel = page.getByRole('group', { name: 'Accepted panel' });
 	await expect(panel.getByRole('link', { name: 'Next problem' })).toHaveAttribute(
 		'href',
 		'/problems/stacks-pop'
@@ -278,7 +287,7 @@ test('switching to TypeScript asks first, keeps the Python build, and Run passes
 }) => {
 	await gotoHydrated(page, '/problems/stacks-push');
 	await setCode(page, '# my python build\n');
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('saved');
 
 	const picker = page.getByLabel('build language');
 	await expect(picker.locator('option')).toHaveText(['Python', 'TypeScript', 'Go']);
@@ -325,7 +334,7 @@ test('a tab left on one Language is told to reload after another tab switches La
 		await expect(page.getByLabel('Code: main.ts')).toBeVisible();
 
 		await typeInEditor(stale, '# stale');
-		await expect(stale.getByRole('status')).toHaveText('edited elsewhere — reload');
+		await expect(saveStatus(stale)).toHaveText('edited elsewhere — reload');
 	} finally {
 		await page.getByLabel('build language').selectOption('python');
 		await page.getByRole('button', { name: 'Switch language' }).click();
@@ -338,7 +347,7 @@ const correctGo = referenceCode('main.go', 'go');
 test('switching to Go keeps the Python build, and Run passes', async ({ page }) => {
 	await gotoHydrated(page, '/problems/stacks-push');
 	await setCode(page, '# my python build\n');
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('saved');
 
 	const picker = page.getByLabel('build language');
 	try {
@@ -483,7 +492,7 @@ test('the Solution tab shows the explanation and the Reference Code in each Lang
 
 	// The Learner's own code was saved and is back when the Problem tab is.
 	await page.getByRole('link', { name: 'Problem', exact: true }).click();
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('saved');
 	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
 	await reloadHydrated(page);
 	await expect(page.getByLabel('Code: main.py')).toContainText('# mine');
@@ -494,7 +503,7 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 }) => {
 	await gotoHydrated(page, '/problems/stacks-pop');
 	await setCode(page, 'broken(\n');
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('saved');
 
 	await page.getByRole('button', { name: 'Start from reference code' }).click();
 	const confirm = page.getByRole('group', {
@@ -510,7 +519,7 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 	// The Reference Code after stacks-push: it handles push and size, not pop yet.
 	await expect(page.getByLabel('Code: main.py')).toContainText('items.append(int(parts[1]))');
 	await expect(page.getByLabel('Code: main.py')).not.toContainText('broken(');
-	await expect(page.getByRole('status')).toHaveText('saved');
+	await expect(saveStatus(page)).toHaveText('saved');
 
 	await reloadHydrated(page);
 	await expect(page.getByLabel('Code: main.py')).toContainText('items.append(int(parts[1]))');
@@ -594,7 +603,7 @@ test.describe('the Problem on a phone', () => {
 			timeout: 60_000
 		});
 		await expect(workspaceTab(page, 'Tests')).toHaveAttribute('aria-pressed', 'true');
-		await expect(page.getByLabel('Accepted panel')).toBeVisible();
+		await expect(page.getByRole('group', { name: 'Accepted panel' })).toBeVisible();
 		await expectNoPageScroll(page);
 
 		// Every tab and button on the screen is at least 44px tall.
@@ -667,7 +676,7 @@ test.describe('the Problem on a phone, as a flow', () => {
 		await expect(page.getByLabel('Verdict')).toContainText('Accepted', {
 			timeout: 60_000
 		});
-		await expect(page.getByLabel('Accepted panel')).toBeVisible();
+		await expect(page.getByRole('group', { name: 'Accepted panel' })).toBeVisible();
 
 		await gotoHydrated(page, '/topics/stacks');
 		await expect(
@@ -687,7 +696,7 @@ test.describe('the Problem on a phone, as a flow', () => {
 			await gotoHydrated(other, '/problems/stacks-pop');
 			await workspaceTab(other, 'Code').tap();
 			await typeInEditor(other, '# saved elsewhere');
-			await expect(other.getByRole('status')).toHaveText('saved');
+			await expect(saveStatus(other)).toHaveText('saved');
 
 			// This page still holds the old revision; its own edit is what the Run must send.
 			await workspaceTab(page, 'Code').tap();
