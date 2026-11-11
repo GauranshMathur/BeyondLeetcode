@@ -1,4 +1,5 @@
 <script lang="ts">
+import { tick } from 'svelte';
 import { enhance, type SubmitFunction } from '$app/forms';
 import { invalidateAll } from '$app/navigation';
 import type { PageProps } from './$types';
@@ -6,6 +7,12 @@ import type { PageProps } from './$types';
 let { data, form }: PageProps = $props();
 
 let registrationSelect = $state<HTMLSelectElement>();
+let confirmBox = $state<HTMLDivElement>();
+
+// Opening Remove's confirm is a navigation, so focus would otherwise go to the top of the page.
+$effect(() => {
+	if (data.confirmingRemove) confirmBox?.focus();
+});
 
 // The copy and Done buttons only work with JavaScript, so they show only once the page has hydrated.
 let enhanced = $state(false);
@@ -61,19 +68,29 @@ const resetOrphan = $derived(
 		: undefined
 );
 
+// A finished submission sends focus to the top of the page, so after a success it goes to what the action
+// showed: the field holding the secret, which the field selects so Ctrl+C works.
 const resetOne: SubmitFunction = () => {
 	resetDismissed = false;
 	passwordCopied = false;
-	return async ({ update }) => {
+	return async ({ result, update }) => {
 		await update({ reset: false });
+		if (result.type === 'success') {
+			await tick();
+			passwordField?.focus();
+		}
 	};
 };
 
 const makeInvite: SubmitFunction = () => {
 	dismissed = false;
 	copied = false;
-	return async ({ update }) => {
+	return async ({ result, update }) => {
 		await update({ reset: false });
+		if (result.type === 'success') {
+			await tick();
+			linkField?.focus();
+		}
 	};
 };
 
@@ -213,7 +230,7 @@ const switchRegistration: SubmitFunction = ({ formElement, cancel }) => {
 												>Reset password</button
 											>
 										</form>
-										<form method="GET" action="/users">
+										<form method="GET" action="/users" data-sveltekit-reset="false">
 											<button
 												type="submit"
 												name="remove"
@@ -268,7 +285,13 @@ const switchRegistration: SubmitFunction = ({ formElement, cancel }) => {
 						{#if data.confirmingRemove === account.id}
 							<tr class="detail-row">
 								<td colspan="5">
-									<div class="confirm" role="group" aria-label="Remove {account.name}">
+									<div
+										class="confirm"
+										role="group"
+										aria-label="Remove {account.name}"
+										tabindex="-1"
+										bind:this={confirmBox}
+									>
 										<div class="confirm-text">
 											<span class="ask">Remove {account.name}?</span>
 											<span id="remove-note-{account.id}" class="note">
