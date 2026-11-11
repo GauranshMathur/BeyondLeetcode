@@ -9,7 +9,10 @@ type Mode = 'light' | 'dark';
 // token change is what the test sees.
 function token(name: string, mode: Mode): string {
 	const match = css.match(
-		new RegExp(`--${name}:\\s*light-dark\\(\\s*(#[0-9a-f]{6})\\s*,\\s*(#[0-9a-f]{6})\\s*\\)`, 'i')
+		new RegExp(
+			`(?<![\\w-])--${name}:\\s*light-dark\\(\\s*(#[0-9a-f]{6})\\s*,\\s*(#[0-9a-f]{6})\\s*\\)`,
+			'i'
+		)
 	);
 	if (!match)
 		throw new Error(`--${name} is not a light-dark(#rrggbb, #rrggbb) token in tokens.css`);
