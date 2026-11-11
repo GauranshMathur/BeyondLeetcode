@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadCatalogue } from '../content/catalogue.ts';
 import { createInstance, InstanceAlreadySetUpError, restoreMultiInstance } from '../instance.ts';
 import { createLearningCore } from '../learning/core.ts';
+import { refusalOf } from './account-actions.ts';
 import type { AdmitSignUp, Auth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
 import { createRegistration } from './registration.ts';
-import { createFirstAdmin, isFirstAdmin } from './setup.ts';
+import { createFirstAdmin, InvalidFirstAdminError, isFirstAdmin } from './setup.ts';
 import { createTestAuth } from './test-auth.ts';
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
@@ -379,10 +380,20 @@ describe('createFirstAdmin', () => {
 
 		await expect(
 			createFirstAdmin({ instance, auth, db }, { ...admin, email: 'nope' })
-		).rejects.toThrow(/email/i);
+		).rejects.toMatchObject({ body: { code: 'INVALID_EMAIL' } });
 
 		expect(instance.mode()).toBeNull();
 		expect(await db.instance.count()).toBe(0);
+	});
+
+	it('accepts an email with spaces round it, as Sign up does, and stores it trimmed', async () => {
+		const { db, auth, instance } = await setup();
+
+		await expect(
+			createFirstAdmin({ instance, auth, db }, { ...admin, email: '  ada@example.com ' })
+		).resolves.toBeTruthy();
+
+		expect((await db.user.findFirstOrThrow()).email).toBe('ada@example.com');
 	});
 
 	it('stays closed (multi in row and memory) when the rollback itself fails', async () => {
@@ -488,19 +499,21 @@ describe('createFirstAdmin', () => {
 	});
 
 	it.each([
-		['an empty name', { name: '  ' }, 'name'],
-		['a bad email', { email: 'a@b' }, 'email'],
-		['a 129-character password', { password: 'a'.repeat(129) }, 'password'],
-		['an 11-character password', { password: 'a'.repeat(11) }, 'password']
-	])('refuses %s before touching the Instance, naming the field', async (_, bad, field) => {
+		['an empty name', { name: '  ' }, 'NAME_REQUIRED', 'name'],
+		['a 101-character name', { name: 'a'.repeat(101) }, 'NAME_TOO_LONG', 'name'],
+		['a name with a control character', { name: 'Ro\u0007ot' }, 'NAME_INVALID_CHARACTERS', 'name'],
+		['a bad email', { email: 'a@b' }, 'INVALID_EMAIL', 'email'],
+		['a 129-character password', { password: 'a'.repeat(129) }, 'PASSWORD_TOO_LONG', 'password'],
+		['an 11-character password', { password: 'a'.repeat(11) }, 'PASSWORD_TOO_SHORT', 'password']
+	])('refuses %s with a refusal code before touching the Instance', async (_, bad, code, field) => {
 		const { db, auth, instance } = await setup();
 
-		await expect(
-			createFirstAdmin({ instance, auth, db }, { ...admin, ...bad })
-		).rejects.toMatchObject({
-			name: 'InvalidFirstAdminError',
-			field
-		});
+		await expect(createFirstAdmin({ instance, auth, db }, { ...admin, ...bad })).rejects.toSatisfy(
+			(error) =>
+				!(error instanceof InvalidFirstAdminError) &&
+				refusalOf(error)?.refused === code &&
+				refusalOf(error)?.field === field
+		);
 
 		expect(instance.mode()).toBeNull();
 		expect(await db.instance.count()).toBe(0);

@@ -1,9 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { z } from 'zod';
+import { APIError } from 'better-auth/api';
 import type { Db } from '../db.ts';
 import type { Instance } from '../instance.ts';
 import { InstanceAlreadySetUpError } from '../instance.ts';
 import { logFailure } from '../logging.ts';
+import { newAccountRefusal, type RefusalCode, trimmedAccount } from './account-actions.ts';
 import { type Auth, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from './auth.ts';
 import { LOCAL_LEARNER_ID } from './index.ts';
 
@@ -43,7 +44,10 @@ export class MultiUserNotAvailableError extends Error {
 	}
 }
 
-/** The first admin's form is wrong in one field; the message is fixed text, never the input. */
+/**
+ * Kept only so the Setup route still compiles; nothing throws it any more (a wrong field is an APIError
+ * carrying a refusal code).
+ */
 export class InvalidFirstAdminError extends Error {
 	constructor(
 		readonly field: 'name' | 'email' | 'password',
@@ -54,18 +58,16 @@ export class InvalidFirstAdminError extends Error {
 	}
 }
 
-function validate({ name, email, password }: Pick<FirstAdminInput, 'name' | 'email' | 'password'>) {
-	if (name.trim() === '') throw new InvalidFirstAdminError('name', 'The name is required.');
-	if (!z.email().safeParse(email).success) {
-		throw new InvalidFirstAdminError('email', 'The email address is not valid.');
-	}
-	if (password.length < MIN_PASSWORD_LENGTH || password.length > MAX_PASSWORD_LENGTH) {
-		throw new InvalidFirstAdminError(
-			'password',
-			`The password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
-		);
-	}
-}
+// What the first admin's form is told, by code: fixed text, never the input. A refusal is an APIError
+// carrying the code, which `refusalOf` reads, the way Better Auth's own refusals reach the Setup route.
+const REFUSAL_MESSAGES: Partial<Record<RefusalCode, string>> = {
+	NAME_REQUIRED: 'Enter a name.',
+	NAME_TOO_LONG: 'The name is too long.',
+	NAME_INVALID_CHARACTERS: "This name contains a character that can't be used.",
+	INVALID_EMAIL: 'The email address is not valid.',
+	PASSWORD_TOO_SHORT: `The password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`,
+	PASSWORD_TOO_LONG: `The password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters.`
+};
 
 /**
  * Claims the Instance as multi-user and signs the first admin up, who owns the `local` Learner
@@ -84,7 +86,14 @@ export async function createFirstAdmin(
 	{ instance, auth, db }: { instance: Instance; auth: Auth; db: Db },
 	input: FirstAdminInput
 ): Promise<{ headers: Headers }> {
-	validate(input);
+	const refusal = newAccountRefusal(input);
+	if (refusal) {
+		throw new APIError('BAD_REQUEST', {
+			message: REFUSAL_MESSAGES[refusal.refused] ?? 'The account could not be created.',
+			code: refusal.refused
+		});
+	}
+	const { name, email } = trimmedAccount(input);
 	return exclusively(async () => {
 		// Before the claim, so an Instance that has Accounts but no stored mode (the state the reset command
 		// repairs) never gets a mode row that this call would take away again: a reset landing in
@@ -101,7 +110,7 @@ export async function createFirstAdmin(
 			signUpStarted = true;
 			const { headers } = await runAsFirstAdmin(() =>
 				auth.api.signUpEmail({
-					body: { name: input.name.trim(), email: input.email, password: input.password },
+					body: { name, email, password: input.password },
 					returnHeaders: true
 				})
 			);

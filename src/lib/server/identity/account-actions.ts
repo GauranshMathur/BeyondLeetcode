@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { isAPIError } from 'better-auth/api';
 import { z } from 'zod';
 import { logFailure } from '../logging.ts';
-import { hasForbiddenNameCharacter, isNameTooLong, MAX_NAME_LENGTH } from './account-creation.ts';
+import { MAX_NAME_LENGTH, nameRefusalCode } from './account-creation.ts';
 import {
 	type Auth,
 	enabledProviders,
@@ -172,6 +172,33 @@ export function refusalOf(error: unknown): Refusal | null {
 	}
 }
 
+/** The name and email as stored: trimmed, as every path that makes an Account sends them. */
+export const trimmedAccount = <T extends { name: string; email: string }>(fields: T): T => ({
+	...fields,
+	name: fields.name.trim(),
+	email: fields.email.trim()
+});
+
+/**
+ * The one check of the fields of a new Account, for Sign up, Accept invite and the first admin's sign-up:
+ * the name and email are trimmed first, then the first field that is wrong is answered (name, email,
+ * password, in that order), or null when all are fine. The name rule itself is `nameRefusalCode`, which
+ * the backstop in `user.create.before` asks too.
+ */
+export function newAccountRefusal(fields: {
+	name: string;
+	email: string;
+	password: string;
+}): Refusal | null {
+	const { name, email, password } = trimmedAccount(fields);
+	const nameCode = nameRefusalCode(name);
+	if (nameCode) return refuse(nameCode, 'name');
+	if (!z.email().safeParse(email).success) return refuse('INVALID_EMAIL', 'email');
+	if (password.length < MIN_PASSWORD_LENGTH) return refuse('PASSWORD_TOO_SHORT', 'password');
+	if (password.length > MAX_PASSWORD_LENGTH) return refuse('PASSWORD_TOO_LONG', 'password');
+	return null;
+}
+
 /**
  * The limits' stand-in for an email that has no Account: a digest of the normalised email (`emailKey`), so
  * the email itself is never held in memory. Known and unknown emails then reach the throttled state on the
@@ -320,14 +347,9 @@ export function createAccountActions({
 				return refuse('INVITE_INVALID');
 			}
 
-			const name = typedName.trim();
-			const email = typedEmail.trim();
-			if (name === '') return refuse('NAME_REQUIRED', 'name');
-			if (isNameTooLong(name)) return refuse('NAME_TOO_LONG', 'name');
-			if (hasForbiddenNameCharacter(name)) return refuse('NAME_INVALID_CHARACTERS', 'name');
-			if (!z.email().safeParse(email).success) return refuse('INVALID_EMAIL', 'email');
-			if (password.length < MIN_PASSWORD_LENGTH) return refuse('PASSWORD_TOO_SHORT', 'password');
-			if (password.length > MAX_PASSWORD_LENGTH) return refuse('PASSWORD_TOO_LONG', 'password');
+			const refusal = newAccountRefusal({ name: typedName, email: typedEmail, password });
+			if (refusal) return refusal;
+			const { name, email } = trimmedAccount({ name: typedName, email: typedEmail });
 
 			let headers: Headers;
 			try {
@@ -341,12 +363,12 @@ export function createAccountActions({
 					returnHeaders: true
 				}));
 			} catch (error) {
-				const refusal = refusalOf(error);
-				if (refusal) {
+				const failure = refusalOf(error);
+				if (failure) {
 					// The gate or the claim said no: for an Invite, it was used, expired or cancelled.
-					return invite !== undefined && refusal.refused === 'SIGN_UP_CLOSED'
+					return invite !== undefined && failure.refused === 'SIGN_UP_CLOSED'
 						? refuse('INVITE_INVALID')
-						: refusal;
+						: failure;
 				}
 				logFailure(
 					`${invite === undefined ? 'Sign up' : 'Accept invite'}: creating the account failed:`,

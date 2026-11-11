@@ -3,6 +3,7 @@ import {
 	hasForbiddenNameCharacter,
 	isNameTooLong,
 	MAX_NAME_LENGTH,
+	nameRefusalCode,
 	providerName
 } from './account-creation.ts';
 
@@ -80,5 +81,20 @@ describe('providerName', () => {
 		expect(providerName(undefined, undefined, undefined)).toBe('');
 		expect(providerName(7, null, '@example.com')).toBe('');
 		expect(providerName('  Ada  ', 'x', 'y@z')).toBe('Ada');
+	});
+});
+
+describe('nameRefusalCode', () => {
+	it.each([
+		['  ', 'NAME_REQUIRED'],
+		['a'.repeat(101), 'NAME_TOO_LONG'],
+		['Ada\u0007', 'NAME_INVALID_CHARACTERS'],
+		['  Ada Lovelace  ', null]
+	])('%j is %s', (name, code) => {
+		expect(nameRefusalCode(name)).toBe(code);
+	});
+
+	it('answers the cap before the characters', () => {
+		expect(nameRefusalCode(`${'a'.repeat(101)}\u0007`)).toBe('NAME_TOO_LONG');
 	});
 });

@@ -36,24 +36,33 @@ const signUpClosed = () =>
 	new APIError('FORBIDDEN', { message: 'Sign-up is closed', code: 'SIGN_UP_CLOSED' });
 
 // Fixed messages and codes: the forms map the code to their own text, and the name is never echoed.
-const nameTooLong = () =>
-	new APIError('BAD_REQUEST', { message: 'The name is too long.', code: 'NAME_TOO_LONG' });
-const nameInvalidCharacters = () =>
-	new APIError('BAD_REQUEST', {
-		message: "This name contains a character that can't be used.",
-		code: 'NAME_INVALID_CHARACTERS'
-	});
-const nameRequired = () =>
-	new APIError('BAD_REQUEST', { message: 'Enter a name.', code: 'NAME_REQUIRED' });
+const NAME_REFUSALS = {
+	NAME_REQUIRED: { status: 'BAD_REQUEST', message: 'Enter a name.' },
+	NAME_TOO_LONG: { status: 'BAD_REQUEST', message: 'The name is too long.' },
+	NAME_INVALID_CHARACTERS: {
+		status: 'BAD_REQUEST',
+		message: "This name contains a character that can't be used."
+	}
+} as const;
+
+export type NameRefusalCode = keyof typeof NAME_REFUSALS;
 
 /**
- * The refusal for a name, or null if it is fine: blank once trimmed, over the cap, or holding a control or
- * bidi character. The cap is checked before the characters, so a huge name is never scanned.
+ * The code for a name, or null if it is fine: blank once trimmed, over the cap, or holding a control or
+ * bidi character. The cap is checked before the characters, so a huge name is never scanned. The one name
+ * rule: the forms, the first admin's sign-up and the `user.create.before` backstop all ask it.
  */
+export function nameRefusalCode(name: string): NameRefusalCode | null {
+	if (name.trim() === '') return 'NAME_REQUIRED';
+	if (isNameTooLong(name)) return 'NAME_TOO_LONG';
+	return hasForbiddenNameCharacter(name) ? 'NAME_INVALID_CHARACTERS' : null;
+}
+
 function nameRefusal(name: string): APIError | null {
-	if (name.trim() === '') return nameRequired();
-	if (isNameTooLong(name)) return nameTooLong();
-	return hasForbiddenNameCharacter(name) ? nameInvalidCharacters() : null;
+	const code = nameRefusalCode(name);
+	return code
+		? new APIError(NAME_REFUSALS[code].status, { message: NAME_REFUSALS[code].message, code })
+		: null;
 }
 
 /** Control and bidi characters, globally: what a provider's name loses before the Account is made. */
@@ -117,7 +126,7 @@ export function createAccountCreation({
 					// (the forms through `auth.api.signUpEmail`, Setup's first admin, a provider) comes through here.
 					// A provider can send no name at all (`providerName` maps that away, this is the backstop): a missing
 					// one is "enter a name", not a crash in `trim()`.
-					const refusal = typeof user.name === 'string' ? nameRefusal(user.name) : nameRequired();
+					const refusal = nameRefusal(typeof user.name === 'string' ? user.name : '');
 					if (refusal) throw refusal;
 					// A named Learner (the Local one) already exists or is made here and is never removed.
 					// A fresh one is only named here and made in `after`, once the Account row is in, so a
