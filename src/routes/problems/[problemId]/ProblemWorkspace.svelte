@@ -369,7 +369,7 @@ const label: Record<SaveState, string> = {
 		height: 32px;
 		padding: 0 10px;
 		background: var(--field);
-		border: 1px solid var(--rule);
+		border: 1px solid var(--ink);
 		border-radius: 2px;
 		color: var(--ink);
 		font-family: var(--font-mono);
@@ -608,7 +608,6 @@ const label: Record<SaveState, string> = {
 			width: 100%;
 			height: 52px;
 			padding: 0 16px;
-			border-color: var(--ink);
 			font-size: 18px;
 		}
 		.confirm,

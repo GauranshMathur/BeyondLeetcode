@@ -45,7 +45,11 @@ const PAIRS: { kind: 'text' | 'non-text'; fg: string; on: readonly string[]; min
 	{ kind: 'text', fg: 'accent', on: SURFACES, min: 4.5 },
 	{ kind: 'text', fg: 'on-ink', on: ['ink'], min: 4.5 },
 	{ kind: 'non-text', fg: 'accent', on: SURFACES, min: 3 },
-	{ kind: 'non-text', fg: 'ink', on: SURFACES, min: 3 }
+	{ kind: 'non-text', fg: 'ink', on: SURFACES, min: 3 },
+	// The editor draws ink, keywords and comments (muted) and strings (accent) over a selection match.
+	{ kind: 'text', fg: 'ink', on: ['selection-match'], min: 4.5 },
+	{ kind: 'text', fg: 'muted', on: ['selection-match'], min: 4.5 },
+	{ kind: 'text', fg: 'accent', on: ['selection-match'], min: 4.5 }
 ];
 
 describe('colour tokens meet WCAG contrast', () => {

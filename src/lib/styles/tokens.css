@@ -12,6 +12,8 @@
 	--rule: light-dark(#d9cfbe, #3a352e);
 	--on-ink: light-dark(#f3eee4, #171512);
 	--accent: light-dark(#ae3f1d, #e0704a);
+	/* Background of the editor's other occurrences of the selected word; ink, muted and accent text all pass on it. */
+	--selection-match: light-dark(#f6e9b0, #262a14);
 	--size-target: 44px;
 	--size-bar: 56px;
 	--size-gutter: 20px;
