@@ -1,5 +1,61 @@
 # Changelog
 
+## [1.19.6](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.5...v1.19.6) (2026-11-11)
+
+### Highlights
+
+Sprint 19 fixes the findings of the accessibility audit. A screen reader now hears Running, Submitting and the Verdict, and keyboard focus stays where you are working across the Problem screen, Chapters, Settings and Users. The Theme and Registration choices wait for Save. Chapters no longer lose words written in angle brackets, and unsafe links in content are shown as plain text.
+
+### Added
+
+Nothing new to use in this release.
+
+### Fixed
+
+**Screen readers**
+
+- A screen reader now announces Running, Submitting and the Verdict on the Problem screen. (C350, #628)
+- A screen reader no longer announces every autosave, only a failed save or an edit made elsewhere. (C355, #635)
+- The Problem screen now has a main landmark, so a screen reader can jump straight to it. (C347, #627)
+- On the Users page, screen readers now hear whose row each Reset password, Remove and Cancel invite button belongs to. (C357, #638)
+- Error pages now have a page title, a main landmark and a heading, and a link back to the Map. (C360, #641)
+- Chapter and Problem pages show their title once instead of twice. (C351, #629)
+
+**Keyboard focus**
+
+- Buttons on the Problem screen keep keyboard focus while they work, and focus moves to the new Hint or the editor when a control goes away. (C352, #630)
+- Switching between the Problem, Hints and Solution tabs no longer loses keyboard focus. (C348, #627)
+- Reaching the end of a Chapter no longer sends keyboard focus back to the top of the page. (C353, #633)
+- The Settings Theme choice now waits for Save, and keyboard focus stays where you were. (C356, #636)
+- On the Users page, focus now moves to the invite link, the one-time password or the Remove confirmation after you use them. (C361, #648)
+
+**Contrast and small screens**
+
+- Links and accents in the light theme are slightly darker so they are easier to read. (C358, #639)
+- The editor's highlighted matches and the Language select are easier to see. (C363, #646)
+- The Map's current Topic shows a distinct focus ring when focused with the keyboard. (C354, #633)
+- On a short phone screen, the Problem page's header scrolls away and the bars shrink so the statement has room. (C364, #650)
+- A signed-in person who must change their password can now sign out from that page on a phone. (C384, #645)
+
+### Changed
+
+Nothing changed in how it works.
+
+### Content
+
+- Three Chapters show words that were being dropped because they were written in angle brackets: "Linux lockdep: the shortest way round a cycle" (Graphs), "Java: chains that become trees" (Hash tables) and "Go: one pointer reads, one pointer writes" (Two pointers). The Chapters' text did not change. (C349, #626)
+
+### Security
+
+- Raw HTML in Chapter and Problem text is now shown as text and never run, and a link or image whose target is not `http`, `https` or a path on this site is shown as plain words. (C349, #626)
+- On the Users page, choosing a Registration option no longer takes effect until you press Save, so arrowing through the list cannot open or close sign-up by accident. (C359, #642)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.19.6` (or `latest`), then run `docker compose pull && docker compose up -d`.
+
+If you write your own content: an HTML tag in a Chapter or Problem now appears as text, and a `mailto:` or `tel:` link appears without its target. Write such text inside backticks, and give addresses as plain text.
+
 ## [1.19.5](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.4...v1.19.5) (2026-11-11)
 
 ### Highlights
