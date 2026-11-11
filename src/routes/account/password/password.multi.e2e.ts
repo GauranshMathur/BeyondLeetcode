@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test';
+import { phone } from '../../../lib/e2e-phone.ts';
 import { createDb } from '../../../lib/server/db.ts';
 import { type FreshServer, startFreshServer } from '../../signin/fresh-server.ts';
 
@@ -12,7 +13,8 @@ const NEXT = 'a brand new passphrase 42';
 const people = {
 	forced: { name: 'Fay Forced', email: 'fay.password@example.com' },
 	typo: { name: 'Tia Typo', email: 'tia.password@example.com' },
-	settings: { name: 'Sol Settings', email: 'sol.password@example.com' }
+	settings: { name: 'Sol Settings', email: 'sol.password@example.com' },
+	held: { name: 'Hal Held', email: 'hal.password@example.com' }
 };
 
 const test = base.extend<object, { open: FreshServer }>({
@@ -131,4 +133,27 @@ test('any signed-in user reaches it from Settings and stays signed in after', as
 	await expect(page.getByText('Password changed.')).toBeVisible();
 	await page.goto('/settings');
 	await expect(page).toHaveURL('/settings');
+});
+
+test('a held Account signs out from the Change password page on a phone', async ({ page, open }) => {
+	await page.setViewportSize(phone.viewport);
+	await signIn(page, people.held.email, PASSWORD);
+	await expect(page).toHaveURL('/');
+	await mustChange(open, people.held.email, true);
+
+	await page.goto('/account/password');
+	await expect(page.getByRole('heading', { name: 'Choose a new password.' })).toBeVisible();
+	await page.getByRole('main').getByRole('button', { name: 'Sign out' }).click();
+	await expect(page).toHaveURL('/signin');
+
+	// The session is gone: a protected page sends the visitor back to Sign in.
+	await page.goto('/settings');
+	await expect(page).toHaveURL(/\/signin/);
+});
+
+test('the plain Change password page has no Sign out button of its own', async ({ page }) => {
+	await signIn(page, people.typo.email, PASSWORD);
+	await expect(page).toHaveURL('/');
+	await page.goto('/account/password');
+	await expect(page.getByRole('main').getByRole('button', { name: 'Sign out' })).toHaveCount(0);
 });

@@ -26,7 +26,7 @@ let { header, crumbs, actions }: { header: Header; crumbs?: Snippet; actions?: S
 		{#each header.links as link (link.key)}
 		<a class={link.key} href={link.href} aria-current={link.current ? 'page' : undefined}>{#if link.phoneLabel === link.label}<span>{link.label}</span>{:else}<span class="wide">{link.label}</span><span class="narrow">{link.phoneLabel}</span>{/if}</a>
 		{/each}
-		<!-- Sign out is a POST, never a link; Settings has it too, and on a phone only Settings does. -->
+		<!-- Sign out is a POST, never a link; Settings has it too, and on a phone only Settings and the forced Change password page do. -->
 		{#if header.signOut}
 		<form class="signout" method="POST" action="/settings?/signout">
 			<button type="submit">Sign out</button>

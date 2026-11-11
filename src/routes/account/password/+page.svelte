@@ -75,6 +75,12 @@ const general = $derived(form && 'field' in form && form.field === null ? form.m
 			</div>
 		</form>
 		{/if}
+		{#if data.forced}
+			<!-- The header hides its Sign out on a phone, and a held Account can reach no other page. -->
+			<form class="exit" method="POST" action="/settings?/signout">
+				<button type="submit" class="outline">Sign out</button>
+			</form>
+		{/if}
 	</section>
 </main>
 
@@ -212,6 +218,27 @@ const general = $derived(form && 'field' in form && form.field === null ? form.m
 		font-size: 15px;
 		font-weight: 500;
 		cursor: pointer;
+	}
+	.outline {
+		background: transparent;
+		color: var(--ink);
+		border: 1px solid var(--ink);
+	}
+	.exit {
+		grid-column: 6 / span 6;
+		padding-top: 24px;
+		border-top: 1px solid var(--rule);
+	}
+	@media (max-width: 800px) {
+		.exit {
+			grid-column: 1 / -1;
+			margin-top: -4px;
+			padding-top: 20px;
+		}
+		.exit .outline {
+			width: 100%;
+			height: 48px;
+		}
 	}
 	.cancel {
 		padding: 12px 0;
