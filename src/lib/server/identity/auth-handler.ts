@@ -7,15 +7,12 @@ const AUTH_BASE_PATH = '/api/auth';
 /**
  * The only Better Auth endpoints served over HTTP, as paths under `AUTH_BASE_PATH`:
  * - `/callback/:id`, where an OAuth provider sends the browser back;
- * - `/sign-up/email` and `/sign-out`, which stay until the forms replace them.
+ * - `/sign-up/email`, which stays until the form replaces it.
+ * Signing out is not here: the Settings page's `signout` action ends the session server-side.
  * Every other path answers 404 before it reaches Better Auth, so an endpoint a Better Auth upgrade adds
  * is not served until it is listed here. `disabledPaths` in `createAuth` stays as a second layer.
  */
-const SERVED_PATHS: readonly RegExp[] = [
-	/^\/callback\/[A-Za-z0-9_-]+$/,
-	/^\/sign-up\/email$/,
-	/^\/sign-out$/
-];
+const SERVED_PATHS: readonly RegExp[] = [/^\/callback\/[A-Za-z0-9_-]+$/, /^\/sign-up\/email$/];
 
 function isServedAuthPath(pathname: string): boolean {
 	if (!pathname.startsWith(`${AUTH_BASE_PATH}/`)) return false;

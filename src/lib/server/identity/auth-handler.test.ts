@@ -162,7 +162,7 @@ describe('handleAuthRequest', () => {
 describe('the served paths', () => {
 	// Every endpoint the Better Auth instance has, read from the instance itself, so one that an upgrade adds
 	// is in the table without anyone listing it.
-	const served = ['/sign-up/email', '/sign-out'];
+	const served = ['/sign-up/email'];
 	const endpoints = async () => {
 		const { auth } = await setup();
 		const paths = Object.values(auth.api as Record<string, { path?: string }>)
@@ -182,7 +182,13 @@ describe('the served paths', () => {
 
 		expect(paths.length).toBeGreaterThan(30);
 		expect(paths).toEqual(
-			expect.arrayContaining(['/get-session', '/sign-in/email', '/admin/list-users', ...served])
+			expect.arrayContaining([
+				'/get-session',
+				'/sign-in/email',
+				'/admin/list-users',
+				'/sign-out',
+				...served
+			])
 		);
 	});
 
@@ -191,7 +197,7 @@ describe('the served paths', () => {
 		const outside = paths
 			// A path with a parameter is asked with a value.
 			.map((path) => path.replace(/:[A-Za-z]+/g, 'x'))
-			.filter((path) => !served.includes(path) && !path.startsWith('/callback/'));
+			.filter((path) => !served.includes(path) && path !== '/callback/x');
 		const { auth, handler } = reached();
 
 		for (const path of outside) {
@@ -202,6 +208,7 @@ describe('the served paths', () => {
 		}
 
 		expect(outside).toContain('/get-session');
+		expect(outside).toContain('/sign-out');
 		expect(handler).not.toHaveBeenCalled();
 	});
 
@@ -223,6 +230,8 @@ describe('the served paths', () => {
 			'/callback/github/extra',
 			'/callback/git%68ub',
 			'/callback/a.b',
+			'/callback/x%2F..%2Fget-session',
+			'/callback/..%2Fget-session',
 			'/delete-user/callback'
 		]) {
 			const res = await handleAuthRequest(auth, ask(path), '192.0.2.71');
@@ -238,21 +247,50 @@ describe('the served paths', () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it('passes the provider callback, sign-up and sign-out to Better Auth', async () => {
+	it('answers 404 for POST /api/auth/sign-out, with or without a query string', async () => {
+		const { auth, handler } = reached();
+
+		for (const path of ['/sign-out', '/sign-out?x=1']) {
+			const res = await handleAuthRequest(auth, ask(path), '192.0.2.73');
+			expect(res.status, path).toBe(404);
+		}
+
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it('decides on the path alone: a query string does not change it', async () => {
+		const { auth, handler } = reached();
+
+		const callback = await handleAuthRequest(
+			auth,
+			ask('/callback/github?code=x&state=y', 'GET'),
+			'192.0.2.74'
+		);
+		const sneaky = await handleAuthRequest(
+			auth,
+			ask('/get-session?next=/callback/github', 'GET'),
+			'192.0.2.74'
+		);
+
+		expect(await callback.text()).toBe('reached');
+		expect(sneaky.status).toBe(404);
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
+	it('passes the provider callback and sign-up to Better Auth', async () => {
 		const { auth, handler } = reached();
 
 		for (const [method, path] of [
 			['GET', '/callback/github'],
 			['GET', '/callback/google'],
 			['POST', '/callback/github'],
-			['POST', '/sign-up/email'],
-			['POST', '/sign-out']
+			['POST', '/sign-up/email']
 		]) {
 			const res = await handleAuthRequest(auth, ask(path, method), '192.0.2.72');
 			expect(await res.text(), `${method} ${path}`).toBe('reached');
 		}
 
-		expect(handler).toHaveBeenCalledTimes(5);
+		expect(handler).toHaveBeenCalledTimes(4);
 	});
 });
 

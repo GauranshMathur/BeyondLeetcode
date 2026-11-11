@@ -510,20 +510,23 @@ describe('Multi-user Mode', () => {
 		expect(data.resolve).toHaveBeenCalledOnce();
 	});
 
-	it('still lets a user who must change their password sign out, from the nav and from Settings', async () => {
+	it('still lets a user who must change their password sign out from Settings', async () => {
 		const { handle, db, cookie } = await multiSetup();
 		await db.user.updateMany({ data: { mustChangePassword: true } });
-		for (const [path, routeId] of [
-			['/settings?/signout', '/settings'],
-			['/api/auth/sign-out', '/api/auth/[...all]']
-		] as const) {
-			const { event, resolve } = request(path, routeId, 'POST', new Headers({ cookie }));
-
-			const response = await handle({ event, resolve });
-
-			expect(response.status, path).toBe(200);
-			expect(resolve, path).toHaveBeenCalledOnce();
-		}
+		const signOut = request('/settings?/signout', '/settings', 'POST', new Headers({ cookie }));
+		const response = await handle({ event: signOut.event, resolve: signOut.resolve });
+		expect(response.status).toBe(200);
+		expect(signOut.resolve).toHaveBeenCalledOnce();
+		// Better Auth's own endpoint is no way out: it is closed over HTTP, and the gate holds it back.
+		const http = request(
+			'/api/auth/sign-out',
+			'/api/auth/[...all]',
+			'POST',
+			new Headers({ cookie })
+		);
+		const heldHttp = await handle({ event: http.event, resolve: http.resolve });
+		expect(heldHttp.status).toBe(303);
+		expect(http.resolve).not.toHaveBeenCalled();
 		// Any other action of that page is still held back.
 		const reset = request('/settings?/reset', '/settings', 'POST', new Headers({ cookie }));
 		const held = await handle({ event: reset.event, resolve: reset.resolve });
