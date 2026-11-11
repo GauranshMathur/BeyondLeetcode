@@ -55,7 +55,7 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 | Auth | Better Auth |
 | Editor | CodeMirror 6 |
 | Lint + format | Biome |
-| Tests | Vitest (unit), Playwright (e2e), k6 (load: on demand + nightly) |
+| Tests | Vitest (unit), Playwright (e2e), k6 (load: not built yet) |
 
 ## Code runner
 
@@ -69,8 +69,8 @@ Each run starts a fresh, unprivileged container and removes it when done. Python
 
 ## Shipping
 
-- One image, `ghcr.io/gauranshmathur/beyondleetcode`, with a `web` role, a `runner` role, and an `init` command that writes `compose.yaml` and `.env` for the operator.
+- One image, `ghcr.io/gauranshmathur/beyondleetcode`, with a `web` role, a `runner` role, an `init` command that writes `compose.yaml` and `.env` for the operator, and a `reset-admin-password` command (four roles).
 - `docker compose up` runs everything. SQLite lives on a volume. Only the runner mounts the Docker socket. Content is bundled in the image.
 - Builds for amd64 and arm64.
-- Releases via release-please, fully automatic: every `feat` or `fix` merged to `main` ships a release (the release workflow merges its own release PR, then tags; no token). GHCR tags: `vX.Y.Z` and `latest` on release, `edge` on every push to `main`.
+- Releases via release-please, one release per sprint, cut by hand: `docs/releasing.md` has the steps and the `RELEASE_PAT` token it runs on. GHCR tags: `vX.Y.Z` and `latest` on release, `edge` on every push to `main`.
 - CI on every PR: typecheck, Biome, Vitest, build, Playwright, and a Docker build without push.
