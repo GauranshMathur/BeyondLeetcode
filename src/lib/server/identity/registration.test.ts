@@ -1,7 +1,8 @@
+import { isAPIError } from 'better-auth/api';
 import { describe, expect, it } from 'vitest';
 import { createInstance } from '../instance.ts';
 import { createFileTestDb } from '../test-db.ts';
-import { type Admission, type AdmitSignUp, CLIENT_IP_HEADER } from './auth.ts';
+import type { Admission, AdmitSignUp } from './auth.ts';
 import { createInvites, INVITE_LIFETIME_MS } from './invites.ts';
 import { createRegistration } from './registration.ts';
 import { createFirstAdmin } from './setup.ts';
@@ -21,21 +22,19 @@ const fakeInstance = (mode: 'local' | 'multi' | null, registration: Registration
 	};
 };
 
-// Each request comes from its own address: Better Auth's limiter allows three sign-ups per address
-// in ten seconds, and these tests are about the registration gate, not the limiter.
-let caller = 0;
-const post = (auth: Awaited<ReturnType<typeof createTestAuth>>['auth'], payload: object = body) =>
-	auth.handler(
-		new Request(`${origin}/api/auth/sign-up/email`, {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json',
-				origin,
-				[CLIENT_IP_HEADER]: `10.1.${caller >> 8}.${caller++ & 255}`
-			},
-			body: JSON.stringify(payload)
-		})
-	);
+/** A sign-up through `auth.api.signUpEmail`, as the forms make it: the status and headers it answers with. */
+const post = async (
+	auth: Awaited<ReturnType<typeof createTestAuth>>['auth'],
+	payload: typeof body = body
+): Promise<{ status: number; headers: Headers }> => {
+	try {
+		const { headers } = await auth.api.signUpEmail({ body: payload, returnHeaders: true });
+		return { status: 200, headers };
+	} catch (error) {
+		if (!isAPIError(error)) throw error;
+		return { status: error.statusCode, headers: new Headers() };
+	}
+};
 
 async function open(mode: 'local' | 'multi' | null, registration: Registration) {
 	const instance = fakeInstance(mode, registration);

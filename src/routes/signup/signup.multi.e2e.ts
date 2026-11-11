@@ -170,59 +170,47 @@ test.describe('registration open', () => {
 		await context.close();
 	});
 
-	test('a direct POST to /api/auth/sign-up/email with a longer name is refused, and nothing is stored', async ({
+	test('a direct POST to /api/auth/sign-up/email is not served, and nothing is stored', async ({
 		request,
 		open
 	}) => {
 		const response = await request.post(`${open.url}/api/auth/sign-up/email`, {
 			headers: { origin: open.url },
 			data: {
-				name: 'N'.repeat(101),
-				email: 'direct-long@example.com',
+				name: 'Direct Poster',
+				email: 'direct-post@example.com',
 				password: LEARNER.password
 			}
 		});
 
-		expect(response.status()).toBe(400);
-		expect(await response.json()).toMatchObject({
-			code: 'NAME_TOO_LONG',
-			message: 'The name is too long.'
-		});
+		expect(response.status()).toBe(404);
 		expect(response.headers()['set-cookie']).toBeUndefined();
 		// No Account was made: the Sign in form does not know that email, whatever the password.
 		const signIn = await request.post(`${open.url}/signin`, {
 			headers: { origin: open.url, accept: 'text/html' },
-			form: { email: 'direct-long@example.com', password: LEARNER.password }
+			form: { email: 'direct-post@example.com', password: LEARNER.password }
 		});
 		expect(signIn.status()).toBe(400);
 		expect(await signIn.text()).toContain('Email or password is wrong.');
 	});
 
-	test('a refused name is refused the same for an email that has an Account, so it is no way to find one out', async ({
+	test('a direct POST answers the same for an email that has an Account and one that has not, so it is no way to find one out', async ({
 		request,
 		open
 	}) => {
-		const post = (email: string, name: string) =>
+		const post = (email: string) =>
 			request.post(`${open.url}/api/auth/sign-up/email`, {
 				headers: { origin: open.url },
-				data: { name, email, password: LEARNER.password }
+				data: { name: 'Direct Poster', email, password: LEARNER.password }
 			});
 
 		// LEARNER signed up in the first test of this file, so that email has an Account.
-		const known = await post(LEARNER.email, 'N'.repeat(101));
-		const unknown = await post('nobody-long@example.com', 'N'.repeat(101));
-		const blankKnown = await post(LEARNER.email, '   ');
-		const blankUnknown = await post('nobody-blank@example.com', '   ');
+		const known = await post(LEARNER.email);
+		const unknown = await post('nobody-direct@example.com');
 
-		expect(known.status()).toBe(400);
-		expect(unknown.status()).toBe(400);
-		expect(await known.json()).toEqual(await unknown.json());
-		expect(blankKnown.status()).toBe(400);
-		expect(await blankKnown.json()).toMatchObject({
-			code: 'NAME_REQUIRED',
-			message: 'Enter a name.'
-		});
-		expect(await blankKnown.json()).toEqual(await blankUnknown.json());
+		expect(known.status()).toBe(404);
+		expect(unknown.status()).toBe(404);
+		expect(await known.text()).toBe(await unknown.text());
 	});
 
 	test('an email that cannot be used gets a message that does not say why', async ({

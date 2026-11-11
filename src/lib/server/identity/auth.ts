@@ -21,9 +21,10 @@ export interface Admission {
 /**
  * The registration gate: `null` refuses the sign-up, otherwise it is admitted as described.
  *
- * It runs twice per sign-up (the request hook, then the database hook), so it must stay free of
- * side effects. Anything consumed on admit, such as an invite, is consumed in `user.create.before`
- * (after the admission and the name checks, before anything is written), never here.
+ * It is asked in `user.create.before`, for every way an Account is made, and from the provider callback's
+ * refusal rewrite, so it must stay free of side effects. Anything consumed on admit, such as an invite, is
+ * consumed in `user.create.before` (after the admission and the name checks, before anything is written),
+ * never here.
  */
 export type AdmitSignUp = (attempt: {
 	email: string | undefined;
@@ -146,6 +147,10 @@ const UNUSED_CORE_PATHS = [
 	// Signing out is off over HTTP too: the Settings page's `signout` action ends the session through
 	// `auth.api.signOut`, and `disabledPaths` is checked only in Better Auth's HTTP router, so that call is unaffected.
 	'/sign-out',
+	// So is email sign-up: the Sign up and Accept invite forms and Setup's first admin call `auth.api.signUpEmail`,
+	// which `disabledPaths` does not touch. Every way an Account is made, provider sign-ups included, goes through
+	// `user.create.before`.
+	'/sign-up/email',
 	// The app ends sessions itself (`auth.api`, server-side); these would run on Better Auth's session middleware, which
 	// does not apply the rule `/get-session` does for a session older than the password.
 	'/list-sessions',
@@ -212,20 +217,14 @@ export function createAuth({
 			// Only the header our own route sets: X-Forwarded-For is client-controlled and never read.
 			// IPv6 clients are grouped by /64 (Better Auth's default, stated here so it cannot change under us).
 			// Not /128: whoever holds a /64 controls all of its addresses, so a finer key would let them
-			// rotate addresses without limit (sign-up and the other endpoints have no per-Account backstop).
+			// rotate addresses without limit (the provider callback has no per-Account backstop).
 			// The cost is that clients in one LAN /64 share a budget, the same trade-off throttle.ts makes.
 			ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER], ipv6Subnet: 64 }
 		},
 		// On explicitly (Better Auth defaults it to production only), in memory (one process owns the
-		// Instance). Covers requests through `auth.handler`; server-side `auth.api` calls skip it.
-		rateLimit: {
-			enabled: true,
-			storage: 'memory',
-			// Better Auth's own rule for sign-up is 3 per 10 seconds per address, about 1,080 an hour, 54
-			// times what the Sign up form allows (20 per 10 minutes). A script that posts straight to this
-			// endpoint skips the form, so it gets the same budget as the form.
-			customRules: { '/sign-up/email': { window: 600, max: 20 } }
-		},
+		// Instance). Covers requests through `auth.handler`, which now serves only the provider callback;
+		// server-side `auth.api` calls skip it and carry the per-address and per-Account limits of `throttle.ts`.
+		rateLimit: { enabled: true, storage: 'memory' },
 		logger: redactingLogger(INVITE_LOG_PATTERNS),
 		// An error that is not an APIError (a database failure) is rethrown to the caller, so SvelteKit's
 		// `handleError` (which redacts the invite path) logs it. Left unset, Better Call prints it itself with
@@ -315,7 +314,6 @@ export function createAuth({
 			}),
 			before: createAuthMiddleware(async (ctx) => {
 				if (ctx.path === '/sign-in/email') return binding.beforeSignIn(ctx);
-				return creation.beforeSignUp(ctx);
 			})
 		},
 		disabledPaths: [...ADMIN_PATHS, ...UNUSED_CORE_PATHS, ...HTTP_SIGN_IN_PATHS],

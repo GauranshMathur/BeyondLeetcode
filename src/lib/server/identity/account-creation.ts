@@ -81,9 +81,9 @@ type HookContext = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
 /**
  * How an Account comes to exist, as the hooks createAuth wires in: the admission, the name rules, the Invite
- * claim and the Learner (`user.create` before and after), the sign-up request hook, and the rewrite of a
- * provider callback's refusal. `admitSignUp` runs twice per sign-up (the request hook, then the database
- * hook), so it must stay free of side effects: an Invite is spent in `user.create.before`, never there.
+ * claim and the Learner (`user.create` before and after), and the rewrite of a provider callback's refusal.
+ * `admitSignUp` is also asked by that rewrite, so it must stay free of side effects: an Invite is spent in
+ * `user.create.before`, never there.
  */
 export function createAccountCreation({
 	db,
@@ -114,8 +114,7 @@ export function createAccountCreation({
 					if (!admission) throw signUpClosed();
 					// After the admission, so a closed sign-up answers the same whatever the name; before the
 					// Learner below, so a refused name leaves nothing behind. Whatever path made the Account
-					// (the form, POST /sign-up/email, a later one) comes through here. For a sign-up over HTTP
-					// the request hook below has already asked, so this is the backstop.
+					// (the forms through `auth.api.signUpEmail`, Setup's first admin, a provider) comes through here.
 					// A provider can send no name at all (`providerName` maps that away, this is the backstop): a missing
 					// one is "enter a name", not a crash in `trim()`.
 					const refusal = typeof user.name === 'string' ? nameRefusal(user.name) : nameRequired();
@@ -178,28 +177,6 @@ export function createAccountCreation({
 					}
 				}
 			}
-		},
-
-		/**
-		 * The request hook for `/sign-up/email`, asked first, so a closed sign-up answers 403 whether or not the
-		 * email exists (otherwise the duplicate-email 422 would reveal which emails have Accounts). The name is
-		 * checked next, for the same reason: Better Auth looks the email up before the database hook runs, so a
-		 * name refused only there would answer 400 for an email with no Account and 422 for one that has. The
-		 * database hook is the backstop.
-		 */
-		async beforeSignUp(ctx: HookContext) {
-			if (ctx.path !== '/sign-up/email') return;
-			if (
-				!(await admitSignUp({
-					email: ctx.body?.email,
-					inviteToken: inviteTokenFrom(ctx.headers)
-				}))
-			) {
-				throw signUpClosed();
-			}
-			const name = ctx.body?.name;
-			const refusal = typeof name === 'string' ? nameRefusal(name) : null;
-			if (refusal) throw refusal;
 		},
 
 		/** The after hook for a provider's `/callback/:id`: the start given back, the invite cookie cleared, a refusal rewritten. */

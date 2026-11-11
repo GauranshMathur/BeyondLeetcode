@@ -143,39 +143,75 @@ describe('a failed sign-out for an Account that must change its password', () =>
 });
 
 describe('with the real Better Auth', () => {
-	async function signedIn() {
-		const instance = await multi();
+	const ADA = 'ada@example.com';
+	const LIN = 'lin@example.com';
+
+	/** The Accounts Sign out must work for, each as the Account that signs in: the first admin is Ada. */
+	const kinds: [string, (instance: Awaited<ReturnType<typeof multi>>) => Promise<string>][] = [
+		[
+			'an ordinary Learner',
+			async (instance) => {
+				await instance.learner({ email: LIN });
+				return LIN;
+			}
+		],
+		['an admin', async () => ADA],
+		[
+			'an Account that must change its password',
+			async (instance) => {
+				await instance.db.user.update({
+					where: { email: ADA },
+					data: { mustChangePassword: true }
+				});
+				return ADA;
+			}
+		]
+	];
+
+	async function signedIn(email: string, instance: Awaited<ReturnType<typeof multi>>) {
 		const { headers } = await instance.auth.api.signInEmail({
-			body: { email: 'ada@example.com', password: 'correct horse battery' },
+			body: { email, password: 'correct horse battery' },
 			returnHeaders: true
 		});
 		const cookie = headers
 			.getSetCookie()
 			.map((c) => c.split(';')[0])
 			.join('; ');
-		return { ...instance, cookie };
+		// The cookie carries the session token and its signature, joined by a dot.
+		const value = decodeURIComponent(cookie.split('=').slice(1).join('='));
+		return { cookie, token: value.slice(0, value.lastIndexOf('.')) };
 	}
 
-	it('revokes the session in the database and clears the cookie, so the old cookie is nobody', async () => {
-		const { db, auth, locals, cookie } = await signedIn();
-		const who = () =>
-			createMultiUserIdentity(auth).resolve({
-				cookies: { get: () => undefined },
-				request: { headers: new Headers({ cookie }) }
-			});
-		expect(await who()).not.toBeNull();
-		// Sign-up made one session and sign-in another; only the one the cookie names ends.
-		expect(await db.session.count()).toBe(2);
-		const e = event(locals, new Headers({ cookie }));
+	it.each(kinds)(
+		'for %s: revokes the session in the database, clears the cookie and goes to Sign in, so the old cookie is nobody',
+		async (_kind, prepare) => {
+			const instance = await multi();
+			const { db, auth, locals } = instance;
+			const email = await prepare(instance);
+			const { cookie, token } = await signedIn(email, instance);
+			const who = () =>
+				createMultiUserIdentity(auth).resolve({
+					cookies: { get: () => undefined },
+					request: { headers: new Headers({ cookie }) }
+				});
+			expect(await who()).not.toBeNull();
+			const before = await db.session.count();
+			expect(await db.session.findUnique({ where: { token } })).not.toBeNull();
+			const e = event(locals, new Headers({ cookie }));
 
-		const result = await run(e);
+			const result = await run(e);
 
-		expect(result).toMatchObject({ status: 303, location: '/signin' });
-		expect(await db.session.count()).toBe(1);
-		// A copy of the cookie someone kept no longer signs anyone in.
-		expect(await who()).toBeNull();
-		const cleared = e.cookies.set.mock.calls.find(([name]) => name === 'better-auth.session_token');
-		expect(cleared?.[1]).toBe('');
-		expect(cleared?.[2]).toMatchObject({ maxAge: 0 });
-	});
+			expect(result).toMatchObject({ status: 303, location: '/signin' });
+			// Only the session the cookie names ends; the Account's others stay.
+			expect(await db.session.findUnique({ where: { token } })).toBeNull();
+			expect(await db.session.count()).toBe(before - 1);
+			// A copy of the cookie someone kept no longer signs anyone in.
+			expect(await who()).toBeNull();
+			const cleared = e.cookies.set.mock.calls.find(
+				([name]) => name === 'better-auth.session_token'
+			);
+			expect(cleared?.[1]).toBe('');
+			expect(cleared?.[2]).toMatchObject({ maxAge: 0 });
+		}
+	);
 });
