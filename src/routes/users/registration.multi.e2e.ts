@@ -337,6 +337,94 @@ test.describe('on a Multi-user server of its own', () => {
 		}
 	});
 
+	test('a save the server committed but whose answer failed leaves the select on the stored mode', async ({
+		browser,
+		playwright,
+		own
+	}) => {
+		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
+		try {
+			const page = await context.newPage();
+			await page.route('**/users?/registration', async (route) => {
+				// The server really switches; the page is told it failed.
+				await route.fetch();
+				await route.fulfill({
+					status: 400,
+					contentType: 'application/json',
+					body: JSON.stringify({
+						type: 'failure',
+						status: 400,
+						data: JSON.stringify([{ message: 1 }, 'Something went wrong.'])
+					})
+				});
+			});
+			await gotoHydrated(page, '/users');
+			const select = registration(page);
+			await select.selectOption({ label: 'Open' });
+			await page.getByRole('button', { name: 'Save registration' }).click();
+
+			await expect(
+				page.getByRole('alert').filter({ hasText: 'Something went wrong.' })
+			).toBeVisible();
+			await expect(select).toHaveValue('open');
+			await expect(select).toBeFocused();
+			expect(await storedMode()).toBe('open');
+			expect(await signupFor(playwright, own.url)).toBe('form');
+		} finally {
+			try {
+				await backToInvite(own);
+			} finally {
+				await context.close();
+			}
+			expect(await storedMode()).toBe('invite');
+			expect(await signupFor(playwright, own.url)).toBe('closed');
+		}
+	});
+
+	test('a choice edited while a save is on its way does not outlast the answer', async ({
+		browser,
+		playwright,
+		own
+	}) => {
+		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
+		try {
+			const page = await context.newPage();
+			let release: () => void = () => {};
+			const held = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			let arrived: () => void = () => {};
+			const reached = new Promise<void>((resolve) => {
+				arrived = resolve;
+			});
+			await page.route('**/users?/registration', async (route) => {
+				arrived();
+				await held;
+				await route.continue();
+			});
+			await gotoHydrated(page, '/users');
+			const select = registration(page);
+			await select.selectOption({ label: 'Open' });
+			await page.getByRole('button', { name: 'Save registration' }).click();
+			await reached;
+			await select.selectOption({ label: 'Invite only' });
+			release();
+
+			await expect(page.getByText(OPEN)).toBeVisible();
+			expect(await storedMode()).toBe('open');
+			await expect(select).toHaveValue('open');
+			await expect(select).toBeFocused();
+		} finally {
+			try {
+				await backToInvite(own);
+			} finally {
+				await context.close();
+			}
+			expect(await storedMode()).toBe('invite');
+			expect(await signupFor(playwright, own.url)).toBe('closed');
+		}
+	});
+
 	test('a post from another site is refused, and changes nothing', async ({ playwright, own }) => {
 		const request = await playwright.request.newContext({ baseURL: own.url, storageState: admin });
 

@@ -77,19 +77,21 @@ const makeInvite: SubmitFunction = () => {
 	};
 };
 
-// A refused or failed switch may still have changed the mode (a write can commit and the answer fail), and a
-// failed action does not reload the page's data. So the page data is reloaded first, and the select then
-// shows what the Instance holds, never a mode that is not in force.
+// Whatever the outcome, the select ends on the mode the Instance holds, never one that is not in force:
+// `reset: false` keeps a control edited while the request was out, and a refused or failed action may still
+// have changed the mode (a write can commit and the answer fail) without reloading the page's data. So a
+// failure reloads it first. An error result shows the error page, which a reload would replace.
 const switchRegistration: SubmitFunction = ({ formElement }) => {
 	return async ({ result, update }) => {
 		await update({ reset: false });
-		if (result.type !== 'success') {
-			await invalidateAll();
+		try {
+			if (result.type === 'failure') await invalidateAll();
+		} finally {
 			const select = formElement.elements.namedItem('registration');
 			if (select instanceof HTMLSelectElement) select.value = data.registration;
+			// A finished submission sends focus to the top of the page; the select was what was used.
+			registrationSelect?.focus();
 		}
-		// A finished submission sends focus to the top of the page; the select was what was used.
-		registrationSelect?.focus();
 	};
 };
 </script>
