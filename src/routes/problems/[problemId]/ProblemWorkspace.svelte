@@ -202,7 +202,9 @@ const label: Record<SaveState, string> = {
 
 {#snippet saveNotice(part: 'status' | 'signedOut')}
 	{#if part === 'status'}
-		<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'} role="status">{label[session.save]}</span>
+		<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'}>{label[session.save]}</span>
+		<!-- Saved, edited and saving change at every pause in typing, so they stay out of the live region. A signed-out Learner is told by the alert below. -->
+		<span class="live" role="status">{session.save === 'failed' || session.save === 'conflict' ? label[session.save] : ''}</span>
 	{:else if session.save === 'signedOut'}
 		<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
 	{/if}
@@ -478,6 +480,15 @@ const label: Record<SaveState, string> = {
 	}
 	.status.warn {
 		color: var(--accent);
+	}
+	/* Read by screen readers only; the visible .status carries the same words for everyone else. */
+	.live {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 	.strip,
 	.tabbar {
