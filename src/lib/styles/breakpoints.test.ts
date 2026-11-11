@@ -7,6 +7,7 @@ import {
 	breakpointProblems,
 	PHONE,
 	PROBLEM_MIDDLE,
+	PROBLEM_SHORT,
 	PROBLEM_WIDE,
 	TIED
 } from './breakpoints';
@@ -66,6 +67,17 @@ describe('the media queries', () => {
 });
 
 describe('the Problem screen breakpoints', () => {
+	it('the short query is the phone width and a height of 480px or less, tied to two Problem files', () => {
+		expect(PROBLEM_SHORT).toBe('(max-width: 767.98px) and (max-height: 480px)');
+		expect(TIED[PROBLEM_SHORT]).toEqual([
+			'src/routes/problems/[problemId]/+page.svelte',
+			'src/routes/problems/[problemId]/ProblemWorkspace.svelte'
+		]);
+		expect(
+			breakpointProblems('src/routes/x/+page.svelte', `@media ${PROBLEM_SHORT} {`)
+		).toHaveLength(1);
+	});
+
 	it('the phone and middle layouts meet at 767.98px', () => {
 		expect(PHONE).toBe('(max-width: 767.98px)');
 		expect(PROBLEM_MIDDLE).toBe('(width > 767.98px) and (width <= 900px)');

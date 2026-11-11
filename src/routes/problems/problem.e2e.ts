@@ -735,6 +735,62 @@ test.describe('the Problem on a phone', () => {
 	});
 });
 
+test.describe('the Problem on a short phone', () => {
+	test.use({ viewport: { width: 320, height: 256 }, hasTouch: true });
+
+	const tabBar = (page: Page) => page.getByRole('navigation', { name: 'Workspace' });
+	const stage = (page: Page) => page.locator('.stage');
+
+	test('the bars give the statement at least 158px, the strip and tab bar shrink, and the header scrolls away', async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push');
+
+		// 256 - 53 (Run and Submit) - 45 (tab bar) leaves the pane 158px.
+		const strip = await page.getByRole('button', { name: 'Run' }).locator('..').boundingBox();
+		const tabs = await tabBar(page).boundingBox();
+		const pane = await stage(page).boundingBox();
+		if (!strip || !tabs || !pane) throw new Error('missing boxes');
+		expect(strip.height).toBe(53);
+		expect(tabs.height).toBe(45);
+		expect(pane.height).toBeGreaterThanOrEqual(158);
+		for (const name of ['Run', 'Submit']) {
+			const button = await page.getByRole('button', { name }).boundingBox();
+			expect(button?.height).toBe(44);
+		}
+
+		// The page never scrolls; the header and the section row are the first things the pane scrolls past.
+		const doc = await page.evaluate(() => ({
+			scrollHeight: document.documentElement.scrollHeight,
+			innerHeight: window.innerHeight
+		}));
+		expect(doc.scrollHeight).toBe(doc.innerHeight);
+		await expect(page.getByRole('banner')).toBeInViewport();
+		await stage(page).evaluate((el) => el.scrollTo(0, 101));
+		await expect(page.getByRole('banner')).not.toBeInViewport();
+		await expect(page.getByRole('navigation', { name: 'Problem sections' })).not.toBeInViewport();
+		await expect(page.getByRole('heading', { level: 1 })).toBeInViewport();
+
+		// The scroll box is the one a keyboard reaches, and the bar is still the one banner beside the one main.
+		await expect(stage(page)).toHaveAttribute('tabindex', '0');
+		await expect(page.getByRole('banner')).toHaveCount(1);
+		await expect(page.getByRole('main')).toHaveCount(1);
+		expect(await page.getByRole('banner').evaluate((el) => !!el.closest('main'))).toBe(false);
+	});
+
+	test('the Code tab keeps an editor of at least six lines, and the Tests tab keeps its console', async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push');
+		await workspaceTab(page, 'Code').click();
+		const editor = await page.locator('.cm-editor').boundingBox();
+		expect(editor?.height).toBeGreaterThanOrEqual(132);
+		await workspaceTab(page, 'Tests').click();
+		await expect(page.getByRole('region', { name: 'Test results' })).toBeVisible();
+		await expect(tabBar(page)).toBeInViewport({ ratio: 1 });
+	});
+});
+
 // Tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
 test.describe('the Problem on a phone, as a flow', () => {
 	test.use({ storageState: asLearner('e2e-problem-flow') });
