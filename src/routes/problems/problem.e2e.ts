@@ -163,9 +163,19 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await gotoHydrated(page, '/problems/stacks-push');
 
 	await setCode(page, 'print(99)\n');
+	// "Submitting" lasts only while the Submission runs, so the answer is held until it has been seen.
+	let release = () => {};
+	const held = new Promise<void>((done) => {
+		release = done;
+	});
+	await page.route('**/problems/stacks-push?/submit', async (route) => {
+		await held;
+		await route.continue();
+	});
 	await page.getByRole('button', { name: 'Submit' }).click();
 	const status = consoleStatus(page);
 	await expect(status).toHaveText('Submitting');
+	release();
 	const verdict = page.getByRole('group', { name: 'Verdict' });
 	await expect(verdict).toHaveText('Wrong Answer', { timeout: 60_000 });
 	await expect(status).toHaveText('Wrong Answer · Failed Example Test 01');
