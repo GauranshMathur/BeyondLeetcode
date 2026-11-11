@@ -77,6 +77,14 @@ test('error pages under /problems keep the site header, a Problem page does not'
 	await expect(page.locator('header.workspace-bar')).toBeVisible();
 });
 
+test('the workspace is the one main landmark of the Problem page', async ({ page }) => {
+	await gotoHydrated(page, '/problems/stacks-push');
+	await expect(page.getByRole('main')).toHaveCount(1);
+	await expect(
+		page.getByRole('main').getByRole('navigation', { name: 'Problem sections' })
+	).toBeVisible();
+});
+
 test('edits typed just before leaving are still saved', async ({ page }) => {
 	await gotoHydrated(page, '/problems/stacks-peek');
 	await typeInEditor(page, '# last second');
@@ -449,6 +457,8 @@ test('the Solution tab shows the explanation and the Reference Code in each Lang
 	await typeInEditor(page, '# mine');
 	await page.getByRole('link', { name: 'Solution' }).click();
 	await expect(page).toHaveURL('/problems/stacks-push?tab=solution');
+	// Switching tabs keeps focus on the tab link that was used.
+	await expect(page.getByRole('link', { name: 'Solution' })).toBeFocused();
 	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Solution');
 	await expect(page.getByText('Placeholder fixture text')).toBeVisible();
 	await expect(page.getByText('reference code · read only')).toBeVisible();
@@ -592,6 +602,11 @@ test.describe('the Problem on a phone', () => {
 			await workspaceTab(page, name).click();
 			await expectTargets(page, 44);
 		}
+	});
+
+	test('the workspace is the one main landmark on a phone too', async ({ page }) => {
+		await gotoHydrated(page, '/problems/stacks-push');
+		await expect(page.getByRole('main')).toHaveCount(1);
 	});
 
 	test('switching language on the Code tab stays on the Code tab', async ({ page }) => {
