@@ -124,6 +124,16 @@ describe('compose.yaml', () => {
 		expect(compose).toContain('PROTOCOL_HEADER');
 	});
 
+	it('passes RUNNER_MAX_CONCURRENT to the runner only, empty by default, and has no pull note', async () => {
+		await runInit(['--origin', 'http://a.io'], dir);
+		const compose = await read('compose.yaml');
+		const web = compose.slice(compose.indexOf('  web:'), compose.indexOf('  runner:'));
+		const runner = compose.slice(compose.indexOf('  runner:'), compose.indexOf('networks:\n'));
+		expect(runner).toContain('RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}');
+		expect(web).not.toContain('RUNNER_MAX_CONCURRENT');
+		expect(compose).not.toMatch(/docker pull/);
+	});
+
 	it('passes ORIGIN through and says Multi-user requires it', async () => {
 		await runInit(['--origin', 'http://a.io'], dir);
 		const compose = await read('compose.yaml');

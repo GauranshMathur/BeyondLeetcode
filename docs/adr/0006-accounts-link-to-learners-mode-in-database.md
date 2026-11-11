@@ -14,4 +14,4 @@ An Invite is claimed (spent) before any Account or Learner row is written. A fai
 
 ## Consequences
 
-The README tells operators to run one web process per data volume and to restart every web process after a switch. The `reset-admin-password` command writes to the database directly, so it must not run while someone is setting up or switching. A migration that adds the Learner foreign keys stops with a named error if one provider identity belongs to two Users; the operator resolves it by hand (README, Upgrading).
+`docs/self-hosting.md` tells operators to run one web process per data volume and to restart every web process after a switch. The `reset-admin-password` command writes to the database directly, so it must not run while someone is setting up or switching. A migration that adds the Learner foreign keys stops with a named error if one provider identity belongs to two Users; the operator resolves it by hand (`docs/self-hosting.md`, Upgrading).

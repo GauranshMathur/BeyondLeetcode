@@ -195,7 +195,7 @@ A worker moves its own card to Done once the card's type bar is met. Owner stays
 - New artboards (file, width, height, page) are reported to the orchestrator, who updates `canvas.json` and the STATUS sticky.
 
 **Code card**
-1. **Branch.** If the branch `<code>-<slug>` already exists on origin, you are resuming: check it out and read its draft PR checklist. Otherwise create it: `git worktree add ../BeyondLeetcode.worktrees/<code> -b <code>-<slug> origin/main` (see `superpowers:using-git-worktrees`).
+1. **Branch.** If the branch `<code>-<slug>` already exists on origin, you are resuming: check it out and read its draft PR checklist. Otherwise create it: `git worktree add ../BeyondLeetcode.worktrees/<code> -b <code>-<slug> origin/main`.
 2. **Draft PR.** On the first commit, push and open `gh pr create --draft` with the card code in the title (`feat(beyondleetcode): P8 run/submit states`), the card's `Refs #N` line, and a checklist of the steps left. Push every commit after that and tick the checklist as you go. The body ends with `Closes #N` only when the card says it is the issue's last card.
 3. Build test-first with `mattpocock-skills:tdd`.
    - **Before writing new code**, check whether an existing module in the repo, the standard library or the platform (Bun, Node, SvelteKit, the browser, Docker) already does it. Use that instead.
@@ -204,7 +204,7 @@ A worker moves its own card to Done once the card's type bar is met. Owner stays
    - **Skip it for low-risk diffs:** test-only, docs-only or styling-only changes, unless they touch `src/lib/server/runner/`, `src/lib/server/learning/` or `.github/`.
    - **Send the diff, not the repo:** pipe `git diff origin/main...HEAD` on stdin, with the list of changed files and the three to five rules from the card, `CONTEXT.md` or `docs/module-map.md` that the diff must uphold. Tell Codex to open another file only when a specific finding needs it.
    - **Fixed answer shape:** one line per finding, `severity · file:line · what goes wrong (inputs → wrong result) · fix`, or `no findings`. Capture only the final message (`-o <file>`).
-5. Mark the PR ready, wait for CI green (over REST: `gh run watch <run-id> --exit-status --interval 60`, since GraphQL polling is shared with the release token), squash-merge, remove the worktree (`superpowers:finishing-a-development-branch`), then move the card to Done.
+5. Mark the PR ready, wait for CI green (over REST: `gh run watch <run-id> --exit-status --interval 60`, since GraphQL polling is shared with the release token), squash-merge, remove the worktree and delete the local branch, then move the card to Done.
 
 A card touching the code runner or its container flags also gets a `sandbox-security-reviewer` pass before merge. Only the orchestrator can dispatch it: the worker stops at green CI, reports "ready for security review", and the orchestrator runs the review and merges.
 

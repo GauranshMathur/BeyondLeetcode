@@ -9,7 +9,7 @@ Every Run and Submission starts a new container from the official `python`, `nod
 
 ## Consequences
 
-Operators can harden further with rootless Docker/Podman or gVisor without code changes. Container start-up time is paid on every run; k6 tests watch runner throughput. A Kubernetes backend can replace the Runner's engine later behind the same seam.
+Operators can harden further with rootless Docker/Podman or gVisor without code changes. Container start-up time is paid on every run; no load test of Runner throughput is built yet. A Kubernetes backend can replace the Runner's engine later behind the same seam.
 
 ## Amended 2026-10-04
 
