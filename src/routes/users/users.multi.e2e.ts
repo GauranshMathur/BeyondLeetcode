@@ -124,6 +124,24 @@ async function expectReset(email: string, shown: string) {
 	expect(user.mustChangePassword).toBe(true);
 }
 
+test('the admin makes an Invite: the link field takes focus', async ({ context, page }) => {
+	await context.addCookies(admin.cookies);
+	await gotoHydrated(page, '/users');
+
+	await page.getByRole('button', { name: 'Invite a user' }).click();
+
+	const field = page.getByLabel('Invite link');
+	await expect(field).toHaveValue(/\/invite\/[\w-]{43}$/);
+	await expect(field).toBeFocused();
+
+	// Clean up, so a later file sees no stray pending Invite.
+	await page
+		.getByRole('button', { name: /^Cancel invite from \d{4}-\d{2}-\d{2}$/ })
+		.first()
+		.click();
+	await expect(field).toHaveCount(0);
+});
+
 test('the admin resets a password: the one-time password is shown once with a copy field', async ({
 	context,
 	page
@@ -140,6 +158,7 @@ test('the admin resets a password: the one-time password is shown once with a co
 
 	const field = page.getByLabel('One-time password');
 	await expect(field).toBeVisible();
+	await expect(field).toBeFocused();
 	await expect(page.getByText(`One-time password for ${RESET_ENHANCED.name}`)).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Copy password' })).toBeVisible();
 	const shown = await field.inputValue();
@@ -191,6 +210,7 @@ test('the admin removes a user: the confirm opens under the row, and the Account
 
 	const confirm = page.getByRole('group', { name: `Remove ${REMOVE_ENHANCED.name}` });
 	await expect(confirm).toBeVisible();
+	await expect(confirm).toBeFocused();
 	await expect(confirm).toContainText(`Remove ${REMOVE_ENHANCED.name}?`);
 	await expect(confirm).toContainText(
 		'This deletes their account, saved code and Submissions. It cannot be undone.'
