@@ -1,4 +1,5 @@
 <script lang="ts">
+import { tick } from 'svelte';
 import type { ReplyData } from '#lib/problem-wire.js';
 import type { HintsView, ProblemView } from '#lib/server/learning/core.js';
 import { enhance } from '$app/forms';
@@ -10,6 +11,7 @@ let { problem, hints }: { problem: ProblemView; hints: HintsView } = $props();
 // (which would hand the editor a stale copy of the code). A page load brings the stored state back.
 let revealed = $state.raw<HintsView | undefined>(undefined);
 let revealing = $state(false);
+let section = $state<HTMLElement>();
 // Why the last reveal did not go through. A redirect to sign-in is not followed: the Learner stays on the tab.
 let failure = $state<'signedOut' | 'failed' | undefined>(undefined);
 const view = $derived(revealed ?? hints);
@@ -17,7 +19,7 @@ const next = $derived(view.revealed.length + 1);
 const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => next + 1 + i));
 </script>
 
-<section class="hints" aria-label="Hints">
+<section class="hints" aria-label="Hints" bind:this={section}>
 	<ProblemHead {problem} title="Hints" intro="Hints are free. Reveal one at a time, in order. Each links back to the chapter behind the idea." />
 
 	{#if view.total === 0}
@@ -26,7 +28,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 		<div class="list">
 			{#each view.revealed as hint (hint.number)}
 				<article class="hint" aria-labelledby="hint-{hint.number}">
-					<h2 id="hint-{hint.number}" class="mono label">Hint {hint.number} of {view.total}</h2>
+					<h2 id="hint-{hint.number}" class="mono label" tabindex="-1">Hint {hint.number} of {view.total}</h2>
 					<div class="prose">{@html hint.html}</div>
 					<a class="chapter mono" href="/chapters/{view.chapter.id}"><span class="muted">Chapter ·</span><span class="name">{view.chapter.title}</span><span aria-hidden="true">→</span></a>
 				</article>
@@ -37,12 +39,24 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 					class="row"
 					method="POST"
 					action="?tab=hints&/revealHint"
-					use:enhance={() => {
+					use:enhance={({ cancel }) => {
+						// The button stays focusable while a reveal is under way, so a second press must not send another.
+						if (revealing) {
+							cancel();
+							return;
+						}
 						revealing = true;
 						failure = undefined;
 						return async ({ result }) => {
 							revealing = false;
-							if (result.type === 'success') revealed = (result.data as ReplyData['revealHint']).hints;
+							if (result.type === 'success') {
+								const hints = (result.data as ReplyData['revealHint']).hints;
+								revealed = hints;
+								// The trigger may be gone (after the last Hint): focus goes to the Hint it revealed.
+								await tick();
+								// section is unset once the tab is gone, so a late answer cannot move focus on another page.
+								section?.querySelector<HTMLElement>(`#hint-${hints.revealed.length}`)?.focus();
+							}
 							else if (result.type === 'redirect' || (result.type === 'error' && result.status === 401))
 								failure = 'signedOut';
 							else failure = 'failed';
@@ -50,7 +64,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 					}}
 				>
 					<span class="mono label">Hint {next} of {view.total}</span>
-					<button type="submit" class="mono button" disabled={revealing}>Reveal hint {next}</button>
+					<button type="submit" class="mono button" aria-disabled={revealing}>Reveal hint {next}</button>
 				</form>
 				{#if failure === 'signedOut'}
 					<p class="notice" role="alert">You are signed out. <a href="/signin">Sign in again</a> to reveal hints.</p>
@@ -174,7 +188,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 		font-weight: 500;
 		cursor: pointer;
 	}
-	.button:disabled {
+	.button[aria-disabled='true'] {
 		color: var(--muted);
 		border-color: var(--muted);
 		cursor: default;

@@ -17,6 +17,14 @@ let pane = $derived.by((): Pane => {
 	return PANES[0];
 });
 const view = $derived<ViewState>({ section: data.tab, pane });
+// A language switch remounts the workspace, so the old one leaves word here of where focus should land: the new
+// workspace for that Problem and Language claims it once, on mount.
+let editorFocusFor: string | undefined;
+const claimEditorFocus = (id: string, language: string) => {
+	const claimed = editorFocusFor === `${id}:${language}`;
+	editorFocusFor = undefined;
+	return claimed;
+};
 const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Solution' } as const;
 </script>
 
@@ -25,7 +33,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 </svelte:head>
 
 {#key `${problem.id}:${problem.build.language}`}
-	<ProblemWorkspace {problem} {view} onview={(next) => (pane = next.pane)} solution={view.section === 'solution' ? data.solution : undefined}>
+	<ProblemWorkspace {problem} {view} onview={(next) => (pane = next.pane)} {claimEditorFocus} onswitched={(id, language) => (editorFocusFor = id && language ? `${id}:${language}` : undefined)} solution={view.section === 'solution' ? data.solution : undefined}>
 		{#snippet statement()}
 			<div class="left">
 				<nav class="tabs mono" aria-label="Problem sections">

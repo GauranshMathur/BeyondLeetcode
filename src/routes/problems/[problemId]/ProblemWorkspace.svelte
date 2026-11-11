@@ -1,5 +1,5 @@
 <script lang="ts">
-import { onDestroy, type Snippet, untrack } from 'svelte';
+import { onDestroy, onMount, type Snippet, tick, untrack } from 'svelte';
 import CodeEditor from '#lib/editor/CodeEditor.svelte';
 import AppHeader from '#lib/header/AppHeader.svelte';
 import { LANGUAGES, type Language, languageById } from '#lib/languages.js';
@@ -18,7 +18,9 @@ let {
 	statement,
 	view,
 	onview,
-	solution
+	solution,
+	claimEditorFocus,
+	onswitched
 }: {
 	problem: ProblemView;
 	statement: Snippet;
@@ -27,6 +29,10 @@ let {
 	onview: (view: ViewState) => void;
 	/** While set, the Reference Code replaces the editor. The editor stays mounted, so the Learner's code and any pending save are untouched. */
 	solution?: SolutionView;
+	/** Asked once on mount: true when this workspace replaces one a language switch just removed, so the editor takes focus. */
+	claimEditorFocus?: (problemId: string, language: string) => boolean;
+	/** A switch went through: the page remounts the workspace for the new language, which will claim focus. */
+	onswitched?: (problemId?: string, language?: string) => void;
 } = $props();
 
 // The state machine in ./workspace.ts owns the Build, its revision and every transition. This component
@@ -95,7 +101,12 @@ async function post(request: Request): Promise<Reply> {
 			result = deserialize(await response.text());
 		} catch {}
 		const reply = toReply(response, result);
-		if (reply.ok && request.kind === 'switch') await refreshAll();
+		if (reply.ok && request.kind === 'switch') {
+			onswitched?.(session.build.problemId, request.language);
+			await refreshAll();
+			// Whether or not the remount claimed it, the request is spent.
+			onswitched?.();
+		}
 		return reply;
 	} catch {
 		return { ok: false, kind: 'unreachable' };
@@ -117,6 +128,48 @@ const confirming = $derived(choice !== problem.build.language);
 // Start from reference code: the same inline confirm; the Learner's Submissions are kept.
 let confirmingRestart = $state(false);
 const allowed = $derived(may(session));
+
+// A control that is busy or shut stays focusable (aria-disabled), so focus is never dropped onto the document;
+// its click does nothing. Where a control removes itself, focus is moved on by hand to what replaces it.
+let pickerEl = $state<HTMLSelectElement>();
+let restartTrigger = $state<HTMLButtonElement>();
+let editorSlot = $state<HTMLDivElement>();
+
+function focusEditor() {
+	editorSlot?.querySelector<HTMLElement>('.cm-content')?.focus();
+}
+
+function cancelSwitch() {
+	if (session.switching) return;
+	picked = undefined;
+	pickerEl?.focus();
+}
+
+function cancelRestart() {
+	confirmingRestart = false;
+	restartTrigger?.focus();
+}
+
+function confirmRestart() {
+	if (!allowed.restart) return;
+	confirmingRestart = false;
+	// The confirm is going; the trigger holds focus until the restart's answer remounts the editor.
+	restartTrigger?.focus();
+	dispatch({ type: 'restart' });
+}
+
+onMount(() => {
+	if (claimEditorFocus?.(problem.id, problem.build.language)) focusEditor();
+});
+
+// A finished restart remounts the editor; focus follows it there.
+let seenRestarts = untrack(() => session.restarts);
+$effect(() => {
+	const restarts = session.restarts;
+	if (restarts === seenRestarts) return;
+	seenRestarts = restarts;
+	void tick().then(focusEditor);
+});
 
 function onchange(files: Record<string, string>) {
 	dispatch({ type: 'edit', files });
@@ -156,8 +209,8 @@ const label: Record<SaveState, string> = {
 {/snippet}
 
 {#snippet runAndSubmit()}
-	<button type="button" class="run mono" disabled={!allowed.run} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
-	<button type="button" class="run submit mono" disabled={!allowed.submit} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
+	<button type="button" class="run mono" aria-disabled={!allowed.run} onclick={() => dispatch({ type: 'run' })}>{session.outcome?.kind === 'running' ? 'Running…' : 'Run'}</button>
+	<button type="button" class="run submit mono" aria-disabled={!allowed.submit} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
 {/snippet}
 
 {#snippet crumbs()}
@@ -183,7 +236,7 @@ const label: Record<SaveState, string> = {
 					<div class="bar-right">
 						{@render saveNotice('status')}
 						<label class="mono picker">build language
-							<select value={choice} onchange={(e) => (picked = e.currentTarget.value as Language)} aria-describedby={confirming ? 'switch-note' : undefined} disabled={session.switching}>
+							<select bind:this={pickerEl} value={choice} onchange={(e) => (picked = e.currentTarget.value as Language)} aria-describedby={confirming ? 'switch-note' : undefined} disabled={session.switching}>
 								{#each LANGUAGES as language (language.id)}
 									<option value={language.id}>{language.name}</option>
 								{/each}
@@ -198,15 +251,15 @@ const label: Record<SaveState, string> = {
 							<span id="switch-note" class="note">Starts a new {nameOf(choice)} copy of this build; it {problem.seedNotes[choice]}. Your {nameOf(problem.build.language)} build is kept.{session.switchFailed ? ' The switch did not go through; try again.' : ''}</span>
 						</div>
 						<div class="confirm-actions">
-							<button type="button" class="cancel mono" onclick={() => (picked = undefined)} disabled={session.switching}>Cancel</button>
-							<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} disabled={!allowed.switch}>{session.switching ? 'Switching…' : 'Switch language'}</button>
+							<button type="button" class="cancel mono" onclick={cancelSwitch} aria-disabled={session.switching}>Cancel</button>
+							<button type="button" class="run mono" onclick={() => dispatch({ type: 'switch', language: choice })} aria-disabled={!allowed.switch}>{session.switching ? 'Switching…' : 'Switch language'}</button>
 						</div>
 					</div>
 				{/if}
 				{@render saveNotice('signedOut')}
 				<div class="reference">
 					<span id="ref-help" class="mono help">Replaces your code for this step with the known-good build after the previous Problem (empty on a Topic's first Problem). Your submissions are kept.{session.restartFailed ? ' It did not go through; try again.' : ''}</span>
-					<button type="button" class="run mono" aria-describedby="ref-help" disabled={!allowed.restart || confirmingRestart} onclick={() => (confirmingRestart = true)}>Start from reference code</button>
+					<button type="button" class="run mono" aria-describedby="ref-help" bind:this={restartTrigger} aria-disabled={!allowed.restart || confirmingRestart} onclick={() => { if (allowed.restart && !confirmingRestart) confirmingRestart = true; }}>Start from reference code</button>
 				</div>
 				{#if confirmingRestart}
 					<div class="confirm" role="group" aria-label="Start from reference code">
@@ -215,12 +268,12 @@ const label: Record<SaveState, string> = {
 							<span id="restart-note" class="note">Your code for this step is replaced with the reference code. It cannot be undone; your submissions and progress are kept.</span>
 						</div>
 						<div class="confirm-actions">
-							<button type="button" class="cancel mono" onclick={() => (confirmingRestart = false)}>Cancel</button>
-							<button type="button" class="run mono" aria-describedby="restart-note" disabled={!allowed.restart} onclick={() => { confirmingRestart = false; dispatch({ type: 'restart' }); }}>Replace my code</button>
+							<button type="button" class="cancel mono" onclick={cancelRestart}>Cancel</button>
+							<button type="button" class="run mono" aria-describedby="restart-note" aria-disabled={!allowed.restart} onclick={confirmRestart}>Replace my code</button>
 						</div>
 					</div>
 				{/if}
-				<div class="editor-slot">
+				<div class="editor-slot" bind:this={editorSlot}>
 					{#key session.restarts}
 						<CodeEditor files={session.files} {onchange} readonly={allowed.readOnly} />
 					{/key}
@@ -403,7 +456,7 @@ const label: Record<SaveState, string> = {
 		display: flex;
 		gap: 12px;
 	}
-	.submit:not(:disabled) {
+	.submit:not([aria-disabled='true']) {
 		background: var(--ink);
 		color: var(--paper);
 	}
@@ -418,7 +471,7 @@ const label: Record<SaveState, string> = {
 		font-weight: 500;
 		cursor: pointer;
 	}
-	.run:disabled {
+	.run[aria-disabled='true'] {
 		color: var(--muted);
 		border-color: var(--muted);
 		cursor: default;
