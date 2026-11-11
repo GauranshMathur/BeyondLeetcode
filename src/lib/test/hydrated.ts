@@ -1,6 +1,6 @@
 import type { Locator, Page, Response } from '@playwright/test';
 
-// C92 (#320): the root layout sets `data-hydrated` on <html> once SvelteKit has hydrated the page. A test that
+// The root layout sets `data-hydrated` on <html> once SvelteKit has hydrated the page. A test that
 // fills or clicks before then can have its input undone by hydration (Sign in's email is cleared, a tab button
 // ignores an Enter). The marker survives client-side navigations, but every full page load (goto, reload, a form
 // post that lands on a new document) starts a document without it, so wait after each of those.

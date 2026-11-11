@@ -344,6 +344,7 @@ describe('createAuth', () => {
 	});
 
 	describe('the origin check, on the endpoint still served', () => {
+		// Better Auth checks the origin of any request that carries a cookie header, whatever the cookie is.
 		// Better Auth 1.7.7 turns its origin and CSRF checks off when NODE_ENV is "test" or TEST is set,
 		// production included, unless the config says otherwise. This run has NODE_ENV=test as well.
 		const own = 'http://localhost:3000';
@@ -368,17 +369,17 @@ describe('createAuth', () => {
 			return res.status;
 		};
 
-		it('refuses a POST carrying a session cookie from a foreign origin, a null one or none', async () => {
+		it('refuses a POST carrying a cookie header from a foreign origin, a null one or none', async () => {
 			expect(await callback(true, { origin: 'https://evil.example' })).toBe(403);
 			expect(await callback(true, { origin: 'null', 'sec-fetch-site': 'cross-site' })).toBe(403);
 			expect(await callback(true, {})).toBe(403);
 		});
 
-		it('lets a POST carrying a session cookie from its own origin through', async () => {
+		it('lets a POST carrying a cookie header from its own origin through', async () => {
 			expect(await callback(true, { origin: own })).not.toBe(403);
 		});
 
-		it('does not apply the cookie check where there is no cookie: the provider returns cross-site, and the state vouches for it', async () => {
+		it('does not apply the origin check where there is no cookie header: the provider returns cross-site, and the state vouches for it', async () => {
 			expect(await callback(false, { origin: 'https://evil.example' })).not.toBe(403);
 			expect(await callback(false, { origin: own })).not.toBe(403);
 		});

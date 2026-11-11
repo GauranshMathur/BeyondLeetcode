@@ -927,7 +927,7 @@ describe('resetAdminPassword', () => {
 			cookies: { get: () => undefined },
 			request: { headers: new Headers({ cookie: admin.cookie }) }
 		});
-		// The row survived the failed deletion, but it began before the password was set (C53): it is over.
+		// The row survived the failed deletion, but it began before the password was set: it is over.
 		expect(who).toBeNull();
 	});
 });

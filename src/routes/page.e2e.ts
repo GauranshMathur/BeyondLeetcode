@@ -117,7 +117,7 @@ test.describe('the Map on a phone', () => {
 	});
 });
 
-// C51: the Sprint 5 exit. Tests tagged @mobile run again in the "mobile" project (playwright.config.ts) at 390 x 844.
+// The mobile pass: tests tagged @mobile run again in the "mobile" project (playwright.config.ts) at 390 x 844.
 // Its own Learner, so it never meets another file's leftovers.
 test.describe('the Map on a phone, as a flow', () => {
 	test.use({ storageState: asLearner('e2e-page-flow') });

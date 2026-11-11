@@ -88,7 +88,7 @@ export class ImageMissingError extends Error {
 /**
  * A deadline that rejects on its own. `req.setTimeout(..., () => req.destroy(err))` is not enough:
  * on Bun 1.2.19, the production runtime, `destroy(err)` closes the socket without emitting 'error',
- * so the promise never settled (#284). Here the timer rejects first, then destroys the request;
+ * so the promise never settled. Here the timer rejects first, then destroys the request;
  * anything the request emits afterwards (a late 'error', a late response) lands on a settled guard.
  */
 function guard(req: ClientRequest, ms: number, what: string, reject: (error: Error) => void) {
@@ -127,7 +127,7 @@ function guard(req: ClientRequest, ms: number, what: string, reject: (error: Err
 /**
  * Least time left on a remove's deadline for it to poll again. A poll started with less is cut by
  * the deadline at once, but its request is already on the wire, so the daemon sees it after the
- * remove has given up (C198).
+ * remove has given up.
  */
 const minPollMs = 20;
 

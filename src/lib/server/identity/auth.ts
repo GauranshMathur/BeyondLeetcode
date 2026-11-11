@@ -25,6 +25,10 @@ export interface Admission {
  * refusal rewrite, so it must stay free of side effects. Anything consumed on admit, such as an invite, is
  * consumed in `user.create.before` (after the admission and the name checks, before anything is written),
  * never here.
+ *
+ * A duplicate email never reaches `user.create.before`: Better Auth answers 422 first. So the forms' own
+ * check of a closed sign-up or an invalid invite, made before `auth.api.signUpEmail`, is what keeps a known
+ * email from being told apart from an unknown one.
  */
 export type AdmitSignUp = (attempt: {
 	email: string | undefined;

@@ -83,7 +83,7 @@ test.describe('the Topic on a phone', () => {
 	});
 });
 
-// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
+// Tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
 test.describe('the Topic on a phone, as a flow', () => {
 	test.use({ storageState: asLearner('e2e-topic-flow') });
 

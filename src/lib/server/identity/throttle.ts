@@ -152,7 +152,7 @@ interface Entry {
  * or the id of a stored Account, never text the client typed), so it holds at most one entry per Account
  * tried in the window and client text cannot introduce arbitrary keys (open registration can still grow it
  * through real Accounts). It has no maxKeys bound and never evicts or skips, because dropping an Account's
- * entry would give that Account a fresh 50 and skipping it would leave it uncapped (card C85). Every Account
+ * entry would give that Account a fresh 50 and skipping it would leave it uncapped. Every Account
  * is held to 50 per window however many Accounts the Instance has. Its memory is bounded by the distinct
  * real Account ids tried within the windows still kept ("Account tried" below), not by maxKeys and not by
  * the current number of Accounts: a removed Account's entry stays until its window ends, and open

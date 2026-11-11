@@ -195,6 +195,10 @@ async function hasPassword(auth: Auth, userId: string) {
  * Sign in, Sign up, Accept invite and Change password never share a budget. A route that moves onto these
  * actions drops its own `createThrottle()` and calls the action on `multiUser.accounts`, so the one throttle
  * serves every request; the provider starts are the process's one set, which the auth callback shares.
+ *
+ * Sign up and Accept invite check a closed sign-up or an invalid invite before calling `auth.api.signUpEmail`.
+ * That check is what keeps a known email from being told apart from an unknown one: a duplicate email never
+ * reaches `user.create.before`, because Better Auth answers 422 first.
  */
 export function createAccountActions({
 	auth,

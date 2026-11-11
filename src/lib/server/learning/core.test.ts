@@ -15,7 +15,7 @@ import {
 
 /**
  * The Learning core, with every Learner a test names given its row first: the database refuses
- * progress for a Learner that has none (C56), as it does for a removed one.
+ * progress for a Learner that has none, as it does for a removed one.
  */
 function createLearningCore(deps: LearningCoreDeps) {
 	const core = createCoreOnDb(deps);

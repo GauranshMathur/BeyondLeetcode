@@ -4,7 +4,7 @@ import { gotoHydrated, reloadHydrated, submitHydrated } from '../../lib/test/hyd
 import { startFreshServer } from '../signin/fresh-server.ts';
 
 // Two kinds of server, because the Multi-user server on 4174 starts invite-only (as every new Instance does)
-// and the Users page's toggle (C34b) can open registration, but a test that flipped it would change the
+// and the Users page's toggle can open registration, but a test that flipped it would change the
 // shared server for every other file:
 //   - the 4174 server itself shows the closed state;
 //   - for the open state this file starts its own server from the same build, on a fresh database and a free

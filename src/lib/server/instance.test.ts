@@ -174,7 +174,7 @@ it.each([
 	expect((await db.instance.findFirstOrThrow()).mode).toBe('multi');
 });
 
-// setRegistrationMode: the admin's toggle (C34b). The database is written first, memory after.
+// setRegistrationMode: the admin's toggle. The database is written first, memory after.
 
 /** A database whose Instance writes (and, when named, reads) can be held, failed or delayed, to pin the order of the two. */
 function interceptWrites(
@@ -482,7 +482,7 @@ it.each(['everyone', 'OPEN', '', ' open'])(
 	}
 );
 
-// clearEmptyMultiInstance: the `reset-admin-password` command's way to reopen Setup (C42b).
+// clearEmptyMultiInstance: the `reset-admin-password` command's way to reopen Setup.
 
 const addUser = (db: Db) =>
 	db.user.create({
@@ -541,7 +541,7 @@ it('clearEmptyMultiInstance checks the Accounts and clears in one statement, so 
 	expect(statements[0]).toMatch(/DELETE FROM "Instance"[\s\S]*NOT EXISTS[\s\S]*"User"/);
 });
 
-// C54: Local is refused once any Account exists, and the reset command can restore a lost multi mode.
+// Local is refused once any Account exists, and the reset command can restore a lost multi mode.
 
 it('chooseLocal refuses when any Account exists, writes nothing and leaves the mode unset', async () => {
 	const db = await createTestDb();
@@ -617,7 +617,7 @@ it('restoreMultiInstance refuses without an admin (none, a learner, admin,learne
 	expect((await createInstance(local)).mode()).toBe('local');
 });
 
-// C39: converting Local to multi is one narrow statement.
+// Converting Local to multi is one narrow statement.
 
 it('chooseMulti refuses to convert a Local Instance once an Account exists, and the row stays local', async () => {
 	const db = await createTestDb();

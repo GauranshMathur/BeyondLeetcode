@@ -12,7 +12,7 @@ import { freePort } from '../../lib/test/free-port.ts';
 //
 // A test that needs Accounts without touching the shared Multi-user server's database (two processes writing
 // one SQLite file made the other files' setup time out) asks for `openRegistration`: the Instance is then
-// already Multi-user with Registration Open, as a finished Setup plus the Users toggle (C34b) leave it, and
+// already Multi-user with Registration Open, as a finished Setup plus the Users toggle leave it, and
 // Accounts are made through the Sign up form. The app gains no way to open registration from this.
 
 /** `databaseUrl` is the server's own file, for a test that must change a row (the server and the test are the only users). */

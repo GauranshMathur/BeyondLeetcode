@@ -310,7 +310,7 @@ $effect(() => {
 		overflow: hidden;
 		clip: rect(0 0 0 0);
 	}
-	/* Phone (card C47): one column in source order; the Topic and next links move to the end. */
+	/* Phone: one column in source order; the Topic and next links move to the end. */
 	@media (max-width: 767.98px) {
 		.page {
 			flex-direction: column;

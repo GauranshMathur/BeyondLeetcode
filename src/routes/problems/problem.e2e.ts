@@ -400,7 +400,7 @@ test('Hints reveal one at a time, in order, link to the Chapter, and survive a r
 	await expect(page).toHaveURL('/chapters/stacks-undo-log');
 });
 
-// C70: a reveal that does not go through says so, and the button stays usable.
+// A reveal that does not go through says so, and the button stays usable.
 test('Reveal hint says so when the session has ended', async ({ page }) => {
 	await page.route('**/problems/stacks-pop?tab=hints&/revealHint', (route) =>
 		route.fulfill({
@@ -627,7 +627,7 @@ test.describe('the Problem on a phone', () => {
 	});
 });
 
-// C51: tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
+// Tagged @mobile, so the "mobile" project also runs it at 390 x 844 (see playwright.config.ts).
 test.describe('the Problem on a phone, as a flow', () => {
 	test.use({ storageState: asLearner('e2e-problem-flow') });
 
@@ -660,7 +660,7 @@ test.describe('the Problem on a phone, as a flow', () => {
 		).toContainText('solved');
 	});
 
-	// C61: a refused Run says why on the Tests tab, where the Learner already is.
+	// A refused Run says why on the Tests tab, where the Learner already is.
 	test.describe('a refused Run', () => {
 		test.use({ storageState: asLearner('e2e-problem-refused') });
 

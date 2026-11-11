@@ -4,7 +4,7 @@ import { expectNoSidewaysScroll, phone } from '../../lib/e2e-phone.ts';
 import { renderMarkdown } from '../../lib/server/markdown.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
 
-// C174: a code block or a table in a statement or a Solution scrolls sideways inside its own box on a phone, never
+// A code block or a table in a statement or a Solution scrolls sideways inside its own box on a phone, never
 // the page. The fixture Problems carry neither, so a code block and a table built by
 // renderMarkdown are added to the prose; the rest is the real page.
 // Not tagged @mobile: it is a layout check of the Problem's prose, run with the default project at the phone size.

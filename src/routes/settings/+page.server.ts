@@ -50,7 +50,8 @@ export const actions: Actions = {
 	/**
 	 * Sign out: ends this session in the database, clears its cookies and goes to Sign in. A POST form
 	 * action, never a GET, so a link or an image on another page cannot sign anyone out. The nav posts
-	 * here too (`/settings?/signout`), and the gate lets it through for a user who must change their password.
+	 * here too (`/settings?/signout`); the gate's exception for this action lets a user who must change their
+	 * password sign out. Better Auth's own /sign-out is closed over HTTP, so this is the only way.
 	 */
 	signout: async ({ request, locals, cookies }) => {
 		// Local Mode has no accounts, so nothing to sign out of (the same 404 as its other Multi-user pages).
