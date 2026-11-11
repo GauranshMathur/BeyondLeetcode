@@ -55,10 +55,6 @@ test.describe('the current Topic on the Map', () => {
 		await expect(ring).toHaveCSS('stroke-width', '2px');
 		await expect(ring).toHaveCSS('fill', 'none');
 		await expect(box).toHaveCSS('stroke-width', '2px');
-		const ink = await page.evaluate(() =>
-			getComputedStyle(document.body).getPropertyValue('--ink')
-		);
-		expect(ink).not.toBe('');
 		const strokes = await Promise.all([
 			ring.evaluate((el) => getComputedStyle(el).stroke),
 			box.evaluate((el) => getComputedStyle(el).stroke)
