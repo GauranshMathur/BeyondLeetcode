@@ -135,7 +135,10 @@ test('any signed-in user reaches it from Settings and stays signed in after', as
 	await expect(page).toHaveURL('/settings');
 });
 
-test('a held Account signs out from the Change password page on a phone', async ({ page, open }) => {
+test('a held Account signs out from the Change password page on a phone', async ({
+	page,
+	open
+}) => {
 	await page.setViewportSize(phone.viewport);
 	await signIn(page, people.held.email, PASSWORD);
 	await expect(page).toHaveURL('/');
