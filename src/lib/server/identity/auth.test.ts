@@ -221,22 +221,18 @@ describe('createAuth', () => {
 			'get-access-token',
 			'account-info',
 			'list-accounts',
-			'change-password'
+			'change-password',
+			'sign-out'
 		]) {
 			const res = await auth.handler(
 				new Request(`http://localhost:3000/api/auth/${path}`, { method: 'POST' })
 			);
 			expect(res.status, path).toBe(404);
 		}
-		for (const [method, path] of [
-			['POST', 'sign-out'],
-			['GET', 'get-session']
-		] as const) {
-			const res = await auth.handler(
-				new Request(`http://localhost:3000/api/auth/${path}`, { method })
-			);
-			expect(res.status, path).not.toBe(404);
-		}
+		const session = await auth.handler(
+			new Request('http://localhost:3000/api/auth/get-session', { method: 'GET' })
+		);
+		expect(session.status).not.toBe(404);
 		// GET too: a path is off whatever the method.
 		for (const path of ['admin/list-users', 'admin/remove-user', 'change-password']) {
 			const res = await auth.handler(
@@ -323,13 +319,6 @@ describe('createAuth', () => {
 		vi.stubEnv('TEST', '1');
 		onTestFinished(() => void vi.unstubAllEnvs());
 		const { auth } = await setup();
-		const signOut = (origin: string) =>
-			auth.handler(
-				new Request('http://localhost:3000/api/auth/sign-out', {
-					method: 'POST',
-					headers: { cookie: 'better-auth.session_token=x', origin }
-				})
-			);
 		// Sign-up still takes a form post without a cookie, so it carries the cookie-less checks. This
 		// setup admits everyone, so a 403 here is the origin check and not a closed sign-up.
 		const signUp = (headers: Record<string, string>) =>
@@ -341,8 +330,6 @@ describe('createAuth', () => {
 				})
 			);
 
-		expect((await signOut('https://evil.example')).status).toBe(403);
-		expect((await signOut('http://localhost:3000')).status).not.toBe(403);
 		// No cookie: the cross-site navigation check and a foreign Origin are refused too.
 		expect(
 			(await signUp({ 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' })).status
@@ -1621,6 +1608,19 @@ describe('signing in with a provider', () => {
 
 			expect(res.headers.get('location')).toBe('/signin?next=%2Ftopics&error=SIGN_UP_CLOSED');
 		});
+	});
+
+	it("sends a callback with no state to the Sign in page, not to Better Auth's own error page", async () => {
+		const h = await harness();
+
+		const res = await h.auth.handler(
+			new Request(`${origin}/api/auth/callback/github?code=the-code`, {
+				headers: { [CLIENT_IP_HEADER]: '10.3.1.1' }
+			})
+		);
+
+		expect(res.status).toBe(302);
+		expect(res.headers.get('location')).toMatch(/^\/signin\?error=/);
 	});
 
 	it('keeps the endpoints that would hand provider tokens to the browser off', async () => {

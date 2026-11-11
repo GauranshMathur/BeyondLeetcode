@@ -143,6 +143,9 @@ const ADMIN_PATHS = [
 const UNUSED_CORE_PATHS = [
 	'/change-password',
 	'/sign-in/social',
+	// Signing out is off over HTTP too: the Settings page's `signout` action ends the session through
+	// `auth.api.signOut`, and `disabledPaths` is checked only in Better Auth's HTTP router, so that call is unaffected.
+	'/sign-out',
 	// The app ends sessions itself (`auth.api`, server-side); these would run on Better Auth's session middleware, which
 	// does not apply the rule `/get-session` does for a session older than the password.
 	'/list-sessions',
