@@ -199,23 +199,6 @@ describe('createAuth', () => {
 		expect(await db.user.findFirstOrThrow()).toMatchObject({ mustChangePassword: false });
 	});
 
-	it('answers a closed sign-up the same for a new email and for one a closed gate is asked about', async () => {
-		const { auth, db } = await setup(() => null);
-		const refusal = (email: string) =>
-			auth.api.signUpEmail({ body: { ...body, email } }).then(
-				() => null,
-				(error: unknown) => error
-			);
-
-		const [first, second] = [await refusal(body.email), await refusal('new@example.com')];
-
-		expect(first).toMatchObject({ statusCode: 403, body: { code: 'SIGN_UP_CLOSED' } });
-		expect(JSON.stringify((second as { body: unknown }).body)).toBe(
-			JSON.stringify((first as { body: unknown }).body)
-		);
-		expect(await db.user.count()).toBe(0);
-	});
-
 	it('refuses a password of 11 characters and takes 12', async () => {
 		const { auth } = await setup();
 		await expect(

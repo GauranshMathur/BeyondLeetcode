@@ -133,7 +133,7 @@ export function createAccountCreation({
 					// duplicate email (`sign-up.mjs:192`) and writes the User (:217), the credential Account (:235)
 					// and the Session (:255) only after this hook returns. A lost claim (used, expired, cancelled, a
 					// concurrent sign-up) is one conditional update that changed no row: refused, nothing written.
-					// The gate (here and in the request hook) only checked. A failure after the claim (the insert,
+					// The gate only checks. A failure after the claim (the insert,
 					// the Account, the Session, the Learner) leaves the Invite spent; the admin reissues it.
 					// (A Session insert failure leaves the invitee's one Account, usable, beside the spent Invite.) A claim that throws is refused the same way and writes nothing.
 					if (admission.inviteToken && !(await claimInvite(admission.inviteToken, new Date()))) {
