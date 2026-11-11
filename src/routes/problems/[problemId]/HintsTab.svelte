@@ -1,4 +1,5 @@
 <script lang="ts">
+import { tick } from 'svelte';
 import type { ReplyData } from '#lib/problem-wire.js';
 import type { HintsView, ProblemView } from '#lib/server/learning/core.js';
 import { enhance } from '$app/forms';
@@ -26,7 +27,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 		<div class="list">
 			{#each view.revealed as hint (hint.number)}
 				<article class="hint" aria-labelledby="hint-{hint.number}">
-					<h2 id="hint-{hint.number}" class="mono label">Hint {hint.number} of {view.total}</h2>
+					<h2 id="hint-{hint.number}" class="mono label" tabindex="-1">Hint {hint.number} of {view.total}</h2>
 					<div class="prose">{@html hint.html}</div>
 					<a class="chapter mono" href="/chapters/{view.chapter.id}"><span class="muted">Chapter ·</span><span class="name">{view.chapter.title}</span><span aria-hidden="true">→</span></a>
 				</article>
@@ -37,12 +38,23 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 					class="row"
 					method="POST"
 					action="?tab=hints&/revealHint"
-					use:enhance={() => {
+					use:enhance={({ cancel }) => {
+						// The button stays focusable while a reveal is under way, so a second press must not send another.
+						if (revealing) {
+							cancel();
+							return;
+						}
 						revealing = true;
 						failure = undefined;
 						return async ({ result }) => {
 							revealing = false;
-							if (result.type === 'success') revealed = (result.data as ReplyData['revealHint']).hints;
+							if (result.type === 'success') {
+								const hints = (result.data as ReplyData['revealHint']).hints;
+								revealed = hints;
+								// The trigger may be gone (after the last Hint): focus goes to the Hint it revealed.
+								await tick();
+								document.getElementById(`hint-${hints.revealed.length}`)?.focus();
+							}
 							else if (result.type === 'redirect' || (result.type === 'error' && result.status === 401))
 								failure = 'signedOut';
 							else failure = 'failed';
@@ -50,7 +62,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 					}}
 				>
 					<span class="mono label">Hint {next} of {view.total}</span>
-					<button type="submit" class="mono button" disabled={revealing}>Reveal hint {next}</button>
+					<button type="submit" class="mono button" aria-disabled={revealing}>Reveal hint {next}</button>
 				</form>
 				{#if failure === 'signedOut'}
 					<p class="notice" role="alert">You are signed out. <a href="/signin">Sign in again</a> to reveal hints.</p>
@@ -174,7 +186,7 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 		font-weight: 500;
 		cursor: pointer;
 	}
-	.button:disabled {
+	.button[aria-disabled='true'] {
 		color: var(--muted);
 		border-color: var(--muted);
 		cursor: default;

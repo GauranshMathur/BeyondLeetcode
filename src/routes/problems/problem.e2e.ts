@@ -121,11 +121,15 @@ test('Run shows pass for a correct solution and fail for a wrong one', async ({ 
 	await gotoHydrated(page, '/problems/stacks-push');
 
 	await setCode(page, correct);
-	await page.getByRole('button', { name: 'Run' }).click();
+	const run = page.getByRole('button', { name: 'Run' });
+	await run.click();
+	// A busy button stays focusable instead of dropping focus to the document.
+	await expect(run).toBeFocused();
 	const row = page.getByRole('listitem', { name: 'Example Test 01' });
 	await expect(row).toContainText('pass', { timeout: 60_000 });
 	await expect(consoleStatus(page)).toHaveText('1 of 1 passed');
-	await expect(page.getByRole('button', { name: 'Run' })).toBeEnabled();
+	await expect(run).toBeEnabled();
+	await expect(run).toBeFocused();
 
 	await setCode(page, 'print(99)\n');
 	await page.keyboard.press('ControlOrMeta+Enter');
@@ -172,7 +176,9 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 		await held;
 		await route.continue();
 	});
-	await page.getByRole('button', { name: 'Submit' }).click();
+	const submit = page.getByRole('button', { name: 'Submit' });
+	await submit.click();
+	await expect(submit).toBeFocused();
 	const status = consoleStatus(page);
 	await expect(status).toHaveText('Submitting');
 	release();
@@ -180,7 +186,8 @@ test('Submit a wrong answer shows Wrong Answer, then the correct Reference Code 
 	await expect(verdict).toHaveText('Wrong Answer', { timeout: 60_000 });
 	await expect(status).toHaveText('Wrong Answer · Failed Example Test 01');
 	await expect(page.getByLabel('Failed Example Test 01')).toContainText('99');
-	await expect(page.getByRole('button', { name: 'Submit' })).toBeEnabled();
+	await expect(submit).toBeEnabled();
+	await expect(submit).toBeFocused();
 
 	await gotoHydrated(page, '/topics/stacks');
 	await expect(page.getByText('core solved').locator('..')).toContainText('0 of 2');
@@ -310,12 +317,16 @@ test('switching to TypeScript asks first, keeps the Python build, and Run passes
 	await confirm.getByRole('button', { name: 'Cancel' }).click();
 	await expect(confirm).toHaveCount(0);
 	await expect(picker).toHaveValue('python');
+	// The Cancel button is gone, so focus returns to the picker that opened the confirm.
+	await expect(picker).toBeFocused();
 
 	try {
 		await picker.selectOption('typescript');
 		await confirm.getByRole('button', { name: 'Switch language' }).click();
 		await expect(page.getByLabel('Code: main.ts')).toBeVisible();
 		await expect(picker).toHaveValue('typescript');
+		// The switch remounts the workspace; focus lands in the new editor.
+		await expect(page.getByLabel('Code: main.ts')).toBeFocused();
 
 		await setCode(page, correctTypeScript, 'main.ts');
 		await expectStringHighlighted(page, "'node:fs'");
@@ -410,9 +421,13 @@ test('Hints reveal one at a time, in order, link to the Chapter, and survive a r
 	await expect(page.getByText('First hint.')).toBeVisible();
 	await expect(page.getByText('Second hint.')).toHaveCount(0);
 	await expect(page.getByText('Hint 2 of 2')).toBeVisible();
+	// Focus moves to the Hint that was just revealed.
+	await expect(page.getByRole('heading', { level: 2, name: 'Hint 1 of 2' })).toBeFocused();
 
 	await page.getByRole('button', { name: 'Reveal hint 2' }).click();
 	await expect(page.getByText('Second hint.')).toBeVisible();
+	// The last Hint removes the button, and focus still lands on the new Hint.
+	await expect(page.getByRole('heading', { level: 2, name: 'Hint 2 of 2' })).toBeFocused();
 	await expect(page.getByRole('button', { name: /Reveal hint/ })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: /An undo log/ })).toHaveCount(2);
 
@@ -449,6 +464,25 @@ test('Reveal hint says so when the request fails', async ({ page }) => {
 	await page.getByRole('button', { name: 'Reveal hint 1' }).click();
 	await expect(page.getByRole('alert')).toContainText('The hint could not be revealed');
 	await expect(page.getByRole('button', { name: 'Reveal hint 1' })).toBeEnabled();
+});
+
+test('a second press on Reveal hint while one is under way sends nothing more', async ({
+	page
+}) => {
+	let sent = 0;
+	await page.route('**/problems/stacks-pop?tab=hints&/revealHint', async (route) => {
+		sent += 1;
+		await new Promise((done) => setTimeout(done, 400));
+		await route.continue();
+	});
+	await gotoHydrated(page, '/problems/stacks-pop?tab=hints');
+	const reveal = page.getByRole('button', { name: 'Reveal hint 1' });
+	await reveal.click();
+	await expect(reveal).toHaveAttribute('aria-disabled', 'true');
+	await expect(reveal).toBeFocused();
+	await reveal.click({ force: true });
+	await expect(page.getByRole('heading', { level: 2, name: 'Hint 1 of 2' })).toBeFocused();
+	expect(sent).toBe(1);
 });
 
 test('the browser receives only the Hints already revealed', async ({ page }) => {
@@ -523,12 +557,14 @@ test('Start from reference code asks first, cancel changes nothing, confirm puts
 	await confirm.getByRole('button', { name: 'Cancel' }).click();
 	await expect(confirm).toHaveCount(0);
 	await expect(page.getByLabel('Code: main.py')).toContainText('broken(');
+	await expect(page.getByRole('button', { name: 'Start from reference code' })).toBeFocused();
 
 	await page.getByRole('button', { name: 'Start from reference code' }).click();
 	await confirm.getByRole('button', { name: 'Replace my code' }).click();
 	// The Reference Code after stacks-push: it handles push and size, not pop yet.
 	await expect(page.getByLabel('Code: main.py')).toContainText('items.append(int(parts[1]))');
 	await expect(page.getByLabel('Code: main.py')).not.toContainText('broken(');
+	await expect(page.getByLabel('Code: main.py')).toBeFocused();
 	await expect(saveStatus(page)).toHaveText('saved');
 
 	await reloadHydrated(page);
