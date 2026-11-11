@@ -41,6 +41,16 @@ function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
 				width={NODE_WIDTH}
 				height={NODE_HEIGHT}
 			/>
+			{#if topic.id === map.currentTopicId}
+				<rect
+					class="focusmark"
+					x={x - 5}
+					y={y - 5}
+					width={NODE_WIDTH + 10}
+					height={NODE_HEIGHT + 10}
+					rx="2"
+				/>
+			{/if}
 			<svg x={x + 16} {y} width={NODE_WIDTH - 32} height={NODE_HEIGHT}>
 				<text class="title {topic.state}" y="30">{topic.title}</text>
 			</svg>
@@ -142,6 +152,20 @@ function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
 	.node:focus-visible .box {
 		stroke: var(--accent);
 		stroke-width: 3;
+	}
+	/* The current Topic keeps its 2 px accent stroke when focused; a separate ink ring, with a gap of
+	   surface outside the stroke, marks the focus so it is not one pixel more of the same colour. */
+	.node:focus-visible .box.current {
+		stroke-width: 2;
+	}
+	.focusmark {
+		display: none;
+		fill: none;
+		stroke: var(--ink);
+		stroke-width: 2;
+	}
+	.node:focus-visible .focusmark {
+		display: inline;
 	}
 	.node:hover .box {
 		stroke-width: 2;

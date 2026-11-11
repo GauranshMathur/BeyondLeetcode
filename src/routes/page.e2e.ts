@@ -37,6 +37,36 @@ test('an Unlocked Topic can be reached with the keyboard', async ({ page }) => {
 	await expect(stacks).toBeFocused();
 });
 
+// A Topic is current once the Learner has read in it, so this Learner reads a Chapter first.
+test.describe('the current Topic on the Map', () => {
+	test.use({ storageState: asLearner('e2e-page-current') });
+
+	test('shows its own focus mark, apart from its accent stroke', async ({ page }) => {
+		await gotoHydrated(page, '/chapters/stacks-undo-log');
+		await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
+		await gotoHydrated(page, '/');
+		const stacks = page.getByRole('link', { name: /^Stacks, unlocked/ });
+		const ring = stacks.locator('.focusmark');
+		const box = stacks.locator('rect.box');
+		await expect(ring).toHaveCSS('display', 'none');
+		await stacks.focus();
+		await expect(stacks).toBeFocused();
+		await expect(ring).toHaveCSS('display', 'inline');
+		await expect(ring).toHaveCSS('stroke-width', '2px');
+		await expect(ring).toHaveCSS('fill', 'none');
+		await expect(box).toHaveCSS('stroke-width', '2px');
+		const ink = await page.evaluate(() =>
+			getComputedStyle(document.body).getPropertyValue('--ink')
+		);
+		expect(ink).not.toBe('');
+		const strokes = await Promise.all([
+			ring.evaluate((el) => getComputedStyle(el).stroke),
+			box.evaluate((el) => getComputedStyle(el).stroke)
+		]);
+		expect(strokes[0]).not.toBe(strokes[1]);
+	});
+});
+
 test.describe('the Map on a phone', () => {
 	test.use(phone);
 
