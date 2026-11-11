@@ -1173,3 +1173,144 @@ For the maintainer:
 - **#570**, the release webhook's shared notify script: card C340, with no Sprint. It edits `notify.yml` and `release.yml`, as C220 and C221 do, so it goes after them. C220 and C221 stay Todo with no Sprint, waiting on the maintainer's answer to #535.
 - **Content and the spec:** #113, #252 to #268 and #24 are not engineering work. They stay open, `ready-for-human` or `ready-for-agent` as they are.
 - **Everything else in the backlog** is planned in Sprints 19 and 20, below, re-planned issue first by the Fable sprint-planner on 2026-11-10 (the maintainer's rule, #591). The 28 `architecture` issues proposed for wontfix wait for the maintainer and are in no sprint.
+
+## Sprint 19 · Accessibility
+
+**Goal:** the 2026-11-08 accessibility audit's findings are fixed. Run, Submit and Hint results are announced and focus lands where the Learner is; same-page navigations and saves keep focus; the Registration and Theme selects wait for Save; every Users action names its target; text and focus marks pass contrast; the Problem screen reflows at 400% zoom; and every screen has one `main`, a title and one h1, with a test that keeps it so. The Markdown renderer stops passing raw HTML, which also restores two Chapters' lost words.
+
+Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because no card is `feat`: the cards are `fix` and `test`, and five design cards open no PR). Milestone `Sprint 19 · Accessibility`.
+
+- **Re-planned issue first on 2026-11-10** by the Fable `sprint-planner`, under the maintainer's rules of that day (#591): issues are the unit of work, small cards share a PR, and an architecture finding is planned only if it is a bug, a security problem or blocks a planned feature. The old Sprints 19 to 23 (C247 to C339, F18, F19, P11 and S2) are archived on the board. Each issue was read against `main` at ac562aa.
+- **Scope.** The accessibility issues #522 to #528, #529's no-dependency half, and #533 (its lost words are a reading fault, and its fix shares the renderer with #528's h1 rule). And #616, added on 2026-11-11 before the sprint started: on a phone, an Account held on the Change password page has no visible Sign out, a bug on one screen, cut into one design card and one code card in free rounds.
+- **Twenty-five cards: C347 to C365, C384, and the design cards F20, F21, P12, S3 and AC3.**
+  - **The Problem screen** (`ProblemWorkspace.svelte`, `problem.e2e.ts`):
+    - C347: the workspace is the page's `main` (#528), and C348: the tabs carry the reset attribute SvelteKit 3 reads (#523). Both are small: lane A's batch PR.
+    - C350: one console live region, and real roles for the Verdict and the Accepted panel (#522).
+    - C352: a busy control keeps focus, and focus moves to what replaces a removed one (#522). It builds on C243's read of what the Learner may do now.
+    - C355: autosave announces only what needs action (#522).
+    - C363: the editor's selection match and the Language select pass contrast (#526).
+    - C364: at a short viewport the bars give the statement room (#527), after P12's board.
+  - **Markdown and the Chapter:** C349: the renderer escapes raw HTML and drops unsafe link targets (#533). Then C351: a leading h1 that repeats the title is dropped (#528), and C353: reaching a Chapter's end keeps focus (#523, small).
+  - **Settings and Users:**
+    - C356: the Theme select waits for Save, and focus stays on what was used (#524, #523).
+    - C357: each Users action names its user or Invite (#525), then C359: the Registration select waits for Save (#524), then C361: focus goes to what an action shows (#523).
+  - **Tokens and the Map:**
+    - C354: the Map's current Topic gets its own focus mark (#526, small).
+    - C358: the light accent is `#ae3f1d`, and `contrast.test.ts` holds the audit's pairs (#526, #529).
+  - **Errors and the check:** C360: a root error page with a title and a `main` (#528), and C362: one e2e checks one `main`, a title and one h1 on every screen (#529, option 2).
+  - **The Change password page:** C384: the forced variant gets a Sign out form that posts to `/settings?/signout`, which the gate already allows, so a held Account can sign out at every width (#616), after AC3's board. `gate.ts`, `header.ts` and the signout action do not change.
+  - **Design** (the canvas, `card-designer`), one design lane in this order: F20, the light accent is `#AE3F1D` in `tokens()`; F21, a focus mark for an already-accented box; P12, the Problem phone board at 320×256; S3, the error page; AC3, the Change password board's forced variant shows Sign out (Account page).
+  - **Last:** C365, the exit check and `Release-As: 1.19.6` (`docs/releasing.md`, The last card). It has no issue.
+- **Issues → cards.** Each issue closes when its last card merges (`docs/agents/board.md`, Issues are the unit of work). The milestone `Sprint 19 · Accessibility` holds each of these issues but #529.
+
+  | Issue | Cards, in order | Last card | Lane conflicts (shared files, in this order) | Risks and review | Acceptance check |
+  |---|---|---|---|---|---|
+  | #533 Markdown renders raw HTML | C349 | C349 | `markdown.ts` and its test: C349, then C351 (#528) | Response content: the two-reader review. A stricter rule could change how a Chapter renders; the test pins the two Chapters' words | `markdown.test.ts` shows `<prev> -> <next>` as text and a `javascript:` link without its target |
+  | #528 No main, untitled errors, two h1s | C347, C351, S3, C360 | C360 | `ProblemWorkspace.svelte` and `problem.e2e.ts`: C347 first in lane A; `markdown.ts`: after C349; `chapter.e2e.ts`: C351, then C353 (#523) | C351 edits the Markdown renderer, so it takes the two-reader review under the maintainer's standing rule (recorded on its card, 2026-11-11): the readers check that only a heading the title repeats is dropped, and that nothing C349 escapes comes back. C351 changes rendering for 76 Chapters and 128 Problems; the e2e counts h1s. S3 before C360 (design first) | `error.e2e.ts` finds a title, one `main` and one h1 on a 404 and a 403; `getByRole('heading', { level: 1 })` matches one element on a Chapter and a Problem |
+  | #522 Results not announced, focus lost | C350, C352, C355 | C355 | `problem.e2e.ts`: after C347 and C348; `ProblemWorkspace.svelte`: C347, C352, C355, then C363, C364 | None for security. C352 depends on Sprint 18's C243 (`workspace.ts`) | `problem.e2e.ts` reads the Verdict from one `getByRole('status')` and checks focus with `toBeFocused()` after Run, Submit, Reveal hint, Cancel, a restart and a switch |
+  | #523 Focus jumps to the top | C348, C353, C356, C361 | C361 | `+page.svelte` (Problem): C348, C352, then C364; `chapter.e2e.ts`: after C351; `users/+page.svelte`: C357, C359, then C361; `settings/+page.svelte`: C356 only | None for security. C356 carries #524's open question (see below) | `grep -rn "data-sveltekit-noscroll" src` prints nothing, and each e2e finds the trigger or the new content `toBeFocused()` |
+  | #524 Selects save on every change | C356, C359 | C359 | `users/+page.svelte`: after C357 | C359 changes the Registration Mode's form: the two-reader review. Maintainer's question: keep the Save button, or say beside the select that choosing saves? Recommended: keep it, on both selects | `registration.multi.e2e.ts` and `settings.e2e.ts` arrow through each select and see nothing posted until Save |
+  | #525 Users actions name no user | C357 | C357 | `users/+page.svelte` and `users.multi.e2e.ts`: C357 first | None: names only | `users.multi.e2e.ts` finds each action by its full name and each name cell by role `rowheader` |
+  | #526 Contrast and the Map's focus | F20, F21, C354, C358, C363 | C363 | `tokens.css` and `contrast.test.ts`: C358, then C363; `ProblemWorkspace.svelte`: C363 after C355 | None for security. F20 edits every artboard's `tokens()`; its designer reports the count before splitting | `contrast.test.ts` passes with the light accent at `#ae3f1d` and the selection-match token, and fails on `#b4421f` |
+  | #527 400% zoom leaves 29 px | P12, C364 | C364 | `ProblemWorkspace.svelte`, `+page.svelte` and `problem.e2e.ts`: last in lane A; `breakpoints.ts`: C364 only | None for security. A new height query must be named in `breakpoints.ts` (#244's guard) | `problem.e2e.ts` at 320×256 finds the statement pane at least as tall as P12 marks it |
+  | #529 An automated check (no-dependency half) | C358, C362 | none: it stays open | `contrast.test.ts`: C358 (shared with #526); the two e2e files are new | None. axe, a new dependency, is the maintainer's hard call; #529 keeps `needs-triage` and no milestone | `a11y.e2e.ts` and `a11y.multi.e2e.ts` find one `main`, a title and one h1 on every screen, in both themes, on desktop and phone |
+  | #616 A held Account has no visible Sign out on a phone | AC3, C384 | C384 | None: no other card edits `account/password/` or `ChangePassword.dc.html`; C384's one comment line in `AppHeader.svelte` is shared with no card | None for security: no rule, header or action changes; the form posts to the action the gate's exception already allows (`gate.ts`, `isSigningOut`). Decided from the issue's two options: the control goes on the page, not the narrow header, so F.10f's phone rule and `header.ts` stay. AC3 before C384 (design first) | `password.multi.e2e.ts`, at `phone.viewport`, finds a Sign out button inside `main` on the forced Change password page, and clicking it lands on `/signin` |
+
+  - C358 serves #526 and #529: its `Issue` field holds 526, and its `Refs` line names both. C356 serves #524 and #523: its `Issue` field holds 524.
+  - C365, the exit check, has no issue.
+- **Waiting on the maintainer**, with a recommended answer the orchestrator takes unless the maintainer says otherwise:
+  - **#524: keep the Save button after hydration, or say beside the select that choosing saves?** Recommended: keep the Save button, on both selects, and leave focus on the select after a save. C356 carries the `Blocked by:` line; C359 follows it. Not a hard call.
+  - **#529: add `@axe-core/playwright` as well?** A new dependency: a hard call. No card adds it; #529 stays open and `needs-triage`.
+  - **#533's optional layers**, the content check failing on any HTML token and a script CSP (`kit.csp`): recommended to leave them for later. A CSP is a response-header change, so it is the maintainer's. Not planned.
+- **Small cards share a PR** (`docs/agents/board.md`): lane A's batch is C347 and C348, built together in round 1; lane B's batch is C353 and C354, built together in round 3, after C351 and F21. Each batch PR is one round and takes the `fix` type.
+- **Reviews.**
+  - The orchestrator's two-reader review (Fable and Codex): C349 (response content), C351 (the Markdown renderer, `src/lib/server/markdown.ts`, under the maintainer's standing rule: Identity, the gate, headers, CI secrets and the Markdown renderer) and C359 (the Registration Mode).
+  - None for the rest: screens, styles and tests, with no rule, header or Runner change. C384 adds a form that posts to the sign-out action the gate already allows, and changes no rule. No card touches `src/lib/server/runner/`.
+- **Design first.** The canvas is the source of truth for how a screen looks (`docs/agents/design-canvas.md`), so F20 comes before C358, F21 before C354, P12 before C364, S3 before C360 and AC3 before C384. The design lane runs F20, F21, P12, S3, AC3 in order. Design cards use the canvas, not the host's heavy jobs.
+- **Shared files**, each an ordered chain in one lane:
+  - `ProblemWorkspace.svelte`: C347, C352, C355, C363, then C364 (lane A).
+  - `problem.e2e.ts`: C347 and C348 (one PR), C350, C352, C355, then C364 (lane A).
+  - `problems/[problemId]/+page.svelte`: C348, C352, then C364 (lane A).
+  - `users/+page.svelte`: C357, C359, then C361. `users.multi.e2e.ts`: C357, then C361 (lane A).
+  - `markdown.ts` and `markdown.test.ts`: C349, then C351 (lane B). `chapters/chapter.e2e.ts`: C351, then C353 (lane B).
+  - `styles/tokens.css` and `contrast.test.ts` (new in C358): C358 (lane B), then C363 (lane A).
+- **Two lanes a round** (`docs/agents/board.md`, Resources), plus the design lane. Lane A holds the Problem screen and Users; lane B the Markdown, Chapter, Settings, tokens, Map, errors and the e2e check. The e2e runs take the shared heavy lock one at a time.
+
+  | Round | A · Problem screen and Users | B · Markdown, Chapter, Settings, tokens, Map, errors | Design |
+  |---|---|---|---|
+  | 1 | C347 `main` + C348 tabs (#528, #523; batch) | C349 Markdown escapes HTML (#533) | F20 light accent |
+  | 2 | C350 live region (#522) | C351 leading h1 (#528) | F21 focus mark |
+  | 3 | C352 focus after actions (#522) | C353 Chapter's end + C354 Map focus (#523, #526; batch) | P12 Problem at 320×256 |
+  | 4 | C355 autosave (#522) | C356 Settings (#524, #523) | S3 error page |
+  | 5 | C357 Users names (#525) | C358 accent and contrast test (#526, #529) | AC3 Change password's Sign out |
+  | 6 | C359 Registration select (#524) | C360 error page (#528) | |
+  | 7 | C361 Users focus (#523) | C362 accessibility e2e (#529) | |
+  | 8 | C363 editor and select (#526) | C384 Change password's Sign out (#616) | |
+  | 9 | C364 short viewport (#527) | | |
+  | 10 | C365 exit check and `Release-As: 1.19.6` | | |
+
+  If the maintainer has not answered #524 by round 4, lane B runs C358 and C360 first and C356 waits; C359 and C361 then move later in lane A. C384 needs only AC3, so it can take any free lane B round after round 5.
+- **Rounds: 14.**
+  - The longest chain is nine cards (lane A: C347 and C348, C350, C352, C355, C357, C359, C361, C363, C364), under the ten-card line, and lane A's nine rounds set the build. #616's chain (AC3, then C384) is two cards in free rounds and adds none.
+  - There are three security reviews (C349, C351 and C359), which run while the other lane builds.
+  - The last card and the cut add one round each.
+
+**Exit:**
+- All 25 Sprint 19 cards are Done, and `ci` is green on `main`. The sprint's Status counts both issues closed and cards done.
+- `markdown.test.ts` shows raw HTML escaped and a `javascript:` link without its target, and `graphs-lockdep` shows `<prev> -> <next>` as text.
+- `a11y.e2e.ts` and `a11y.multi.e2e.ts` find one `main`, a title and one h1 on every screen, in both themes, on desktop and phone.
+- `contrast.test.ts` passes, and holds the light accent, the selection match and the select's border.
+- `problem.e2e.ts` checks focus after Run, Submit, Reveal hint, Cancel, a restart and a Language switch, and the statement's height at 320×256.
+- `grep -rn "data-sveltekit-noscroll" src` prints nothing.
+- `password.multi.e2e.ts` signs a held Account out from the Change password page at the phone viewport.
+- #522, #523, #524, #525, #526, #527, #528, #533 and #616 are closed, 9 issues. #529 stays open for the axe question.
+- The orchestrator cuts 1.19.6 from the release PR and records the cut. Releases stay `1.x`.
+
+**Not in the sprint:**
+- **`@axe-core/playwright`** (#529's option 1): a new dependency, the maintainer's call.
+- **A script CSP and an HTML check in the content check** (#533's optional layers): the maintainer's call; a CSP is a response-header change.
+- **#582's theme item** (`theme.ts` owning the theme cookie), which the old plan ran beside #524: #582 waits in the Backlog.
+- **The 28 `architecture` refactor issues** (#500 to #505, #515, #516, #519, #520, #560, #561, #562, #566 to #569, #571, #573 to #582): none is wontfix (the maintainer's decision, 2026-11-11). Each has a Backlog ticket, and later sprints draw from them.
+- **The plan was re-checked on 2026-11-11** under the Backlog rule. The one security card, C349 (the renderer escapes raw HTML), runs in round 1. No Backlog ticket is critical, so none joins this sprint.
+
+**Status (2026-11-11):** exit met.
+- **Cards:** all 26 Sprint 19 cards are Done. The exit line says 25: C385 joined during the sprint as critical work, when `ci` failed on `main` (#631).
+- **Issues:** 10 closed, each by its last card: #522, #523, #524, #525, #526, #527, #528, #533, #616 and #631. #529 stays open for the maintainer's answer on axe; its no-dependency half is done (C358, C362).
+- **CI:** `ci` is green on `main` at 3b2c279, the last code card's merge.
+- **Checks:**
+  - `markdown.test.ts` pins raw HTML escaped to text and a `javascript:` link rendered without its target, with exact output. `graphs-lockdep` renders `<prev> -> <next>` as text.
+  - `a11y.e2e.ts` and `a11y.multi.e2e.ts` find one `main`, a non-empty title and one h1 on every screen, in both themes, on desktop and phone. No screen failed.
+  - `contrast.test.ts` passes (45 tests). It reads the pairs from `tokens.css`, and holds the light accent `#ae3f1d`, the `--selection-match` token under ink, muted and accent, and the ink border.
+  - `problem.e2e.ts` checks focus after Run, Submit, Reveal hint, both Cancels, a restart and a Language switch, and at 320×256 finds the statement's scroll box 158 px tall (29 px before).
+  - `grep -rn "data-sveltekit-noscroll" src` prints nothing.
+  - `password.multi.e2e.ts` signs a held Account out from the Change password page at the phone viewport, and a protected page then sends it to Sign in.
+- **Release:** this card's merge carries `Release-As: 1.19.6`. The orchestrator then cuts 1.19.6 from release PR #621 and records the cut in `docs/releasing.md`.
+- **Reviews:**
+  - **The orchestrator's two-reader review** (Fable and Codex) on C349, C351 and C359. None merged until both agreed.
+    - **C349** went back once: autolink targets were escaped twice, and three tests did not pin what they named. Neither reader found a way to produce active content or an unsafe URL (Codex ran 8,232 inputs on the final head).
+    - **C351** went back once, for tests only: nothing proved the Problem view passed its title.
+    - **C359** took five rounds. Each of the first four found something that was then fixed: the test cleanup reset the database but not the running server; a save that committed and then failed left the select on the old mode; an edit made during a save was not restored; and two saves could be in flight at once. The fifth settled a finding that is on `main` and not from the card (without JavaScript, two saves in quick succession are stored in arrival order): it is #647, and both readers agreed the PR itself introduces nothing.
+  - **No `sandbox-security-reviewer`:** no card touched `src/lib/server/runner/`.
+- **Flakes:** three.
+  - **The Submit test's "Submitting" assertion** failed on `main` twice (be5e0a7, 8083e9e). C350 had added it, and it raced the Verdict. Filed as #631, cut into the sprint as C385 under the critical rule, and fixed by holding the request until the state is seen.
+  - **`change-password.test.ts`'s eight-changes test** timed out once in `unit` on 3d11edf; re-run. It is #634, in the Backlog.
+  - **`.github/ci-gate.test.sh`** failed once in `lint` on PR #644 and passed on a re-run. It is #651, in the Backlog.
+- **Decisions and accepted changes from the cards:**
+  - **The Backlog rule** (the maintainer, 2026-11-11, #625): nothing is wontfix for being only a refactor; every open issue has a Backlog ticket; only critical work joins the sprint in progress. The sprint started when the maintainer lifted the hold.
+  - **C347:** the Problem screen's `main` is the inner grid of panes, not the whole page, so the app header stays the page's banner. C364 keeps that at the short phone with a plain wrapper that scrolls.
+  - **C349:** three Chapters' rendered text changed, not two: `two-pointers-go-compact` also had text swallowed as a tag.
+  - **C351:** the match is on the heading's Markdown source. A heading written with an entity keeps both h1s; no content file does that today.
+  - **C355:** "signed out" is announced by the existing alert, not by the new live region, so it is not read twice.
+  - **C360:** no new copy. The h1 is the message the error carries, so a Locked Topic reads `TopicLocked`, as the default page did. The wording is #643, for the maintainer.
+  - **C358:** `docs/agents/design-canvas.md` was added to its Files line, for the `tokens()` block's light accent. The logo files keep `#B4421F`, as F20 says.
+  - **C363 and C364** ran in lane B's free slot, since lane B's own cards were done and neither shared a file with C359.
+  - **C385:** its "10 times in a row" could not be run as written, because the test solves the Problem and a repeat on the same database fails later for that reason. The assertion it fixes passed in every iteration.
+  - **Design cards:** F20, F21, P12, S3 and AC3 are on the canvas (version 64). No board was rendered and looked at; the designers checked geometry by arithmetic.
+- **Filed during the sprint, in the Backlog:** #623 and #624 (the two lines of the removed candidates file), #634, #637, #640, #643 (`needs-triage`), #647 (`needs-triage`), #649, #651 and #652.
+- **Waiting on the maintainer:**
+  - **#643:** the 403 and 404 wording on the error page.
+  - **#647:** whether the Registration action gets a server-side guard against two saves, and which kind.
+  - **#529:** axe is a new dependency, a hard call.
+  - **#535:** the Tailscale OAuth client, and a GitHub App or RELEASE_PAT (C220, C221, C340).
+  - **Auto-intake:** a hook on the Hermes host, or a workflow with a `project`-scoped token, to create a Backlog ticket when an issue opens. Until then the orchestrator does it each round.
+  - **GitGuardian:** 39252375, 39260283 and 39899211 are false positives only the maintainer can mark.
