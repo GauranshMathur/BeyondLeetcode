@@ -43,15 +43,15 @@ const formAction = (search: string): string | null => {
 };
 
 /**
- * The two ways to sign out: Better Auth's own endpoint, and the Settings page's `signout` form action.
+ * The one way to sign out: the Settings page's `signout` form action.
  * Never as a data request: that answers with the layout's and the page's load data, which a user who
  * must change their password has no business reading.
  */
-const isSigningOut = ({ routeId, method, pathname, search, isDataRequest }: GateInput) =>
+const isSigningOut = ({ routeId, method, search, isDataRequest }: GateInput) =>
 	method === 'POST' &&
 	!isDataRequest &&
-	(pathname === '/api/auth/sign-out' ||
-		(routeId === '/settings' && formAction(search) === '/signout'));
+	routeId === '/settings' &&
+	formAction(search) === '/signout';
 
 /**
  * Decides what a request may do, first matching rule wins. Pure: the caller skips static assets

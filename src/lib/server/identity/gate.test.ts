@@ -139,14 +139,14 @@ describe('gate', () => {
 			pass
 		],
 		[
-			'must change, POST sign-out -> pass',
+			'must change, POST /api/auth/sign-out is no sign-out (it is closed over HTTP) -> password',
 			request('/api/auth/[...all]', {
 				who: learner,
 				mustChangePassword: true,
 				method: 'POST',
 				pathname: '/api/auth/sign-out'
 			}),
-			pass
+			redirect('/account/password')
 		],
 		[
 			'must change, other auth api -> password',
@@ -220,17 +220,6 @@ describe('gate', () => {
 				method: 'POST',
 				pathname: '/settings',
 				search: '?/signout',
-				isDataRequest: true
-			}),
-			redirect('/account/password')
-		],
-		[
-			'must change, POST /api/auth/sign-out as a data request is no sign-out -> password',
-			request('/api/auth/[...all]', {
-				who: learner,
-				mustChangePassword: true,
-				method: 'POST',
-				pathname: '/api/auth/sign-out',
 				isDataRequest: true
 			}),
 			redirect('/account/password')

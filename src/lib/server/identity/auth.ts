@@ -144,8 +144,7 @@ const UNUSED_CORE_PATHS = [
 	'/change-password',
 	'/sign-in/social',
 	// The app ends sessions itself (`auth.api`, server-side); these would run on Better Auth's session middleware, which
-	// does not apply the rule `/get-session` does for a session older than the password. `/sign-out` stays: the gate
-	// lets an Account that must change its password sign out through it.
+	// does not apply the rule `/get-session` does for a session older than the password.
 	'/list-sessions',
 	'/revoke-session',
 	'/revoke-sessions',
@@ -229,7 +228,7 @@ export function createAuth({
 		// `handleError` (which redacts the invite path) logs it. Left unset, Better Call prints it itself with
 		// `console.error` (router.mjs:93), request text and all. APIErrors are still turned back into their
 		// 403/422/400 responses by Better Call (router.mjs:84-89).
-		onAPIError: { throw: true },
+		onAPIError: { throw: true, errorURL: '/signin' },
 		telemetry: { enabled: false },
 		// `autoSignIn` and `requireEmailVerification` must stay unset: the hooks refuse a sign-up with a 403, and
 		// Better Auth turns a 403 into a fake success (its generic duplicate response) when either is set.

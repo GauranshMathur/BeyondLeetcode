@@ -305,7 +305,7 @@ describe('a password sign-in racing a writer of the password', () => {
 	});
 
 	it.each(['list-sessions', 'revoke-session', 'revoke-sessions', 'revoke-other-sessions'])(
-		'serves %s over HTTP no more, but keeps sign-out',
+		'serves %s over HTTP no more',
 		async (path) => {
 			const w = await world();
 			const res = await w.auth.handler(
@@ -316,14 +316,6 @@ describe('a password sign-in racing a writer of the password', () => {
 				})
 			);
 			expect(res.status).toBe(404);
-			const signOut = await w.auth.handler(
-				new Request(`${origin}/api/auth/sign-out`, {
-					method: 'POST',
-					headers: { cookie: w.lin.cookie, origin, 'content-type': 'application/json' },
-					body: '{}'
-				})
-			);
-			expect(signOut.status).not.toBe(404);
 		}
 	);
 
