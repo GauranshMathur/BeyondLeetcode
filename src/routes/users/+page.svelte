@@ -180,10 +180,10 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 				<tbody>
 					{#each data.accounts as account (account.id)}
 						<tr>
-							<td>
+							<th scope="row">
 								<span class="name">{account.name}</span>
 								{#if account.you}<span class="you">you</span>{/if}
-							</td>
+							</th>
 							<td>{account.email}</td>
 							<td>{account.role}</td>
 							<td><time datetime={account.joined}>{account.joined.slice(0, 10)}</time></td>
@@ -197,7 +197,9 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 									<div class="row-actions">
 										<form method="POST" action="?/reset" use:enhance={resetOne}>
 											<input type="hidden" name="id" value={account.id} />
-											<button type="submit" class="quiet">Reset password</button>
+											<button type="submit" class="quiet" aria-label="Reset password for {account.name}"
+												>Reset password</button
+											>
 										</form>
 										<form method="GET" action="/users">
 											<button
@@ -205,6 +207,7 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 												name="remove"
 												value={account.id}
 												class="quiet"
+												aria-label="Remove {account.name}"
 												aria-expanded={data.confirmingRemove === account.id}>Remove</button
 											>
 										</form>
@@ -274,14 +277,18 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 					{/each}
 					{#each data.pending as pending (pending.id)}
 						<tr>
-							<td><span class="pending">Pending invite</span></td>
+							<th scope="row"><span class="pending">Pending invite</span></th>
 							<td>—</td>
 							<td>—</td>
 							<td>invited <time datetime={pending.createdAt}>{pending.createdAt.slice(0, 10)}</time></td>
 							<td class="actions">
 								<form method="POST" action="?/cancel" use:enhance>
 									<input type="hidden" name="id" value={pending.id} />
-									<button type="submit" class="quiet">Cancel invite</button>
+									<button
+										type="submit"
+										class="quiet"
+										aria-label="Cancel invite from {pending.createdAt.slice(0, 10)}">Cancel invite</button
+									>
 								</form>
 							</td>
 						</tr>
@@ -588,12 +595,16 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		font-family: var(--font-mono);
 		font-size: 13px;
 	}
-	td {
+	td,
+	th[scope='row'] {
 		padding: 12px 16px 12px 0;
 		vertical-align: middle;
 		color: var(--body);
 		border-bottom: 1px solid var(--rule);
 		overflow-wrap: anywhere;
+	}
+	th[scope='row'] {
+		font-weight: normal;
 	}
 	td.actions {
 		text-align: right;

@@ -76,16 +76,25 @@ test('the admin finds Users in the nav and sees every Account on it', async ({ c
 		const rows = table.locator('tbody tr');
 		await expect(rows).toHaveCount(stored.length, { timeout: 2_000 });
 		for (const [i, user] of stored.entries()) {
+			// The name cell is the row's header; the other four are plain cells.
+			const header = rows.nth(i).getByRole('rowheader');
 			const cells = rows.nth(i).getByRole('cell');
 			const you = user.email === E2E_ADMIN.email;
-			await expect(cells.nth(0)).toHaveText(you ? `${user.name} you` : user.name);
-			await expect(cells.nth(1)).toHaveText(user.email);
-			await expect(cells.nth(2)).toHaveText(user.role === 'admin' ? 'admin' : 'learner');
-			await expect(cells.nth(3)).toHaveText(user.createdAt.toISOString().slice(0, 10));
-			await expect(cells.nth(4)).toContainText(
-				you ? 'you cannot remove yourself' : 'Reset password'
-			);
-			if (!you) await expect(cells.nth(4)).toContainText('Remove');
+			await expect(header).toHaveText(you ? `${user.name} you` : user.name);
+			await expect(cells.nth(0)).toHaveText(user.email);
+			await expect(cells.nth(1)).toHaveText(user.role === 'admin' ? 'admin' : 'learner');
+			await expect(cells.nth(2)).toHaveText(user.createdAt.toISOString().slice(0, 10));
+			if (you) {
+				await expect(cells.nth(3)).toContainText('you cannot remove yourself');
+			} else {
+				// Each action's name says whose it is.
+				await expect(
+					cells.nth(3).getByRole('button', { name: `Reset password for ${user.name}`, exact: true })
+				).toBeVisible();
+				await expect(
+					cells.nth(3).getByRole('button', { name: `Remove ${user.name}`, exact: true })
+				).toBeVisible();
+			}
 		}
 	}).toPass();
 
@@ -100,7 +109,8 @@ test('the admin finds Users in the nav and sees every Account on it', async ({ c
 	).toHaveCount(0);
 	await expect(
 		table.getByRole('row', { name: new RegExp(LIN.email) }).getByRole('button', {
-			name: 'Reset password'
+			name: `Reset password for ${LIN.name}`,
+			exact: true
 		})
 	).toBeVisible();
 });
@@ -124,7 +134,9 @@ test('the admin resets a password: the one-time password is shown once with a co
 	await gotoHydrated(page, '/users');
 	const row = page.getByRole('row', { name: new RegExp(RESET_ENHANCED.email) });
 
-	await row.getByRole('button', { name: 'Reset password' }).click();
+	await row
+		.getByRole('button', { name: `Reset password for ${RESET_ENHANCED.name}`, exact: true })
+		.click();
 
 	const field = page.getByLabel('One-time password');
 	await expect(field).toBeVisible();
@@ -175,7 +187,7 @@ test('the admin removes a user: the confirm opens under the row, and the Account
 	await gotoHydrated(page, '/users');
 	const row = page.getByRole('row', { name: new RegExp(REMOVE_ENHANCED.email) });
 
-	await row.getByRole('button', { name: 'Remove' }).click();
+	await row.getByRole('button', { name: `Remove ${REMOVE_ENHANCED.name}`, exact: true }).click();
 
 	const confirm = page.getByRole('group', { name: `Remove ${REMOVE_ENHANCED.name}` });
 	await expect(confirm).toBeVisible();
@@ -199,7 +211,7 @@ test('Cancel closes the confirm and removes nothing', async ({ context, page }) 
 	await gotoHydrated(page, '/users');
 	await page
 		.getByRole('row', { name: new RegExp(REMOVE_CANCEL.email) })
-		.getByRole('button', { name: 'Remove' })
+		.getByRole('button', { name: `Remove ${REMOVE_CANCEL.name}`, exact: true })
 		.click();
 	const confirm = page.getByRole('group', { name: `Remove ${REMOVE_CANCEL.name}` });
 	await expect(confirm).toBeVisible();
@@ -322,7 +334,10 @@ test.describe('without JavaScript', () => {
 		await expect(page.getByLabel('Invite link')).toHaveValue(/\/invite\/[\w-]{43}$/);
 
 		// Clean up, so a later file sees no stray pending Invite.
-		await page.getByRole('button', { name: 'Cancel invite' }).first().click();
+		await page
+			.getByRole('button', { name: /^Cancel invite from \d{4}-\d{2}-\d{2}$/ })
+			.first()
+			.click();
 		await expect(page.getByLabel('Invite link')).toHaveCount(0);
 	});
 
@@ -338,7 +353,7 @@ test.describe('without JavaScript', () => {
 		// Remove is a link-style GET that opens the confirm, so it needs no script either.
 		await page
 			.getByRole('row', { name: new RegExp(REMOVE_PLAIN.email) })
-			.getByRole('button', { name: 'Remove' })
+			.getByRole('button', { name: `Remove ${REMOVE_PLAIN.name}`, exact: true })
 			.click();
 		const confirm = page.getByRole('group', { name: `Remove ${REMOVE_PLAIN.name}` });
 		await expect(confirm).toBeVisible();
@@ -369,7 +384,7 @@ test.describe('without JavaScript', () => {
 
 		await page
 			.getByRole('row', { name: new RegExp(RESET_PLAIN.email) })
-			.getByRole('button', { name: 'Reset password' })
+			.getByRole('button', { name: `Reset password for ${RESET_PLAIN.name}`, exact: true })
 			.click();
 
 		// SvelteKit ran the action and then the load in one request: the answer is the page, not a 500.
