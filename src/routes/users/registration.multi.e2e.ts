@@ -37,14 +37,13 @@ const test = base.extend<object, { own: Own }>({
 
 const registration = (page: Page) => page.getByRole('combobox', { name: 'Registration' });
 
-// Choosing only submits once the page has hydrated (the Save button goes away then), and the choice counts
-// once the server has answered.
+// The choice counts once Save has been pressed and the server has answered.
 async function choose(page: Page, mode: 'Open' | 'Invite only') {
-	await expect(page.getByRole('button', { name: 'Save registration' })).toHaveCount(0);
 	const saved = page.waitForResponse(
 		(r) => r.url().includes('?/registration') && r.request().method() === 'POST'
 	);
 	await registration(page).selectOption({ label: mode });
+	await page.getByRole('button', { name: 'Save registration' }).click();
 	expect((await saved).status()).toBe(200);
 }
 
@@ -195,6 +194,52 @@ test.describe('on a Multi-user server of its own', () => {
 
 		await adminContext.close();
 		await visitorContext.close();
+	});
+
+	test('arrowing through the Registration select changes nothing until Save, and focus stays on the select', async ({
+		browser,
+		playwright,
+		own
+	}) => {
+		const context = await browser.newContext({ baseURL: own.url, storageState: admin });
+		const page = await context.newPage();
+		const posts: string[] = [];
+		page.on('request', (r) => {
+			if (r.method() === 'POST') posts.push(r.url());
+		});
+		try {
+			await gotoHydrated(page, '/users');
+			const select = registration(page);
+			await select.focus();
+			await page.keyboard.press('ArrowDown');
+			await page.keyboard.press('ArrowUp');
+			await page.keyboard.press('ArrowDown');
+			await expect(select).toBeFocused();
+			await expect(select).toHaveValue('open');
+			expect(posts).toEqual([]);
+			expect(await storedMode()).toBe('invite');
+			expect(await signupFor(playwright, own.url)).toBe('closed');
+
+			await page.getByRole('button', { name: 'Save registration' }).click();
+			await expect.poll(() => posts.length).toBe(1);
+			await expect(page.getByText(OPEN)).toBeVisible();
+			await expect(select).toBeFocused();
+			expect(await storedMode()).toBe('open');
+
+			await select.selectOption({ label: 'Invite only' });
+			await page.getByRole('button', { name: 'Save registration' }).click();
+			await expect.poll(() => posts.length).toBe(2);
+			await expect(page.getByText(INVITE_ONLY)).toBeVisible();
+			await expect(select).toBeFocused();
+			expect(await storedMode()).toBe('invite');
+		} finally {
+			// Back to invite-only whatever happened, so nothing later depends on this test's end state.
+			await fixture.db.instance.update({
+				where: { id: 'instance' },
+				data: { registrationMode: 'invite' }
+			});
+			await context.close();
+		}
 	});
 
 	test('a post from another site is refused, and changes nothing', async ({ playwright, own }) => {

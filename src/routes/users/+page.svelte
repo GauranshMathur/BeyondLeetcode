@@ -4,7 +4,9 @@ import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
 
-// Without JavaScript the select needs its button; with it, choosing submits.
+let registrationSelect = $state<HTMLSelectElement>();
+
+// The copy and Done buttons only work with JavaScript, so they show only once the page has hydrated.
 let enhanced = $state(false);
 $effect(() => {
 	enhanced = true;
@@ -83,6 +85,8 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		if (result.type !== 'success' && select instanceof HTMLSelectElement) {
 			select.value = data.registration;
 		}
+		// A finished submission sends focus to the top of the page; the select was what was used.
+		registrationSelect?.focus();
 	};
 };
 </script>
@@ -105,17 +109,12 @@ const switchRegistration: SubmitFunction = ({ formElement }) => {
 		<form class="control" method="POST" action="?/registration" use:enhance={switchRegistration}>
 			<label>
 				Registration
-				<select
-					name="registration"
-					onchange={(e) => enhanced && e.currentTarget.form?.requestSubmit()}
-				>
+				<select name="registration" bind:this={registrationSelect}>
 					<option value="invite" selected={data.registration === 'invite'}>Invite only</option>
 					<option value="open" selected={data.registration === 'open'}>Open</option>
 				</select>
 			</label>
-			{#if !enhanced}
-				<button type="submit">Save registration</button>
-			{/if}
+			<button type="submit">Save registration</button>
 			<p class="lead" aria-live="polite">{explanation[data.registration]}</p>
 			{#if form && 'message' in form}<p class="error" role="alert">{form.message}</p>{/if}
 		</form>
