@@ -64,8 +64,9 @@ export function containerSpec(
 			// core_pattern is not namespaced: a crash would start the host's core-dump helper as root,
 			// outside this Sandbox's cgroups. A limit of 0 is ignored for a piped helper; 1 byte is the
 			// kernel's special value that skips it. CapDrop ALL stops Learner code raising the hard limit.
-			// 1:1 stops a crash starting the helper only while the soft limit stays 1: Learner code can
-			// still lower its own soft limit to 0, which the seccomp filter in the harness closes.
+			// 1:1 stops a crash starting the helper only while the soft limit stays 1. The harness's seccomp
+			// filter refuses setrlimit and prlimit64 on RLIMIT_CORE, so Learner code cannot lower it to 0.
+			// Both are needed: the filter only holds the value the container sets.
 			Ulimits: [{ Name: 'core', Soft: 1, Hard: 1 }]
 		}
 	};

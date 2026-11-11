@@ -10,8 +10,8 @@ const LONGEST_LANGUAGE_ID = LANGUAGE_IDS.reduce((a, b) => (b.length > a.length ?
 const FILE_JSON_OVERHEAD = 8;
 
 /**
- * The most bytes the body of `request` can reach, for any Build `validateBuild` accepts, whatever Language it carries (its
- * `files` and `language` are ignored). The body is the request's JSON, measured as `execute`
+ * The most bytes the body of `request` can reach, for any Build `validateBuild` accepts, whatever
+ * Language it carries (its `files` and `language` are ignored). The body is the request's JSON, measured as `execute`
  * sends it, plus room for the largest Build at its worst JSON escaping (a control character
  * becomes 6 bytes, `\u00XX`) and the per-file JSON syntax. Only the adapter knows its encoding,
  * so callers that must stay under the Runner's body limit ask here.
