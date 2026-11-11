@@ -16,10 +16,11 @@ Read `docs/agents/board.md` (Issues are the unit of work, card format, Small car
 One of:
 
 - a sprint goal, from the maintainer or from `docs/sprints.md` and the open issues;
-- **the backlog**: the open issues the orchestrator names (`gh issue list --state open --limit 200`). Group them into themed sprints, in the order they should run, so that every one is in exactly one sprint or listed in your report with why not (a question for the maintainer, already fixed, not engineering work). Each sprint passes every check on its own, and the plan PR writes all of them;
+- **the Backlog**: the board's tickets with Status Backlog, each an open issue (`board.md`, Issues are the unit of work). Pull them by priority: bugs and security problems first, then what a planned card depends on, then the rest in the Backlog column's order. Skip the maintainer's tickets (`ready-for-human`, #24) and issues labelled `needs-triage` or `needs-info`. Fill the next sprints up to the size rule; what does not fit stays in the Backlog, and you archive the Backlog ticket of each issue you cut into cards. Group them into themed sprints, in the order they should run, so that every one is in exactly one sprint, still in the Backlog, or listed in your report with why not (a question for the maintainer, already fixed, not engineering work). Each sprint passes every check on its own, and the plan PR writes all of them;
+- **a critical issue** (a bug that hurts users, a security problem, a broken CI or release, or something a planned card cannot be built without): cut it into cards in the current sprint, placed in the next free round of their lanes;
 - one card the orchestrator or a worker flagged as too big.
 
-Read each issue in full, and the code it names, before cutting it into cards: a `Files:` line must name files that exist on main. When the orchestrator passes an architecture report, read it as input for the issues it names. Its findings that are not issues sit in `docs/architecture-candidates.md`, and you plan none of them unless the maintainer picked it.
+Read each issue in full, and the code it names, before cutting it into cards: a `Files:` line must name files that exist on main. When the orchestrator passes an architecture report, read it as input for the issues it names. Every finding is an issue with a Backlog ticket (`board.md`, Issues are the unit of work).
 
 ## Issue first
 

@@ -16,19 +16,33 @@ Work can stop at any moment and resume from any machine with a local clone, so n
 
 ## Issues are the unit of work
 
-The maintainer's rule since 2026-11-10 (#591): every issue is planned, and every card belongs to an issue. That covers bugs, `architecture` findings, accessibility and docs findings, and enhancements.
+The maintainer's rule since 2026-11-10 (#591): every card belongs to an issue. That covers bugs, `architecture` findings, accessibility and docs findings, and enhancements. No finding is closed as `wontfix` because it is only a refactor: it stays an issue and waits in the Backlog (the maintainer's decision, 2026-11-11).
 
-1. **Pull in.** The orchestrator pulls every open issue in. It triages it (`triage-labels.md`). Once the issue is planned, it carries the GitHub milestone of the sprint whose card closes it. A milestone is named exactly like that sprint's Sprint option, for example `Sprint 18 · Submission, Runner and Identity seams`.
-   - An issue waiting on the maintainer keeps `needs-triage` or `needs-info`, and no milestone.
-   - The content reviews (`ready-for-human`) and the MVP1 spec (#24) are the maintainer's: no milestone and no cards.
-2. **Cut into cards.** The `sprint-planner` cuts each issue into cards that say how it is done (see Planning). A card serves one issue. Where one change completes two, the card's `Issue` field holds the one it is mainly for, and its `Refs` line names both.
-3. **Link both ways.**
+1. **Intake.** Every open issue has a ticket on the board. Triage (`triage-labels.md`) ends by creating it:
+   - The ticket is a draft item titled `[#N] <the issue's title>`. Its body starts `From #N.` and has a `Refs #N` line. Its `Issue` field is N, its Status is **Backlog**, and it has no Sprint, Release or Owner.
+   - Each round, the orchestrator lists the open issues and creates the ticket of any that has none.
+   - The content reviews (`ready-for-human`) and the MVP1 spec (#24) get a ticket too, so the board shows them. They are the maintainer's: no agent starts them, and they get no milestone and no cards.
+   - An issue waiting on the maintainer keeps `needs-triage` or `needs-info`, and its ticket stays in the Backlog.
+2. **Work later.** A Backlog ticket is not started, and it does not change the sprint in progress. The `sprint-planner` pulls from the Backlog when it plans the next sprints (see Planning), by priority:
+   - first bugs and security problems, then what a planned card depends on, then everything else, oldest first;
+   - the maintainer can reorder the Backlog column, and the planner follows that order.
+
+   When the planner cuts an issue into cards, it archives the issue's Backlog ticket: the cards take its place. The issue then carries the GitHub milestone of the sprint whose card closes it. A milestone is named exactly like that sprint's Sprint option, for example `Sprint 18 · Submission, Runner and Identity seams`.
+3. **The exception: critical work joins the current sprint at once.** Critical means one of these:
+   - a bug that hurts users;
+   - a security problem;
+   - a broken CI or release;
+   - a dependency: something a planned card cannot be built without.
+
+   The orchestrator has the planner cut it into cards in the current sprint, and they run in the next round. Everything else waits for its sprint.
+4. **Cut into cards.** The `sprint-planner` cuts each issue into cards that say how it is done (see Planning). A card serves one issue. Where one change completes two, the card's `Issue` field holds the one it is mainly for, and its `Refs` line names both.
+5. **Link both ways.**
    - **The card.** The board's `Issue` field holds the issue number, and the body has a `Refs #N` line.
    - **The PR.** Its body has `Refs #N`, and only the issue's last card's PR also has `Closes #N`. GitHub ignores negation, so "does not close #N" closes #N. Never put `close`, `closes`, `fix`, `fixes` or `resolves` before an issue number the PR does not close. Write "#N stays open".
    - **The issue.** It has one comment that starts `Cards:`. The comment lists the issue's cards in order, says which lanes they run in, and names the last card. The planner writes it. Whoever adds or splits a card edits that comment rather than adding another.
    - **The plan.** Each sprint's section in `docs/sprints.md` lists issue → cards.
-4. **Close.** An issue closes only when its last card merges. A PR that closes one early is a mistake: reopen the issue.
-5. **Count.** Every sprint report, and the sprint's exit check, counts issues closed as well as cards done.
+6. **Close.** An issue closes only when its last card merges. A PR that closes one early is a mistake: reopen the issue.
+7. **Count.** Every sprint report, and the sprint's exit check, counts issues closed as well as cards done.
 
 The sprint's last card (`docs/releasing.md`, The last card) is the one card with no issue. Its `Issue` field is empty.
 
@@ -84,7 +98,7 @@ A card's PR title uses the type that matches what a user sees. The type is filed
 
 ## Planning
 
-The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, to plan the open backlog into sprints, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
+The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, to plan the Backlog into sprints by priority (Issues are the unit of work, Work later), to cut a critical issue into the current sprint, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
 
 - A sprint is one coherent theme drawn from the open issues, typically 12 to 25 cards, with testable exit criteria. Cards stay small; sprints are long.
 - Each card is one PR touching one area, and has a `Done when`.
@@ -113,7 +127,7 @@ A new Sprint option, or a new Release option `R vX.Y.Z: Sprint N · <Theme>`, is
 
 | Field | ID | Values |
 |---|---|---|
-| Status | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` | Todo `f75ad846` · In Progress `47fc9ee4` · Done `98236657` |
+| Status | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` | Backlog `7c82888f` (an issue's ticket, not started) · Todo `f75ad846` · In Progress `47fc9ee4` · Done `98236657` |
 | Sprint | `PVTSSF_lAHOAm0pms4Bk1LBzhjlFwI` | 0 `3ad2db80` · 1 `ec5cba1c` · 2 `9bd8950b` · 3 `bc546063` · 4 `42ff5017` · 5 `420a1181` · 6 `b06bc1b7` · 7 `0738df2b` · 8 `4f7b943d` · 9 `2d37a7f3` · 10 `c4925fcc` · 11 `2e87bf36` · 12 `5a6498ca` · 13 `7014a845` · 14 `ebb2e444` · 15 `2365b98c` · 16 `447f928f` · 17 `92c82f88` · 18 `3324fd3e` · 19 `49a0f9e3` · 20 `7234eeee` · 21 `38b5a7b2` · 22 `66687a0a` · 23 `ac674312` |
 | Release | `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY` | one per sprint, `R vX.Y.Z: Sprint N · <Theme>`: R v1.19.0: Sprint 13 · Foundations `5eb8b28c` · R v1.19.1: Sprint 14 · Identity `528cefdd` · R v1.19.2: Sprint 15 · Screens and phones `acb16cb6` · R v1.19.3: Sprint 16 · Languages and the Learning core `07c751bf` · R v1.19.4: Sprint 17 · Runner and CI hardening `ece5dfa8` · R v1.19.5: Sprint 18 · Submission, Runner and Identity seams `d6739981` · R v1.19.6: Sprint 19 · Accessibility `ba3b24a7` · R v1.19.7: Sprint 20 · Drifted rules and docs `41225006` · R v1.19.8: Sprint 21 · Unplanned `647d8bbc` · R v1.19.9: Sprint 22 · Unplanned `30fe09ec` · R v1.19.10: Sprint 23 · Unplanned `59e6d8b2` |
 | Owner | `PVTF_lAHOAm0pms4Bk1LBzhjlEXM` | text: the worker name holding the card |
@@ -208,10 +222,10 @@ When a worker cannot finish (a decision nobody has made, a missing Foundations p
 
 When a sprint's feature lands and is released, a separate Claude session runs `mattpocock-skills:improve-codebase-architecture` over what was built and writes a report (the maintainer's rule, 2026-11-08). The orchestrator never runs it itself.
 
-**The review files few issues** (the maintainer's rule, 2026-11-10). A finding becomes an issue only if it is a bug, a security problem, or something that blocks a planned feature. Given the report, the orchestrator:
-- compares each such finding with the open and closed issues;
-- files only what is missing, as `architecture` + `needs-triage` issues linking the files involved;
+**Every finding is an issue** (the maintainer's decision, 2026-11-11, which replaces the 2026-11-10 rule that filed only bugs, security problems and blockers). The review may file freely. Given the report, the orchestrator:
+- compares each finding with the open and closed issues;
+- files what is missing, as `architecture` issues linking the files involved, and triages them;
 - adds a finding that extends an open issue to that issue as a comment;
-- puts every other finding in `docs/architecture-candidates.md`, one line each with its files, not in an issue.
+- gives each new issue its Backlog ticket (Issues are the unit of work, Intake).
 
-Candidates are not planned into sprints unless the maintainer picks one. A picked candidate becomes an issue, and then cards.
+A finding that is critical joins the current sprint (Issues are the unit of work, the exception). Every other finding waits in the Backlog for the planner. Nothing is closed as `wontfix` for being only a refactor.
