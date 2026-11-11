@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.19.7](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.6...v1.19.7) (2026-11-11)
+
+
+### Fixes
+
+* **beyondleetcode:** C366 Identity: one new-Account field check, and the first Admin's sign-up answers refusal codes ([#656](https://github.com/GauranshMathur/BeyondLeetcode/issues/656)) ([eb309d9](https://github.com/GauranshMathur/BeyondLeetcode/commit/eb309d9b577cd4d1cc4828e15140cf9d947835fc))
+* **beyondleetcode:** C367, C368, C369, C370 drifted compose note, Shipping doc, worktree steps and ADR pointers ([#657](https://github.com/GauranshMathur/BeyondLeetcode/issues/657)) ([80c5cd8](https://github.com/GauranshMathur/BeyondLeetcode/commit/80c5cd8a0709f5c4ec75d56e0bd8f25299783a44))
+
+
+### Documentation
+
+* **beyondleetcode:** record the 1.19.6 cut, and archive Sprint 19 ([#654](https://github.com/GauranshMathur/BeyondLeetcode/issues/654)) ([40b1954](https://github.com/GauranshMathur/BeyondLeetcode/commit/40b195439e8a330dc19a2cf6b0e8b2428699b97f))
+
 ## [1.19.6](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.5...v1.19.6) (2026-11-11)
 
 ### Highlights
