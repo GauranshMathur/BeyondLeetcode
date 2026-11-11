@@ -1,5 +1,62 @@
 # Changelog
 
+## [1.19.5](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.4...v1.19.5) (2026-11-11)
+
+
+### Fixes
+
+* **beyondleetcode:** C225 Runner: harness.ts decodes the harness transcript, one decoder per stream ([#588](https://github.com/GauranshMathur/BeyondLeetcode/issues/588)) ([c0b7d54](https://github.com/GauranshMathur/BeyondLeetcode/commit/c0b7d541d4f4e4e74a662383f31868a0d234efcc))
+* **beyondleetcode:** C241 Learning core: a batch the container cut off is RunnerUnavailable ([#611](https://github.com/GauranshMathur/BeyondLeetcode/issues/611)) ([f105b7d](https://github.com/GauranshMathur/BeyondLeetcode/commit/f105b7dceb050e14fb794ff26f3e31f727e26f7b))
+* **beyondleetcode:** C242 Identity: the auth route serves an allowlist ([#614](https://github.com/GauranshMathur/BeyondLeetcode/issues/614)) ([1f9290d](https://github.com/GauranshMathur/BeyondLeetcode/commit/1f9290dc7d4bcd985f827574f4d22d4910fcac53))
+* **beyondleetcode:** C243 Problem screen: one read of what the Learner may do now ([#602](https://github.com/GauranshMathur/BeyondLeetcode/issues/602)) ([04164eb](https://github.com/GauranshMathur/BeyondLeetcode/commit/04164eb37b952318273c297c2b4c30fdf053f907))
+* **beyondleetcode:** C244 Identity: Better Auth's /sign-out is closed over HTTP ([#615](https://github.com/GauranshMathur/BeyondLeetcode/issues/615)) ([5502781](https://github.com/GauranshMathur/BeyondLeetcode/commit/55027819e891f5354c70db1033f732953fe30e07))
+* **beyondleetcode:** C245 Identity: Better Auth's /sign-up/email is closed over HTTP ([#617](https://github.com/GauranshMathur/BeyondLeetcode/issues/617)) ([04fd892](https://github.com/GauranshMathur/BeyondLeetcode/commit/04fd8924141af1887a57249d1cd5b628dc5c04d1))
+* **beyondleetcode:** C346 Runner: the seccomp filter refuses ptrace ([#599](https://github.com/GauranshMathur/BeyondLeetcode/issues/599)) ([3b450ad](https://github.com/GauranshMathur/BeyondLeetcode/commit/3b450ad5330a56500fde1ff696f4166f693a484b))
+
+
+### Refactoring
+
+* **beyondleetcode:** C223 Learning core: one module judges a Submission ([#585](https://github.com/GauranshMathur/BeyondLeetcode/issues/585)) ([a4b17ef](https://github.com/GauranshMathur/BeyondLeetcode/commit/a4b17ef3d2786eab630e04321d9b71a79ffcf03c))
+* **beyondleetcode:** C229 Runner: a result marks the Tests the container cut off ([#597](https://github.com/GauranshMathur/BeyondLeetcode/issues/597)) ([db01d5c](https://github.com/GauranshMathur/BeyondLeetcode/commit/db01d5c3d4677b5b1d5bc1fc4190cae43f81261a))
+* **beyondleetcode:** C230 Identity: one factory builds the Multi-user Instance ([#590](https://github.com/GauranshMathur/BeyondLeetcode/issues/590)) ([a550ca7](https://github.com/GauranshMathur/BeyondLeetcode/commit/a550ca73dc7ae7339e33288964a6606544d7e6e1))
+* **beyondleetcode:** C233 Content catalogue: the batch guard measures the Submission module's requests ([#608](https://github.com/GauranshMathur/BeyondLeetcode/issues/608)) ([2203e2b](https://github.com/GauranshMathur/BeyondLeetcode/commit/2203e2b30932e3912a1aa1d8f6d35690dc1d389a))
+* **beyondleetcode:** C235 Runner: one module runs a container ([#606](https://github.com/GauranshMathur/BeyondLeetcode/issues/606)) ([34d5b4e](https://github.com/GauranshMathur/BeyondLeetcode/commit/34d5b4e27fab1933d781d0e6222cf5d834a4088d))
+* **beyondleetcode:** C236 Identity: one Admin actions object ([#607](https://github.com/GauranshMathur/BeyondLeetcode/issues/607)) ([8392c50](https://github.com/GauranshMathur/BeyondLeetcode/commit/8392c50c25d47a912eef2b244778d2e9e0a8cab2))
+* **beyondleetcode:** C237 Runner: the Engine's deadlines use the container module's primitive ([#610](https://github.com/GauranshMathur/BeyondLeetcode/issues/610)) ([ae84dab](https://github.com/GauranshMathur/BeyondLeetcode/commit/ae84dab69d29cc0c6aa5cde249e469eeda72ce6b))
+* **beyondleetcode:** C238 Users: the route calls the Admin actions ([#609](https://github.com/GauranshMathur/BeyondLeetcode/issues/609)) ([1688ece](https://github.com/GauranshMathur/BeyondLeetcode/commit/1688eceb17ff1c2b852362ddfbefb60bbf537bc4))
+* **beyondleetcode:** C240 Identity: the auth route gets a bound handler, and Locals holds no Better Auth ([#612](https://github.com/GauranshMathur/BeyondLeetcode/issues/612)) ([e793883](https://github.com/GauranshMathur/BeyondLeetcode/commit/e79388308383c8525b652d4fa7941d96cf348faf))
+
+
+### Documentation
+
+* **beyondleetcode:** backlog plan, Sprints 18 to 23 ([#583](https://github.com/GauranshMathur/BeyondLeetcode/issues/583)) ([e49ae3d](https://github.com/GauranshMathur/BeyondLeetcode/commit/e49ae3dab6cc548ace3931361247e0cf5d942757))
+* **beyondleetcode:** backlog plan, Sprints 19 and 20 ([#601](https://github.com/GauranshMathur/BeyondLeetcode/issues/601)) ([e28d113](https://github.com/GauranshMathur/BeyondLeetcode/commit/e28d113969408f8cf62142ab293c0bd050529569))
+* **beyondleetcode:** C246 Sprint 18: exit check and Release-As 1.19.5 ([#619](https://github.com/GauranshMathur/BeyondLeetcode/issues/619)) ([fe9009e](https://github.com/GauranshMathur/BeyondLeetcode/commit/fe9009e5f98512d79e22c79af15efe8baf1aa085))
+* **beyondleetcode:** C341 issues are the unit of work, the planner runs on Fable, small cards share a PR ([#595](https://github.com/GauranshMathur/BeyondLeetcode/issues/595)) ([ac562aa](https://github.com/GauranshMathur/BeyondLeetcode/commit/ac562aa2948757af27eeee56b7f6f17fa96f1dc1)), closes [#591](https://github.com/GauranshMathur/BeyondLeetcode/issues/591)
+* **beyondleetcode:** record the 1.19.4 cut ([#553](https://github.com/GauranshMathur/BeyondLeetcode/issues/553)) ([8a877f0](https://github.com/GauranshMathur/BeyondLeetcode/commit/8a877f0e14a2fdf0215958c2f080cdfe635149cf))
+
+
+### Tests
+
+* **beyondleetcode:** C224 sign-in 30-sign-in test timeout sized for 30 round trips ([#584](https://github.com/GauranshMathur/BeyondLeetcode/issues/584)) ([9cfa410](https://github.com/GauranshMathur/BeyondLeetcode/commit/9cfa41005f5a33c394bd025c8fa6bdf80ff40f8a))
+* **beyondleetcode:** C227 core.test.ts's batch and Verdict tests move to the Submission module ([#589](https://github.com/GauranshMathur/BeyondLeetcode/issues/589)) ([52f0e3a](https://github.com/GauranshMathur/BeyondLeetcode/commit/52f0e3a0a9e86fb701dbed3cea6d914b6b362621))
+* **beyondleetcode:** C231 content check judges through the Submission module ([#596](https://github.com/GauranshMathur/BeyondLeetcode/issues/596)) ([8b79d8d](https://github.com/GauranshMathur/BeyondLeetcode/commit/8b79d8d88b18bcfb89bd96537f0404e0648b267e)), closes [#518](https://github.com/GauranshMathur/BeyondLeetcode/issues/518)
+* **beyondleetcode:** C232 Identity tests: the test harness is the factory's test variant ([#600](https://github.com/GauranshMathur/BeyondLeetcode/issues/600)) ([dd87234](https://github.com/GauranshMathur/BeyondLeetcode/commit/dd87234de5db3aa45f0872eed7010667e4548181))
+* **beyondleetcode:** C234 Identity tests: every route test runs the factory's wiring ([#603](https://github.com/GauranshMathur/BeyondLeetcode/issues/603)) ([56c7270](https://github.com/GauranshMathur/BeyondLeetcode/commit/56c72707839dc61907749893fd4c9c35f946b8ee))
+* **beyondleetcode:** C239 Runner tests: the sandbox helpers run containers through the container module and decode with the Runner's decoder ([#613](https://github.com/GauranshMathur/BeyondLeetcode/issues/613)) ([13cc21a](https://github.com/GauranshMathur/BeyondLeetcode/commit/13cc21af1ab6f71a18d842ac31ff1ecc55e55fd6))
+* **beyondleetcode:** C343 Runner tests: engine.ts's remove poll gets a test ([#604](https://github.com/GauranshMathur/BeyondLeetcode/issues/604)) ([05a77fe](https://github.com/GauranshMathur/BeyondLeetcode/commit/05a77fe6c4251bac349756821fdfb269fc1be254))
+* **beyondleetcode:** C344 Tests: the 30-sign-in test runs fast, under the default timeout ([#605](https://github.com/GauranshMathur/BeyondLeetcode/issues/605)) ([e97474c](https://github.com/GauranshMathur/BeyondLeetcode/commit/e97474cbae06a6454d3da21222626df875240a1b))
+
+
+### Build
+
+* **beyondleetcode:** C228 Dockerfile copies the server source whole ([#587](https://github.com/GauranshMathur/BeyondLeetcode/issues/587)) ([038d4a1](https://github.com/GauranshMathur/BeyondLeetcode/commit/038d4a1f54fd4aeee92a4e8ec3e81bbef97d6539))
+
+
+### CI
+
+* **beyondleetcode:** C226 e2e job stops pulling and building Sandbox images ([#586](https://github.com/GauranshMathur/BeyondLeetcode/issues/586)) ([6ef4950](https://github.com/GauranshMathur/BeyondLeetcode/commit/6ef4950e50a5036fd86d60930e37728d9000f6f6))
+
 ## [1.19.4](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.3...v1.19.4) (2026-11-08)
 
 ### Highlights
