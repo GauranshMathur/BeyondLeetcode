@@ -14,11 +14,11 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 **Goal:** the 2026-11-08 accessibility audit's findings are fixed. Run, Submit and Hint results are announced and focus lands where the Learner is; same-page navigations and saves keep focus; the Registration and Theme selects wait for Save; every Users action names its target; text and focus marks pass contrast; the Problem screen reflows at 400% zoom; and every screen has one `main`, a title and one h1, with a test that keeps it so. The Markdown renderer stops passing raw HTML, which also restores two Chapters' lost words.
 
-Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because no card is `feat`: the cards are `fix` and `test`, and four design cards open no PR). Milestone `Sprint 19 · Accessibility`.
+Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because no card is `feat`: the cards are `fix` and `test`, and five design cards open no PR). Milestone `Sprint 19 · Accessibility`.
 
 - **Re-planned issue first on 2026-11-10** by the Fable `sprint-planner`, under the maintainer's rules of that day (#591): issues are the unit of work, small cards share a PR, and an architecture finding is planned only if it is a bug, a security problem or blocks a planned feature. The old Sprints 19 to 23 (C247 to C339, F18, F19, P11 and S2) are archived on the board. Each issue was read against `main` at ac562aa.
-- **Scope.** The accessibility issues #522 to #528, #529's no-dependency half, and #533 (its lost words are a reading fault, and its fix shares the renderer with #528's h1 rule).
-- **Twenty-three cards: C347 to C365, and the design cards F20, F21, P12 and S3.**
+- **Scope.** The accessibility issues #522 to #528, #529's no-dependency half, and #533 (its lost words are a reading fault, and its fix shares the renderer with #528's h1 rule). And #616, added on 2026-11-11 before the sprint started: on a phone, an Account held on the Change password page has no visible Sign out, a bug on one screen, cut into one design card and one code card in free rounds.
+- **Twenty-five cards: C347 to C365, C384, and the design cards F20, F21, P12, S3 and AC3.**
   - **The Problem screen** (`ProblemWorkspace.svelte`, `problem.e2e.ts`):
     - C347: the workspace is the page's `main` (#528), and C348: the tabs carry the reset attribute SvelteKit 3 reads (#523). Both are small: lane A's batch PR.
     - C350: one console live region, and real roles for the Verdict and the Accepted panel (#522).
@@ -34,14 +34,15 @@ Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because 
     - C354: the Map's current Topic gets its own focus mark (#526, small).
     - C358: the light accent is `#ae3f1d`, and `contrast.test.ts` holds the audit's pairs (#526, #529).
   - **Errors and the check:** C360: a root error page with a title and a `main` (#528), and C362: one e2e checks one `main`, a title and one h1 on every screen (#529, option 2).
-  - **Design** (the canvas, `card-designer`), one Foundations lane in this order: F20, the light accent is `#AE3F1D` in `tokens()`; F21, a focus mark for an already-accented box; P12, the Problem phone board at 320×256; S3, the error page.
+  - **The Change password page:** C384: the forced variant gets a Sign out form that posts to `/settings?/signout`, which the gate already allows, so a held Account can sign out at every width (#616), after AC3's board. `gate.ts`, `header.ts` and the signout action do not change.
+  - **Design** (the canvas, `card-designer`), one design lane in this order: F20, the light accent is `#AE3F1D` in `tokens()`; F21, a focus mark for an already-accented box; P12, the Problem phone board at 320×256; S3, the error page; AC3, the Change password board's forced variant shows Sign out (Account page).
   - **Last:** C365, the exit check and `Release-As: 1.19.6` (`docs/releasing.md`, The last card). It has no issue.
 - **Issues → cards.** Each issue closes when its last card merges (`docs/agents/board.md`, Issues are the unit of work). The milestone `Sprint 19 · Accessibility` holds each of these issues but #529.
 
   | Issue | Cards, in order | Last card | Lane conflicts (shared files, in this order) | Risks and review | Acceptance check |
   |---|---|---|---|---|---|
   | #533 Markdown renders raw HTML | C349 | C349 | `markdown.ts` and its test: C349, then C351 (#528) | Response content: the two-reader review. A stricter rule could change how a Chapter renders; the test pins the two Chapters' words | `markdown.test.ts` shows `<prev> -> <next>` as text and a `javascript:` link without its target |
-  | #528 No main, untitled errors, two h1s | C347, C351, S3, C360 | C360 | `ProblemWorkspace.svelte` and `problem.e2e.ts`: C347 first in lane A; `markdown.ts`: after C349; `chapter.e2e.ts`: C351, then C353 (#523) | None for security. C351 changes rendering for 76 Chapters and 128 Problems; the e2e counts h1s. S3 before C360 (design first) | `error.e2e.ts` finds a title, one `main` and one h1 on a 404 and a 403; `getByRole('heading', { level: 1 })` matches one element on a Chapter and a Problem |
+  | #528 No main, untitled errors, two h1s | C347, C351, S3, C360 | C360 | `ProblemWorkspace.svelte` and `problem.e2e.ts`: C347 first in lane A; `markdown.ts`: after C349; `chapter.e2e.ts`: C351, then C353 (#523) | C351 edits the Markdown renderer, so it takes the two-reader review under the maintainer's standing rule (recorded on its card, 2026-11-11): the readers check that only a heading the title repeats is dropped, and that nothing C349 escapes comes back. C351 changes rendering for 76 Chapters and 128 Problems; the e2e counts h1s. S3 before C360 (design first) | `error.e2e.ts` finds a title, one `main` and one h1 on a 404 and a 403; `getByRole('heading', { level: 1 })` matches one element on a Chapter and a Problem |
   | #522 Results not announced, focus lost | C350, C352, C355 | C355 | `problem.e2e.ts`: after C347 and C348; `ProblemWorkspace.svelte`: C347, C352, C355, then C363, C364 | None for security. C352 depends on Sprint 18's C243 (`workspace.ts`) | `problem.e2e.ts` reads the Verdict from one `getByRole('status')` and checks focus with `toBeFocused()` after Run, Submit, Reveal hint, Cancel, a restart and a switch |
   | #523 Focus jumps to the top | C348, C353, C356, C361 | C361 | `+page.svelte` (Problem): C348, C352, then C364; `chapter.e2e.ts`: after C351; `users/+page.svelte`: C357, C359, then C361; `settings/+page.svelte`: C356 only | None for security. C356 carries #524's open question (see below) | `grep -rn "data-sveltekit-noscroll" src` prints nothing, and each e2e finds the trigger or the new content `toBeFocused()` |
   | #524 Selects save on every change | C356, C359 | C359 | `users/+page.svelte`: after C357 | C359 changes the Registration Mode's form: the two-reader review. Maintainer's question: keep the Save button, or say beside the select that choosing saves? Recommended: keep it, on both selects | `registration.multi.e2e.ts` and `settings.e2e.ts` arrow through each select and see nothing posted until Save |
@@ -49,6 +50,7 @@ Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because 
   | #526 Contrast and the Map's focus | F20, F21, C354, C358, C363 | C363 | `tokens.css` and `contrast.test.ts`: C358, then C363; `ProblemWorkspace.svelte`: C363 after C355 | None for security. F20 edits every artboard's `tokens()`; its designer reports the count before splitting | `contrast.test.ts` passes with the light accent at `#ae3f1d` and the selection-match token, and fails on `#b4421f` |
   | #527 400% zoom leaves 29 px | P12, C364 | C364 | `ProblemWorkspace.svelte`, `+page.svelte` and `problem.e2e.ts`: last in lane A; `breakpoints.ts`: C364 only | None for security. A new height query must be named in `breakpoints.ts` (#244's guard) | `problem.e2e.ts` at 320×256 finds the statement pane at least as tall as P12 marks it |
   | #529 An automated check (no-dependency half) | C358, C362 | none: it stays open | `contrast.test.ts`: C358 (shared with #526); the two e2e files are new | None. axe, a new dependency, is the maintainer's hard call; #529 keeps `needs-triage` and no milestone | `a11y.e2e.ts` and `a11y.multi.e2e.ts` find one `main`, a title and one h1 on every screen, in both themes, on desktop and phone |
+  | #616 A held Account has no visible Sign out on a phone | AC3, C384 | C384 | None: no other card edits `account/password/` or `ChangePassword.dc.html`; C384's one comment line in `AppHeader.svelte` is shared with no card | None for security: no rule, header or action changes; the form posts to the action the gate's exception already allows (`gate.ts`, `isSigningOut`). Decided from the issue's two options: the control goes on the page, not the narrow header, so F.10f's phone rule and `header.ts` stay. AC3 before C384 (design first) | `password.multi.e2e.ts`, at `phone.viewport`, finds a Sign out button inside `main` on the forced Change password page, and clicking it lands on `/signin` |
 
   - C358 serves #526 and #529: its `Issue` field holds 526, and its `Refs` line names both. C356 serves #524 and #523: its `Issue` field holds 524.
   - C365, the exit check, has no issue.
@@ -58,9 +60,9 @@ Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because 
   - **#533's optional layers**, the content check failing on any HTML token and a script CSP (`kit.csp`): recommended to leave them for later. A CSP is a response-header change, so it is the maintainer's. Not planned.
 - **Small cards share a PR** (`docs/agents/board.md`): lane A's batch is C347 and C348, built together in round 1; lane B's batch is C353 and C354, built together in round 3, after C351 and F21. Each batch PR is one round and takes the `fix` type.
 - **Reviews.**
-  - The orchestrator's two-reader review (Fable and Codex): C349 (response content) and C359 (the Registration Mode).
-  - None for the rest: screens, styles and tests, with no rule, header or Runner change. No card touches `src/lib/server/runner/`.
-- **Design first.** The canvas is the source of truth for how a screen looks (`docs/agents/design-canvas.md`), so F20 comes before C358, F21 before C354, P12 before C364 and S3 before C360. The design lane runs F20, F21, P12, S3 in order. Design cards use the canvas, not the host's heavy jobs.
+  - The orchestrator's two-reader review (Fable and Codex): C349 (response content), C351 (the Markdown renderer, `src/lib/server/markdown.ts`, under the maintainer's standing rule: Identity, the gate, headers, CI secrets and the Markdown renderer) and C359 (the Registration Mode).
+  - None for the rest: screens, styles and tests, with no rule, header or Runner change. C384 adds a form that posts to the sign-out action the gate already allows, and changes no rule. No card touches `src/lib/server/runner/`.
+- **Design first.** The canvas is the source of truth for how a screen looks (`docs/agents/design-canvas.md`), so F20 comes before C358, F21 before C354, P12 before C364, S3 before C360 and AC3 before C384. The design lane runs F20, F21, P12, S3, AC3 in order. Design cards use the canvas, not the host's heavy jobs.
 - **Shared files**, each an ordered chain in one lane:
   - `ProblemWorkspace.svelte`: C347, C352, C355, C363, then C364 (lane A).
   - `problem.e2e.ts`: C347 and C348 (one PR), C350, C352, C355, then C364 (lane A).
@@ -76,27 +78,28 @@ Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because 
   | 2 | C350 live region (#522) | C351 leading h1 (#528) | F21 focus mark |
   | 3 | C352 focus after actions (#522) | C353 Chapter's end + C354 Map focus (#523, #526; batch) | P12 Problem at 320×256 |
   | 4 | C355 autosave (#522) | C356 Settings (#524, #523) | S3 error page |
-  | 5 | C357 Users names (#525) | C358 accent and contrast test (#526, #529) | |
+  | 5 | C357 Users names (#525) | C358 accent and contrast test (#526, #529) | AC3 Change password's Sign out |
   | 6 | C359 Registration select (#524) | C360 error page (#528) | |
   | 7 | C361 Users focus (#523) | C362 accessibility e2e (#529) | |
-  | 8 | C363 editor and select (#526) | | |
+  | 8 | C363 editor and select (#526) | C384 Change password's Sign out (#616) | |
   | 9 | C364 short viewport (#527) | | |
   | 10 | C365 exit check and `Release-As: 1.19.6` | | |
 
-  If the maintainer has not answered #524 by round 4, lane B runs C358 and C360 first and C356 waits; C359 and C361 then move later in lane A.
-- **Rounds: 13.**
-  - The longest chain is nine cards (lane A: C347 and C348, C350, C352, C355, C357, C359, C361, C363, C364), under the ten-card line, and lane A's nine rounds set the build.
-  - There are two security reviews, which run while the other lane builds.
+  If the maintainer has not answered #524 by round 4, lane B runs C358 and C360 first and C356 waits; C359 and C361 then move later in lane A. C384 needs only AC3, so it can take any free lane B round after round 5.
+- **Rounds: 14.**
+  - The longest chain is nine cards (lane A: C347 and C348, C350, C352, C355, C357, C359, C361, C363, C364), under the ten-card line, and lane A's nine rounds set the build. #616's chain (AC3, then C384) is two cards in free rounds and adds none.
+  - There are three security reviews (C349, C351 and C359), which run while the other lane builds.
   - The last card and the cut add one round each.
 
 **Exit:**
-- All 23 Sprint 19 cards are Done, and `ci` is green on `main`. The sprint's Status counts both issues closed and cards done.
+- All 25 Sprint 19 cards are Done, and `ci` is green on `main`. The sprint's Status counts both issues closed and cards done.
 - `markdown.test.ts` shows raw HTML escaped and a `javascript:` link without its target, and `graphs-lockdep` shows `<prev> -> <next>` as text.
 - `a11y.e2e.ts` and `a11y.multi.e2e.ts` find one `main`, a title and one h1 on every screen, in both themes, on desktop and phone.
 - `contrast.test.ts` passes, and holds the light accent, the selection match and the select's border.
 - `problem.e2e.ts` checks focus after Run, Submit, Reveal hint, Cancel, a restart and a Language switch, and the statement's height at 320×256.
 - `grep -rn "data-sveltekit-noscroll" src` prints nothing.
-- #522, #523, #524, #525, #526, #527, #528 and #533 are closed, 8 issues. #529 stays open for the axe question.
+- `password.multi.e2e.ts` signs a held Account out from the Change password page at the phone viewport.
+- #522, #523, #524, #525, #526, #527, #528, #533 and #616 are closed, 9 issues. #529 stays open for the axe question.
 - The orchestrator cuts 1.19.6 from the release PR and records the cut. Releases stay `1.x`.
 
 **Not in the sprint:**
