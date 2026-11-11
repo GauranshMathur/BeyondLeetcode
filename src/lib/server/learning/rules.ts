@@ -203,7 +203,7 @@ export function chapterView(
 	catalogue: ChapterCatalogue,
 	progress: Progress,
 	chapterId: string,
-	renderMarkdown: (markdown: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string
 ): ChapterView {
 	const chapter = catalogue.chapter(chapterId);
 	if (!chapter) throw new LearningError('NotFound');
@@ -216,7 +216,7 @@ export function chapterView(
 		title: chapter.title,
 		topicId: topic.id,
 		topicTitle: topic.title,
-		bodyHtml: renderMarkdown(chapter.body),
+		bodyHtml: renderMarkdown(chapter.body, chapter.title),
 		read: own.read,
 		problems: own.problems,
 		...(next && { nextChapterId: next.id })
@@ -369,7 +369,7 @@ export function problemView(
 		/** The Languages in which the source step has saved code (for the picker's notes). */
 		sourceSavedIn?: readonly Language[];
 	},
-	renderMarkdown: (markdown: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string
 ): ProblemView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
@@ -385,7 +385,7 @@ export function problemView(
 		topicTitle: topic.title,
 		kind: problem.kind === 'core' ? 'Core' : 'Extra',
 		...(problem.parent !== undefined && { parentProblemId: problem.parent }),
-		statementHtml: renderMarkdown(problem.statement),
+		statementHtml: renderMarkdown(problem.statement, problem.title),
 		exampleTests: problem.exampleTests.map((t) => ({
 			name: t.name,
 			input: t.input,
@@ -421,7 +421,7 @@ export function hintsView(
 	progress: Progress,
 	problemId: string,
 	revealedCount: number,
-	renderMarkdown: (markdown: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string
 ): HintsView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
@@ -448,7 +448,7 @@ export function solutionView(
 	catalogue: ProblemCatalogue,
 	progress: Progress,
 	problemId: string,
-	renderMarkdown: (markdown: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string
 ): SolutionView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');

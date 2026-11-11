@@ -66,7 +66,19 @@ const marked = new Marked({
 	}
 });
 
-/** Renders Markdown content to HTML. */
-export function renderMarkdown(markdown: string): string {
-	return marked.parse(markdown, { async: false });
+/**
+ * Renders Markdown content to HTML. A page already shows its own title as the h1, so when the
+ * page's title is given, a first heading that is an h1 with exactly that text is left out. That
+ * is decided from the parsed tokens, and the title is only compared, never written to the output.
+ */
+export function renderMarkdown(markdown: string, pageTitle?: string): string {
+	const tokens = marked.lexer(markdown);
+	if (pageTitle !== undefined) {
+		const first = tokens.findIndex((t) => t.type !== 'space');
+		const head = tokens[first];
+		if (head?.type === 'heading' && head.depth === 1 && head.text.trim() === pageTitle.trim()) {
+			tokens.splice(first, 1);
+		}
+	}
+	return marked.parser(tokens);
 }
