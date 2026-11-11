@@ -8,6 +8,8 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 **Only the current and planned sprints** (the maintainer's rule, 2026-11-10). When a sprint exits, its last card moves the sprint's section, its Status included, to `docs/sprints-archive.md`, which holds Sprints 0 to 18.
 
+**The Backlog** (the maintainer's decision, 2026-11-11). Every open issue has a ticket on the board with Status Backlog and no sprint. The planner pulls from the Backlog by priority when it plans the next sprints. Only critical work joins the sprint in progress: a bug that hurts users, a security problem, a broken CI or release, or something a planned card cannot be built without. The rules are in `docs/agents/board.md`, Issues are the unit of work.
+
 **Issues first** (the maintainer's rule, 2026-11-10, #591). Each sprint plans issues, and its cards say how each issue is done. Each sprint's section lists issue → cards, with the last card that closes each issue. The rules are in `docs/agents/board.md`, Issues are the unit of work.
 
 ## Sprint 19 · Accessibility
@@ -105,8 +107,9 @@ Release `R v1.19.6: Sprint 19 · Accessibility`, version 1.19.6 (patch, because 
 **Not in the sprint:**
 - **`@axe-core/playwright`** (#529's option 1): a new dependency, the maintainer's call.
 - **A script CSP and an HTML check in the content check** (#533's optional layers): the maintainer's call; a CSP is a response-header change.
-- **#582's theme item** (`theme.ts` owning the theme cookie), which the old plan ran beside #524: #582 is proposed for wontfix.
-- **The 28 `architecture` issues proposed for wontfix** (2026-11-10): #500 to #505, #515, #516, #519, #520, #560, #561, #562, #566 to #569, #571, #573 to #582. The maintainer is deciding them. If one is kept, the orchestrator asks the planner to add it.
+- **#582's theme item** (`theme.ts` owning the theme cookie), which the old plan ran beside #524: #582 waits in the Backlog.
+- **The 28 `architecture` refactor issues** (#500 to #505, #515, #516, #519, #520, #560, #561, #562, #566 to #569, #571, #573 to #582): none is wontfix (the maintainer's decision, 2026-11-11). Each has a Backlog ticket, and later sprints draw from them.
+- **The plan was re-checked on 2026-11-11** under the Backlog rule. The one security card, C349 (the renderer escapes raw HTML), runs in round 1. No Backlog ticket is critical, so none joins this sprint.
 
 ## Sprint 20 · Drifted rules and docs
 
@@ -143,7 +146,7 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
   - C383, the exit check, has no issue.
 - **Waiting on the maintainer**, with a recommended answer the orchestrator takes unless the maintainer says otherwise:
   - **#507: pass `RUNNER_MAX_CONCURRENT` through `compose.yaml`, or say that `.env` does not reach the runner?** Recommended: pass it as `${RUNNER_MAX_CONCURRENT:-}`; an empty value keeps the CPU-count default, and only the file `init` writes for new Instances changes. C367 carries the `Blocked by:` line, so lane B's batch PR waits for it. Not a hard call.
-  - **#517's larger step**, a pure catalogue indexer that `rules.test.ts` and the fake both use (the report's finding 26): a refactor, not a bug. Not planned; a line for `docs/architecture-candidates.md` if the maintainer wants it kept in view.
+  - **#517's larger step**, a pure catalogue indexer that `rules.test.ts` and the fake both use (the report's finding 26): a refactor, not a bug. Not planned here: it is #623, in the Backlog.
 - **Decided from the issues** (their own direction, not a new choice): #572's current Topic is the open Topic with the most recent activity, or none; #509 marks k6 as not built; #565 keeps the core's rule (every failure is RunnerUnavailable) and leaves the 503s unlogged on the Runner side; #510 changes no security rule.
 - **Small cards share a PR:** lane A's batch is C375 and C376, built together in round 4 after C373 (`docs` type, `sandbox-security-reviewer` for `config.ts`); lane B's batch is C367, C368, C369 and C370, built together in round 1 (`fix` type, from C367). Each batch PR is one round.
 - **Reviews.**
@@ -185,10 +188,10 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
 - The orchestrator cuts 1.19.7 from the release PR and records the cut. Releases stay `1.x`.
 
 **Not in the sprint:**
-- **#517's catalogue indexer** (a line in `docs/architecture-candidates.md`) and **#514's screen half (#501)**: refactors; #501 is proposed for wontfix.
+- **#517's catalogue indexer** (#623) and **#514's screen half (#501)**: refactors, in the Backlog.
 - **#570**, the release webhook's shared notify script: card C340 with no Sprint, after C220 and C221, which wait on #535.
-- **Sprints 21 to 23.** The backlog fills two sprints. Their Sprint options are renamed `Sprint 21 · Unplanned`, `Sprint 22 · Unplanned` and `Sprint 23 · Unplanned`, and their Release options `R v1.19.8: Sprint 21 · Unplanned` and so on (2026-11-10). They hold no cards; the planner renames them when the maintainer's wontfix answers or new issues give them a theme.
+- **Sprints 21 to 23.** The backlog fills two sprints. Their Sprint options are renamed `Sprint 21 · Unplanned`, `Sprint 22 · Unplanned` and `Sprint 23 · Unplanned`, and their Release options `R v1.19.8: Sprint 21 · Unplanned` and so on (2026-11-10). They hold no cards; the planner fills and renames them from the Backlog.
 
 ## After each build sprint
 
-After a sprint is released, a separate session reviews the architecture (`docs/agents/board.md`, After a major feature). Only a bug, a security problem or something that blocks a planned feature becomes an issue. Every other finding goes into `docs/architecture-candidates.md`, and is planned only if the maintainer picks it.
+After a sprint is released, a separate session reviews the architecture (`docs/agents/board.md`, After a major feature). Every finding becomes an issue with a Backlog ticket. A critical one joins the current sprint, and the planner pulls the rest by priority.
