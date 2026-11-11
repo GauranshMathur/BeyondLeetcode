@@ -5,10 +5,12 @@ import type { PageProps } from './$types';
 
 let { data, form }: PageProps = $props();
 
-// Without JavaScript the select needs its button; with it, choosing submits.
-let enhanced = $state(false);
+let themeSelect = $state<HTMLSelectElement>();
+let confirmBox = $state<HTMLDivElement>();
+
+// Opening the confirm is a navigation, so focus would otherwise go to the top of the page.
 $effect(() => {
-	enhanced = true;
+	if (data.confirmingReset) confirmBox?.focus();
 });
 
 // The saved cookie only reaches the next render; apply the choice to this page now.
@@ -20,6 +22,8 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 			else delete document.documentElement.dataset.theme;
 		}
 		await update({ reset: false });
+		// A finished submission sends focus to the top of the page; the select was what was used.
+		themeSelect?.focus();
 	};
 };
 </script>
@@ -42,18 +46,13 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 		<form class="control" method="POST" action="?/theme" use:enhance={applyTheme}>
 			<label>
 				Theme
-				<select
-					name="theme"
-					onchange={(e) => enhanced && e.currentTarget.form?.requestSubmit()}
-				>
+				<select name="theme" bind:this={themeSelect}>
 					<option value="light" selected={data.theme === 'light'}>Light</option>
 					<option value="dark" selected={data.theme === 'dark'}>Dark</option>
 					<option value="system" selected={data.theme === null}>Follow my device</option>
 				</select>
 			</label>
-			{#if !enhanced}
-				<button type="submit">Save theme</button>
-			{/if}
+			<button type="submit">Save theme</button>
 			{#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}
 		</form>
 	</section>
@@ -85,11 +84,11 @@ const applyTheme: SubmitFunction = ({ formData }) => {
 			<p class="lead">
 				Deletes the Chapters you have read, your saved code, your Submissions and the Hints you have revealed.
 			</p>
-			<form method="GET" action="/settings">
+			<form method="GET" action="/settings" data-sveltekit-reset="false">
 				<button type="submit" name="reset" value="confirm" class="outline" aria-expanded={data.confirmingReset}>Reset progress</button>
 			</form>
 			{#if data.confirmingReset}
-				<div class="confirm" role="group" aria-label="Reset progress">
+				<div class="confirm" role="group" aria-label="Reset progress" tabindex="-1" bind:this={confirmBox}>
 					<div class="confirm-text">
 						<span class="ask">Reset all progress?</span>
 						<span id="reset-note" class="note">This cannot be undone. Your theme is kept.</span>

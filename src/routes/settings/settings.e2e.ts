@@ -7,12 +7,11 @@ test.use({ storageState: asLearner('e2e-settings') });
 
 const paper = (page: Page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
-// Choosing only submits once the page has hydrated (the Save button goes away then), and the choice
-// only counts once the server has answered: a select before that, or a goto right after it, loses it.
+// The choice only counts once Save is pressed and the server has answered: a goto right after loses it.
 async function chooseTheme(page: Page, theme: 'light' | 'dark' | 'system') {
-	await expect(page.getByRole('button', { name: 'Save theme' })).toHaveCount(0);
-	const saved = page.waitForResponse((r) => r.url().includes('?/theme'));
 	await page.getByLabel('Theme').selectOption(theme);
+	const saved = page.waitForResponse((r) => r.url().includes('?/theme'));
+	await page.getByRole('button', { name: 'Save theme' }).click();
 	await saved;
 }
 
@@ -70,6 +69,38 @@ test('light wins on a dark device', async ({ browser }) => {
 	await gotoHydrated(page, '/');
 	expect(await paper(page)).toBe(LIGHT);
 	await context.close();
+});
+
+test('arrowing through the Theme select posts nothing until Save, and focus stays on the select', async ({
+	page
+}) => {
+	const posts: string[] = [];
+	page.on('request', (r) => {
+		if (r.method() === 'POST') posts.push(r.url());
+	});
+	await gotoHydrated(page, '/settings');
+	const select = page.getByLabel('Theme');
+	await select.focus();
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowDown');
+	await page.keyboard.press('ArrowUp');
+	await expect(select).toBeFocused();
+	expect(posts).toEqual([]);
+
+	await page.getByRole('button', { name: 'Save theme' }).click();
+	await expect.poll(() => posts.length).toBe(1);
+	await expect(select).toBeFocused();
+
+	await select.selectOption('system');
+	await page.getByRole('button', { name: 'Save theme' }).click();
+	await expect.poll(() => posts.length).toBe(2);
+	await expect(select).toBeFocused();
+});
+
+test('opening Reset progress puts focus on its confirm', async ({ page }) => {
+	await gotoHydrated(page, '/settings');
+	await page.getByRole('button', { name: 'Reset progress' }).click();
+	await expect(page.getByRole('group', { name: 'Reset progress' })).toBeFocused();
 });
 
 test('the form works without JavaScript', async ({ browser }) => {
