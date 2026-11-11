@@ -5,6 +5,7 @@ import {
 	ACCOUNT_LIMITS,
 	type AccountActions,
 	createAccountActions,
+	newAccountRefusal,
 	REFUSAL_CODES,
 	type RefusalCode,
 	refusalOf
@@ -78,6 +79,31 @@ const signUpInput = ({
 describe('ACCOUNT_LIMITS', () => {
 	it('names the name and password limits', () => {
 		expect(ACCOUNT_LIMITS).toEqual({ nameMax: 100, passwordMin: 12, passwordMax: 128 });
+	});
+});
+
+describe('newAccountRefusal', () => {
+	const good = { name: 'Ada', email: 'ada@example.com', password: 'a'.repeat(12) };
+
+	it('answers nothing for good fields, even padded', () => {
+		expect(newAccountRefusal(good)).toBeNull();
+		expect(newAccountRefusal({ ...good, name: ' Ada ', email: ' ada@example.com ' })).toBeNull();
+	});
+
+	it.each([
+		[{ name: ' ' }, { refused: 'NAME_REQUIRED', field: 'name' }],
+		[{ name: 'a'.repeat(101) }, { refused: 'NAME_TOO_LONG', field: 'name' }],
+		[{ name: 'A\u0007' }, { refused: 'NAME_INVALID_CHARACTERS', field: 'name' }],
+		[{ email: 'nope' }, { refused: 'INVALID_EMAIL', field: 'email' }],
+		[{ password: 'a'.repeat(11) }, { refused: 'PASSWORD_TOO_SHORT', field: 'password' }],
+		[{ password: 'a'.repeat(129) }, { refused: 'PASSWORD_TOO_LONG', field: 'password' }]
+	])('refuses %j', (bad, refusal) => {
+		expect(newAccountRefusal({ ...good, ...bad })).toEqual(refusal);
+	});
+
+	it('names the name before the email before the password', () => {
+		expect(newAccountRefusal({ name: '', email: 'x', password: '' })?.field).toBe('name');
+		expect(newAccountRefusal({ ...good, email: 'x', password: '' })?.field).toBe('email');
 	});
 });
 
