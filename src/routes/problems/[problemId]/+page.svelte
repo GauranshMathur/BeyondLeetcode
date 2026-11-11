@@ -245,4 +245,13 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 			box-sizing: border-box;
 		}
 	}
+	/* A short phone: the workspace's one scrolling box carries the pane, so this one stops scrolling on its own. */
+	@media (max-width: 767.98px) and (max-height: 480px) {
+		.left {
+			display: block;
+		}
+		.scroll {
+			overflow-y: visible;
+		}
+	}
 </style>

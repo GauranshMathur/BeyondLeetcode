@@ -222,6 +222,10 @@ const label: Record<SaveState, string> = {
 {/snippet}
 
 <div class="page" data-tab={view.pane}>
+	<!-- A short phone scrolls the bar away with the pane, so both sit in one box that does the scrolling there. The box
+	     is a plain div, so the bar stays the page's banner and the grid its one main. -->
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	<div class="stage" tabindex="0">
 	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
 	<main class="grid">
@@ -292,6 +296,7 @@ const label: Record<SaveState, string> = {
 			</div>
 		</div>
 	</main>
+	</div>
 
 	<!-- Phones only: the same Run and Submit, above the tab bar. -->
 	<div class="actions strip">{@render runAndSubmit()}</div>
@@ -490,6 +495,9 @@ const label: Record<SaveState, string> = {
 		clip-path: inset(50%);
 		white-space: nowrap;
 	}
+	.stage {
+		display: contents; /* no box, so every layout but the short phone is as if it were not there */
+	}
 	.strip,
 	.tabbar {
 		display: none;
@@ -656,6 +664,46 @@ const label: Record<SaveState, string> = {
 		.tabbar button[aria-pressed='true'] {
 			color: var(--ink);
 			border-top-color: var(--accent);
+		}
+	}
+	/* A short phone: the bar, the section row and the rest of the pane scroll together above a slim Run and Submit
+	   strip and tab bar (53px and 45px), so the pane keeps the height they leave. The document still never scrolls. */
+	@media (max-width: 767.98px) and (max-height: 480px) {
+		.stage {
+			display: block;
+			flex: 1 1 0;
+			min-height: 0;
+			overflow-y: auto;
+		}
+		.grid {
+			display: block;
+		}
+		.pane,
+		.page[data-tab] .build {
+			overflow: visible;
+		}
+		.page[data-tab='tests'] [data-pane='tests'] {
+			flex: none;
+		}
+		[data-pane='tests'] :global(.console) {
+			flex: none;
+		}
+		/* Six lines at least, then as tall as the code. */
+		.editor-slot {
+			--editor-min: 132px;
+		}
+		.editor-slot :global(.editor) {
+			overflow: visible;
+		}
+		.editor-slot :global(.cm-editor) {
+			height: auto;
+			min-height: 132px;
+		}
+		.strip {
+			padding: 4px var(--size-gutter);
+		}
+		.tabbar button {
+			height: var(--size-target);
 		}
 	}
 </style>

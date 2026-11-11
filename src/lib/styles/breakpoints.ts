@@ -10,6 +10,8 @@ const PROBLEM = [
 	'src/routes/problems/[problemId]/ResultsPanel.svelte'
 ];
 
+// A phone held short (landscape, or a keyboard open): the Problem screen's bars scroll away or shrink.
+export const PROBLEM_SHORT = '(max-width: 767.98px) and (max-height: 480px)';
 export const PROBLEM_MIDDLE = '(width > 767.98px) and (width <= 900px)';
 export const PROBLEM_WIDE = '(width > 900px)';
 export const NARROW_900 = '(max-width: 900px)';
@@ -24,6 +26,10 @@ export const TIED: Record<string, readonly string[]> = {
 	// The Problem screen's bar lives in AppHeader, with its middle-width rules.
 	[PROBLEM_MIDDLE]: [...PROBLEM, 'src/lib/header/AppHeader.svelte'],
 	[PROBLEM_WIDE]: PROBLEM,
+	[PROBLEM_SHORT]: [
+		'src/routes/problems/[problemId]/+page.svelte',
+		'src/routes/problems/[problemId]/ProblemWorkspace.svelte'
+	],
 	[NARROW_900]: ['src/routes/setup/+page.svelte', 'src/routes/problems/[problemId]/+page.svelte'],
 	[NARROW_800]: [
 		'src/routes/settings/+page.svelte',
