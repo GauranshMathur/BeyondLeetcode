@@ -1,8 +1,8 @@
 import { isRedirect } from '@sveltejs/kit';
 import { APIError } from 'better-auth/api';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { MultiUserChoice } from '#lib/server/app.js';
-import { InvalidFirstAdminError, MultiUserNotAvailableError } from '#lib/server/identity/setup.js';
+import { newAccountRefusal, REFUSAL_CODES } from '#lib/server/identity/account-actions.js';
 import {
 	AccountsExistError,
 	createInstance,
@@ -46,8 +46,18 @@ async function run(
 
 const setupWith = (
 	multiUser: MultiUserChoice,
-	createFirstAdmin = vi.fn(async () => ({ headers: new Headers() }))
+	createFirstAdmin: Mock<(input: never) => Promise<{ headers: Headers }>> = vi.fn(async () => ({
+		headers: new Headers()
+	}))
 ) => ({ multiUser, createFirstAdmin });
+
+/** A createFirstAdmin that makes the refusal the real one does: `newAccountRefusal`'s code, as a 400 APIError. */
+const refusingAsReal = () =>
+	vi.fn(async (input: { name: string; email: string; password: string }) => {
+		const refusal = newAccountRefusal(input);
+		if (refusal) throw new APIError('BAD_REQUEST', { message: 'x', code: refusal.refused });
+		return { headers: new Headers() };
+	});
 
 const choose = (
 	mode: string,
@@ -282,16 +292,16 @@ describe('step 2: create the admin', () => {
 
 	describe('the name cap: 100 characters, counted in code points on the trimmed name', () => {
 		const emoji = '\u{1F600}';
-		const open = (createFirstAdmin = vi.fn(async () => ({ headers: new Headers() }))) => ({
-			createFirstAdmin,
-			locals: { setup: setupWith({ kind: 'open' }, createFirstAdmin) }
-		});
 
-		it('refuses a longer name on its field before calling createFirstAdmin, keeping what was typed', async () => {
-			const { createFirstAdmin, locals } = open();
+		it('shows a longer name\u2019s refusal on its field, keeping what was typed', async () => {
+			const createFirstAdmin = refusingAsReal();
 			const name = 'x'.repeat(101);
 
-			const result = await run(actions.admin, { ...admin, name }, locals);
+			const result = await run(
+				actions.admin,
+				{ ...admin, name },
+				{ setup: setupWith({ kind: 'open' }, createFirstAdmin) }
+			);
 
 			expect(result).toMatchObject({
 				status: 400,
@@ -304,7 +314,6 @@ describe('step 2: create the admin', () => {
 				}
 			});
 			expect(JSON.stringify(result)).not.toContain(admin.password);
-			expect(createFirstAdmin).not.toHaveBeenCalled();
 		});
 
 		it.each([
@@ -316,96 +325,51 @@ describe('step 2: create the admin', () => {
 			['101 characters with spaces around them', `  ${'x'.repeat(101)}   `, false],
 			['half a megabyte', 'x'.repeat(512 * 1024), false]
 		])('%s: %s', async (_label, name, accepted) => {
-			const { createFirstAdmin, locals } = open();
+			const result = await run(
+				actions.admin,
+				{ ...admin, name },
+				{ setup: setupWith({ kind: 'open' }, refusingAsReal()) }
+			);
 
-			await run(actions.admin, { ...admin, name }, locals);
-
-			expect(createFirstAdmin).toHaveBeenCalledTimes(accepted ? 1 : 0);
+			if (accepted) expect(result).toMatchObject({ status: 303 });
+			else expect(result).toMatchObject({ status: 400, data: { field: 'name' } });
 		});
 
 		it('says the Instance is already set up before it says anything about the name', async () => {
-			const { createFirstAdmin, locals } = open();
+			const createFirstAdmin = refusingAsReal();
 
 			const result = await run(
 				actions.admin,
 				{ ...admin, name: 'x'.repeat(101) },
-				{ ...locals, instance: { mode: () => 'local' } }
+				{
+					setup: setupWith({ kind: 'open' }, createFirstAdmin),
+					instance: { mode: () => 'local' }
+				}
 			);
 
 			expect(result).toMatchObject({ status: 409 });
 			expect(createFirstAdmin).not.toHaveBeenCalled();
 		});
-
-		it('maps Better Auth\u2019s own refusal of a blank name, should one get through, to the form\u2019s blank-name error', async () => {
-			const refusal = new APIError('BAD_REQUEST', {
-				message: 'Enter a name.',
-				code: 'NAME_REQUIRED'
-			});
-			const { locals } = open(vi.fn(async () => Promise.reject(refusal)));
-
-			const result = await run(actions.admin, admin, locals);
-
-			expect(result).toMatchObject({
-				status: 400,
-				data: { field: 'name', message: 'Enter a name.' }
-			});
-		});
-
-		it('maps Better Auth\u2019s own refusal of a long name, should one get through, to the same field error', async () => {
-			const refusal = new APIError('BAD_REQUEST', {
-				message: 'The name is too long.',
-				code: 'NAME_TOO_LONG'
-			});
-			const { locals } = open(vi.fn(async () => Promise.reject(refusal)));
-			vi.spyOn(console, 'error').mockImplementation(() => {});
-
-			const result = await run(actions.admin, admin, locals);
-
-			expect(result).toMatchObject({
-				status: 400,
-				data: { field: 'name', message: 'Use at most 100 characters.' }
-			});
-		});
 	});
-
-	it.each([['PASSWORD_TOO_SHORT'], ['PASSWORD_TOO_LONG']])(
-		'maps Better Auth\u2019s %s, should it get through, to Setup\u2019s own password text',
-		async (code) => {
-			const refusal = new APIError('BAD_REQUEST', { message: 'x', code });
-			const createFirstAdmin = vi.fn(async () => Promise.reject(refusal));
-
-			const result = await run(actions.admin, admin, {
-				setup: setupWith({ kind: 'open' }, createFirstAdmin)
-			});
-
-			expect(result).toMatchObject({
-				status: 400,
-				data: { field: 'password', message: 'Use 12 to 128 characters.' }
-			});
-		}
-	);
 
 	describe('control and bidi characters in the name', () => {
 		const MESSAGE = "This name contains a character that can't be used.";
-		const open = (createFirstAdmin = vi.fn(async () => ({ headers: new Headers() }))) => ({
-			createFirstAdmin,
-			locals: { setup: setupWith({ kind: 'open' }, createFirstAdmin) }
-		});
-
 		it.each([0x001f, 0x007f, 0x009f, 0x202a, 0x202e, 0x2066, 0x2069])(
-			'refuses U+%s on its field before calling createFirstAdmin, keeping what was typed',
+			'shows the refusal of U+%s on its field, keeping what was typed',
 			async (cp) => {
-				const { createFirstAdmin, locals } = open();
 				const name = `Ada${String.fromCodePoint(cp)}Lovelace`;
 
-				const result = await run(actions.admin, { ...admin, name }, locals);
+				const result = await run(
+					actions.admin,
+					{ ...admin, name },
+					{ setup: setupWith({ kind: 'open' }, refusingAsReal()) }
+				);
 
 				expect(result).toMatchObject({
 					status: 400,
 					data: { step: 'admin', field: 'name', message: MESSAGE, name, email: admin.email }
 				});
 				expect(JSON.stringify(result)).not.toContain(admin.password);
-				expect(createFirstAdmin).not.toHaveBeenCalled();
 			}
 		);
 
@@ -422,23 +386,13 @@ describe('step 2: create the admin', () => {
 			['U+200B', 'Ada\u200bLovelace', true],
 			['U+2060', 'Ada\u2060Lovelace', true]
 		])('%s: accepted=%s', async (_label, name, accepted) => {
-			const { createFirstAdmin, locals } = open();
+			const result = await run(
+				actions.admin,
+				{ ...admin, name },
+				{ setup: setupWith({ kind: 'open' }, refusingAsReal()) }
+			);
 
-			await run(actions.admin, { ...admin, name }, locals);
-
-			expect(createFirstAdmin).toHaveBeenCalledTimes(accepted ? 1 : 0);
-		});
-
-		it('maps Better Auth\u2019s own refusal, should one get through, to the same field error', async () => {
-			const refusal = new APIError('BAD_REQUEST', {
-				message: MESSAGE,
-				code: 'NAME_INVALID_CHARACTERS'
-			});
-			const { locals } = open(vi.fn(async () => Promise.reject(refusal)));
-
-			const result = await run(actions.admin, admin, locals);
-
-			expect(result).toMatchObject({ status: 400, data: { field: 'name', message: MESSAGE } });
+			expect(result).toMatchObject(accepted ? { status: 303 } : { status: 400 });
 		});
 	});
 
@@ -461,25 +415,52 @@ describe('step 2: create the admin', () => {
 		expect(result).toMatchObject({ step: 'admin' });
 	});
 
-	it.each([
-		['name', 'Enter a name.'],
-		['email', 'Enter a valid email address.'],
-		['password', 'Use 12 to 128 characters.']
-	] as const)(
-		'a bad %s stays on the form with a fixed message, keeping what was typed but not the password',
-		async (field, message) => {
-			const createFirstAdmin = vi.fn(async () => {
-				throw new InvalidFirstAdminError(field, 'The input said: correct horse battery');
-			});
+	// The codes a form field has a Setup text for; every other code answers the generic failure.
+	const WITH_TEXT = {
+		NAME_REQUIRED: ['name', 'Enter a name.'],
+		NAME_TOO_LONG: ['name', 'Use at most 100 characters.'],
+		NAME_INVALID_CHARACTERS: ['name', "This name contains a character that can't be used."],
+		INVALID_EMAIL: ['email', 'Enter a valid email address.'],
+		PASSWORD_TOO_SHORT: ['password', 'Use 12 to 128 characters.'],
+		PASSWORD_TOO_LONG: ['password', 'Use 12 to 128 characters.']
+	} as Record<string, [string, string]>;
+	// What `refusalOf` reads: the status for a 403, the body's code for the rest.
+	const refusalError = (code: string) =>
+		code === 'SIGN_UP_CLOSED'
+			? new APIError('FORBIDDEN', { message: 'x' })
+			: new APIError('BAD_REQUEST', {
+					message: 'The input said: correct horse battery',
+					code: code === 'EMAIL_UNAVAILABLE' ? 'USER_ALREADY_EXISTS' : code
+				});
+
+	it.each(REFUSAL_CODES)(
+		'the refusal %s is a fixed message on its field, or the generic failure when Setup has no text for it',
+		async (code) => {
+			vi.spyOn(console, 'error').mockImplementation(() => {});
+			const createFirstAdmin = vi.fn(async () => Promise.reject(refusalError(code)));
 
 			const result = await run(actions.admin, admin, {
 				setup: setupWith({ kind: 'open' }, createFirstAdmin)
 			});
 
-			expect(result).toMatchObject({
-				status: 400,
-				data: { step: 'admin', field, message, name: 'Ada', email: 'ada@example.com' }
-			});
+			const text = WITH_TEXT[code];
+			expect(result).toMatchObject(
+				text
+					? {
+							status: 400,
+							data: {
+								step: 'admin',
+								field: text[0],
+								message: text[1],
+								name: 'Ada',
+								email: admin.email
+							}
+						}
+					: {
+							status: 500,
+							data: { message: 'The admin account could not be created. Try again.' }
+						}
+			);
 			expect(JSON.stringify(result)).not.toContain('correct horse');
 		}
 	);
@@ -496,21 +477,6 @@ describe('step 2: create the admin', () => {
 		expect(result).toMatchObject({
 			status: 409,
 			data: { step: 'admin', message: 'This instance has already been set up.' }
-		});
-	});
-
-	it('a Multi-user refusal from the app is a fixed message', async () => {
-		const createFirstAdmin = vi.fn(async () => {
-			throw new MultiUserNotAvailableError();
-		});
-
-		const result = await run(actions.admin, admin, {
-			setup: setupWith({ kind: 'open' }, createFirstAdmin)
-		});
-
-		expect(result).toMatchObject({
-			status: 400,
-			data: { message: 'Multi-user is not available on this server.' }
 		});
 	});
 
@@ -541,9 +507,7 @@ describe('step 2: create the admin', () => {
 	});
 
 	it('missing fields are a bad form, not a crash', async () => {
-		const createFirstAdmin = vi.fn(async () => {
-			throw new InvalidFirstAdminError('name', 'The name is required.');
-		});
+		const createFirstAdmin = refusingAsReal();
 
 		const result = await run(
 			actions.admin,
@@ -552,7 +516,10 @@ describe('step 2: create the admin', () => {
 		);
 
 		expect(createFirstAdmin).toHaveBeenCalledWith({ name: '', email: '', password: '' });
-		expect(result).toMatchObject({ status: 400 });
+		expect(result).toMatchObject({
+			status: 400,
+			data: { field: 'name', message: 'Enter a name.' }
+		});
 	});
 });
 
