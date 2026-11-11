@@ -33,7 +33,7 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 </svelte:head>
 
 {#key `${problem.id}:${problem.build.language}`}
-	<ProblemWorkspace {problem} {view} onview={(next) => (pane = next.pane)} {claimEditorFocus} onswitched={(id, language) => (editorFocusFor = `${id}:${language}`)} solution={view.section === 'solution' ? data.solution : undefined}>
+	<ProblemWorkspace {problem} {view} onview={(next) => (pane = next.pane)} {claimEditorFocus} onswitched={(id, language) => (editorFocusFor = id && language ? `${id}:${language}` : undefined)} solution={view.section === 'solution' ? data.solution : undefined}>
 		{#snippet statement()}
 			<div class="left">
 				<nav class="tabs mono" aria-label="Problem sections">

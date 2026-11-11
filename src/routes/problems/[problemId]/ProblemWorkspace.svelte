@@ -32,7 +32,7 @@ let {
 	/** Asked once on mount: true when this workspace replaces one a language switch just removed, so the editor takes focus. */
 	claimEditorFocus?: (problemId: string, language: string) => boolean;
 	/** A switch went through: the page remounts the workspace for the new language, which will claim focus. */
-	onswitched?: (problemId: string, language: string) => void;
+	onswitched?: (problemId?: string, language?: string) => void;
 } = $props();
 
 // The state machine in ./workspace.ts owns the Build, its revision and every transition. This component
@@ -104,6 +104,8 @@ async function post(request: Request): Promise<Reply> {
 		if (reply.ok && request.kind === 'switch') {
 			onswitched?.(session.build.problemId, request.language);
 			await refreshAll();
+			// Whether or not the remount claimed it, the request is spent.
+			onswitched?.();
 		}
 		return reply;
 	} catch {

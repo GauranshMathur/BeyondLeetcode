@@ -11,6 +11,7 @@ let { problem, hints }: { problem: ProblemView; hints: HintsView } = $props();
 // (which would hand the editor a stale copy of the code). A page load brings the stored state back.
 let revealed = $state.raw<HintsView | undefined>(undefined);
 let revealing = $state(false);
+let section = $state<HTMLElement>();
 // Why the last reveal did not go through. A redirect to sign-in is not followed: the Learner stays on the tab.
 let failure = $state<'signedOut' | 'failed' | undefined>(undefined);
 const view = $derived(revealed ?? hints);
@@ -18,7 +19,7 @@ const next = $derived(view.revealed.length + 1);
 const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => next + 1 + i));
 </script>
 
-<section class="hints" aria-label="Hints">
+<section class="hints" aria-label="Hints" bind:this={section}>
 	<ProblemHead {problem} title="Hints" intro="Hints are free. Reveal one at a time, in order. Each links back to the chapter behind the idea." />
 
 	{#if view.total === 0}
@@ -53,7 +54,8 @@ const unrevealed = $derived(Array.from({ length: view.total - next }, (_, i) => 
 								revealed = hints;
 								// The trigger may be gone (after the last Hint): focus goes to the Hint it revealed.
 								await tick();
-								document.getElementById(`hint-${hints.revealed.length}`)?.focus();
+								// section is unset once the tab is gone, so a late answer cannot move focus on another page.
+								section?.querySelector<HTMLElement>(`#hint-${hints.revealed.length}`)?.focus();
 							}
 							else if (result.type === 'redirect' || (result.type === 'error' && result.status === 401))
 								failure = 'signedOut';
