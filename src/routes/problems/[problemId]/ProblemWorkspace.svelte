@@ -166,10 +166,10 @@ const label: Record<SaveState, string> = {
 	</nav>
 {/snippet}
 
-<main class="page" data-tab={view.pane}>
+<div class="page" data-tab={view.pane}>
 	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
-	<div class="grid">
+	<main class="grid">
 		<div data-pane="problem">{@render statement()}</div>
 
 		<div class="pane">
@@ -236,7 +236,7 @@ const label: Record<SaveState, string> = {
 				</div>
 			</div>
 		</div>
-	</div>
+	</main>
 
 	<!-- Phones only: the same Run and Submit, above the tab bar. -->
 	<div class="actions strip">{@render runAndSubmit()}</div>
@@ -245,7 +245,7 @@ const label: Record<SaveState, string> = {
 			<button type="button" aria-pressed={view.pane === pane} onclick={() => onview({ ...view, pane })}>{NAMES[pane]}</button>
 		{/each}
 	</nav>
-</main>
+</div>
 
 <style>
 	.page {
