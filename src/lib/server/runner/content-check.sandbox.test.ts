@@ -28,9 +28,13 @@ import { createSandboxRunner, ensureImages } from './sandbox.ts';
  */
 
 /**
- * Runs `attempt`; if it throws RunnerUnavailable, says so through `onRetry` and runs it once more,
- * whose outcome (a result or any error, RunnerUnavailable included) is final. Any other error from
- * the first run is rethrown at once, and a Verdict is a result, never retried.
+ * Runs `attempt`; if it throws RunnerUnavailable with a cause (the Runner itself threw: a container
+ * start that timed out, a Docker error, the harness exiting badly), says so through `onRetry` and
+ * runs it once more, whose outcome (a result or any error, RunnerUnavailable included) is final.
+ * A RunnerUnavailable without a cause means the Runner answered and the answer is the problem (a
+ * batch cut off by the container's clock, a hidden compile error, a missing Test): Reference Code
+ * that is cut off under load is a content defect, so it fails at once like any other error, and a
+ * Verdict is a result, never retried.
  */
 async function withOneRetryOnRunnerUnavailable<T>(
 	attempt: () => Promise<T>,
@@ -39,8 +43,13 @@ async function withOneRetryOnRunnerUnavailable<T>(
 	try {
 		return await attempt();
 	} catch (error) {
-		if (!(error instanceof LearningError) || error.code !== 'RunnerUnavailable') throw error;
-		onRetry(error.cause ?? error);
+		if (
+			!(error instanceof LearningError) ||
+			error.code !== 'RunnerUnavailable' ||
+			error.cause === undefined
+		)
+			throw error;
+		onRetry(error.cause);
 		return await attempt();
 	}
 }
@@ -82,10 +91,16 @@ function cases(ids: string[]) {
 							files: { ...files },
 							runner
 						}),
-					(cause) =>
+					(cause) => {
 						console.warn(
 							`Runner unavailable for ${problemId} (${language}), running the case once more: ${cause}`
-						)
+						);
+						// A workflow annotation, so a retry shows on the run summary of a green job.
+						const name = cause instanceof Error ? cause.name : typeof cause;
+						console.log(
+							`::warning::Content check retried ${problemId} (${language}) after RunnerUnavailable: ${name}`
+						);
+					}
 				);
 				expect(
 					verdict,
@@ -128,6 +143,20 @@ describe('content check: the retry rule', () => {
 			)
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 		expect(calls).toBe(2);
+	});
+
+	it('does not retry a RunnerUnavailable without a cause: the Runner answered, the answer is the defect', async () => {
+		let calls = 0;
+		await expect(
+			withOneRetryOnRunnerUnavailable(
+				async () => {
+					calls += 1;
+					throw new LearningError('RunnerUnavailable');
+				},
+				() => expect.unreachable('no retry expected')
+			)
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+		expect(calls).toBe(1);
 	});
 
 	it('never retries a Verdict, even a wrong one, nor any other error', async () => {
