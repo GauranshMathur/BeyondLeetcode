@@ -23,6 +23,15 @@ function digest(value: string): Buffer {
 	return createHash('sha256').update(value).digest();
 }
 
+/**
+ * One log line for a refusal the caller caused, in the shape the web's adapter logs the same failure
+ * (`runner <kind>`), so a line in one log matches a line in the other. The line is a fixed string: nothing
+ * from the request (token, header, body, path, query) can reach it, so a caller cannot write text into the log.
+ */
+function logRefusal(kind: 'RunnerUnauthorized' | 'RunnerRefused'): void {
+	console.error(`runner ${kind}`);
+}
+
 function json(status: number, body: unknown): Response {
 	return Response.json(body, { status });
 }
@@ -82,7 +91,10 @@ export function createRunnerHandler(options: {
 
 	return async function handle(req: Request): Promise<Response> {
 		const given = digest(req.headers.get('authorization') ?? '');
-		if (!timingSafeEqual(given, expected)) return json(401, { error: 'Unauthorized' });
+		if (!timingSafeEqual(given, expected)) {
+			logRefusal('RunnerUnauthorized');
+			return json(401, { error: 'Unauthorized' });
+		}
 
 		const { pathname } = new URL(req.url);
 		if (pathname === '/health' && req.method === 'GET') {
@@ -102,10 +114,14 @@ export function createRunnerHandler(options: {
 		try {
 			body = await req.json();
 		} catch {
+			logRefusal('RunnerRefused');
 			return json(400, { error: 'Body is not JSON' });
 		}
 		const parsed = executeRequest.safeParse(body);
-		if (!parsed.success) return json(400, { error: 'Invalid request' });
+		if (!parsed.success) {
+			logRefusal('RunnerRefused');
+			return json(400, { error: 'Invalid request' });
+		}
 		if (!options.readyLanguages().includes(parsed.data.language))
 			return json(503, { error: 'Runner is not ready' });
 

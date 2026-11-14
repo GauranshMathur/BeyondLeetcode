@@ -122,6 +122,77 @@ describe('Runner HTTP handler', () => {
 		expect(runner.calls).toEqual([]);
 	});
 
+	describe("the Runner's log", () => {
+		const secretCode = 'print(SECRET_LEARNER_CODE)';
+		const secretInput = 'SECRET_TEST_INPUT';
+		const logged = async (req: Request, ready = ['python']) => {
+			const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+			const handle = createRunnerHandler({
+				token,
+				runner: createScriptedRunner({ tests: { a: { status: 'ok', stdout: 'x' } } }),
+				maxConcurrent: 4,
+				readyLanguages: () => ready
+			});
+			const res = await handle(req);
+			const lines = spy.mock.calls.map((call) => call.map(String).join(' '));
+			spy.mockRestore();
+			return { res, lines };
+		};
+		const withContent = {
+			...valid,
+			files: { 'main.py': secretCode },
+			tests: [{ id: 'a', input: secretInput }]
+		};
+
+		it('logs one line for a 401, naming its kind only', async () => {
+			const { res, lines } = await logged(
+				new Request('http://runner/execute?q=QUERYTEXT', {
+					method: 'POST',
+					headers: { Authorization: 'Bearer WRONGTOKEN forged line' },
+					body: JSON.stringify(withContent)
+				})
+			);
+
+			expect(res.status).toBe(401);
+			expect(lines).toEqual(['runner RunnerUnauthorized']);
+		});
+
+		it.each([
+			['a body that is not JSON', `{${secretCode} ${secretInput}`],
+			['a body the schema refuses', { ...withContent, language: `ruby\nforged ${secretInput}` }]
+		])('logs one line for a 400 on %s, naming its kind only', async (_name, body) => {
+			const { res, lines } = await logged(post(body));
+
+			expect(res.status).toBe(400);
+			expect(lines).toEqual(['runner RunnerRefused']);
+		});
+
+		it('carries nothing from the request and no line break', async () => {
+			const requests = [
+				new Request('http://runner/execute?q=QUERYTEXT', {
+					method: 'POST',
+					headers: { Authorization: `Bearer ${token}x` },
+					body: JSON.stringify(withContent)
+				}),
+				post(`${secretCode} ${secretInput}`),
+				post({ ...withContent, limits: undefined })
+			];
+			for (const req of requests) {
+				const { lines } = await logged(req);
+				expect(lines).toHaveLength(1);
+				for (const text of [token, secretCode, secretInput, 'QUERYTEXT', 'SECRET', '\n'])
+					expect(lines[0]).not.toContain(text);
+			}
+		});
+
+		it('logs nothing for a 200 or for the 503s', async () => {
+			expect((await logged(post(withContent))).lines).toEqual([]);
+			const notReady = await logged(post(withContent), []);
+			expect(notReady.res.status).toBe(503);
+			expect(notReady.lines).toEqual([]);
+		});
+	});
+
 	it('shares its file limit with the Build rule the Learning core applies', () => {
 		expect(sandboxConfig.maxFiles).toBe(MAX_BUILD_FILES);
 	});
