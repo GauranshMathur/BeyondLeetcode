@@ -27,9 +27,11 @@ The board's `Release` field (id `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY`) has one option
 | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | `d6739981` |
 | `R v1.19.6: Sprint 19 · Accessibility` (renamed 2026-11-10; was `Runner and the Build`) | `ba3b24a7` |
 | `R v1.19.7: Sprint 20 · Drifted rules and docs` (renamed 2026-11-10; was `Identity forms and policy`) | `41225006` |
-| `R v1.19.8: Sprint 21 · Unplanned` (renamed 2026-11-10; was `Accessibility`) | `647d8bbc` |
-| `R v1.19.9: Sprint 22 · Unplanned` (renamed 2026-11-10; was `Tests, CI and docs`) | `30fe09ec` |
-| `R v1.19.10: Sprint 23 · Unplanned` (renamed 2026-11-10; was `The Learning core and the Problem screen`) | `59e6d8b2` |
+| `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide` (renamed 2026-11-14; was `R v1.19.8: Sprint 21 · Unplanned`) | `647d8bbc` |
+| `R v1.20.1: Sprint 22 · Leftover bugs and CI gates` (renamed 2026-11-14; was `R v1.19.9: Sprint 22 · Unplanned`) | `30fe09ec` |
+| `R v1.20.2: Sprint 23 · Unplanned` (renamed 2026-11-14; was `R v1.19.10: Sprint 23 · Unplanned`) | `59e6d8b2` |
+
+A content sprint (`docs/sprints.md`, The content sprints) has a Sprint option and no Release option: its PRs ship in the app release open when they merge. A content card that is `feat` makes that release a minor one.
 
 ## Planned releases
 
@@ -44,14 +46,14 @@ The `sprint-planner` adds a row for each sprint it plans.
 | 17 · Runner and CI hardening | `R v1.19.4: Sprint 17 · Runner and CI hardening` | 1.19.4 | cut 2026-11-08 |
 | 18 · Submission, Runner and Identity seams | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | 1.19.5 | cut 2026-11-11 |
 | 19 · Accessibility | `R v1.19.6: Sprint 19 · Accessibility` | 1.19.6 | cut 2026-11-11 |
-| 20 · Drifted rules and docs | `R v1.19.7: Sprint 20 · Drifted rules and docs` | 1.19.7 | planned (re-planned 2026-11-10) |
-| 21 · Unplanned | `R v1.19.8: Sprint 21 · Unplanned` | 1.19.8 | no cards: option kept, unplanned since 2026-11-10 |
-| 22 · Unplanned | `R v1.19.9: Sprint 22 · Unplanned` | 1.19.9 | no cards: option kept, unplanned since 2026-11-10 |
-| 23 · Unplanned | `R v1.19.10: Sprint 23 · Unplanned` | 1.19.10 | no cards: option kept, unplanned since 2026-11-10 |
+| 20 · Drifted rules and docs | `R v1.19.7: Sprint 20 · Drifted rules and docs` | 1.19.7 | in progress (re-ranked by tier 2026-11-14: 23 cards) |
+| 21 · Dev mode, starting Language and the guide | `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide` | 1.20.0 | planned 2026-11-14 (minor: its cards are `feat`) |
+| 22 · Leftover bugs and CI gates | `R v1.20.1: Sprint 22 · Leftover bugs and CI gates` | 1.20.1 | planned 2026-11-14 (1.21.0 instead if a content rewrite, `feat`, merges in it) |
+| 23 · Unplanned | `R v1.20.2: Sprint 23 · Unplanned` | 1.20.2 | no cards: option kept, renumbered 2026-11-14 |
 
 ## The last card
 
-Every sprint ends with one card the planner files: `[Cnnn] Sprint N: exit check and Release-As X.Y.Z`, commit type `docs`, `Blocked by: every other card in Sprint N`. The orchestrator works it itself. It checks the sprint's exit criteria and writes the sprint's Status in `docs/sprints.md`. The Status counts issues closed as well as cards done (`docs/agents/board.md`, Issues are the unit of work). Then it squash-merges that PR with the footer:
+Every sprint ends with one card the planner files: `[Cnnn] Sprint N: exit check and Release-As X.Y.Z`, commit type `docs`, `Blocked by: every other card in Sprint N`. The orchestrator works it itself. It checks the sprint's exit criteria and writes the sprint's Status in `docs/sprints.md`. The Status counts issues closed as well as cards done, each per tier (`docs/agents/board.md`, Issues are the unit of work, and Tiers). Then it squash-merges that PR with the footer:
 
 ```sh
 gh pr merge <n> --squash --body $'Sprint N exit check.\n\nRelease-As: X.Y.Z'
