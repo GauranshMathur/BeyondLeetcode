@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { E2E_ADMIN } from '../../lib/e2e-admin.ts';
 import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
 import { LEARNER_PASSWORD, openMultiUserDatabase, type Session } from './multi-fixture.ts';
@@ -124,22 +124,51 @@ async function expectReset(email: string, shown: string) {
 	expect(user.mustChangePassword).toBe(true);
 }
 
+// The accessible names of every Cancel invite button on the page, in row order.
+async function cancelNames(page: Page): Promise<string[]> {
+	const buttons = page.getByRole('button', { name: /^Cancel invite from / });
+	return (await buttons.all()).length === 0
+		? []
+		: buttons.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label') ?? ''));
+}
+
 test('the admin makes an Invite: the link field takes focus', async ({ context, page }) => {
 	await context.addCookies(admin.cookies);
 	await gotoHydrated(page, '/users');
 
+	const before = await cancelNames(page);
 	await page.getByRole('button', { name: 'Invite a user' }).click();
 
 	const field = page.getByLabel('Invite link');
 	await expect(field).toHaveValue(/\/invite\/[\w-]{43}$/);
 	await expect(field).toBeFocused();
+	const made = (await cancelNames(page)).filter((n) => !before.includes(n))[0] ?? '';
 
-	// Clean up, so a later file sees no stray pending Invite.
-	await page
-		.getByRole('button', { name: /^Cancel invite from \d{4}-\d{2}-\d{2}$/ })
-		.first()
-		.click();
+	// Clean up, so a later file sees no stray pending Invite: cancel the one this test made, which is the
+	// one that was not there before.
+	await page.getByRole('button', { name: made, exact: true }).click();
 	await expect(field).toHaveCount(0);
+});
+
+test('two Invites made in a row have different Cancel button names', async ({ context, page }) => {
+	await context.addCookies(admin.cookies);
+	await gotoHydrated(page, '/users');
+	const before = await cancelNames(page);
+	const field = page.getByLabel('Invite link');
+
+	await page.getByRole('button', { name: 'Invite a user' }).click();
+	await expect(field).toBeFocused();
+	// A second apart at least, so the two names can differ whatever minute they fall in.
+	await page.waitForTimeout(1100);
+	await page.getByRole('button', { name: 'Invite a user' }).click();
+	await expect.poll(async () => (await cancelNames(page)).length).toBe(before.length + 2);
+
+	const made = (await cancelNames(page)).filter((n) => !before.includes(n));
+	expect(new Set(made).size).toBe(2);
+	for (const name of made) {
+		await page.getByRole('button', { name, exact: true }).click();
+		await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+	}
 });
 
 test('the admin resets a password: the one-time password is shown once with a copy field', async ({
@@ -341,6 +370,7 @@ test.describe('without JavaScript', () => {
 	}) => {
 		await context.addCookies(admin.cookies);
 		await page.goto('/users');
+		const before = await cancelNames(page);
 		const posted = page.waitForResponse(
 			(r) => r.request().method() === 'POST' && r.url().includes('/users?/invite')
 		);
@@ -353,11 +383,9 @@ test.describe('without JavaScript', () => {
 		expect(response.headers()['cache-control']).toBe('no-store');
 		await expect(page.getByLabel('Invite link')).toHaveValue(/\/invite\/[\w-]{43}$/);
 
-		// Clean up, so a later file sees no stray pending Invite.
-		await page
-			.getByRole('button', { name: /^Cancel invite from \d{4}-\d{2}-\d{2}$/ })
-			.first()
-			.click();
+		// Clean up, so a later file sees no stray pending Invite: cancel the one this test made.
+		const made = (await cancelNames(page)).filter((n) => !before.includes(n))[0] ?? '';
+		await page.getByRole('button', { name: made, exact: true }).click();
 		await expect(page.getByLabel('Invite link')).toHaveCount(0);
 	});
 
