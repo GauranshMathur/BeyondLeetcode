@@ -2,45 +2,42 @@
 
 ## [1.19.7](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.6...v1.19.7) (2026-11-14)
 
+### Highlights
 
-### Fixes
+Sprint 20 puts drifted rules back in one place and makes the operator's docs say what the code does. For Learners: a screen reader now says when a save is rejected, focus no longer gets lost on a phone after a Language switch, and the Map never offers "Continue" into a Locked Topic. For operators: the web and the Runner each log which kind of Runner failure happened, and the self-hosting guide has a troubleshooting section built on those lines.
 
-* **beyondleetcode:** C366 Identity: one new-Account field check, and the first Admin's sign-up answers refusal codes ([#656](https://github.com/GauranshMathur/BeyondLeetcode/issues/656)) ([eb309d9](https://github.com/GauranshMathur/BeyondLeetcode/commit/eb309d9b577cd4d1cc4828e15140cf9d947835fc))
-* **beyondleetcode:** C367, C368, C369, C370 drifted compose note, Shipping doc, worktree steps and ADR pointers ([#657](https://github.com/GauranshMathur/BeyondLeetcode/issues/657)) ([80c5cd8](https://github.com/GauranshMathur/BeyondLeetcode/commit/80c5cd8a0709f5c4ec75d56e0bd8f25299783a44))
-* **beyondleetcode:** C373 Account forms: one module answers every sign-up refusal ([#664](https://github.com/GauranshMathur/BeyondLeetcode/issues/664)) ([e1e05a9](https://github.com/GauranshMathur/BeyondLeetcode/commit/e1e05a9542d5bb85100290e837e54fd71b9b9361))
-* **beyondleetcode:** C374 Map: the current Topic is decided once and is always an open Topic ([#678](https://github.com/GauranshMathur/BeyondLeetcode/issues/678)) ([3bfe9d1](https://github.com/GauranshMathur/BeyondLeetcode/commit/3bfe9d125466f7c81c9dd6a09f2d267a31476c63))
-* **beyondleetcode:** C378 Runner adapter: the web says which kind of Runner failure it saw ([#671](https://github.com/GauranshMathur/BeyondLeetcode/issues/671)) ([70b7f31](https://github.com/GauranshMathur/BeyondLeetcode/commit/70b7f31dc2e7b3283c9a0c446d366514f5841939))
-* **beyondleetcode:** C380 Runner: the Runner logs the 400s and 401s it answers ([#677](https://github.com/GauranshMathur/BeyondLeetcode/issues/677)) ([b110ad0](https://github.com/GauranshMathur/BeyondLeetcode/commit/b110ad04d8c7bbf58e1c96d129417ab6d0ff2166))
-* **beyondleetcode:** C386 Problem screen: a rejected save is announced, and a failing save is announced once ([#669](https://github.com/GauranshMathur/BeyondLeetcode/issues/669)) ([926de56](https://github.com/GauranshMathur/BeyondLeetcode/commit/926de5626da4d1cfe4aed966fa8de133bedde5c6))
-* **beyondleetcode:** C387 Problem screen on a phone: focus goes to the Code tab when the editor is not shown ([#675](https://github.com/GauranshMathur/BeyondLeetcode/issues/675)) ([ad3c9ce](https://github.com/GauranshMathur/BeyondLeetcode/commit/ad3c9ce8ab4c3a99984694a1bd74a7a69ea0e336))
+### Added
 
+Nothing new to use in this release.
 
-### Refactoring
+### Fixed
 
-* **beyondleetcode:** C371 Setup: the route maps the first Admin's refusal codes ([#659](https://github.com/GauranshMathur/BeyondLeetcode/issues/659)) ([64bffca](https://github.com/GauranshMathur/BeyondLeetcode/commit/64bffcaf0fe75d26ab7a393ecd9911f0411bd12e))
-* **beyondleetcode:** C377 Map: one pure Map-entries function feeds the figure and the column ([#683](https://github.com/GauranshMathur/BeyondLeetcode/issues/683)) ([97998a2](https://github.com/GauranshMathur/BeyondLeetcode/commit/97998a22cb90ece87999fa9502e957336248b09b))
+- A screen reader now announces when a save is rejected, and announces a failing save once rather than on every retry. (C386, #669)
+- On a phone, focus no longer drops to the page after a Language switch or a restart when you are on another tab. (C387, #675)
+- The Map no longer offers a "Continue" link to a Topic that has become Locked. (C374, #678)
+- Sign up now answers a malformed request with a clear error instead of a server error. (C373, #664)
+- Setup now accepts an email address with spaces round it, as Sign up does. (C366, #656)
+- The `compose.yaml` that `init` writes passes `RUNNER_MAX_CONCURRENT` to the runner, so setting it in `.env` takes effect. (C367, #657)
 
+### Changed
 
-### Documentation
+- The web's log now names which kind of Runner failure it saw: unreachable, unauthorized, refused, busy, not ready or failed. One line per failed call, with none of the request in it. (C378, #671)
+- The Runner's log now shows each refused request (wrong token, malformed request), without any of its content. (C380, #677)
+- Self-hosting guide: Runner first start, capacity and troubleshooting, and a corrected reset-admin-password note. (C382, #680)
 
-* **beyondleetcode:** C372 the sandbox reviewer checks the Sandbox as it is ([#658](https://github.com/GauranshMathur/BeyondLeetcode/issues/658)) ([1488abe](https://github.com/GauranshMathur/BeyondLeetcode/commit/1488abe5e53113a8dc378143c261dbbaa8b060d7))
-* **beyondleetcode:** C376 Comments: the Dockerfile names the image's four roles and db.ts the real database path ([#681](https://github.com/GauranshMathur/BeyondLeetcode/issues/681)) ([1545c52](https://github.com/GauranshMathur/BeyondLeetcode/commit/1545c52b4914b77e140c226ad134ad065e247ae0))
-* **beyondleetcode:** C382 Self-hosting: Runner first start, capacity and troubleshooting, and two fixed sentences ([#680](https://github.com/GauranshMathur/BeyondLeetcode/issues/680)) ([1fd8eef](https://github.com/GauranshMathur/BeyondLeetcode/commit/1fd8eef720fdbedcfc07275bbc49613847ff9cf0))
-* **beyondleetcode:** C383 Sprint 20: exit check and Release-As 1.19.7 ([#685](https://github.com/GauranshMathur/BeyondLeetcode/issues/685)) ([76be6d2](https://github.com/GauranshMathur/BeyondLeetcode/commit/76be6d2b5fa958fdde9184510abe5e22fcc74e7b))
-* **beyondleetcode:** C388 the system spine: a design for system-first content ([#670](https://github.com/GauranshMathur/BeyondLeetcode/issues/670)) ([16b5ac7](https://github.com/GauranshMathur/BeyondLeetcode/commit/16b5ac7128b51219e8c510559cca855befbc8d07)), closes [#663](https://github.com/GauranshMathur/BeyondLeetcode/issues/663)
-* **beyondleetcode:** F23 for the guide's admin header, a card for [#643](https://github.com/GauranshMathur/BeyondLeetcode/issues/643), and two ranking rows ([#672](https://github.com/GauranshMathur/BeyondLeetcode/issues/672)) ([da7c5ff](https://github.com/GauranshMathur/BeyondLeetcode/commit/da7c5ffe47097103c810b25534ee1d7d0d79a85f))
-* **beyondleetcode:** record the 1.19.6 cut, and archive Sprint 19 ([#654](https://github.com/GauranshMathur/BeyondLeetcode/issues/654)) ([40b1954](https://github.com/GauranshMathur/BeyondLeetcode/commit/40b195439e8a330dc19a2cf6b0e8b2428699b97f))
-* **beyondleetcode:** the tier system, and the plan re-ranked by tier ([#665](https://github.com/GauranshMathur/BeyondLeetcode/issues/665)) ([81b70c3](https://github.com/GauranshMathur/BeyondLeetcode/commit/81b70c3ddab28db480dcf615cb3cb896f0b30450))
+### Content
 
+No content changes in this release.
 
-### Tests
+### Security
 
-* **beyondleetcode:** C381 Runner fake: the scripted Runner answers an Extra's Reference Code from the Main Line place ([#668](https://github.com/GauranshMathur/BeyondLeetcode/issues/668)) ([a8c9426](https://github.com/GauranshMathur/BeyondLeetcode/commit/a8c942631a65b665c7cb9faab61467d20efd5bdf))
+- The web no longer follows a redirect from the Runner's address, so a Submission's code and Test inputs are never sent anywhere but the configured Runner, and it reads only a small part of an error answer. (C378, #671)
 
+### Upgrade notes
 
-### CI
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.19.7` (or `latest`), then run `docker compose pull && docker compose up -d`.
 
-* **beyondleetcode:** C431 CI: the content check runs two cases at once and retries a RunnerUnavailable case once ([#682](https://github.com/GauranshMathur/BeyondLeetcode/issues/682)) ([10ce4f3](https://github.com/GauranshMathur/BeyondLeetcode/commit/10ce4f3bce8892e25acb8f06771ca16aeab39c97))
+If your `compose.yaml` was written by an earlier version and you want to limit how many Runs execute at once, add the line `RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}` under the `runner` service's `environment`, and set the value in `.env`. The self-hosting guide's "How many runs at once" section has the details. Without the line the Runner keeps its default, one Run per CPU.
 
 ## [1.19.6](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.5...v1.19.6) (2026-11-11)
 
