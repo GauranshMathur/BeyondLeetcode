@@ -5,21 +5,32 @@ import { expectNoSidewaysScroll, expectTargets, phone } from '../lib/e2e-phone.t
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-error') });
 
-for (const [name, path, status] of [
-	['an unknown path', '/no/such/page', 404],
-	['a Locked Topic', '/topics/queues', 403]
+for (const [name, path, status, heading, message] of [
+	[
+		'an unknown path',
+		'/no/such/page',
+		404,
+		'Not found',
+		'That page does not exist. The link may be old.'
+	],
+	[
+		'a Locked Topic',
+		'/topics/queues',
+		403,
+		'This Topic is locked.',
+		'Complete its Prerequisites on the Map to open it.'
+	]
 ] as const) {
-	test(`${name} renders a title, one main and one h1`, async ({ page }) => {
+	test(`${name} reads as sentences, with one main and one h1`, async ({ page }) => {
 		const response = await page.goto(path);
 		expect(response?.status()).toBe(status);
 
-		const h1 = page.getByRole('heading', { level: 1 });
-		await expect(h1).toHaveCount(1);
-		const message = (await h1.textContent())?.trim() ?? '';
-		expect(message).not.toBe('');
-		await expect(page).toHaveTitle(`${message} · BeyondLeetcode`);
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
+		await expect(page.getByText(message, { exact: true })).toBeVisible();
+		await expect(page).toHaveTitle(`${heading} · BeyondLeetcode`);
 		await expect(page.getByRole('main')).toHaveCount(1);
 		await expect(page.getByText(`Error ${status}`)).toBeVisible();
+		await expect(page.getByText('TopicLocked')).toHaveCount(0);
 		await expect(page.getByRole('link', { name: 'Back to the Map' })).toHaveAttribute('href', '/');
 	});
 }
