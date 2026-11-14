@@ -1,10 +1,12 @@
 <script lang="ts">
 import { onDestroy, onMount, type Snippet, tick, untrack } from 'svelte';
+import { MediaQuery } from 'svelte/reactivity';
 import CodeEditor from '#lib/editor/CodeEditor.svelte';
 import AppHeader from '#lib/header/AppHeader.svelte';
 import { LANGUAGES, type Language, languageById } from '#lib/languages.js';
 import { filesDigest, type Reply, toReply } from '#lib/problem-wire.js';
 import type { ProblemView, SolutionView } from '#lib/server/learning/core.js';
+import { PROBLEM_SHORT } from '#lib/styles/breakpoints.js';
 import { type ActionResult, deserialize } from '$app/forms';
 import { refreshAll } from '$app/navigation';
 import { page } from '$app/state';
@@ -144,6 +146,16 @@ let restartTrigger = $state<HTMLButtonElement>();
 let editorSlot = $state<HTMLDivElement>();
 let tabbar = $state<HTMLElement>();
 
+// At a short phone the stage is the box that scrolls, so it is the one tab stop for scrolling and the statement region,
+// which no longer scrolls there, gives its stop up. Everywhere else the region scrolls and the stage has no box.
+const short = new MediaQuery(PROBLEM_SHORT);
+let stageEl = $state<HTMLDivElement>();
+$effect(() => {
+	const region = stageEl?.querySelector<HTMLElement>('[data-pane="problem"] [role="region"]');
+	if (!region) return;
+	region.tabIndex = short.current ? -1 : 0;
+});
+
 // On a phone the editor is hidden while another pane shows, and a hidden element takes no focus. Focus then goes to the
 // Code tab's control, where the editor the Learner asked for lives, so the next Tab key starts from a known element.
 function focusEditor() {
@@ -238,7 +250,7 @@ const label: Record<SaveState, string> = {
 	<!-- A short phone scrolls the bar away with the pane, so both sit in one box that does the scrolling there. The box
 	     is a plain div, so the bar stays the page's banner and the grid its one main. -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<div class="stage" tabindex="0">
+	<div class="stage" bind:this={stageEl} tabindex={short.current ? 0 : undefined}>
 	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
 	<main class="grid">
