@@ -288,7 +288,7 @@ Release `R v1.20.1: Sprint 22 · Leftover bugs and CI gates`, version 1.20.1 (pa
 - **Twelve cards.**
   - **The editor's selection** (#649): F22: Foundations decides the selection colours and takes the `--selection-match` token; then C404: the editor, `tokens.css`, the contrast test and the doc's copy of `tokens()`.
   - **Users** (#640): C405: the time of day in each pending Invite's name, and an e2e cleanup that cancels its own Invite.
-  - **The Problem screen at a short phone** (#652; small, lane B's batch PR): C406: one tab stop for the scrolling stage; C407: the Solution's editor takes the phone sizing; C408: the console's flex rule moves into `ResultsPanel.svelte`.
+  - **The Problem screen at a short phone** (#652; small, one batch PR in lane B): C406: one tab stop for the scrolling stage; C407: the Solution's editor takes the phone sizing; C408: the console's flex rule moves into `ResultsPanel.svelte`.
   - **Flaky checks:** C409: the eight-password-changes test does not depend on the runner's speed (#634). C410: `ci-gate.test.sh` depends on nothing outside the checkout (#651).
   - **The release gate** (#569): C411: publish-edge and the release gate wait on one list of test jobs.
   - **Tier 3, with room** (#508): C375: `accept.ts` and `app.ts` say what the code does; then C379: the module map's Identity and Web rows, with rows for `logging.ts` and `languages.ts`.
@@ -306,7 +306,7 @@ Release `R v1.20.1: Sprint 22 · Leftover bugs and CI gates`, version 1.20.1 (pa
   | #508 module-map's Identity rows | 3 | C375, C379 | C379 | `accept.ts`: after Sprint 20's C373; `app.ts`: after Sprint 21's C395; `module-map.md`: after Sprint 21's C396 | None. The row must name only seams that exist when the card runs | Every Identity seam the row names exists in `src/lib/server/identity/`, and the map has rows for `logging.ts` and `languages.ts` |
 
   - C412, the exit check, has no issue.
-- **Small cards share a PR:** lane B's batch is C406, C407 and C408 (`fix` type, one round). C375 is lane A's only small card, so its PR is its own.
+- **Small cards share a PR:** C406, C407 and C408 carry `Batch: P` and share one PR in lane B (`fix` type, one round). C375 (`Batch: A`) is lane A's only small card, so its PR is its own.
 - **Reviews.** The orchestrator's two-reader review: C411. None for the rest.
 - **Shared files**, each an ordered chain in one lane:
   - `ProblemWorkspace.svelte` and `problem.e2e.ts`: C406, C407, C408 (lane B, one PR).
@@ -365,7 +365,7 @@ Release `R v1.20.1: Sprint 22 · Leftover bugs and CI gates`, version 1.20.1 (pa
 - **Seventeen cards, one per Topic,** each `Blocked by: the spine doc (C388) and the maintainer's confirmation of the spine`. They are placeholders: when the spine lands, the planner re-plans them from the spine's section for each Topic (files, order, lanes), and files **one card per spine milestone** for its system-design Chapter or capstone. The milestones cannot be named before the spine exists, so those cards are not filed yet.
 - **Content sprint 2 · Topic rewrites, first half** (9 cards, in the Map's order): C413 Stacks, C414 Binary search, C415 Two pointers, C416 Hash tables, C417 Linked lists, C418 Sliding window, C419 Math and geometry, C420 Bit manipulation, C421 Trees.
 - **Content sprint 3 · Topic rewrites, second half** (8 cards): C422 Backtracking, C423 Tries, C424 Heaps, C425 1-D dynamic programming, C426 Greedy, C427 2-D dynamic programming, C428 Graphs, C429 Intervals. The milestone cards join here or in a fourth content sprint, at the re-plan.
-- **How they relate to #252 to #268 and #113.** Each of #252 to #268 is the human review of one Topic, the maintainer's. A rewrite card names its Topic's issue in its `Refs` line and changes the text that review would read, so the maintainer's review of the rewrite is that review, done once, on the new text. No card closes any of them, and none closes #663: the maintainer closes #252 to #268, and #663 closes with its last milestone card, filed at the re-plan. #113 (Dynamic arrays, the 18th Topic in `content/`) has no rewrite card: whether Dynamic arrays is rewritten too is a question for the spine.
+- **How they relate to #252 to #268 and #113.** Each of #252 to #268 is the human review of one Topic, the maintainer's. A rewrite card names its Topic's issue in its `Refs` line and changes the text that review would read, so the maintainer's review of the rewrite is that review, done once, on the new text. No card ends any of them, and no rewrite card ends #663: #252 to #268 are the maintainer's to close, and #663 stays open until its last milestone card, filed at the re-plan. #113 (Dynamic arrays, the 18th Topic in `content/`) has no rewrite card: whether Dynamic arrays is rewritten too is a question for the spine.
 - **Each rewrite ends with the maintainer's review,** not an agent's merge alone (`CLAUDE.md`, `docs/content-standards.md`): every citation a primary source, opened by a person.
 - **Release.** A rewrite of a Topic that has shipped is `feat` (`docs/agents/board.md`, Content PRs), so the app sprint open when the first one merges becomes a minor release. The rewrite cards carry no Release option until the re-plan sets it.
 - **Issues → cards.**
