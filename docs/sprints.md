@@ -202,6 +202,52 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
 - **#517's catalogue indexer** (#623) and **#514's screen half** (#501): Tier 3, in the Backlog.
 - **#570**, the release webhook's shared notify script: card C340 with no Sprint, after C220 and C221, which wait on #535.
 
+**Status (2026-11-14):** exit met.
+- **Cards:** all 25 Sprint 20 cards are Done. The exit line says 24: C431 joined on 2026-11-14 as Tier 0, when the `sandbox` job's content check failed on `main` a second time (#666). The card count grew from 18 through the tier re-rank (#665) and F23.
+- **Tier mix (cards):** Tier 0: 1 (C431). Tier 1: 9 (C381, C386, C387, S4, P13, S5, S6, S7, F23). Tier 2: 9 (C367, C368, C369, C372, C374, C377, C378, C380, C382). Tier 3: 5 (C366, C370, C371, C373, C376). The last card has no tier.
+- **Issues:** 10 closed, each by its last card. Tier 0: #666. Tier 1: #517 and #637. Tier 2: #507, #509, #510, #565 and #572. Tier 3: #511 and #514. Three more Tier 1 issues got their boards here and close in Sprint 21: #660, #661 and #662.
+- **CI:** `ci` is green on `main` at 10ce4f3, the last code card's merge.
+- **Checks:**
+  - `grep -rn "InvalidFirstAdminError\|MultiUserNotAvailableError" src/routes/setup src/lib/server/identity/setup.ts` prints nothing. Setup's and the account forms' refusal tables are total `Record<RefusalCode, …>`; C373's PR shows the type error a code with no answer gives.
+  - `http-adapter.test.ts` holds the status-to-kind table, and `server.test.ts` shows one log line for a 401 and for each 400.
+  - `grep -n "indexOf" src/lib/server/runner/scripted-catalogue.ts` prints nothing.
+  - `entries.test.ts` passes, and `rules.test.ts` answers the most recent open Topic as current when the most recent one is Locked, and none when no open Topic has activity.
+  - `problem.e2e.ts` shows the rejected save in the live region, the failed save announced once across two retries, and focus on the Code tab after a Language switch that ends on another tab of the phone.
+  - The four greps over `compose.yaml`, `mvp1.md`, `board.md` and `docs/adr` print nothing.
+  - `docs/self-hosting.md` has a Runner troubleshooting section.
+  - The canvas (version 71) holds the dev-mode banner, the reference-run action, the starting-Language choice, the Settings row and the guide page, in light and dark, listed in `canvas.json`, and Foundations F.10 shows the admin's phone header with three links. **Not checked by eye:** no board was rendered, and the Foundations board grew by a height nobody computed, so its dark wrapper may clip until someone opens it.
+- **Release:** this card's merge carries `Release-As: 1.19.7`. The orchestrator then cuts 1.19.7 from release PR #655 and records the cut in `docs/releasing.md`.
+- **Reviews:**
+  - **The orchestrator's two-reader review** (Fable and Codex) on C366, C371, C372 and C373. C366, C371 and C373 passed first time. C372 went back once: the rewritten checklist had narrowed one rule and described some protections instead of requiring them.
+  - **`sandbox-security-reviewer`** on C378, C380, C381 and C431. C378 went back once for three small fixes (an unbounded read of an error answer, a stall classified as busy, and redirects followed by default). C431 went back once: its retry also covered failures that point at the content. The orchestrator checked the redirect fix on Bun 1.2.19, the production runtime, which the reviewer had not.
+  - **C376 was merged without the sandbox review its card named**, because its PR touched no Runner file: the Runner comment was already right on `main`. The orchestrator read its two comment lines.
+  - **The reviewer's first job under the rewritten checklist**, commit aae47f5: as committed it fails on the missing `ptrace` refusal, which 3b450ad had already fixed; `main` passes.
+- **Flakes:** four, none caused by a card.
+  - **The content check's container start timeout** failed `main` twice (40b1954 on 2026-11-11, 1fd8eef on 2026-11-14). The second made #666 Tier 0; C431 fixed it. Three `sandbox` runs on its head were green, with the content check at 11 to 16 minutes of a 30-minute job.
+  - **The 30-sign-ins test** timed out once on docs PR #672; re-run. It is #676, Tier 2. #555 had been closed for the same test.
+  - **The fork-bomb escape test's overrun** failed once on PR #674; re-run. A known flake.
+  - **None of #634 and #651** was seen again.
+- **Decisions and accepted changes from the cards:**
+  - **The tier system** (the maintainer, 2026-11-14, #665) is the planning format: every issue has a tier, sprints fill by tier, and the remaining rounds of this sprint were reordered so Tier 1 ran first.
+  - **A 2.5-day login outage** (2026-11-11 to 2026-11-14) stopped the session mid-sprint. C371 and C372 were resumed from their pushed branches and draft PRs; nothing was lost.
+  - **C366:** the first Admin's sign-up stays `createFirstAdmin` and shares the field check; it was not moved onto the account actions object, which has no Instance or database.
+  - **C371:** one edit outside its Files line, in `app.ts`, which imported the deleted error class.
+  - **C374:** `Progress.recentTopicId` became `recentTopicIds`, inside the card's files.
+  - **C378:** redirects use `redirect: 'manual'`, not `'error'`, so a redirect can be told from an unreachable Runner. Its PR said `Changelog: none`; the release notes give its log lines a bullet, since operators see them.
+  - **C380:** the Runner writes its lines with `console.error`, not `logFailure`, whose module would load Better Auth into the Runner.
+  - **C386:** it also clears the announcement when the Learner is signed out, which its second opinion found.
+  - **C431 and F23** were filed by the orchestrator and by the planner during the sprint; C431 without a planner run, as a Tier 0 fix.
+  - **Design boards:** on a short phone the dev-mode banner scrolls away with the header (S4); the starting-Language choice is its own page with no skip (S5); the guide link is second in the header, and the admin's phone header takes three links (S7, F23). Wording nobody decided is in brackets on the boards.
+  - **#643** (the error page's wording): the recommended table was taken; C430 is in Sprint 22.
+- **Filed during the sprint:** #660 to #663 (the maintainer's Tier 1 items), #666 (closed here), and to the Backlog #667, #676, #679 and #684, all Tier 2.
+- **Also merged, with no card:** the spine design doc is C388 of Content sprint 1 (#670); the tier plan (#665) and its small follow-up (#672).
+- **Waiting on the maintainer:**
+  - **The process reconfiguration:** draft PRs #673 (roles, agents, the hook, `board.md`) and #674 (the review gate). Neither is merged or labelled. Sprint 21 runs under whichever rules are on `main` when it starts.
+  - **#663:** nine questions on the spine doc, the first being whether the spine is "Parley". No Topic rewrite starts before the answer.
+  - **#660:** is dev mode allowed on a Multi-user Instance? A hard call; it blocks C389 and so all of Sprint 21's dev-mode code.
+  - **#661:** may the starting Language be a stored per-Learner value? A schema change; it blocks C397.
+  - **#647**, **#529**, **#535**, and the GitGuardian false positives 39252375, 39260283 and 39899211, as before.
+
 ## Sprint 21 · Dev mode, starting Language and the guide
 
 **Goal:** the maintainer's three app items ship: a dev mode that opens everything, runs any Problem's Reference Code and previews content from disk; a starting Language each Learner chooses before the first Problem and can change in Settings; and a short guide page linked from the header and from first run.
