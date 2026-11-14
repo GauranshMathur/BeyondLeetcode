@@ -14,27 +14,44 @@ Work can stop at any moment and resume from any machine with a local clone, so n
 - **The maintainer steers from the board.** Moving a card between columns or sprints, editing its body, or clearing its Owner takes effect on the next round; the orchestrator re-reads the board every round and caches nothing.
 - **One orchestrator at a time.** Any In Progress card whose worker is not running belongs to the next orchestrator to resume.
 
+## Tiers
+
+Every open issue has one tier (the maintainer's standing rule, 2026-11-14). The four tiers, as the maintainer wrote them:
+
+- Tier 0 critical fixes: bugs that hurt users, security problems, broken CI or release.
+- Tier 1 priority: the maintainer's new items, accessibility that blocks users, and anything that unblocks them.
+- Tier 2 normal work.
+- Tier 3 refactors and tidy-ups, drawn from only when a sprint has room.
+
+How they are used:
+
+1. **A tier is assigned at intake**, with a one-line reason, before the issue gets its ticket. The issue carries the label `tier-0`, `tier-1`, `tier-2` or `tier-3` (exactly one), and its ticket and every card cut from it carry the same value in the board's `Tier` field (Fields). A card takes its issue's tier.
+2. **Whoever files an issue proposes its tier.** That covers the architecture review (After a major feature), a worker's finding, a security reader and the orchestrator. The proposal and its reason go in the issue body; triage confirms or changes it.
+3. **A Tier 0 issue is pulled into the current sprint at once** (Issues are the unit of work, the exception). Tiers 1 to 3 wait for planning.
+4. **The planner fills each sprint strictly by tier**: every Tier 0 issue, then Tier 1, then Tier 2, and Tier 3 only when the sprint has room. Inside a tier it ranks by the maintainer's priorities (user-facing product quality and correctness first, then learning content, then hardening that blocks something, refactors last) and by value to the learner, risk (security, data loss, correctness), dependencies (what unblocks what) and effort. A dependency a planned card cannot be built without takes the tier of the card it unblocks: that is Tier 1's "anything that unblocks them".
+5. **The planner re-ranks** at the start of every sprint, and whenever a Tier 0 issue arrives. A Tier 3 card not yet started leaves a sprint that a higher tier needs room in, unless it is the next link of a chain already started.
+6. **Two tests for a tier:** an accessibility issue is Tier 1 only if it blocks users; a refactor is Tier 3. A flaky test that has failed on main once is Tier 2; twice, it is Tier 0.
+7. **Reports show the tiers.** Every round's report, every sprint's section in `docs/sprints.md` and every sprint's exit Status give the tier mix (cards per tier) and the issues closed per tier. `docs/sprints.md` holds the ranking table: every open issue with its tier, its reason and its sprint.
+
+The maintainer's own issues (the content reviews and the spec) have a tier too, so the ranking shows them; no agent starts them.
+
 ## Issues are the unit of work
 
 The maintainer's rule since 2026-11-10 (#591): every card belongs to an issue. That covers bugs, `architecture` findings, accessibility and docs findings, and enhancements. No finding is closed as `wontfix` because it is only a refactor: it stays an issue and waits in the Backlog (the maintainer's decision, 2026-11-11).
 
-1. **Intake.** Every open issue has a ticket on the board. Triage (`triage-labels.md`) ends by creating it:
-   - The ticket is a draft item titled `[#N] <the issue's title>`. Its body starts `From #N.` and has a `Refs #N` line. Its `Issue` field is N, its Status is **Backlog**, and it has no Sprint, Release or Owner.
-   - Each round, the orchestrator lists the open issues and creates the ticket of any that has none.
+1. **Intake.** Every open issue has a tier and a ticket on the board. Triage (`triage-labels.md`) assigns the tier first, with its one-line reason (Tiers), and ends by creating the ticket:
+   - The ticket is a draft item titled `[#N] <the issue's title>`. Its body starts `From #N.` and has a `Refs #N` line. Its `Issue` field is N, its `Tier` field is the issue's tier, its Status is **Backlog**, and it has no Sprint, Release or Owner.
+   - Each round, the orchestrator lists the open issues, gives a tier to any that has none, and creates the ticket of any that has none.
    - The content reviews (`ready-for-human`) and the MVP1 spec (#24) get a ticket too, so the board shows them. They are the maintainer's: no agent starts them, and they get no milestone and no cards.
    - An issue waiting on the maintainer keeps `needs-triage` or `needs-info`, and its ticket stays in the Backlog.
-2. **Work later.** A Backlog ticket is not started, and it does not change the sprint in progress. The `sprint-planner` pulls from the Backlog when it plans the next sprints (see Planning), by priority:
-   - first bugs and security problems, then what a planned card depends on, then everything else, oldest first;
-   - the maintainer can reorder the Backlog column, and the planner follows that order.
+2. **Work later.** A Backlog ticket of Tier 1, 2 or 3 is not started, and it does not change the sprint in progress. The `sprint-planner` pulls from the Backlog when it plans the next sprints (see Planning), strictly by tier (Tiers):
+   - first Tier 0, then Tier 1, then Tier 2, and Tier 3 only when a sprint has room; inside a tier by value and dependencies, then oldest first;
+   - the maintainer can reorder the Backlog column or change a tier, and the planner follows that.
 
    When the planner cuts an issue into cards, it archives the issue's Backlog ticket: the cards take its place. The issue then carries the GitHub milestone of the sprint whose card closes it. A milestone is named exactly like that sprint's Sprint option, for example `Sprint 18 · Submission, Runner and Identity seams`.
-3. **The exception: critical work joins the current sprint at once.** Critical means one of these:
-   - a bug that hurts users;
-   - a security problem;
-   - a broken CI or release;
-   - a dependency: something a planned card cannot be built without.
+3. **The exception: Tier 0 joins the current sprint at once.** Tier 0 is a bug that hurts users, a security problem, or a broken CI or release. So does a dependency: something a planned card of the current sprint cannot be built without (Tiers, "anything that unblocks them").
 
-   The orchestrator has the planner cut it into cards in the current sprint, and they run in the next round. Everything else waits for its sprint.
+   The orchestrator has the planner cut it into cards in the current sprint, and they run in the next round. The planner re-ranks the sprint when it does. Everything else waits for its sprint.
 4. **Cut into cards.** The `sprint-planner` cuts each issue into cards that say how it is done (see Planning). A card serves one issue. Where one change completes two, the card's `Issue` field holds the one it is mainly for, and its `Refs` line names both.
 5. **Link both ways.**
    - **The card.** The board's `Issue` field holds the issue number, and the body has a `Refs #N` line.
@@ -42,7 +59,7 @@ The maintainer's rule since 2026-11-10 (#591): every card belongs to an issue. T
    - **The issue.** It has one comment that starts `Cards:`. The comment lists the issue's cards in order, says which lanes they run in, and names the last card. The planner writes it. Whoever adds or splits a card edits that comment rather than adding another.
    - **The plan.** Each sprint's section in `docs/sprints.md` lists issue → cards.
 6. **Close.** An issue closes only when its last card merges. A PR that closes one early is a mistake: reopen the issue.
-7. **Count.** Every sprint report, and the sprint's exit check, counts issues closed as well as cards done.
+7. **Count.** Every sprint report, and the sprint's exit check, counts issues closed as well as cards done, and gives both per tier.
 
 The sprint's last card (`docs/releasing.md`, The last card) is the one card with no issue. Its `Issue` field is empty.
 
@@ -50,7 +67,7 @@ The sprint's last card (`docs/releasing.md`, The last card) is the one card with
 
 A title reads `[CODE] Area: what`. The prefix names the canvas page (`F`, `P`, `R`, `A`, `AD`, `AC`, `S`; see `design-canvas.md`). Code cards use `C`.
 
-A body has six parts, plus a `Batch:` line on a small card. The board's `Issue` field holds the issue number:
+A body has six parts, plus a `Batch:` line on a small card. The board's `Issue` field holds the issue number, and its `Tier` field the issue's tier:
 
 ```
 From #N. <what to change, 1–3 lines>
@@ -98,17 +115,19 @@ A card's PR title uses the type that matches what a user sees. The type is filed
 
 ## Planning
 
-The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, to plan the Backlog into sprints by priority (Issues are the unit of work, Work later), to cut a critical issue into the current sprint, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
+The orchestrator calls the `sprint-planner` agent (`.claude/agents/sprint-planner.md`) at the start of every sprint that has no plan, to plan the Backlog into sprints by tier (Tiers; Issues are the unit of work, Work later), to cut a Tier 0 issue into the current sprint, and for every card a worker or the orchestrator flags as too big. The planner checks its plan before filing it, and reports each result:
 
 - A sprint is one coherent theme drawn from the open issues, typically 12 to 25 cards, with testable exit criteria. Cards stay small; sprints are long.
 - Each card is one PR touching one area, and has a `Done when`.
 - Cards that share a file are an ordered chain in one lane, planned up front.
 - One Release per sprint: every card has its sprint's Release, whose version the planner picks now, and the sprint's last card carries `Release-As` (`docs/releasing.md`).
 
-- It plans issue first. For each issue it gives the sprint, the cards, their order, the lane conflicts, the risks and the acceptance check.
+- It plans issue first. For each issue it gives the tier, the sprint, the cards, their order, the lane conflicts, the risks and the acceptance check.
+- It fills each sprint strictly by tier and re-ranks at the start of every sprint (Tiers). Each sprint's section and its report give the tier mix.
+- A content sprint runs beside the app sprints, in the content session's clone (`blc-content`). It has a Sprint option (`Content sprint N · <Theme>`) and no Release of its own: its PRs ship in the app release open when they merge. Its cards do not count toward an app sprint's 25.
 
 It writes each sprint's section in `docs/sprints.md`, the Sprint option row in the Fields table, and, in `docs/releasing.md`, each sprint's Release option and its row in Planned releases, all through one plan PR that the orchestrator reviews and merges at green CI. It also does the following, and never claims or dispatches a card:
-- creates the cards with Status Todo, Sprint, Release and `Issue` set;
+- creates the cards with Status Todo, Sprint, Release, `Issue` and `Tier` set;
 - gives each issue its sprint's milestone;
 - writes each issue's `Cards:` comment.
 
@@ -128,10 +147,11 @@ A new Sprint option, or a new Release option `R vX.Y.Z: Sprint N · <Theme>`, is
 | Field | ID | Values |
 |---|---|---|
 | Status | `PVTSSF_lAHOAm0pms4Bk1LBzhjkTMw` | Backlog `7c82888f` (an issue's ticket, not started) · Todo `f75ad846` · In Progress `47fc9ee4` · Done `98236657` |
-| Sprint | `PVTSSF_lAHOAm0pms4Bk1LBzhjlFwI` | 0 `3ad2db80` · 1 `ec5cba1c` · 2 `9bd8950b` · 3 `bc546063` · 4 `42ff5017` · 5 `420a1181` · 6 `b06bc1b7` · 7 `0738df2b` · 8 `4f7b943d` · 9 `2d37a7f3` · 10 `c4925fcc` · 11 `2e87bf36` · 12 `5a6498ca` · 13 `7014a845` · 14 `ebb2e444` · 15 `2365b98c` · 16 `447f928f` · 17 `92c82f88` · 18 `3324fd3e` · 19 `49a0f9e3` · 20 `7234eeee` · 21 `38b5a7b2` · 22 `66687a0a` · 23 `ac674312` |
-| Release | `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY` | one per sprint, `R vX.Y.Z: Sprint N · <Theme>`: R v1.19.0: Sprint 13 · Foundations `5eb8b28c` · R v1.19.1: Sprint 14 · Identity `528cefdd` · R v1.19.2: Sprint 15 · Screens and phones `acb16cb6` · R v1.19.3: Sprint 16 · Languages and the Learning core `07c751bf` · R v1.19.4: Sprint 17 · Runner and CI hardening `ece5dfa8` · R v1.19.5: Sprint 18 · Submission, Runner and Identity seams `d6739981` · R v1.19.6: Sprint 19 · Accessibility `ba3b24a7` · R v1.19.7: Sprint 20 · Drifted rules and docs `41225006` · R v1.19.8: Sprint 21 · Unplanned `647d8bbc` · R v1.19.9: Sprint 22 · Unplanned `30fe09ec` · R v1.19.10: Sprint 23 · Unplanned `59e6d8b2` |
+| Sprint | `PVTSSF_lAHOAm0pms4Bk1LBzhjlFwI` | 0 `3ad2db80` · 1 `ec5cba1c` · 2 `9bd8950b` · 3 `bc546063` · 4 `42ff5017` · 5 `420a1181` · 6 `b06bc1b7` · 7 `0738df2b` · 8 `4f7b943d` · 9 `2d37a7f3` · 10 `c4925fcc` · 11 `2e87bf36` · 12 `5a6498ca` · 13 `7014a845` · 14 `ebb2e444` · 15 `2365b98c` · 16 `447f928f` · 17 `92c82f88` · 18 `3324fd3e` · 19 `49a0f9e3` · 20 `7234eeee` · 21 `38b5a7b2` · 22 `66687a0a` · 23 `ac674312` · Content sprint 1 `27f78971` · Content sprint 2 `233a8e34` · Content sprint 3 `d96d7444` |
+| Release | `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY` | one per sprint, `R vX.Y.Z: Sprint N · <Theme>`: R v1.19.0: Sprint 13 · Foundations `5eb8b28c` · R v1.19.1: Sprint 14 · Identity `528cefdd` · R v1.19.2: Sprint 15 · Screens and phones `acb16cb6` · R v1.19.3: Sprint 16 · Languages and the Learning core `07c751bf` · R v1.19.4: Sprint 17 · Runner and CI hardening `ece5dfa8` · R v1.19.5: Sprint 18 · Submission, Runner and Identity seams `d6739981` · R v1.19.6: Sprint 19 · Accessibility `ba3b24a7` · R v1.19.7: Sprint 20 · Drifted rules and docs `41225006` · R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide `647d8bbc` · R v1.20.1: Sprint 22 · Leftover bugs and CI gates `30fe09ec` · R v1.20.2: Sprint 23 · Unplanned `59e6d8b2` |
 | Owner | `PVTF_lAHOAm0pms4Bk1LBzhjlEXM` | text: the worker name holding the card |
 | Issue | `PVTF_lAHOAm0pms4Bk1LBzhpSyzM` | number: the issue the card is for (empty only on a sprint's last card) |
+| Tier | `PVTSSF_lAHOAm0pms4Bk1LBzhp4iHs` | Tier 0 `4e720436` · Tier 1 `6600b09c` · Tier 2 `46101eb8` · Tier 3 `5170231d` (the issue's tier, on its ticket and on every card; empty only on a sprint's last card) |
 
 Project ID `PVT_kwHOAm0pms4Bk1LB`, number `1`, owner `GauranshMathur`. What each sprint is for: `docs/sprints.md`.
 
@@ -140,7 +160,7 @@ Project ID `PVT_kwHOAm0pms4Bk1LB`, number `1`, owner `GauranshMathur`. What each
 gh project item-list 1 --owner GauranshMathur --limit 500 --format json \
   --jq '.items[] | select(.status=="Todo" and .sprint=="Sprint 1 · Design foundations") | {id, title, owner, body: .content.body}'
 
-# Set a single-select field (Status, Sprint or Release)
+# Set a single-select field (Status, Sprint, Release or Tier)
 gh project item-edit --project-id PVT_kwHOAm0pms4Bk1LB --id <item-id> \
   --field-id <field-id> --single-select-option-id <option-id>
 
@@ -222,10 +242,10 @@ When a worker cannot finish (a decision nobody has made, a missing Foundations p
 
 When a sprint's feature lands and is released, a separate Claude session runs `mattpocock-skills:improve-codebase-architecture` over what was built and writes a report (the maintainer's rule, 2026-11-08). The orchestrator never runs it itself.
 
-**Every finding is an issue** (the maintainer's decision, 2026-11-11, which replaces the 2026-11-10 rule that filed only bugs, security problems and blockers). The review may file freely. Given the report, the orchestrator:
+**Every finding is an issue** (the maintainer's decision, 2026-11-11, which replaces the 2026-11-10 rule that filed only bugs, security problems and blockers). The review may file freely, and proposes a tier with a one-line reason for each finding (Tiers). Given the report, the orchestrator:
 - compares each finding with the open and closed issues;
-- files what is missing, as `architecture` issues linking the files involved, and triages them;
+- files what is missing, as `architecture` issues linking the files involved, and triages them, tier included;
 - adds a finding that extends an open issue to that issue as a comment;
 - gives each new issue its Backlog ticket (Issues are the unit of work, Intake).
 
-A finding that is critical joins the current sprint (Issues are the unit of work, the exception). Every other finding waits in the Backlog for the planner. Nothing is closed as `wontfix` for being only a refactor.
+A Tier 0 finding joins the current sprint (Issues are the unit of work, the exception). Every other finding waits in the Backlog for the planner; a refactor is Tier 3. Nothing is closed as `wontfix` for being only a refactor.
