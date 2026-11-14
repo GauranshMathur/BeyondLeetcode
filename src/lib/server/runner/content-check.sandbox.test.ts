@@ -97,7 +97,8 @@ function cases(ids: string[]) {
 }
 
 describe('content check: the retry rule', () => {
-	const unavailable = () => new LearningError('RunnerUnavailable', undefined, new Error('start timed out'));
+	const unavailable = () =>
+		new LearningError('RunnerUnavailable', undefined, new Error('start timed out'));
 
 	it('runs a RunnerUnavailable case once more, says so, and returns the second result', async () => {
 		let calls = 0;
