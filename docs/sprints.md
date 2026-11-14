@@ -42,6 +42,7 @@ Every open issue, 72 in all: none in Tier 0, 6 in Tier 1, 34 in Tier 2 and 32 in
 | #640 Users: two Invites from the same day share one name, and an e2e cleanup cancels the first Invite it finds | 2 | An accessibility bug for the Admin (two Invites share a name) and a test that can cancel another test's Invite. | Sprint 22 |
 | #649 Editor: selected strings and numbers miss 4.5:1, and the canvas lacks the selection-match token | 2 | A contrast bug in one state (selected strings and numbers at 3.8:1); it does not block a Learner. | Sprint 22 |
 | #651 ci: .github/ci-gate.test.sh failed once in the lint job and passed on a re-run | 2 | A flaky CI script that has failed once, on a PR; a failure on main makes it Tier 0. | Sprint 22 |
+| #666 ci: the sandbox job's content check had a compile killed (status -9) once on main | 2 | A CI job that failed once on main for a cause outside the commit; a second failure makes it Tier 0. | Backlog |
 | #652 Problem screen at a short phone: an extra tab stop, the Solution editor's size, and a cross-component style | 2 | Three small Problem-screen leftovers at the short phone viewport. | Sprint 22 |
 | #529 Accessibility: an automated check in CI (axe, a new dependency, or a no-dependency contrast and landmark test) | 2 | Hardening: an automated accessibility check in CI; the axe dependency is the maintainer's call. | Waits on the maintainer |
 | #535 CI: replace the deprecated Tailscale authkey, and decide RELEASE_PAT or a GitHub App token | 2 | CI hardening: a deprecation warning and a shared rate limit, neither a broken release today; blocks C220, C221 and #570. | Waits on the maintainer |
@@ -68,7 +69,7 @@ Every open issue, 72 in all: none in Tier 0, 6 in Tier 1, 34 in Tier 2 and 32 in
 | #267 Content: Tries | 2 | Learning content: the human review of Tries; C423 rewrites the Topic first. | Backlog (the maintainer's) |
 | #268 Content: Two pointers | 2 | Learning content: the human review of Two pointers; C415 rewrites the Topic first. | Backlog (the maintainer's) |
 | #511 Docs: ADRs 0002, 0004 and 0006, and three code comments, point at moved docs or changed facts | 3 | Tidy-up: comment pointers; kept because C370 is Done and C376 is the chain's last link. | Sprint 20 |
-| #514 Architecture: the first admin's sign-up is a third copy of the sign-up field rules, and it has drifted | 3 | What is left is a refactor (one module for sign-up refusals); kept because C366 and C371 started the chain. | Sprint 20 |
+| #514 Architecture: the first admin's sign-up is a third copy of the sign-up field rules, and it has drifted | 3 | What is left is a refactor (one module for sign-up refusals); kept because C366 and C371 started the chain. | Sprint 20 (closed 2026-11-14 by C373) |
 | #508 Docs: module-map's Identity and Web rows predate Sprint 14, and it has no home for the Language list | 3 | Tidy-up: stale comments and module-map rows; moved out of Sprint 20, drawn into Sprint 22's room. | Sprint 22 |
 | #500 Architecture: the Problem screen's view module is tested, but the screen does not run it | 3 | Refactor: the Problem screen should run its tested view module; no Learner sees a difference. | Backlog |
 | #501 Architecture: Sign in, Sign up and Accept invite are three copies of one account-form screen | 3 | Refactor: three account-form screens become one; #514's screen half. | Backlog |
@@ -119,7 +120,7 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
 
 - **Tier mix: 23 cards.** Tier 1: 8 (C381, C386, C387, S4, P13, S5, S6, S7). Tier 2: 9 (C367, C368, C369, C372, C374, C377, C378, C380, C382). Tier 3: 5 (C366, C370, C371, C373, C376), each a link of a chain that had started. The last card, C383, has no tier. Tier 0: none.
 - **Issues: 9 closed here.** Tier 1: #517 and #637. Tier 2: #507, #509, #510, #565 and #572. Tier 3: #511 and #514. Three more Tier 1 issues get their boards here and close in Sprint 21: #660, #661 and #662.
-- **State on 2026-11-14.** Done: C366, C367, C368, C369, C370 and C371. In progress: C372 and C373. Todo: the rest.
+- **State on 2026-11-14.** Done: C366, C367, C368, C369, C370, C371 and C373 (#514 is closed). In progress: C372, in its two-reader review. Todo: the rest.
 - **What the re-rank changed.**
   - **In:** #637 (C386, C387), Tier 1; and the five boards of #660, #661 and #662 (S4, P13, S5, S6, S7), Tier 1.
   - **Out:** #508 (C375, C379), Tier 3 with no card started, to Sprint 22. C376 no longer shares a batch PR with C375.
@@ -168,7 +169,7 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
   |---|---|---|---|
   | 1 (done) | C366 field check (#514) | C367 + C368 + C369 + C370 (batch) | |
   | 2 | C371 Setup route (#514, done) | C372 sandbox reviewer (#510, in progress) | |
-  | 3 | C373 account forms (#514) | C374 current Topic (#572) | S4 dev banner (#660) |
+  | 3 | C373 account forms (#514, done) | C374 current Topic (#572) | S4 dev banner (#660) |
   | 4 | C376 comments (#511) | C377 Map entries (#572) | P13 reference run (#660) |
   | 5 | C378 adapter kinds (#565) | C386 save announcements (#637) | S5 Language choice (#661) |
   | 6 | C380 Runner logs (#565) | C387 phone focus (#637) | S6 Settings row (#661) |
