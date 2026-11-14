@@ -867,6 +867,44 @@ test.describe('the Problem on a phone, as a flow', () => {
 		).toContainText('solved');
 	});
 
+	// The Language picker lives on the Code tab. A switch that ends while another pane shows cannot focus the editor,
+	// so focus goes to the Code tab's control rather than nowhere.
+	test.describe('a Language switch that ends away from the Code tab', () => {
+		test.use({ storageState: asLearner('e2e-problem-switch') });
+
+		test('leaves focus on the Code tab, not the document', { tag: '@mobile' }, async ({ page }) => {
+			await gotoHydrated(page, '/problems/stacks-push');
+			await workspaceTab(page, 'Code').tap();
+			let release = () => {};
+			const held = new Promise<void>((done) => {
+				release = done;
+			});
+			await page.route('**/problems/stacks-push?/switchLanguage', async (route) => {
+				await held;
+				await route.continue();
+			});
+			try {
+				await page.getByLabel('build language').selectOption('typescript');
+				await page.getByRole('button', { name: 'Switch language' }).tap();
+				// The switch is still pending: the Learner moves to the Hints tab.
+				await workspaceTab(page, 'Problem').tap();
+				await page.getByRole('link', { name: 'Hints' }).tap();
+				await expect(page).toHaveURL('/problems/stacks-push?tab=hints');
+				release();
+				await expect(workspaceTab(page, 'Code')).toBeFocused();
+				await expect(workspaceTab(page, 'Problem')).toHaveAttribute('aria-pressed', 'true');
+				expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+			} finally {
+				release();
+				await page.unroute('**/problems/stacks-push?/switchLanguage');
+				await workspaceTab(page, 'Code').tap();
+				await page.getByLabel('build language').selectOption('python');
+				await page.getByRole('button', { name: 'Switch language' }).tap();
+				await expect(page.getByLabel('Code: main.py')).toBeVisible();
+			}
+		});
+	});
+
 	// A refused Run says why on the Tests tab, where the Learner already is.
 	test.describe('a refused Run', () => {
 		test.use({ storageState: asLearner('e2e-problem-refused') });

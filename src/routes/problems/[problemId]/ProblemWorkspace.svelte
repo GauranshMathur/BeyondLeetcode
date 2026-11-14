@@ -142,9 +142,14 @@ const allowed = $derived(may(session));
 let pickerEl = $state<HTMLSelectElement>();
 let restartTrigger = $state<HTMLButtonElement>();
 let editorSlot = $state<HTMLDivElement>();
+let tabbar = $state<HTMLElement>();
 
+// On a phone the editor is hidden while another pane shows, and a hidden element takes no focus. Focus then goes to the
+// Code tab's control, where the editor the Learner asked for lives, so the next Tab key starts from a known element.
 function focusEditor() {
 	editorSlot?.querySelector<HTMLElement>('.cm-content')?.focus();
+	if (editorSlot?.contains(document.activeElement)) return;
+	tabbar?.querySelector<HTMLElement>('[data-pane-tab="code"]')?.focus();
 }
 
 function cancelSwitch() {
@@ -308,9 +313,9 @@ const label: Record<SaveState, string> = {
 
 	<!-- Phones only: the same Run and Submit, above the tab bar. -->
 	<div class="actions strip">{@render runAndSubmit()}</div>
-	<nav class="tabbar mono" aria-label="Workspace">
+	<nav class="tabbar mono" aria-label="Workspace" bind:this={tabbar}>
 		{#each PANES as pane (pane)}
-			<button type="button" aria-pressed={view.pane === pane} onclick={() => onview({ ...view, pane })}>{NAMES[pane]}</button>
+			<button type="button" data-pane-tab={pane} aria-pressed={view.pane === pane} onclick={() => onview({ ...view, pane })}>{NAMES[pane]}</button>
 		{/each}
 	</nav>
 </div>
