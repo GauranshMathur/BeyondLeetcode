@@ -46,17 +46,20 @@ export async function loadProgress(
 		submissions.filter((s) => s.verdict === 'Accepted').map((s) => s.problemId)
 	);
 	const attempted = new Set(submissions.map((s) => s.problemId).filter((id) => !solved.has(id)));
-	const recentRead = reads[0];
-	const recentSubmission = submissions[0];
-	const recentTopicId =
-		recentSubmission && (!recentRead || recentSubmission.createdAt >= recentRead.readAt)
-			? recentSubmission.topicId
-			: recentRead && catalogue.chapter(recentRead.chapterId)?.topicId;
+	// Newest activity first; on a tie a Submission counts as newer than a read.
+	const activity = [
+		...submissions.map((s) => ({ topicId: s.topicId, at: s.createdAt, rank: 1 })),
+		...reads.flatMap((r) => {
+			const topicId = catalogue.chapter(r.chapterId)?.topicId;
+			return topicId ? [{ topicId, at: r.readAt, rank: 0 }] : [];
+		})
+	].sort((x, y) => y.at.getTime() - x.at.getTime() || y.rank - x.rank);
+	const recentTopicIds = [...new Set(activity.map((a) => a.topicId))];
 	return {
 		readChapters: new Set(reads.map((r) => r.chapterId)),
 		solvedProblems: solved,
 		attemptedProblems: attempted,
-		...(recentTopicId && { recentTopicId })
+		recentTopicIds
 	};
 }
 

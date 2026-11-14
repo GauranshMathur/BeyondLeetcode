@@ -12,8 +12,8 @@ export interface Progress {
 	readonly solvedProblems: ReadonlySet<string>;
 	/** Problems with a Submission but not yet Solved. */
 	readonly attemptedProblems: ReadonlySet<string>;
-	/** The Topic the Learner was last active in, if any. */
-	readonly recentTopicId?: string;
+	/** The Topics the Learner has been active in, most recent activity first, each once. */
+	readonly recentTopicIds: readonly string[];
 }
 
 export type TopicState = 'locked' | 'unlocked' | 'complete';
@@ -33,7 +33,10 @@ export interface MapTopic {
 export interface MapView {
 	/** In content order. */
 	readonly topics: readonly MapTopic[];
-	/** The Topic with the most recent activity; undefined when there is none. */
+	/**
+	 * The open (not Locked) Topic with the most recent activity; undefined when no open Topic has
+	 * any. A Topic a content upgrade has Locked is never current.
+	 */
 	readonly currentTopicId?: string;
 }
 
@@ -73,7 +76,9 @@ export function mapView(
 		};
 	});
 
-	return { topics, currentTopicId: progress.recentTopicId };
+	const open = new Set(topics.filter((t) => t.state !== 'locked').map((t) => t.id));
+	const currentTopicId = progress.recentTopicIds.find((id) => open.has(id));
+	return { topics, ...(currentTopicId && { currentTopicId }) };
 }
 
 export type ProblemStatus = 'Solved' | 'Attempted' | 'Untouched';
@@ -250,7 +255,10 @@ export function reachChapter(
 	const after: Progress = {
 		...before,
 		readChapters: new Set([...before.readChapters, chapterId]),
-		recentTopicId: chapter.topicId
+		recentTopicIds: [
+			chapter.topicId,
+			...before.recentTopicIds.filter((id) => id !== chapter.topicId)
+		]
 	};
 	const stateBefore = new Map(mapView(catalogue, before).topics.map((t) => [t.id, t.state]));
 	const topicsAfter = mapView(catalogue, after).topics;
