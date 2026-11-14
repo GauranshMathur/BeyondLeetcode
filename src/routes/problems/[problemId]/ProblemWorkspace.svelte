@@ -710,9 +710,6 @@ const label: Record<SaveState, string> = {
 		.page[data-tab='tests'] [data-pane='tests'] {
 			flex: none;
 		}
-		[data-pane='tests'] :global(.console) {
-			flex: none;
-		}
 		/* Six lines at least, then as tall as the code. The Solution's Reference Code takes the same sizing. */
 		.editor-slot,
 		.reference-slot {
