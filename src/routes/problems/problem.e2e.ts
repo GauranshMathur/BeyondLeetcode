@@ -848,6 +848,19 @@ test.describe('the Problem on a short phone', () => {
 		await expect.poll(() => stage(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 	});
 
+	test('with the Solution open, the Reference Code editor shows at least six lines', async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push?tab=solution');
+		await workspaceTab(page, 'Code').click();
+		const editor = await page.locator('.cm-editor:visible').boundingBox();
+		expect(editor?.height).toBeGreaterThanOrEqual(132);
+		// As tall as its code, so the stage scrolls it rather than the editor clipping it.
+		const content = await page.locator('.cm-content:visible').boundingBox();
+		expect(editor?.height).toBeGreaterThanOrEqual(content?.height ?? Infinity);
+		await expectNoSidewaysScroll(page);
+	});
+
 	test('the Code tab keeps an editor of at least six lines, and the Tests tab keeps its console', async ({
 		page
 	}) => {

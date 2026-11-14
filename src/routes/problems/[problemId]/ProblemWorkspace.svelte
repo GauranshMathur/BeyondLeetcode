@@ -258,7 +258,7 @@ const label: Record<SaveState, string> = {
 
 		<div class="pane">
 			{#if solution}
-				<div data-pane="code"><SolutionCode {solution} startLanguage={problem.build.language} /></div>
+				<div data-pane="code" class="reference-slot"><SolutionCode {solution} startLanguage={problem.build.language} /></div>
 			{/if}
 			<div class="build" class:off={solution !== undefined}>
 				<div data-pane="code">
@@ -713,14 +713,17 @@ const label: Record<SaveState, string> = {
 		[data-pane='tests'] :global(.console) {
 			flex: none;
 		}
-		/* Six lines at least, then as tall as the code. */
-		.editor-slot {
+		/* Six lines at least, then as tall as the code. The Solution's Reference Code takes the same sizing. */
+		.editor-slot,
+		.reference-slot {
 			--editor-min: 132px;
 		}
-		.editor-slot :global(.editor) {
+		.editor-slot :global(.editor),
+		.reference-slot :global(.editor) {
 			overflow: visible;
 		}
-		.editor-slot :global(.cm-editor) {
+		.editor-slot :global(.cm-editor),
+		.reference-slot :global(.cm-editor) {
 			height: auto;
 			min-height: 132px;
 		}
