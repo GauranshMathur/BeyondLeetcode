@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.19.7](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.6...v1.19.7) (2026-11-14)
+
+### Highlights
+
+Sprint 20 puts drifted rules back in one place and makes the operator's docs say what the code does. For Learners: a screen reader now says when a save is rejected, focus no longer gets lost on a phone after a Language switch, and the Map never offers "Continue" into a Locked Topic. For operators: the web and the Runner each log which kind of Runner failure happened, and the self-hosting guide has a troubleshooting section built on those lines.
+
+### Added
+
+Nothing new to use in this release.
+
+### Fixed
+
+- A screen reader now announces when a save is rejected, and announces a failing save once rather than on every retry. (C386, #669)
+- On a phone, focus no longer drops to the page after a Language switch or a restart when you are on another tab. (C387, #675)
+- The Map no longer offers a "Continue" link to a Topic that has become Locked. (C374, #678)
+- Sign up now answers a malformed request with a clear error instead of a server error. (C373, #664)
+- Setup now accepts an email address with spaces round it, as Sign up does. (C366, #656)
+- The `compose.yaml` that `init` writes passes `RUNNER_MAX_CONCURRENT` to the runner, so setting it in `.env` takes effect. (C367, #657)
+
+### Changed
+
+- The web's log now names which kind of Runner failure it saw: unreachable, unauthorized, refused, busy, not ready or failed. One line per failed call, with none of the request in it. (C378, #671)
+- The Runner's log now shows each refused request (wrong token, malformed request), without any of its content. (C380, #677)
+- Self-hosting guide: Runner first start, capacity and troubleshooting, and a corrected reset-admin-password note. (C382, #680)
+
+### Content
+
+No content changes in this release.
+
+### Security
+
+- The web no longer follows a redirect from the Runner's address, so a Submission's code and Test inputs are never sent anywhere but the configured Runner, and it reads only a small part of an error answer. (C378, #671)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.19.7` (or `latest`), then run `docker compose pull && docker compose up -d`.
+
+If your `compose.yaml` was written by an earlier version and you want to limit how many Runs execute at once, add the line `RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}` under the `runner` service's `environment`, and set the value in `.env`. The self-hosting guide's "How many runs at once" section has the details. Without the line the Runner keeps its default, one Run per CPU.
+
 ## [1.19.6](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.5...v1.19.6) (2026-11-11)
 
 ### Highlights
