@@ -113,8 +113,8 @@ jobs:
 
   sandbox:
     runs-on: ubuntu-24.04
-    # About 7 minutes with seven Topics, the content check being 3 of them (it runs its cases four at a
-    # time, vitest.sandbox.config.ts). 30 leaves room for the Topics still to come.
+    # About 7 minutes with seven Topics, the content check being 3 of them (it runs its cases two at a
+    # time on CI, vitest.sandbox.config.ts). 30 leaves room for the Topics still to come.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -133,6 +133,9 @@ jobs:
         run: bunx vitest run --config vitest.sandbox.config.ts src/lib/server/runner/content-check.sandbox.test.ts
         env:
           CONTENT_DIR: content
+          # Two cases at once on this two-CPU runner: four at once starved the Docker daemon, and a
+          # container start timed out on both failed runs.
+          SANDBOX_CONCURRENCY: 2
 
   # The Sandbox image names, read from config.ts (the one place they are listed): a JSON array like
   # ["node","go"] for the matrix of publish-sandbox.
