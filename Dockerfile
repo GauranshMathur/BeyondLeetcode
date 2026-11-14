@@ -1,4 +1,4 @@
-# One image, two roles (ADR 0004): `docker run <image> web|runner`. See docker-entrypoint.sh.
+# One image, four roles (ADR 0004): `docker run <image> web|runner|init|reset-admin-password`. See docker-entrypoint.sh.
 ARG BUN_VERSION=1.2.19
 # The build stage only. SvelteKit 3 forks workers that end with process.exit(), and on Bun before 1.3.13 that ends the
 # whole process: `bun run build` exits 0 after "Analysing routes" without writing build/ (tested through 1.3.12). The
