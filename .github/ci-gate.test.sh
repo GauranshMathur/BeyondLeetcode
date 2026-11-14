@@ -101,4 +101,28 @@ run() {
   FIND_BUDGET=0 MAXSECS=1 run "zero discovery budget exits at once" 1 7 "$(jobs $all_ok)"
   TIMEOUT=1 run "deadline expires while a job is pending" 1 7 "$(jobs ${all_ok/docker:completed:success/docker:queued:})"
 }
+# The test jobs are listed twice: publish-edge's `needs` in ci.yml (what gates `edge`) and the gate's
+# default JOBS (what gates a release). A job added to one list alone would be waited for by one and
+# ignored by the other, so the two lists must name the same jobs. CI_YML points the check at a copy.
+ci_yml="${CI_YML:-$here/workflows/ci.yml}"
+edge_needs="$(awk '
+  /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { in_job = ($1 == "publish-edge:") }
+  in_job && /^    needs:/ { print; exit }' "$ci_yml")"
+gate_jobs="$(sed -n 's/^JOBS="${CI_GATE_JOBS:-\(.*\)}"$/\1/p' "$here/ci-gate.sh")"
+if ! [[ "$edge_needs" =~ ^[[:space:]]*needs:[[:space:]]*\[([^]]*)\][[:space:]]*$ ]]; then
+  echo "FAIL job lists: publish-edge's needs in ci.yml is not a one-line [a, b] list: '$edge_needs'"; fail=1
+elif [ -z "$gate_jobs" ]; then
+  echo "FAIL job lists: no default JOBS line found in ci-gate.sh"; fail=1
+else
+  edge_sorted="$(tr ', ' '\n\n' <<<"${BASH_REMATCH[1]}" | grep . | sort)"
+  gate_sorted="$(tr ' ' '\n' <<<"$gate_jobs" | grep . | sort)"
+  if [ "$edge_sorted" = "$gate_sorted" ]; then
+    echo "ok   ci-gate.sh JOBS match publish-edge's needs in ci.yml"
+  else
+    echo "FAIL job lists differ: ci-gate.sh JOBS and publish-edge's needs in ci.yml must name the same jobs"
+    echo "  in publish-edge needs only (the release gate would not wait for them): $(comm -23 <(echo "$edge_sorted") <(echo "$gate_sorted") | tr '\n' ' ')"
+    echo "  in ci-gate.sh JOBS only (publish-edge would not wait for them): $(comm -13 <(echo "$edge_sorted") <(echo "$gate_sorted") | tr '\n' ' ')"
+    fail=1
+  fi
+fi
 exit $fail
