@@ -3,7 +3,7 @@ import type { App } from '../app.ts';
 import type { Db } from '../db.ts';
 import { createHandle } from '../handle.ts';
 import { createInstance } from '../instance.ts';
-import { createFileTestDb } from '../test-db.ts';
+import { createFileTestDb, createTestDb } from '../test-db.ts';
 import { type AdmitSignUp, type CreateAuthOptions, createAuth } from './auth.ts';
 import { createIdentity, createLocalIdentity } from './index.ts';
 import { createMultiUserInstance, type MultiUserInstanceOptions } from './multi-user-instance.ts';
@@ -103,6 +103,8 @@ export type TestInstanceOptions = {
 	providerEnv?: MultiUserInstanceOptions['providerEnv'];
 	/** Turns on the e2e Learner cookie of the Local adapter. */
 	testLearnerCookie?: boolean;
+	/** `'file'` (the default) gives each transaction its own connection, as production does; `'memory'` is much cheaper. */
+	database?: 'file' | 'memory';
 };
 
 /**
@@ -115,9 +117,10 @@ export async function createTestInstance({
 	hasher = 'fast',
 	origin = TEST_ORIGIN,
 	providerEnv = {},
-	testLearnerCookie
+	testLearnerCookie,
+	database = 'file'
 }: TestInstanceOptions = {}) {
-	const db: Db = await createFileTestDb();
+	const db: Db = database === 'memory' ? await createTestDb() : await createFileTestDb();
 	const instance = await createInstance(db);
 	// Held open only while a helper makes a Learner's Account, whatever the Registration Mode says.
 	let forcing = false;
