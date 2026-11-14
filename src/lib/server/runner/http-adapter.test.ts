@@ -76,6 +76,75 @@ describe('HTTP runner adapter failures', () => {
 		expect(lines).toEqual(['runner RunnerUnreachable']);
 	});
 
+	it('classifies a 503 by its first bytes and does not read a body that never ends', async () => {
+		let sent = 0;
+		server = createServer((_req, res) => {
+			res.writeHead(503, { 'Content-Type': 'application/json' });
+			const timer = setInterval(() => {
+				sent += 4096;
+				res.write('x'.repeat(4096));
+			}, 1);
+			res.on('close', () => clearInterval(timer));
+		});
+		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+		const { port } = server.address() as { port: number };
+
+		const lines = await loggedFor(`http://127.0.0.1:${port}`);
+		expect(lines).toEqual(['runner RunnerBusy']);
+		expect(sent).toBeLessThan(1024 * 1024);
+	});
+
+	it('finds "not ready" in the start of a large 503 body', async () => {
+		const body = `{"error":"Runner is not ready"}${' '.repeat(100_000)}`;
+		expect(await loggedFor(await runnerAnswering(503, body))).toEqual(['runner RunnerNotReady']);
+	});
+
+	/** A Runner that sends its status line and headers, then goes quiet until the adapter gives up. */
+	async function stalledAfterHeaders(status: number): Promise<string> {
+		const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+		vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => realTimeout(150));
+		server = createServer((_req, res) => {
+			res.writeHead(status, { 'Content-Type': 'application/json' });
+			res.write(status === 200 ? '{"results":' : '{"error":"Runner');
+		});
+		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+		const { port } = server.address() as { port: number };
+		return `http://127.0.0.1:${port}`;
+	}
+
+	it('calls a Runner that stalls while sending a 503 body unreachable, not busy', async () => {
+		expect(await loggedFor(await stalledAfterHeaders(503))).toEqual(['runner RunnerUnreachable']);
+	});
+
+	it('calls a Runner that stalls while sending a 200 body unreachable, not failed', async () => {
+		expect(await loggedFor(await stalledAfterHeaders(200))).toEqual(['runner RunnerUnreachable']);
+	});
+
+	it('does not follow a redirect, and logs one failed line', async () => {
+		let targetHits = 0;
+		const target = createServer((_req, res) => {
+			targetHits++;
+			res.end('{}');
+		});
+		await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+		const targetPort = (target.address() as { port: number }).port;
+		try {
+			for (const status of [307, 308]) {
+				server = createServer((_req, res) => {
+					res.writeHead(status, { Location: `http://127.0.0.1:${targetPort}/execute` }).end();
+				});
+				await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+				const { port } = server.address() as { port: number };
+				expect(await loggedFor(`http://127.0.0.1:${port}`)).toEqual(['runner RunnerFailed']);
+				server.close();
+				vi.restoreAllMocks();
+			}
+			expect(targetHits).toBe(0);
+		} finally {
+			target.close();
+		}
+	});
+
 	it('still rejects with the status, so a caller can tell a Runner answer', async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 		await expect(run(await runnerAnswering(503, '{}'))).rejects.toThrow(/503/);

@@ -52,22 +52,49 @@ class RunnerFailure extends Error {
 	}
 }
 
+/** The most of a 503's body that is read: enough for the Runner's `error` text, not for whatever else may answer. */
+const MAX_STATUS_TEXT_BYTES = 1024;
+
+/** The adapter's own timeout (or an abort) fired: a Runner that went quiet, not one that answered. */
+function isStall(error: unknown): boolean {
+	return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+}
+
+/** The first `MAX_STATUS_TEXT_BYTES` of a body as text, the rest left unread and cancelled. A stall rejects. */
+async function readStatusText(response: Response): Promise<string> {
+	const reader = response.body?.getReader();
+	if (!reader) return '';
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		while (total < MAX_STATUS_TEXT_BYTES) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			chunks.push(value);
+			total += value.byteLength;
+		}
+	} catch (error) {
+		if (isStall(error)) throw error;
+	} finally {
+		await reader.cancel().catch(() => {});
+	}
+	return Buffer.concat(chunks).subarray(0, MAX_STATUS_TEXT_BYTES).toString('utf8');
+}
+
 /**
  * The kind for a non-2xx answer. 401 is a wrong `RUNNER_TOKEN`, 400 a request the Runner refused, 503 a
- * busy or not-ready Runner (told apart by its `error` text, read here and never logged); anything else, which
- * the Runner does not send today, is a failure.
+ * busy or not-ready Runner (told apart by the start of its `error` text, read here and never logged); anything
+ * else, a redirect included, which the Runner does not send today, is a failure.
  */
 async function kindOfStatus(response: Response): Promise<RunnerFailureKind> {
-	if (response.status === 401 || response.status === 400) {
-		await response.body?.cancel().catch(() => {});
-		return response.status === 401 ? 'unauthorized' : 'refused';
-	}
 	if (response.status === 503) {
-		const text = await response.text().catch(() => '');
+		const text = await readStatusText(response);
 		return text.includes('not ready') ? 'notReady' : 'busy';
 	}
 	// An unread body would hold the connection open.
 	await response.body?.cancel().catch(() => {});
+	if (response.status === 401) return 'unauthorized';
+	if (response.status === 400) return 'refused';
 	return 'failed';
 }
 
@@ -86,12 +113,15 @@ export function createHttpRunner(options: { url: string; token: string }): Runne
 						Authorization: `Bearer ${options.token}`
 					},
 					body: JSON.stringify(request),
+					// A redirect is never followed: it would send the Build and the Tests to wherever it points.
+					redirect: 'manual',
 					signal: AbortSignal.timeout(sandboxConfig.adapterTimeoutMs)
 				});
 				if (response.ok) {
 					try {
 						return executeResultSchema.parse(await response.json());
-					} catch {
+					} catch (error) {
+						if (isStall(error)) throw error;
 						kind = 'failed';
 					}
 				} else {
