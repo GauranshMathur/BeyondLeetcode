@@ -11,7 +11,15 @@ import { page } from '$app/state';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
 import { afterOutcome, PANES, type ViewState } from './view';
-import { begin, type Event, may, type Request, type SaveState, transition } from './workspace';
+import {
+	announcement,
+	begin,
+	type Event,
+	may,
+	type Request,
+	type SaveState,
+	transition
+} from './workspace';
 
 let {
 	problem,
@@ -203,8 +211,8 @@ const label: Record<SaveState, string> = {
 {#snippet saveNotice(part: 'status' | 'signedOut')}
 	{#if part === 'status'}
 		<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'}>{label[session.save]}</span>
-		<!-- Saved, edited and saving change at every pause in typing, so they stay out of the live region. A signed-out Learner is told by the alert below. -->
-		<span class="live" role="status">{session.save === 'failed' || session.save === 'conflict' ? label[session.save] : ''}</span>
+		<!-- Saved, edited and saving change at every pause in typing, so they stay out of the live region; a failure stays in it through the retries, so it is read once. A signed-out Learner is told by the alert below. -->
+		<span class="live" role="status">{announcement(session) ? label[announcement(session)!] : ''}</span>
 	{:else if session.save === 'signedOut'}
 		<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
 	{/if}

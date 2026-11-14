@@ -69,6 +69,49 @@ test('a failed save is announced', async ({ page }) => {
 	await expect(saveAnnouncement(page)).toHaveText('not saved · retrying');
 });
 
+test('a rejected save is announced', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?/save', (route) =>
+		route.fulfill({
+			status: 400,
+			contentType: 'application/json',
+			body: JSON.stringify({ type: 'error', status: 400, error: { message: 'InvalidBuild' } })
+		})
+	);
+	await gotoHydrated(page, '/problems/stacks-pop');
+	await typeInEditor(page, '# refused');
+	await expect(saveStatus(page)).toHaveText('not saved — this code cannot be stored');
+	await expect(saveAnnouncement(page)).toHaveText('not saved — this code cannot be stored');
+});
+
+test('a failing save is announced once, not on every retry', async ({ page }) => {
+	let attempts = 0;
+	await page.route('**/problems/stacks-pop?/save', (route) => {
+		attempts += 1;
+		return route.abort();
+	});
+	await gotoHydrated(page, '/problems/stacks-pop');
+	// Record every text the live regions take, so a repeat of the same words shows as a second entry.
+	await page.evaluate(() => {
+		const seen: string[][] = [];
+		for (const [index, region] of document.querySelectorAll('.live').entries()) {
+			seen[index] = [];
+			new MutationObserver(() => {
+				const text = region.textContent ?? '';
+				if (seen[index].at(-1) !== text) seen[index].push(text);
+			}).observe(region, { childList: true, characterData: true, subtree: true });
+		}
+		(window as unknown as { seen: string[][] }).seen = seen;
+	});
+	await typeInEditor(page, '# offline');
+	await expect(saveAnnouncement(page)).toHaveText('not saved · retrying');
+	// Two more failed retries, one every five seconds.
+	await expect.poll(() => attempts, { timeout: 30_000 }).toBeGreaterThanOrEqual(3);
+	await expect(saveAnnouncement(page)).toHaveText('not saved · retrying');
+	const seen = await page.evaluate(() => (window as unknown as { seen: string[][] }).seen);
+	// The screen renders the notice twice (one is hidden by the layout); each copy took the text once.
+	for (const texts of seen) expect(texts).toEqual(['not saved · retrying']);
+});
+
 test('signed out while saving is announced by the alert, not the status', async ({ page }) => {
 	await page.route('**/problems/stacks-pop?/save', (route) =>
 		route.fulfill({
