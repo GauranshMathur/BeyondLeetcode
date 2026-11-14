@@ -103,26 +103,91 @@ run() {
 }
 # The test jobs are listed twice: publish-edge's `needs` in ci.yml (what gates `edge`) and the gate's
 # default JOBS (what gates a release). A job added to one list alone would be waited for by one and
-# ignored by the other, so the two lists must name the same jobs. CI_YML points the check at a copy.
-ci_yml="${CI_YML:-$here/workflows/ci.yml}"
-edge_needs="$(awk '
-  /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { in_job = ($1 == "publish-edge:") }
-  in_job && /^    needs:/ { print; exit }' "$ci_yml")"
-gate_jobs="$(sed -n 's/^JOBS="${CI_GATE_JOBS:-\(.*\)}"$/\1/p' "$here/ci-gate.sh")"
-if ! [[ "$edge_needs" =~ ^[[:space:]]*needs:[[:space:]]*\[([^]]*)\][[:space:]]*$ ]]; then
-  echo "FAIL job lists: publish-edge's needs in ci.yml is not a one-line [a, b] list: '$edge_needs'"; fail=1
-elif [ -z "$gate_jobs" ]; then
-  echo "FAIL job lists: no default JOBS line found in ci-gate.sh"; fail=1
-else
-  edge_sorted="$(tr ',' '\n' <<<"${BASH_REMATCH[1]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep . | sort)"
-  gate_sorted="$(tr ' ' '\n' <<<"$gate_jobs" | grep . | sort)"
-  if [ "$edge_sorted" = "$gate_sorted" ]; then
-    echo "ok   ci-gate.sh JOBS match publish-edge's needs in ci.yml"
+# ignored by the other, so the two lists must name the same jobs. The check fails closed: in the
+# `jobs:` section any line indented by exactly two spaces that is not a comment is a job header, and
+# one the check cannot read (a quoted key, say) fails it, because it could hide where publish-edge ends.
+
+# check_job_lists <ci.yml> <label>: prints one "ok" or "FAIL" line (and sets fail) for the label.
+check_job_lists() {
+  local yml="$1" label="$2" scan edge_needs n_edge n_needs bad gate_jobs edge_sorted gate_sorted
+  scan="$(awk '
+    /^jobs:[[:space:]]*(#.*)?$/ { in_jobs = 1; next }
+    /^[^ #]/ { in_jobs = 0 }
+    in_jobs && /^  [^ #]/ {
+      in_edge = 0
+      if ($0 ~ /^  publish-edge:[[:space:]]*(#.*)?$/) { in_edge = 1; print "EDGE" }
+      else if ($0 !~ /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/) print "BAD " $0
+      next
+    }
+    in_edge && /^    needs:/ { print "NEEDS " $0 }' "$yml")"
+  bad="$(grep '^BAD ' <<<"$scan" | head -1)"
+  n_edge="$(grep -c '^EDGE$' <<<"$scan")"
+  edge_needs="$(grep '^NEEDS ' <<<"$scan" | sed 's/^NEEDS //')"
+  n_needs="$(grep -c '^NEEDS ' <<<"$scan")"
+  gate_jobs="$(sed -n 's/^JOBS="${CI_GATE_JOBS:-\(.*\)}"$/\1/p' "$here/ci-gate.sh")"
+  if [ -n "$bad" ]; then
+    echo "FAIL $label: a job header in ci.yml cannot be read, so publish-edge's end is unknown: '${bad#BAD }'"; fail=1
+  elif [ "$n_edge" != 1 ]; then
+    echo "FAIL $label: ci.yml has $n_edge publish-edge jobs, want exactly 1"; fail=1
+  elif [ "$n_needs" != 1 ]; then
+    echo "FAIL $label: publish-edge has $n_needs needs lines, want exactly 1"; fail=1
+  elif ! [[ "$edge_needs" =~ ^[[:space:]]*needs:[[:space:]]*\[([^]]*)\][[:space:]]*$ ]]; then
+    echo "FAIL $label: publish-edge's needs in ci.yml is not a one-line [a, b] list: '$edge_needs'"; fail=1
+  elif [ -z "$gate_jobs" ]; then
+    echo "FAIL $label: no default JOBS line found in ci-gate.sh"; fail=1
   else
-    echo "FAIL job lists differ: ci-gate.sh JOBS and publish-edge's needs in ci.yml must name the same jobs"
-    echo "  in publish-edge needs only (the release gate would not wait for them): $(comm -23 <(echo "$edge_sorted") <(echo "$gate_sorted") | tr '\n' ' ')"
-    echo "  in ci-gate.sh JOBS only (publish-edge would not wait for them): $(comm -13 <(echo "$edge_sorted") <(echo "$gate_sorted") | tr '\n' ' ')"
-    fail=1
+    edge_sorted="$(tr ',' '\n' <<<"${BASH_REMATCH[1]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep . | sort)"
+    gate_sorted="$(tr ' ' '\n' <<<"$gate_jobs" | grep . | sort)"
+    if [ "$edge_sorted" = "$gate_sorted" ]; then
+      echo "ok   $label"
+    else
+      echo "FAIL $label: ci-gate.sh JOBS and publish-edge's needs in ci.yml must name the same jobs"
+      echo "  in publish-edge needs only (the release gate would not wait for them): $(comm -23 <(echo "$edge_sorted") <(echo "$gate_sorted") | tr '\n' ' ')"
+      echo "  in ci-gate.sh JOBS only (publish-edge would not wait for them): $(comm -13 <(echo "$edge_sorted") <(echo "$gate_sorted") | tr '\n' ' ')"
+      fail=1
+    fi
   fi
+}
+
+# expect_fail_lists <name> <ci.yml>: the check must report a FAIL for this copy; its own failure is
+# not counted against the run.
+expect_fail_lists() {
+  local out saved=$fail
+  out="$(check_job_lists "$2" "$1")"
+  fail=$saved
+  if grep -q "^FAIL $1" <<<"$out"; then echo "ok   $1 (fails as it should)"
+  else echo "FAIL $1: the check did not fail on this copy"; echo "$out"; fail=1; fi
+}
+
+# CI_YML points the real check at a copy when a person runs the test by hand; under CI it is
+# ignored, so a run there always checks the repository's own workflow.
+ci_yml="$here/workflows/ci.yml"
+if [ -z "${GITHUB_ACTIONS-}${CI-}" ]; then ci_yml="${CI_YML:-$ci_yml}"; fi
+check_job_lists "$ci_yml" "ci-gate.sh JOBS match publish-edge's needs in ci.yml"
+
+# Regression copies: each is a ci.yml that earlier versions of the check read as matching.
+real_needs="$(grep -m1 '^    needs: \[typecheck, lint, unit, build, e2e, sandbox, docker\]$' "$here/workflows/ci.yml")"
+if [ -z "$real_needs" ]; then
+  echo "FAIL job lists: publish-edge's needs line in ci.yml no longer has the shape the regression copies expect"; fail=1
+else
+  mkdir "$work/yml"
+  head='jobs:
+  first:
+    runs-on: x
+  publish-edge:
+    if: true'
+  list="    needs: [typecheck, lint, unit, build, e2e, sandbox, docker]"
+  printf '%s\n%s\n' "$head" "$list" >"$work/yml/real.yml"
+  printf '%s\n  later-job: # x\n%s\n' "$head" "$list" >"$work/yml/comment-header.yml"
+  printf '%s\n  "later-job":\n%s\n' "$head" "$list" >"$work/yml/quoted-header.yml"
+  printf '%s\n%s\n%s\n' "$head" "$list" "    needs: [first]" >"$work/yml/two-needs.yml"
+  printf '%s\n' "$head" >"$work/yml/no-needs.yml"
+  printf '%s\n%s\n  publish-edge:\n%s\n' "$head" "$list" "$list" >"$work/yml/two-jobs.yml"
+  check_job_lists "$work/yml/real.yml" "scratch copy shaped like ci.yml passes"
+  expect_fail_lists "publish-edge without needs, a later job with a comment on its header" "$work/yml/comment-header.yml"
+  expect_fail_lists "publish-edge without needs, a later job with a quoted header" "$work/yml/quoted-header.yml"
+  expect_fail_lists "publish-edge with two needs lines" "$work/yml/two-needs.yml"
+  expect_fail_lists "publish-edge with no needs line" "$work/yml/no-needs.yml"
+  expect_fail_lists "two publish-edge jobs" "$work/yml/two-jobs.yml"
 fi
 exit $fail
