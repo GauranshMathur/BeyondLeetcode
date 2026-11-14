@@ -113,9 +113,13 @@ jobs:
 
   sandbox:
     runs-on: ubuntu-24.04
-    # About 7 minutes with seven Topics, the content check being 3 of them (it runs its cases two at a
-    # time on CI, vitest.sandbox.config.ts). 30 leaves room for the Topics still to come.
+    # The content check alone took 11 min 0 s, 16 min 13 s and 11 min 22 s on three runs, so the job is well
+    # over 11 minutes, not the 7 an earlier count said. Both test steps run two cases at once (the env below):
+    # this runner has two CPUs, and four at once starved the Docker daemon. The limit stays at 30. When this job
+    # passes 20 minutes on main, split the content check into a job of its own; do not raise the limit.
     timeout-minutes: 30
+    env:
+      SANDBOX_CONCURRENCY: 2
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -133,9 +137,6 @@ jobs:
         run: bunx vitest run --config vitest.sandbox.config.ts src/lib/server/runner/content-check.sandbox.test.ts
         env:
           CONTENT_DIR: content
-          # Two cases at once on this two-CPU runner: four at once starved the Docker daemon, and a
-          # container start timed out on both failed runs.
-          SANDBOX_CONCURRENCY: 2
 
   # The Sandbox image names, read from config.ts (the one place they are listed): a JSON array like
   # ["node","go"] for the matrix of publish-sandbox.
