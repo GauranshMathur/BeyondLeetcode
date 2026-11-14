@@ -1,0 +1,36 @@
+name: gate
+
+# The review gate (docs/agents/board.md, Review tiers and the gate): a pull request needs the labels
+# its changed files need. It runs again whenever a label is added or removed.
+#
+# `pull_request_target` on purpose: the job then runs this workflow and the script from the base
+# branch, never from the pull request, so a pull request cannot change its own gate. The job checks
+# out no pull request code and runs none of it. It only reads the list of changed files, the
+# labels and who applied one, through the API.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # The base branch: with pull_request_target, checkout's default ref is the base, not the pull request.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check the labels the changed files need
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: .github/review-gate.sh "$PR"
