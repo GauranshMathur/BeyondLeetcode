@@ -103,40 +103,71 @@ run() {
 }
 # The test jobs are listed twice: publish-edge's `needs` in ci.yml (what gates `edge`) and the gate's
 # default JOBS (what gates a release). A job added to one list alone would be waited for by one and
-# ignored by the other, so the two lists must name the same jobs. The check fails closed: in the
-# `jobs:` section any line indented by exactly two spaces that is not a comment is a job header, and
-# one the check cannot read (a quoted key, say) fails it, because it could hide where publish-edge ends.
+# ignored by the other, so the two lists must name the same jobs.
+#
+# Reading YAML line by line cannot be made complete, so ci.yml is held to a restricted syntax and
+# anything else fails closed, as .github/check-pins.sh does for `uses`:
+#   - a line where `needs` appears as a word (not followed by `.`, as in a ${{ needs.x }} expression,
+#     and not on a full-line comment) must be exactly `    needs: [a, b]` or `    needs: a`, four
+#     spaces, optional trailing `# comment`, and sit under a plain two-space job header `  id:`
+#     inside `jobs:`, the nearest line above it with two or fewer spaces of indent;
+#   - inside `jobs:` an indent of one or three spaces, a tab, an anchor or alias, a `? ` complex key
+#     and a quoted key at job or job-field level fail;
+#   - a job header other than the plain form fails;
+#   - exactly one publish-edge job, with exactly one `needs`.
+# A line the check cannot read is reported, so odd YAML can never make it pass by accident.
 
 # check_job_lists <ci.yml> <label>: prints one "ok" or "FAIL" line (and sets fail) for the label.
 check_job_lists() {
-  local yml="$1" label="$2" scan edge_needs n_edge n_needs bad gate_jobs edge_sorted gate_sorted
+  local yml="$1" label="$2" scan edge_needs n_edge n_needs bad gate_jobs edge_sorted gate_sorted value
   scan="$(awk '
-    /^jobs:[[:space:]]*(#.*)?$/ { in_jobs = 1; next }
-    /^[^ #]/ { in_jobs = 0 }
-    in_jobs && /^  [^ #]/ {
-      in_edge = 0
-      if ($0 ~ /^  publish-edge:[[:space:]]*(#.*)?$/) { in_edge = 1; print "EDGE" }
-      else if ($0 !~ /^  [A-Za-z0-9_-]+:[[:space:]]*(#.*)?$/) print "BAD " $0
-      next
-    }
-    in_edge && /^    needs:/ { print "NEEDS " $0 }' "$yml")"
+    function bad(why) { print "BAD " why ": " $0 }
+    /^[ ]*$/ { next }
+    /^[ ]*#/ { next }
+    {
+      match($0, /^[ ]*/); indent = RLENGTH
+      if ($0 ~ /\t/) { bad("tab"); next }
+      if (indent == 0) {
+        in_jobs = ($0 ~ /^jobs:[ ]*(#.*)?$/)
+        last_job = ""
+        next
+      }
+      if (indent <= 2) {
+        last_job = ""
+        if (in_jobs && indent == 2) {
+          if ($0 ~ /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/) {
+            last_job = $0; sub(/^  /, "", last_job); sub(/:.*$/, "", last_job)
+            if (last_job == "publish-edge") print "EDGE"
+          } else { bad("job header is not the plain form"); next }
+        }
+      }
+      if (in_jobs) {
+        if (indent == 1 || indent == 3) bad("odd indent in jobs")
+        if (indent <= 4) {
+          if ($0 ~ /^[ ]*(- +)?["\047]/ || $0 ~ /^[ ]*\? / || $0 ~ /(^|[ :\[{,])&[A-Za-z0-9_-]/ || $0 ~ /(: |- )\*[A-Za-z0-9_-]/) bad("quoted key, complex key, anchor or alias")
+        }
+      }
+      if ($0 ~ /(^|[^A-Za-z0-9_.-])needs([^A-Za-z0-9_.-]|$)/) {
+        if (in_jobs && last_job != "" && $0 ~ /^    needs: +(\[[A-Za-z0-9_, -]*\]|[A-Za-z0-9_-]+)( +#.*)?$/) print "NEEDS " last_job " " $0
+        else bad("needs is not the plain four-space form under a plain job header")
+      }
+    }' "$yml")"
   bad="$(grep '^BAD ' <<<"$scan" | head -1)"
   n_edge="$(grep -c '^EDGE$' <<<"$scan")"
-  edge_needs="$(grep '^NEEDS ' <<<"$scan" | sed 's/^NEEDS //')"
-  n_needs="$(grep -c '^NEEDS ' <<<"$scan")"
+  edge_needs="$(grep '^NEEDS publish-edge ' <<<"$scan" | sed 's/^NEEDS publish-edge //')"
+  n_needs="$(grep -c '^NEEDS publish-edge ' <<<"$scan")"
   gate_jobs="$(sed -n 's/^JOBS="${CI_GATE_JOBS:-\(.*\)}"$/\1/p' "$here/ci-gate.sh")"
   if [ -n "$bad" ]; then
-    echo "FAIL $label: a job header in ci.yml cannot be read, so publish-edge's end is unknown: '${bad#BAD }'"; fail=1
+    echo "FAIL $label: ci.yml has a line outside the syntax this check can read: ${bad#BAD }"; fail=1
   elif [ "$n_edge" != 1 ]; then
     echo "FAIL $label: ci.yml has $n_edge publish-edge jobs, want exactly 1"; fail=1
   elif [ "$n_needs" != 1 ]; then
     echo "FAIL $label: publish-edge has $n_needs needs lines, want exactly 1"; fail=1
-  elif ! [[ "$edge_needs" =~ ^[[:space:]]*needs:[[:space:]]*\[([^]]*)\][[:space:]]*$ ]]; then
-    echo "FAIL $label: publish-edge's needs in ci.yml is not a one-line [a, b] list: '$edge_needs'"; fail=1
   elif [ -z "$gate_jobs" ]; then
     echo "FAIL $label: no default JOBS line found in ci-gate.sh"; fail=1
   else
-    edge_sorted="$(tr ',' '\n' <<<"${BASH_REMATCH[1]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep . | sort)"
+    value="$(sed -E 's/^ *needs: +//; s/ +#.*$//; s/^\[//; s/\]$//' <<<"$edge_needs")"
+    edge_sorted="$(tr ',' '\n' <<<"$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep . | sort)"
     gate_sorted="$(tr ' ' '\n' <<<"$gate_jobs" | grep . | sort)"
     if [ "$edge_sorted" = "$gate_sorted" ]; then
       echo "ok   $label"
@@ -165,29 +196,76 @@ ci_yml="$here/workflows/ci.yml"
 if [ -z "${GITHUB_ACTIONS-}${CI-}" ]; then ci_yml="${CI_YML:-$ci_yml}"; fi
 check_job_lists "$ci_yml" "ci-gate.sh JOBS match publish-edge's needs in ci.yml"
 
-# Regression copies: each is a ci.yml that earlier versions of the check read as matching.
-real_needs="$(grep -m1 '^    needs: \[typecheck, lint, unit, build, e2e, sandbox, docker\]$' "$here/workflows/ci.yml")"
-if [ -z "$real_needs" ]; then
-  echo "FAIL job lists: publish-edge's needs line in ci.yml no longer has the shape the regression copies expect"; fail=1
-else
-  mkdir "$work/yml"
-  head='jobs:
+# Regression copies, each a ci.yml that an earlier or looser reading would take as matching. The job
+# list comes from the gate's own JOBS line.
+gate_default="$(sed -n 's/^JOBS="${CI_GATE_JOBS:-\(.*\)}"$/\1/p' "$here/ci-gate.sh")"
+list="    needs: [${gate_default// /, }]"
+head='jobs:
   first:
     runs-on: x
   publish-edge:
     if: true'
-  list="    needs: [typecheck, lint, unit, build, e2e, sandbox, docker]"
-  printf '%s\n%s\n' "$head" "$list" >"$work/yml/real.yml"
-  printf '%s\n  later-job: # x\n%s\n' "$head" "$list" >"$work/yml/comment-header.yml"
-  printf '%s\n  "later-job":\n%s\n' "$head" "$list" >"$work/yml/quoted-header.yml"
-  printf '%s\n%s\n%s\n' "$head" "$list" "    needs: [first]" >"$work/yml/two-needs.yml"
-  printf '%s\n' "$head" >"$work/yml/no-needs.yml"
-  printf '%s\n%s\n  publish-edge:\n%s\n' "$head" "$list" "$list" >"$work/yml/two-jobs.yml"
-  check_job_lists "$work/yml/real.yml" "scratch copy shaped like ci.yml passes"
-  expect_fail_lists "publish-edge without needs, a later job with a comment on its header" "$work/yml/comment-header.yml"
-  expect_fail_lists "publish-edge without needs, a later job with a quoted header" "$work/yml/quoted-header.yml"
-  expect_fail_lists "publish-edge with two needs lines" "$work/yml/two-needs.yml"
-  expect_fail_lists "publish-edge with no needs line" "$work/yml/no-needs.yml"
-  expect_fail_lists "two publish-edge jobs" "$work/yml/two-jobs.yml"
-fi
+mkdir "$work/yml"
+mk() { printf '%s\n' "$2" >"$work/yml/$1.yml"; }
+mk real "$head
+$list"
+mk comment-header "$head
+  later-job: # x
+$list"
+mk quoted-header "$head
+  \"later-job\":
+$list"
+mk two-needs "$head
+$list
+    needs: [first]"
+mk no-needs "$head"
+mk two-jobs "$head
+$list
+  publish-edge:
+$list"
+mk toplevel-after "$head
+run-name: |
+$list"
+mk three-space-fields "jobs:
+  publish-edge:
+   needs: [lint]
+   name: |
+$list"
+mk quoted-needs "$head
+$list
+    \"needs\": [first]"
+mk spaced-needs "$head
+$list
+    needs : [first]"
+mk one-space-indent "$head
+$list
+ x: 1"
+mk anchor "$head
+    env: &a 1
+$list"
+mk tab "$head
+$list
+	x: 1"
+mk needs-in-text "jobs:
+  # this job needs the build
+  first:
+    runs-on: x
+    name: \${{ needs.other.outputs.v }}
+  publish-edge:
+    if: true
+$list # the test jobs"
+check_job_lists "$work/yml/real.yml" "scratch copy shaped like ci.yml passes"
+check_job_lists "$work/yml/needs-in-text.yml" "the word needs in a full-line comment or a needs.x expression is not a needs key"
+expect_fail_lists "publish-edge without needs, a later job with a comment on its header" "$work/yml/comment-header.yml"
+expect_fail_lists "publish-edge without needs, a later job with a quoted header" "$work/yml/quoted-header.yml"
+expect_fail_lists "publish-edge with two needs lines" "$work/yml/two-needs.yml"
+expect_fail_lists "publish-edge with no needs line" "$work/yml/no-needs.yml"
+expect_fail_lists "two publish-edge jobs" "$work/yml/two-jobs.yml"
+expect_fail_lists "a needs line inside a top-level block scalar after jobs" "$work/yml/toplevel-after.yml"
+expect_fail_lists "publish-edge fields indented three spaces" "$work/yml/three-space-fields.yml"
+expect_fail_lists "a quoted needs key beside the plain one" "$work/yml/quoted-needs.yml"
+expect_fail_lists "a needs key with a space before the colon" "$work/yml/spaced-needs.yml"
+expect_fail_lists "a one-space indent inside jobs" "$work/yml/one-space-indent.yml"
+expect_fail_lists "an anchor at job-field level" "$work/yml/anchor.yml"
+expect_fail_lists "a tab" "$work/yml/tab.yml"
 exit $fail
