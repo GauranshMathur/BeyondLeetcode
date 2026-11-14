@@ -119,7 +119,7 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
 
 - **Tier mix: 23 cards.** Tier 1: 8 (C381, C386, C387, S4, P13, S5, S6, S7). Tier 2: 9 (C367, C368, C369, C372, C374, C377, C378, C380, C382). Tier 3: 5 (C366, C370, C371, C373, C376), each a link of a chain that had started. The last card, C383, has no tier. Tier 0: none.
 - **Issues: 9 closed here.** Tier 1: #517 and #637. Tier 2: #507, #509, #510, #565 and #572. Tier 3: #511 and #514. Three more Tier 1 issues get their boards here and close in Sprint 21: #660, #661 and #662.
-- **State on 2026-11-14.** Done: C366, C367, C368, C369, C370 and C371. In progress: C372. Todo: the rest.
+- **State on 2026-11-14.** Done: C366, C367, C368, C369, C370 and C371. In progress: C372 and C373. Todo: the rest.
 - **What the re-rank changed.**
   - **In:** #637 (C386, C387), Tier 1; and the five boards of #660, #661 and #662 (S4, P13, S5, S6, S7), Tier 1.
   - **Out:** #508 (C375, C379), Tier 3 with no card started, to Sprint 22. C376 no longer shares a batch PR with C375.
