@@ -67,11 +67,12 @@ describe('the media queries', () => {
 });
 
 describe('the Problem screen breakpoints', () => {
-	it('the short query is the phone width and a height of 480px or less, tied to two Problem files', () => {
+	it('the short query is the phone width and a height of 480px or less, tied to three Problem files', () => {
 		expect(PROBLEM_SHORT).toBe('(max-width: 767.98px) and (max-height: 480px)');
 		expect(TIED[PROBLEM_SHORT]).toEqual([
 			'src/routes/problems/[problemId]/+page.svelte',
-			'src/routes/problems/[problemId]/ProblemWorkspace.svelte'
+			'src/routes/problems/[problemId]/ProblemWorkspace.svelte',
+			'src/routes/problems/[problemId]/ResultsPanel.svelte'
 		]);
 		expect(
 			breakpointProblems('src/routes/x/+page.svelte', `@media ${PROBLEM_SHORT} {`)
