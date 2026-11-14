@@ -28,7 +28,8 @@ export const TIED: Record<string, readonly string[]> = {
 	[PROBLEM_WIDE]: PROBLEM,
 	[PROBLEM_SHORT]: [
 		'src/routes/problems/[problemId]/+page.svelte',
-		'src/routes/problems/[problemId]/ProblemWorkspace.svelte'
+		'src/routes/problems/[problemId]/ProblemWorkspace.svelte',
+		'src/routes/problems/[problemId]/ResultsPanel.svelte'
 	],
 	[NARROW_900]: ['src/routes/setup/+page.svelte', 'src/routes/problems/[problemId]/+page.svelte'],
 	[NARROW_800]: [
