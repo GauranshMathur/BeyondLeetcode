@@ -78,7 +78,7 @@ describe('mapEntries', () => {
 		expect(fresh).toMatchObject({ stateText: '0/3 solved', fill: 0, after: undefined });
 	});
 
-	it('gives a locked Topic no link and no current mark, and names its Prerequisites', () => {
+	it('gives a locked Topic no link and names its Prerequisites', () => {
 		const graphs = mapEntries(view(undefined, topics))[3];
 		expect(graphs).toMatchObject({
 			href: undefined,
