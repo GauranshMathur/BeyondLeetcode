@@ -335,7 +335,9 @@ describe('changing a password', () => {
 				.join('; ');
 			current = next;
 		}
-	});
+		// Each change is a sign-in check plus a new session on a file database: on a slow shared runner the
+		// default 5 s was passed once, so this one test gets a timeout sized for eight changes.
+	}, 30_000);
 
 	it.each([
 		['too short', form(oldPassword, 'short'), 'new', 'Use at least 12 characters.'],
