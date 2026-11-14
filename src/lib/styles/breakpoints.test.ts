@@ -72,7 +72,7 @@ describe('the Problem screen breakpoints', () => {
 		expect(TIED[PROBLEM_SHORT]).toEqual([
 			'src/routes/problems/[problemId]/+page.svelte',
 			'src/routes/problems/[problemId]/ProblemWorkspace.svelte',
-		'src/routes/problems/[problemId]/ResultsPanel.svelte'
+			'src/routes/problems/[problemId]/ResultsPanel.svelte'
 		]);
 		expect(
 			breakpointProblems('src/routes/x/+page.svelte', `@media ${PROBLEM_SHORT} {`)
