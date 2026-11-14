@@ -1,25 +1,14 @@
-import { fail, type RequestEvent, redirect } from '@sveltejs/kit';
-import type { AccountField, Refusal, RefusalCode } from '#lib/server/identity/account-actions.js';
-import { MAX_NAME_LENGTH } from '#lib/server/identity/account-creation.js';
-import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '#lib/server/identity/auth.js';
+import { type RequestEvent, redirect } from '@sveltejs/kit';
+import {
+	answerRefusal,
+	FAILED_MESSAGE,
+	refused,
+	signUpFromForm
+} from '#lib/server/account-forms.js';
+import { ACCOUNT_LIMITS } from '#lib/server/identity/account-actions.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { clientAddress } from '#lib/server/identity/client-address.js';
 import { INVITE_COOKIE, INVITE_COOKIE_PATH } from '#lib/server/identity/invites.js';
-
-/** Fixed texts only: an error's own message (Prisma's carry paths and query text) never reaches the form. */
-const MESSAGES = {
-	name: 'Enter a name.',
-	nameLong: `Use at most ${MAX_NAME_LENGTH} characters.`,
-	nameCharacters: "This name contains a character that can't be used.",
-	email: 'Enter an email address like name@example.com.',
-	passwordShort: `Use at least ${MIN_PASSWORD_LENGTH} characters.`,
-	passwordLong: `Use at most ${MAX_PASSWORD_LENGTH} characters.`,
-	// Deliberately says nothing about why: it must not tell a stranger which emails have Accounts.
-	emailUnavailable: 'This email cannot be used. Try a different one.',
-	invalid: 'This invite link does not work.',
-	tooMany: 'Too many attempts. Try again in a few minutes.',
-	failed: 'The account could not be created. Try again.'
-} as const;
 
 type AcceptEvent = Pick<
 	RequestEvent,
@@ -49,34 +38,9 @@ function forget(cookies: Pick<RequestEvent['cookies'], 'delete'>, secure: boolea
 	cookies.delete(INVITE_COOKIE, { path: OLD_COOKIE_PATH, secure });
 }
 
-/** The status and text each refusal of an accept gets; any other refusal is a failure. */
-const ANSWERS: Partial<
-	Record<RefusalCode, { status: 400 | 403 | 429; message: string; invalid?: boolean }>
-> = {
-	TOO_MANY_ATTEMPTS: { status: 429, message: MESSAGES.tooMany },
-	// The Invite is not usable, or the gate or the claim said no: used, expired or cancelled.
-	INVITE_INVALID: { status: 403, message: MESSAGES.invalid, invalid: true },
-	NAME_REQUIRED: { status: 400, message: MESSAGES.name },
-	NAME_TOO_LONG: { status: 400, message: MESSAGES.nameLong },
-	NAME_INVALID_CHARACTERS: { status: 400, message: MESSAGES.nameCharacters },
-	INVALID_EMAIL: { status: 400, message: MESSAGES.email },
-	PASSWORD_TOO_SHORT: { status: 400, message: MESSAGES.passwordShort },
-	PASSWORD_TOO_LONG: { status: 400, message: MESSAGES.passwordLong },
-	EMAIL_UNAVAILABLE: { status: 400, message: MESSAGES.emailUnavailable }
-};
-
-/** What the form page gets back from a refused attempt: always the same keys, never the password. */
-const refused = (
-	status: 400 | 403 | 429 | 500 | 503,
-	typed: { name: string; email: string },
-	message: string,
-	options: { field?: AccountField; invalid?: boolean } = {}
-) => fail(status, { ...typed, field: options.field, invalid: options.invalid === true, message });
-
-const text = (data: FormData, key: string) => {
-	const value = data.get(key);
-	return typeof value === 'string' ? value : '';
-};
+/** An answer with no refusal code behind it (no account actions, an unreadable body): the Invite is not at fault. */
+const inviteNotAtFault = (status: 400 | 503) =>
+	refused(status, { name: '', email: '' }, FAILED_MESSAGE, undefined, { invalid: false });
 
 /**
  * The Accept invite page. The token is in the URL path, so nothing here logs the path or the token, and
@@ -102,7 +66,7 @@ export function createAccept() {
 			const invite = await locals.multiUser?.invites.lookup(params.token ?? '', new Date());
 			if (!invite) {
 				forget(cookies, secure({ url }));
-				return { valid: false, minPasswordLength: MIN_PASSWORD_LENGTH };
+				return { valid: false, minPasswordLength: ACCOUNT_LIMITS.passwordMin };
 			}
 			cookies.set(INVITE_COOKIE, params.token ?? '', {
 				path: COOKIE_PATH,
@@ -111,7 +75,7 @@ export function createAccept() {
 				secure: secure({ url }),
 				maxAge: COOKIE_MAX_AGE_SECONDS
 			});
-			return { valid: true, minPasswordLength: MIN_PASSWORD_LENGTH };
+			return { valid: true, minPasswordLength: ACCOUNT_LIMITS.passwordMin };
 		},
 
 		async action(event: AcceptEvent) {
@@ -119,55 +83,26 @@ export function createAccept() {
 			if (locals.identity) redirect(303, '/');
 
 			const accounts = locals.multiUser?.accounts;
-			if (!accounts) return refused(503, { name: '', email: '' }, MESSAGES.failed);
+			if (!accounts) return inviteNotAtFault(503);
 
-			// What was typed comes back, except the password.
-			let typed = { name: '', email: '' };
-			let unreadable = false;
-			let result: Awaited<ReturnType<typeof accounts.signUp>>;
-			try {
-				result = await accounts.signUp({
-					fields: async () => {
-						let data: FormData;
-						try {
-							data = await request.formData();
-						} catch (error) {
-							unreadable = true;
-							throw error;
-						}
-						typed = { name: text(data, 'name'), email: text(data, 'email') };
-						return { ...typed, password: text(data, 'password') };
-					},
-					address: clientAddress(event),
-					// The token is the one in this page's URL, handed over as the invite cookie the gate reads.
-					invite: params.token ?? ''
+			const outcome = await signUpFromForm(accounts, {
+				request,
+				address: clientAddress(event),
+				// The token is the one in this page's URL, handed over as the invite cookie the gate reads.
+				invite: params.token ?? ''
+			});
+			// A body that is not a form: a fixed answer, and nothing of the request is logged.
+			if ('unreadable' in outcome) return inviteNotAtFault(400);
+
+			const { typed, result } = outcome;
+			if ('refused' in result) {
+				return answerRefusal(event, typed, result, {
+					invalid: result.refused === 'INVITE_INVALID'
 				});
-			} catch (error) {
-				// A body that is not a form: a fixed answer, and nothing of the request is logged.
-				if (unreadable) return refused(400, { name: '', email: '' }, MESSAGES.failed);
-				throw error;
 			}
-
-			if ('refused' in result) return answer(event, typed, result);
 			forwardSetCookies(cookies, result.cookies);
 			forget(cookies, secure(event));
 			redirect(303, '/');
 		}
 	};
-}
-
-function answer(
-	event: Pick<AcceptEvent, 'setHeaders'>,
-	typed: { name: string; email: string },
-	refusal: Refusal
-) {
-	const known = ANSWERS[refusal.refused];
-	if (!known) return refused(500, typed, MESSAGES.failed);
-	if (refusal.refused === 'TOO_MANY_ATTEMPTS') {
-		event.setHeaders({ 'retry-after': String(refusal.retryAfterSeconds ?? 1) });
-	}
-	return refused(known.status, typed, known.message, {
-		field: refusal.field,
-		invalid: known.invalid
-	});
 }
