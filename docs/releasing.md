@@ -27,9 +27,11 @@ The board's `Release` field (id `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY`) has one option
 | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | `d6739981` |
 | `R v1.19.6: Sprint 19 · Accessibility` (renamed 2026-11-10; was `Runner and the Build`) | `ba3b24a7` |
 | `R v1.19.7: Sprint 20 · Drifted rules and docs` (renamed 2026-11-10; was `Identity forms and policy`) | `41225006` |
-| `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide` (renamed 2026-11-14; was `R v1.19.8: Sprint 21 · Unplanned`) | `647d8bbc` |
-| `R v1.20.1: Sprint 22 · Leftover bugs and CI gates` (renamed 2026-11-14; was `R v1.19.9: Sprint 22 · Unplanned`) | `30fe09ec` |
-| `R v1.20.2: Sprint 23 · Unplanned` (renamed 2026-11-14; was `R v1.19.10: Sprint 23 · Unplanned`) | `59e6d8b2` |
+| `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates` (renamed 2026-11-14 at the sprint's start; was `R v1.20.1: Sprint 22 · Leftover bugs and CI gates`) | `30fe09ec` |
+| `R v1.21.0: Sprint 22 · Dev mode and the starting Language` (renamed 2026-11-14 at Sprint 21's start; was `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide`) | `647d8bbc` |
+| `R v1.21.1: Sprint 23 · Unplanned` (renamed 2026-11-14; was `R v1.20.2: Sprint 23 · Unplanned`) | `59e6d8b2` |
+
+The two options for Sprints 21 and 22 swapped numbers on 2026-11-14: the sprint that waits on nobody runs first, and each option kept its cards.
 
 A content sprint (`docs/sprints.md`, The content sprints) has a Sprint option and no Release option: its PRs ship in the app release open when they merge. A content card that is `feat` makes that release a minor one.
 
@@ -47,9 +49,9 @@ The `sprint-planner` adds a row for each sprint it plans.
 | 18 · Submission, Runner and Identity seams | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | 1.19.5 | cut 2026-11-11 |
 | 19 · Accessibility | `R v1.19.6: Sprint 19 · Accessibility` | 1.19.6 | cut 2026-11-11 |
 | 20 · Drifted rules and docs | `R v1.19.7: Sprint 20 · Drifted rules and docs` | 1.19.7 | cut 2026-11-14 |
-| 21 · Dev mode, starting Language and the guide | `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide` | 1.20.0 | planned 2026-11-14 (minor: its cards are `feat`) |
-| 22 · Leftover bugs and CI gates | `R v1.20.1: Sprint 22 · Leftover bugs and CI gates` | 1.20.1 | planned 2026-11-14 (1.21.0 instead if a content rewrite, `feat`, merges in it) |
-| 23 · Unplanned | `R v1.20.2: Sprint 23 · Unplanned` | 1.20.2 | no cards: option kept, renumbered 2026-11-14 |
+| 21 · The guide, leftover bugs and CI gates | `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates` | 1.20.0 | planned 2026-11-14 (minor: C401 and C402a, the guide, are `feat`) |
+| 22 · Dev mode and the starting Language | `R v1.21.0: Sprint 22 · Dev mode and the starting Language` | 1.21.0 | planned 2026-11-14 (minor: its cards are `feat`); starts when the maintainer has answered #660 and #661 |
+| 23 · Unplanned | `R v1.21.1: Sprint 23 · Unplanned` | 1.21.1 | no cards: option kept, renumbered 2026-11-14 |
 
 ## The last card
 
@@ -90,6 +92,7 @@ Only when every card in the sprint is Done, the last card included, and `ci` is 
    - the required checks are green on the release PR's head, which is the changelog commit (a newer push to main makes release-please rewrite the branch: then go back to step 3);
    - no card in the sprint is open: `select(.sprint=="Sprint N · <Theme>" and .status != "Done")` prints nothing;
    - the PR's version is the sprint's version in Planned releases.
+   - the PR's body closes only issues that are finished. release-please turns a `Refs #N` or `Closes #N` line in a commit message into "closes #N" in the release PR's body, and GitHub closes that issue when the release PR merges. List them with `gh pr view <n> --json body --jq .body | grep -oE 'closes \[#[0-9]+\]'`; for each issue that must stay open, edit that text out of the PR's body before merging (`gh pr edit <n> --body-file`). #663 was closed this way by the 1.19.7 release and reopened. Issue references belong in a pull request's body, not in a commit message.
 6. **Merge**, pinned to the head you checked:
 
    ```sh
