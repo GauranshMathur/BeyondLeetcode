@@ -1,7 +1,6 @@
 import { error, fail, type RequestEvent, redirect } from '@sveltejs/kit';
 import type { RefusalCode } from '#lib/server/identity/account-actions.js';
 import { ACCOUNT_LIMITS } from '#lib/server/identity/account-actions.js';
-import { MIN_PASSWORD_LENGTH } from '#lib/server/identity/auth.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
 import { clientAddress } from '#lib/server/identity/client-address.js';
 
@@ -87,7 +86,7 @@ export function createChangePassword() {
 						changed: false,
 						unfinished: false,
 						signedOut: true,
-						minPasswordLength: MIN_PASSWORD_LENGTH
+						minPasswordLength: ACCOUNT_LIMITS.passwordMin
 					};
 				redirect(303, '/signin');
 			}
@@ -97,7 +96,7 @@ export function createChangePassword() {
 				changed: searchParams.has('changed'),
 				unfinished: searchParams.has('unfinished'),
 				signedOut: false,
-				minPasswordLength: MIN_PASSWORD_LENGTH
+				minPasswordLength: ACCOUNT_LIMITS.passwordMin
 			};
 		},
 
