@@ -11,7 +11,15 @@ import { page } from '$app/state';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
 import { afterOutcome, PANES, type ViewState } from './view';
-import { announcement, begin, type Event, may, type Request, type SaveState, transition } from './workspace';
+import {
+	announcement,
+	begin,
+	type Event,
+	may,
+	type Request,
+	type SaveState,
+	transition
+} from './workspace';
 
 let {
 	problem,

@@ -132,6 +132,13 @@ describe('a save the server answers with a failure', () => {
 		expect(announced(again.state)).toBe('failed');
 	});
 
+	it('stops announcing a failure once the session ends (the sign-in alert takes over)', () => {
+		const failed = play(edited(), { type: 'tick' }, respond(fail(500))).state;
+		const out = play(failed, { type: 'tick' }, respond(signedOut)).state;
+		expect(out.save).toBe('signedOut');
+		expect(announced(out)).toBeUndefined();
+	});
+
 	it('announces a rejected save and a conflict, and not saving or edited', () => {
 		expect(announced(play(edited(), { type: 'tick' }, respond(fail(400))).state)).toBe('rejected');
 		expect(announced(play(edited(), { type: 'tick' }, respond(fail(409))).state)).toBe('conflict');

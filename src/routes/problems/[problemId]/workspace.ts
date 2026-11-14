@@ -255,7 +255,7 @@ export function transition(s: Session, event: Event): Step {
 	const announced: Announced | undefined =
 		save === 'failed' || save === 'rejected' || save === 'conflict'
 			? save
-			: stored(event, s) || save === 'saved'
+			: stored(event, s) || save === 'saved' || save === 'signedOut'
 				? undefined
 				: step.state.announced;
 	return announced === step.state.announced
