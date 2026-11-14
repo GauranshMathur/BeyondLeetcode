@@ -165,10 +165,12 @@ test('two Invites made in a row have different Cancel button names', async ({ co
 
 	const made = (await cancelNames(page)).filter((n) => !before.includes(n));
 	expect(new Set(made).size).toBe(2);
-	for (const name of made) {
-		await page.getByRole('button', { name, exact: true }).click();
-		await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
-	}
+	// Once one is gone the other no longer shares its minute, so its name is read again before it is cancelled.
+	await page.getByRole('button', { name: made[0], exact: true }).click();
+	await expect.poll(async () => (await cancelNames(page)).length).toBe(before.length + 1);
+	const [left] = (await cancelNames(page)).filter((n) => !before.includes(n));
+	await page.getByRole('button', { name: left, exact: true }).click();
+	await expect.poll(async () => (await cancelNames(page)).length).toBe(before.length);
 });
 
 test('the admin resets a password: the one-time password is shown once with a copy field', async ({
