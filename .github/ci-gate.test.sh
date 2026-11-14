@@ -114,7 +114,7 @@ if ! [[ "$edge_needs" =~ ^[[:space:]]*needs:[[:space:]]*\[([^]]*)\][[:space:]]*$
 elif [ -z "$gate_jobs" ]; then
   echo "FAIL job lists: no default JOBS line found in ci-gate.sh"; fail=1
 else
-  edge_sorted="$(tr ', ' '\n\n' <<<"${BASH_REMATCH[1]}" | grep . | sort)"
+  edge_sorted="$(tr ',' '\n' <<<"${BASH_REMATCH[1]}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep . | sort)"
   gate_sorted="$(tr ' ' '\n' <<<"$gate_jobs" | grep . | sort)"
   if [ "$edge_sorted" = "$gate_sorted" ]; then
     echo "ok   ci-gate.sh JOBS match publish-edge's needs in ci.yml"
