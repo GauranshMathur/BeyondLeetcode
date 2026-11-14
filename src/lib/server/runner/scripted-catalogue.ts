@@ -32,12 +32,15 @@ export function createCatalogueScriptedRunner(catalogue: Catalogue): RunnerPort 
 			const reference = catalogue.problem(id)?.referenceCode[request.language];
 			return reference !== undefined && sameFiles({ ...reference }, request.files);
 		});
-	/** Whether a build that is Problem `built`'s Reference Code solves Problem `id`. */
+	/**
+	 * Whether a build that is Problem `built`'s Reference Code solves Problem `id`: itself, its anchor
+	 * and the Core Problems before it, the same scope the Learning core submits. An Extra is not on
+	 * the Main Line itself, so the catalogue's place answers for it.
+	 */
 	const solves = (built: string, id: string) => {
 		if (built === id) return true;
-		const mainLine = catalogue.topic(catalogue.problem(built)?.topicId ?? '')?.mainLine ?? [];
-		const at = mainLine.indexOf(id);
-		return at !== -1 && at < mainLine.indexOf(built);
+		const place = catalogue.mainLinePlace(built);
+		return place !== undefined && (place.anchor === id || place.earlier.includes(id));
 	};
 
 	function scriptFor(request: ExecuteRequest): RunnerScript {
