@@ -4,11 +4,7 @@ import { createIdentity, createLocalIdentity, type InstanceIdentity } from './id
 import { createMultiUserInstance, type MultiUser } from './identity/multi-user-instance.ts';
 import { parseOrigin } from './identity/origin.ts';
 import { MIN_SECRET_LENGTH, secretProblem } from './identity/secret.ts';
-import {
-	createFirstAdmin,
-	type FirstAdminInput,
-	MultiUserNotAvailableError
-} from './identity/setup.ts';
+import { createFirstAdmin, type FirstAdminInput } from './identity/setup.ts';
 import { createInstance, type Instance } from './instance.ts';
 import { createLearningCore, type LearningCore } from './learning/core.ts';
 import { createHttpRunner } from './runner/http-adapter.ts';
@@ -118,9 +114,7 @@ export async function createApp(env: {
 		setup: {
 			multiUser: choice(auth),
 			async createFirstAdmin(input) {
-				if (!multi) {
-					throw new MultiUserNotAvailableError();
-				}
+				if (!multi) throw new Error('Multi-user is not available on this server.');
 				return createFirstAdmin({ instance, auth: multi.auth, db }, input);
 			}
 		},

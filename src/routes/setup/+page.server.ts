@@ -5,9 +5,7 @@ import {
 	type RefusalCode,
 	refusalOf
 } from '#lib/server/identity/account-actions.js';
-import { hasForbiddenNameCharacter, isNameTooLong } from '#lib/server/identity/account-creation.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
-import { InvalidFirstAdminError, MultiUserNotAvailableError } from '#lib/server/identity/setup.js';
 import { AccountsExistError, InstanceAlreadySetUpError } from '#lib/server/instance.js';
 import { logFailure } from '#lib/server/logging.js';
 import type { Actions, PageServerLoad } from './$types';
@@ -23,16 +21,36 @@ const FIELD_MESSAGES = {
 } as const;
 const NAME_TOO_LONG = `Use at most ${ACCOUNT_LIMITS.nameMax} characters.`;
 const NAME_CHARACTERS = "This name contains a character that can't be used.";
-/** The refusals Better Auth can still give the first admin's form, as the field and Setup's own text. */
-const REFUSAL_PROBLEMS: Partial<
-	Record<RefusalCode, { field: keyof typeof FIELD_MESSAGES; message: string }>
-> = {
+type Problem = { field: keyof typeof FIELD_MESSAGES; message: string };
+/**
+ * What the first admin's form shows for each refusal code, as the field and Setup's own text. Every code is
+ * listed, so a new one fails `bun run check` until it is given a text or `null` here. `null`: Setup has no
+ * text for it (the form cannot meet it, or it is a failure), so it answers the generic failure.
+ */
+const REFUSAL_PROBLEMS: Record<RefusalCode, Problem | null> = {
 	NAME_REQUIRED: { field: 'name', message: FIELD_MESSAGES.name },
 	NAME_TOO_LONG: { field: 'name', message: NAME_TOO_LONG },
 	NAME_INVALID_CHARACTERS: { field: 'name', message: NAME_CHARACTERS },
 	INVALID_EMAIL: { field: 'email', message: FIELD_MESSAGES.email },
 	PASSWORD_TOO_SHORT: { field: 'password', message: FIELD_MESSAGES.password },
-	PASSWORD_TOO_LONG: { field: 'password', message: FIELD_MESSAGES.password }
+	PASSWORD_TOO_LONG: { field: 'password', message: FIELD_MESSAGES.password },
+	WRONG_SIGN_IN: null,
+	SIGN_IN_FAILED: null,
+	PROVIDER_REFUSED: null,
+	SIGN_UP_FAILED: null,
+	EMAIL_UNAVAILABLE: null,
+	SIGN_UP_CLOSED: null,
+	INVITE_INVALID: null,
+	TOO_MANY_ATTEMPTS: null,
+	WRONG_CURRENT_PASSWORD: null,
+	PASSWORDS_DO_NOT_MATCH: null,
+	NO_PASSWORD: null,
+	SAME_PASSWORD: null,
+	CHANGE_FAILED: null,
+	CHANGE_UNENDED: null,
+	NOT_SIGNED_IN: null,
+	SIGN_OUT_FAILED: null,
+	MUST_CHANGE_HOLD: null
 };
 const LOCAL_REFUSED = 'This instance already has accounts, so it cannot start in Local mode.';
 const ALREADY_SET_UP = 'This instance has already been set up.';
@@ -99,14 +117,6 @@ export const actions: Actions = {
 		if (mode === 'multi' || (mode === 'local' && !converting)) {
 			return fail(409, adminStep(typed, { message: ALREADY_SET_UP }));
 		}
-		// Before the Instance is claimed, so a name over the cap leaves nothing to undo. Better Auth's hook
-		// refuses it too (`NAME_TOO_LONG`), which is what the catch below maps if one ever gets this far.
-		if (isNameTooLong(input.name)) {
-			return fail(400, adminStep(typed, { field: 'name', message: NAME_TOO_LONG }));
-		}
-		if (hasForbiddenNameCharacter(input.name)) {
-			return fail(400, adminStep(typed, { field: 'name', message: NAME_CHARACTERS }));
-		}
 		let headers: Headers;
 		try {
 			({ headers } = await locals.setup.createFirstAdmin(
@@ -116,20 +126,8 @@ export const actions: Actions = {
 			const refusal = refusalOf(error);
 			const problem = refusal && REFUSAL_PROBLEMS[refusal.refused];
 			if (problem) return fail(400, adminStep(typed, problem));
-			if (error instanceof InvalidFirstAdminError) {
-				return fail(
-					400,
-					adminStep(typed, { field: error.field, message: FIELD_MESSAGES[error.field] })
-				);
-			}
 			if (error instanceof InstanceAlreadySetUpError) {
 				return fail(409, adminStep(typed, { message: ALREADY_SET_UP }));
-			}
-			if (error instanceof MultiUserNotAvailableError) {
-				return fail(
-					400,
-					adminStep(typed, { message: 'Multi-user is not available on this server.' })
-				);
 			}
 			logFailure('Setup: creating the admin failed:', error);
 			return fail(

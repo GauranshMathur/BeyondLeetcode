@@ -7,7 +7,7 @@ import { refusalOf } from './account-actions.ts';
 import type { AdmitSignUp, Auth } from './auth.ts';
 import { createMultiUserIdentity } from './multi-user.ts';
 import { createRegistration } from './registration.ts';
-import { createFirstAdmin, InvalidFirstAdminError, isFirstAdmin } from './setup.ts';
+import { createFirstAdmin, isFirstAdmin } from './setup.ts';
 import { createTestAuth } from './test-auth.ts';
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
@@ -502,22 +502,32 @@ describe('createFirstAdmin', () => {
 		['an empty name', { name: '  ' }, 'NAME_REQUIRED', 'name'],
 		['a 101-character name', { name: 'a'.repeat(101) }, 'NAME_TOO_LONG', 'name'],
 		['a name with a control character', { name: 'Ro\u0007ot' }, 'NAME_INVALID_CHARACTERS', 'name'],
+		['a name with a bidi character', { name: 'Ro\u202eot' }, 'NAME_INVALID_CHARACTERS', 'name'],
 		['a bad email', { email: 'a@b' }, 'INVALID_EMAIL', 'email'],
 		['a 129-character password', { password: 'a'.repeat(129) }, 'PASSWORD_TOO_LONG', 'password'],
 		['an 11-character password', { password: 'a'.repeat(11) }, 'PASSWORD_TOO_SHORT', 'password']
-	])('refuses %s with a refusal code before touching the Instance', async (_, bad, code, field) => {
-		const { db, auth, instance } = await setup();
+	])(
+		'refuses %s with a 400 refusal code before claiming the Instance or signing up',
+		async (_, bad, code, field) => {
+			const { db, auth, instance } = await setup();
+			const claim = vi.spyOn(instance, 'chooseMulti');
+			const signUp = vi.spyOn(auth.api, 'signUpEmail');
 
-		await expect(createFirstAdmin({ instance, auth, db }, { ...admin, ...bad })).rejects.toSatisfy(
-			(error) =>
-				!(error instanceof InvalidFirstAdminError) &&
-				refusalOf(error)?.refused === code &&
-				refusalOf(error)?.field === field
-		);
+			await expect(
+				createFirstAdmin({ instance, auth, db }, { ...admin, ...bad })
+			).rejects.toSatisfy(
+				(error) =>
+					(error as { statusCode?: number }).statusCode === 400 &&
+					refusalOf(error)?.refused === code &&
+					refusalOf(error)?.field === field
+			);
 
-		expect(instance.mode()).toBeNull();
-		expect(await db.instance.count()).toBe(0);
-	});
+			expect(claim).not.toHaveBeenCalled();
+			expect(signUp).not.toHaveBeenCalled();
+			expect(instance.mode()).toBeNull();
+			expect(await db.instance.count()).toBe(0);
+		}
+	);
 
 	it('refuses a real sign-up made while the first-admin scope is live', async () => {
 		let gate: AdmitSignUp = () => null;

@@ -36,28 +36,6 @@ const exclusively = <T>(fn: () => Promise<T>): Promise<T> => {
 	return run;
 };
 
-/** Multi-user cannot be chosen on this server (not released yet, or its secret or origin is missing). */
-export class MultiUserNotAvailableError extends Error {
-	constructor() {
-		super('Multi-user is not available on this server.');
-		this.name = 'MultiUserNotAvailableError';
-	}
-}
-
-/**
- * Kept only so the Setup route still compiles; nothing throws it any more (a wrong field is an APIError
- * carrying a refusal code).
- */
-export class InvalidFirstAdminError extends Error {
-	constructor(
-		readonly field: 'name' | 'email' | 'password',
-		message: string
-	) {
-		super(message);
-		this.name = 'InvalidFirstAdminError';
-	}
-}
-
 // What the first admin's form is told, by code: fixed text, never the input. A refusal is an APIError
 // carrying the code, which `refusalOf` reads, the way Better Auth's own refusals reach the Setup route.
 const REFUSAL_MESSAGES: Partial<Record<RefusalCode, string>> = {
