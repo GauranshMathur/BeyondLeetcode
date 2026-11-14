@@ -549,7 +549,7 @@ describe('the sign-up limit', () => {
 		expect(await second.post(ada)).toMatchObject({ status: 429 });
 	});
 
-	it('answers a body that does not parse as the action does today: the error, after the attempt is counted', async () => {
+	it('answers a body that does not parse with a fixed 400, after the attempt is counted', async () => {
 		const { signUp, event, signUpEmail } = await harness();
 		const broken = {
 			...event(ada),
@@ -560,7 +560,13 @@ describe('the sign-up limit', () => {
 			}
 		};
 
-		await expect(signUp.action(broken as never)).rejects.toThrow('Failed to parse body');
+		const result = await signUp.action(broken as never);
+
+		expect(result).toMatchObject({
+			status: 400,
+			data: { name: '', email: '', message: 'The account could not be created. Try again.' }
+		});
+		expect(JSON.stringify(result)).not.toContain('Failed to parse body');
 		expect(signUpEmail).not.toHaveBeenCalled();
 	});
 
@@ -574,7 +580,7 @@ describe('the sign-up limit', () => {
 				}
 			}
 		};
-		await expect(signUp.action(broken as never)).rejects.toThrow('Failed to parse body');
+		expect(await signUp.action(broken as never)).toMatchObject({ status: 400 });
 		for (let i = 1; i <= 19; i++) {
 			expect(await post({ ...ada, password: 'x' }), `attempt ${i}`).toMatchObject({ status: 400 });
 		}
