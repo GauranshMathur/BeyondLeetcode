@@ -91,7 +91,7 @@ export function answerRefusal<Extra extends object = Record<never, never>>(
 	extra?: Extra
 ) {
 	const known = ACCOUNT_FORM_ANSWERS[refusal.refused];
-	if (!known) return refused(500, typed, FAILED_MESSAGE, refusal.field, extra);
+	if (!known) return refused(500, typed, FAILED_MESSAGE, undefined, extra);
 	if (refusal.refused === 'TOO_MANY_ATTEMPTS') {
 		event.setHeaders({ 'retry-after': String(refusal.retryAfterSeconds ?? 1) });
 	}
