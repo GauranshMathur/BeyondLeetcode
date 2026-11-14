@@ -163,17 +163,17 @@ Release `R v1.19.7: Sprint 20 · Drifted rules and docs`, version 1.19.7 (patch,
   - `identity/setup.ts`: C366, then C371 (lane A, Done).
   - `ProblemWorkspace.svelte` and `problem.e2e.ts`: C386, then C387 (lane B).
   - The canvas: S4, P13, S5, S6, S7, in that order (the design lane).
-- **Two builders a round, and the design lane beside them.** Rounds 1 and 2 are done.
+- **Two builders a round, and the design lane beside them.** Rounds 1 and 2 are done. The orchestrator's plan review (2026-11-14) reordered rounds 3 to 7 so the Tier 1 cards run first in each lane (C386, C387 and C381), then Tier 2, and the Tier 3 card C376 last; no shared file forced the old order.
 
   | Round | A · Identity, comments and Runner | B · Docs, the Map and the Problem screen | Design |
   |---|---|---|---|
   | 1 (done) | C366 field check (#514) | C367 + C368 + C369 + C370 (batch) | |
   | 2 | C371 Setup route (#514, done) | C372 sandbox reviewer (#510, in progress) | |
-  | 3 | C373 account forms (#514, done) | C374 current Topic (#572) | S4 dev banner (#660) |
-  | 4 | C376 comments (#511) | C377 Map entries (#572) | P13 reference run (#660) |
-  | 5 | C378 adapter kinds (#565) | C386 save announcements (#637) | S5 Language choice (#661) |
-  | 6 | C380 Runner logs (#565) | C387 phone focus (#637) | S6 Settings row (#661) |
-  | 7 | C381 scripted Runner (#517) | C382 self-hosting (#507) | S7 guide (#662) |
+  | 3 | C373 account forms (#514, done) | C386 save announcements (#637, Tier 1) | S4 dev banner (#660) |
+  | 4 | C381 scripted Runner (#517, Tier 1) | C387 phone focus (#637, Tier 1) | P13 reference run (#660) |
+  | 5 | C378 adapter kinds (#565) | C374 current Topic (#572) | S5 Language choice (#661) |
+  | 6 | C380 Runner logs (#565) | C377 Map entries (#572) | S6 Settings row (#661) |
+  | 7 | C376 comments (#511, Tier 3) | C382 self-hosting (#507) | S7 guide (#662) |
   | 8 | C383 exit check and `Release-As: 1.19.7` | | |
 
 - **Rounds: 17.**
