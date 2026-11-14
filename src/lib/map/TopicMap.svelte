@@ -1,11 +1,13 @@
 <script lang="ts">
 import type { MapView } from '#lib/server/learning/core.js';
-import { BAR_WIDTH, fillWidth, layoutMap, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
+import { mapEntries } from './entries.ts';
+import { BAR_WIDTH, layoutMap, NODE_HEIGHT, NODE_WIDTH } from './layout.ts';
 
 let { map }: { map: MapView } = $props();
 
 const layout = $derived(layoutMap(map.topics));
 const stateById = $derived(new Map(map.topics.map((t) => [t.id, t.state])));
+const entryById = $derived(new Map(mapEntries(map).map((e) => [e.id, e])));
 
 /** Elbow line from a Prerequisite down to its Topic, as on the canvas. */
 function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
@@ -31,17 +33,17 @@ function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
 	{/each}
 
 	{#each layout.nodes as { topic, x, y } (topic.id)}
-		{@const label = `${topic.title}, ${topic.state}, ${topic.coreSolved} of ${topic.coreTotal} core problems solved`}
+		{@const entry = entryById.get(topic.id)!}
 		{#snippet node()}
 			<rect
 				class="box {topic.state}"
-				class:current={topic.id === map.currentTopicId}
+				class:current={entry.current}
 				{x}
 				{y}
 				width={NODE_WIDTH}
 				height={NODE_HEIGHT}
 			/>
-			{#if topic.id === map.currentTopicId}
+			{#if entry.current}
 				<rect
 					class="focusmark"
 					x={x - 5}
@@ -58,26 +60,26 @@ function path(e: { x1: number; y1: number; x2: number; y2: number }): string {
 				<text class="count" x={x + 16} y={y + 51}>locked</text>
 			{:else}
 				<rect class="bar {topic.state}" x={x + 16.5} y={y + 44.5} width={BAR_WIDTH} height="6" rx="2" />
-				{#if topic.coreSolved > 0}
+				{#if entry.fill > 0}
 					<rect
 						class="fill {topic.state}"
 						x={x + 16.5}
 						y={y + 44.5}
-						width={fillWidth(topic)}
+						width={entry.fill}
 						height="6"
 						rx="2"
 					/>
 				{/if}
 				<text class="count {topic.state}" x={x + 140} y={y + 51}>
-					{topic.coreSolved}/{topic.coreTotal}
+					{entry.count}
 				</text>
 			{/if}
 		{/snippet}
 
-		{#if topic.state === 'locked'}
-			<g role="img" aria-label={label}>{@render node()}</g>
+		{#if entry.href === undefined}
+			<g role="img" aria-label={entry.label}>{@render node()}</g>
 		{:else}
-			<a class="node" href="/topics/{topic.id}" aria-label={label}>{@render node()}</a>
+			<a class="node" href={entry.href} aria-label={entry.label}>{@render node()}</a>
 		{/if}
 	{/each}
 </svg>

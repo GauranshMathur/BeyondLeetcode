@@ -1,21 +1,12 @@
 <script lang="ts">
-import { BAR_WIDTH, fillWidth } from '#lib/map/layout.js';
+import { mapEntries } from '#lib/map/entries.js';
+import { BAR_WIDTH } from '#lib/map/layout.js';
 import TopicMap from '#lib/map/TopicMap.svelte';
 import type { PageProps } from './$types';
 
 let { data }: PageProps = $props();
 const current = $derived(data.map.topics.find((t) => t.id === data.map.currentTopicId));
-const titleById = $derived(new Map(data.map.topics.map((t) => [t.id, t.title])));
-
-function after(prerequisites: readonly string[]): string {
-	return prerequisites.map((id) => titleById.get(id) ?? id).join(', ');
-}
-
-function stateText(t: (typeof data.map.topics)[number]): string {
-	const count = `${t.coreSolved}/${t.coreTotal}`;
-	if (t.id === data.map.currentTopicId && t.state !== 'locked') return `current · ${count}`;
-	return t.state === 'complete' ? `done · ${count}` : `${count} solved`;
-}
+const entries = $derived(mapEntries(data.map));
 </script>
 
 <svelte:head>
@@ -41,34 +32,31 @@ function stateText(t: (typeof data.map.topics)[number]): string {
 	<figure>
 		<div class="graph"><TopicMap map={data.map} /></div>
 		<ol class="column" aria-label="Topics in build order">
-			{#each data.map.topics as t (t.id)}
+			{#each entries as e (e.id)}
 				{#snippet body()}
-					<span class="title">{t.title}</span>
-					{#if t.state === 'locked'}
-						<span class="state">locked</span>
+					<span class="title">{e.title}</span>
+					{#if e.state === 'locked'}
+						<span class="state">{e.stateText}</span>
 					{:else}
 						<span class="state">
 							<span class="bar" aria-hidden="true" style:width="{BAR_WIDTH}px">
-								<span
-									class="fill"
-									style:width="{fillWidth(t)}px"
-								></span>
+								<span class="fill" style:width="{e.fill}px"></span>
 							</span>
-							{stateText(t)}
+							{e.stateText}
 						</span>
 					{/if}
-					{#if t.prerequisites.length > 0}
-						<span class="state">after {after(t.prerequisites)}</span>
+					{#if e.after}
+						<span class="state">{e.after}</span>
 					{/if}
 				{/snippet}
 				<li>
-					{#if t.state === 'locked'}
+					{#if e.href === undefined}
 						<div class="box locked">{@render body()}</div>
 					{:else}
 						<a
-							class="box {t.state}"
-							class:current={t.id === data.map.currentTopicId}
-							href="/topics/{t.id}"
+							class="box {e.state}"
+							class:current={e.current}
+							href={e.href}
 						>
 							{@render body()}
 						</a>
