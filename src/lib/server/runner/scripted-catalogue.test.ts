@@ -104,4 +104,24 @@ describe('catalogue scripted runner', () => {
 			all.map((t) => [t.id, t.id.startsWith(push) ? t.expected : ''])
 		);
 	});
+
+	it("answers an Extra's Reference Code with the expected output of its anchor and the earlier Core Problems", async () => {
+		const extra = 'stacks-peek';
+		const place = catalogue.mainLinePlace(extra);
+		if (!place || place.anchor === extra) throw new Error('fixture needs an Extra in a Topic');
+		const covered = [...place.earlier, place.anchor, extra];
+		const tests = covered
+			.flatMap((id) => [...problemOf(id).exampleTests, ...hiddenOf(id)])
+			.map(({ id, input }) => ({ id, input }));
+
+		const { results } = await createCatalogueScriptedRunner(catalogue).execute({
+			...requestFor(extra, { ...problemOf(extra).referenceCode.python }),
+			tests
+		});
+
+		const all = covered.flatMap((id) => [...problemOf(id).exampleTests, ...hiddenOf(id)]);
+		expect(results.map(({ id, stdout }) => [id, stdout])).toEqual(
+			all.map((t) => [t.id, t.expected])
+		);
+	});
 });
