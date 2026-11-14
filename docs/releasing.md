@@ -92,6 +92,7 @@ Only when every card in the sprint is Done, the last card included, and `ci` is 
    - the required checks are green on the release PR's head, which is the changelog commit (a newer push to main makes release-please rewrite the branch: then go back to step 3);
    - no card in the sprint is open: `select(.sprint=="Sprint N · <Theme>" and .status != "Done")` prints nothing;
    - the PR's version is the sprint's version in Planned releases.
+   - the PR's body closes only issues that are finished. release-please turns a `Refs #N` or `Closes #N` line in a commit message into "closes #N" in the release PR's body, and GitHub closes that issue when the release PR merges. List them with `gh pr view <n> --json body --jq .body | grep -oE 'closes \[#[0-9]+\]'`; for each issue that must stay open, edit that text out of the PR's body before merging (`gh pr edit <n> --body-file`). #663 was closed this way by the 1.19.7 release and reopened. Issue references belong in a pull request's body, not in a commit message.
 6. **Merge**, pinned to the head you checked:
 
    ```sh
