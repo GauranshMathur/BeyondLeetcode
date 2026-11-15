@@ -68,6 +68,8 @@ while :; do
     echo "Gave up waiting for ci run $id"; exit 1
   fi
   # `gh run view` lists the latest attempt's jobs, so a re-run is judged by its own results.
+  # A confirming read must directly follow the missing one: any read without verdicts clears it.
+  prev=$confirm confirm=
   verdicts=
   if json="$(gh_call 60 run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs,status)"; then
     # One line per wanted job: "<name> <token>", token one of success | pending | failed | missing,
@@ -103,14 +105,13 @@ while :; do
     # jobs, and a re-run begun between the two pairs the old `completed` status with the new
     # attempt's job list.
     if [ -n "$miss" ]; then
-      if [ -n "$confirm" ]; then
+      if [ -n "$prev" ]; then
         echo "ci run $id did not pass:"; echo "$verdicts"; exit 1
       fi
       confirm=1
       nap "$poll" "$total"
       continue
     fi
-    confirm=
     if [ "$lines" = "$want" ] && [ "$ok" = "$want" ]; then
       echo "Every waited-for job succeeded in ci run $id"; exit 0
     fi

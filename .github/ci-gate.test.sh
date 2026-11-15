@@ -143,6 +143,8 @@ run() {
   run "default: missing once, then the re-run shows in progress, then success" 0 7 "$(jobs ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs_in in_progress ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs $all_ok)"
   WANT_TEXT="tests missing" run "default: missing twice fails" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs)"
   WANT_TEXT="Gave up waiting" POLL=30 TIMEOUT=2 MAXSECS=5 run "default: missing, deadline before the confirming read" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs)"
+  run "default: missing, a failed read, missing, then success (the two misses were not in a row)" 0 7 "$(jobs $test_jobs)" EXIT1 "$(jobs $test_jobs)" "$(jobs $all_ok)"
+  run "default: missing, malformed reply, missing, then success" 0 7 "$(jobs $test_jobs)" "not json {" "$(jobs $test_jobs)" "$(jobs $all_ok)"
   run "default: missing once, then tests success" 0 7 "$(jobs $test_jobs)" "$(jobs $all_ok)"
   run "default: missing once, then tests skipped" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs tests:completed:skipped)"
   run "default: tests neutral" 1 7 "$(jobs $test_jobs tests:completed:neutral)"
