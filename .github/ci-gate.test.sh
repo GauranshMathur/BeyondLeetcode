@@ -64,6 +64,8 @@ run() {
   took=$((SECONDS - t0))
   if [ "$code" != "$want" ]; then
     echo "FAIL $name: exit $code, want $want"; echo "$got"; fail=1
+  elif [ -n "${WANT_TEXT-}" ] && ! grep -qF "$WANT_TEXT" <<<"$got"; then
+    echo "FAIL $name: output lacks \"$WANT_TEXT\""; echo "$got"; fail=1
   elif [ -n "${MAXSECS-}" ] && [ "$took" -gt "$MAXSECS" ]; then
     echo "FAIL $name: took ${took}s, more than ${MAXSECS}s"; fail=1
   else
@@ -131,7 +133,23 @@ run() {
   run "default: tests skipped because a test job was cancelled" 1 7 "$(jobs ${test_jobs/e2e:completed:success/e2e:completed:cancelled} tests:completed:skipped)"
   run "default: tests failed" 1 7 "$(jobs $test_jobs tests:completed:failure)"
   run "default: tests cancelled" 1 7 "$(jobs $test_jobs tests:completed:cancelled)"
-  run "default: tests missing, run completed" 1 7 "$(jobs $test_jobs publish-edge:completed:success)"
+  WANT_TEXT="tests missing" run "default: tests missing, run completed" 1 7 "$(jobs $test_jobs publish-edge:completed:success)" "$(jobs $test_jobs publish-edge:completed:success)"
+  WANT_TEXT="tests missing" run "default: completed run with an empty job list is missing" 1 7 '{"status":"completed","jobs":[]}' '{"status":"completed","jobs":[]}'
+  run "default: empty job list while the run is queued, then green" 0 7 '{"status":"queued","jobs":[]}' "$(jobs $all_ok)"
+  WANT_TEXT="Gave up waiting" TIMEOUT=3 run "default: empty job list, run never starts (times out, not missing)" 1 7 '{"status":"in_progress","jobs":[]}'
+  # `gh run view` reads the run and then its jobs in two requests. A re-run begun in between pairs
+  # the old `completed` status with the new attempt's list, which has no `tests`: one confirming
+  # read before failing on missing.
+  run "default: missing once, then the re-run shows in progress, then success" 0 7 "$(jobs ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs_in in_progress ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs $all_ok)"
+  WANT_TEXT="tests missing" run "default: missing twice fails" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs)"
+  WANT_TEXT="Gave up waiting" POLL=30 TIMEOUT=2 MAXSECS=5 run "default: missing, deadline before the confirming read" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs)"
+  run "default: missing once, then tests success" 0 7 "$(jobs $test_jobs)" "$(jobs $all_ok)"
+  run "default: missing once, then tests skipped" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs tests:completed:skipped)"
+  run "default: tests neutral" 1 7 "$(jobs $test_jobs tests:completed:neutral)"
+  run "default: tests timed out" 1 7 "$(jobs $test_jobs tests:completed:timed_out)"
+  run "default: duplicate tests, success then failure" 1 7 "$(jobs $all_ok tests:completed:failure)"
+  run "default: duplicate tests, failure then success" 1 7 "$(jobs $test_jobs tests:completed:failure tests:completed:success)"
+  WANT_TEXT="Gave up waiting" TIMEOUT=3 run "default: tests absent, run in progress, times out (not missing)" 1 7 "$(jobs_in in_progress $test_jobs)"
   # GitHub creates the job entry of `tests` only when its needs have finished, so a poll made while
   # the run is in progress can list the test jobs without it. That is waiting, not missing.
   run "default: tests absent mid-run, then success" 0 7 "$(jobs_in in_progress ${test_jobs/docker:completed:success/docker:in_progress:})" "$(jobs_in in_progress $test_jobs)" "$(jobs $all_ok)"

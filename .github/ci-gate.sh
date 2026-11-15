@@ -11,7 +11,9 @@
 # Usage: .github/ci-gate.sh <sha>   Needs GH_TOKEN and GITHUB_REPOSITORY. Exit 0 only when every
 # job in JOBS has at least one entry and every entry with that name concluded success. A job still
 # queued or running, or absent from a run that has not completed, is waited for; a job absent from
-# a completed run, or any other conclusion, fails.
+# a completed run (an empty list included), or any other conclusion, fails. A missing job is read
+# twice in a row before it fails, because `gh run view` fetches the run and then its jobs and a
+# re-run begun between the two requests pairs the old status with the new attempt's list.
 # Bounds (seconds, by the clock): the ci run must appear within CI_GATE_FIND_BUDGET (300), the
 # whole gate gives up after CI_GATE_TIMEOUT (2400), and each gh call is capped at 60 or the time
 # left. No call or sleep is started or run past a limit. A success from a call that started before
@@ -58,7 +60,7 @@ while :; do
 done
 echo "Waiting for ci run $id: ($JOBS) must succeed"
 
-want=0
+want=0 confirm=
 for _ in $JOBS; do want=$((want + 1)); done
 
 while :; do
@@ -78,24 +80,37 @@ while :; do
       | ($wanted | split(" ")[]) as $n
       | [$jobs[] | select(.name == $n)] as $m
       | "\($n) " + (
-          if ($m | length) == 0 then (if ($jobs | length) == 0 or ($done | not) then "pending" else "missing" end)
+          if ($m | length) == 0 then (if $done then "missing" else "pending" end)
           elif any($m[]; .status == "completed" and .conclusion != "success") then "failed"
           elif any($m[]; .status != "completed") then "pending"
           else "success" end)' <<<"$json")" || verdicts=
   fi
-  lines=0 ok=0 bad=''
+  lines=0 ok=0 bad='' miss=''
   if [ -n "$verdicts" ]; then
     while IFS= read -r line; do
       lines=$((lines + 1))
       case "${line##* }" in
         success) ok=$((ok + 1)) ;;
         pending) ;;
+        missing) miss=1 ;;
         *) bad=1 ;;
       esac
     done <<<"$verdicts"
     if [ -n "$bad" ]; then
       echo "ci run $id did not pass:"; echo "$verdicts"; exit 1
     fi
+    # Missing is read twice in a row before it fails: `gh run view` fetches the run and then its
+    # jobs, and a re-run begun between the two pairs the old `completed` status with the new
+    # attempt's job list.
+    if [ -n "$miss" ]; then
+      if [ -n "$confirm" ]; then
+        echo "ci run $id did not pass:"; echo "$verdicts"; exit 1
+      fi
+      confirm=1
+      nap "$poll" "$total"
+      continue
+    fi
+    confirm=
     if [ "$lines" = "$want" ] && [ "$ok" = "$want" ]; then
       echo "Every waited-for job succeeded in ci run $id"; exit 0
     fi
