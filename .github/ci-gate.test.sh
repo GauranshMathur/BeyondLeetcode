@@ -25,18 +25,31 @@ FAKE
 chmod +x "$work/bin/gh"
 fail=0
 
-# jobs <name:status:conclusion>... -> the JSON of one poll
+# jobs <name:status:conclusion>... -> the JSON of one poll. The run's own status is RUN_STATUS,
+# `completed` unless a case says otherwise: that keeps the meaning of every case written before the
+# gate read the run's status (a job list was then the whole run). RUN_STATUS=none leaves it out.
 jobs() {
   local spec out=
   for spec in "$@"; do
     IFS=: read -r n s c <<<"$spec"
     out="$out{\"name\":\"$n\",\"status\":\"$s\",\"conclusion\":\"$c\"},"
   done
-  printf '{"jobs":[%s]}' "${out%,}"
+  if [ "${RUN_STATUS-completed}" = none ]; then
+    printf '{"jobs":[%s]}' "${out%,}"
+  else
+    printf '{"status":"%s","jobs":[%s]}' "${RUN_STATUS-completed}" "${out%,}"
+  fi
 }
 test_jobs="typecheck:completed:success lint:completed:success unit:completed:success build:completed:success e2e:completed:success sandbox:completed:success docker:completed:success"
 all_ok="$test_jobs tests:completed:success"
 publish="publish-sandbox-node:completed:success publish-sandbox-go:completed:success"
+
+# jobs_in <run status> <name:status:conclusion>... -> the same, for a run in that status
+jobs_in() {
+  local RUN_STATUS="$1"
+  shift
+  jobs "$@"
+}
 
 # run <name> <expected exit> <run id> <poll JSON>...   (polls are served in order)
 run() {
@@ -118,7 +131,25 @@ run() {
   run "default: tests skipped because a test job was cancelled" 1 7 "$(jobs ${test_jobs/e2e:completed:success/e2e:completed:cancelled} tests:completed:skipped)"
   run "default: tests failed" 1 7 "$(jobs $test_jobs tests:completed:failure)"
   run "default: tests cancelled" 1 7 "$(jobs $test_jobs tests:completed:cancelled)"
-  run "default: tests missing though every test job is green" 1 7 "$(jobs $test_jobs publish-edge:completed:success)"
+  run "default: tests missing, run completed" 1 7 "$(jobs $test_jobs publish-edge:completed:success)"
+  # GitHub creates the job entry of `tests` only when its needs have finished, so a poll made while
+  # the run is in progress can list the test jobs without it. That is waiting, not missing.
+  run "default: tests absent mid-run, then success" 0 7 "$(jobs_in in_progress ${test_jobs/docker:completed:success/docker:in_progress:})" "$(jobs_in in_progress $test_jobs)" "$(jobs $all_ok)"
+  run "default: tests absent mid-run, then skipped" 1 7 "$(jobs_in in_progress ${test_jobs/unit:completed:success/unit:completed:failure} sandbox:in_progress:)" "$(jobs_in in_progress ${test_jobs/unit:completed:success/unit:completed:failure} tests:completed:skipped)"
+  run "default: tests absent mid-run, then the run completes without it" 1 7 "$(jobs_in in_progress $test_jobs)" "$(jobs_in completed $test_jobs)"
+  TIMEOUT=3 run "default: tests absent and the run never completes (times out)" 1 7 "$(jobs_in queued $test_jobs)"
+  TIMEOUT=3 run "default: a job failed early, tests absent, run still going (times out)" 1 7 "$(jobs_in in_progress ${test_jobs/unit:completed:success/unit:completed:failure} sandbox:in_progress:)"
+  TIMEOUT=3 run "default: no status in the reply: waits, never success" 1 7 "$(jobs_in none $test_jobs)"
+  run "default: no status in the reply, tests success" 0 7 "$(jobs_in none $all_ok)"
+  TIMEOUT=3 run "default: status is not a string: waits, never success" 1 7 "$(jobs $test_jobs | sed 's/"status":"completed"/"status":["completed"]/')" "$(jobs $test_jobs | sed 's/"status":"completed"/"status":true/')"
+  # A re-run of failed jobs sets the run back to in progress; the latest attempt's list has no
+  # `tests` until its needs are done again, and that is read as waiting.
+  run "default: re-run in progress, tests absent, then success" 0 7 "$(jobs_in in_progress ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs $all_ok)"
+  # With the seven names given, an absent name is waited for the same way while the run goes on.
+  GATE_JOBS="typecheck lint unit build e2e sandbox docker"
+  run "named jobs: one absent mid-run, then green" 0 7 "$(jobs_in in_progress ${all_ok/docker:completed:success/})" "$(jobs $all_ok)"
+  run "named jobs: one absent, run completed" 1 7 "$(jobs ${all_ok/docker:completed:success/})"
+  GATE_JOBS=
   run "default: tests still waiting, then green" 0 7 "$(jobs $test_jobs tests:queued:)" "$(jobs $all_ok)"
   run "default: tests running, then skipped" 1 7 "$(jobs $test_jobs tests:in_progress:)" "$(jobs $test_jobs tests:completed:skipped)"
   TIMEOUT=3 run "default: tests never finishes (times out)" 1 7 "$(jobs $test_jobs tests:in_progress:)"

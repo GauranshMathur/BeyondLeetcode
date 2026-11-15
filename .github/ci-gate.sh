@@ -2,12 +2,16 @@
 # The release gate's wait: ci.yml's job `tests` on a commit must conclude success. `tests` needs
 # every test job and is the one place that list is written, so a test job added to its `needs`
 # gates edge and a release alike. When a needed job fails or is cancelled GitHub skips `tests`;
-# a skipped job is not success here, so that reads as a failure. The run's own conclusion is
-# ignored on purpose: publish-edge sits in a concurrency group, so a newer push cancels it while
-# pending and the run ends `cancelled` though every test passed. The publish-* jobs test nothing.
+# a skipped job is not success here, so that reads as a failure. GitHub adds a job to the run's
+# list only once its needs have finished, so `tests` is absent from the list until the last test
+# job ends: an absent job is waited for while the run's status is not `completed`, and is missing
+# (a failure) once it is. Only the run's status is read, never its conclusion, on purpose:
+# publish-edge sits in a concurrency group, so a newer push cancels it while pending and the run
+# ends `cancelled` though every test passed. The publish-* jobs test nothing.
 # Usage: .github/ci-gate.sh <sha>   Needs GH_TOKEN and GITHUB_REPOSITORY. Exit 0 only when every
 # job in JOBS has at least one entry and every entry with that name concluded success. A job still
-# queued or running is waited for; a missing job, or any other conclusion, fails.
+# queued or running, or absent from a run that has not completed, is waited for; a job absent from
+# a completed run, or any other conclusion, fails.
 # Bounds (seconds, by the clock): the ci run must appear within CI_GATE_FIND_BUDGET (300), the
 # whole gate gives up after CI_GATE_TIMEOUT (2400), and each gh call is capped at 60 or the time
 # left. No call or sleep is started or run past a limit. A success from a call that started before
@@ -52,7 +56,7 @@ while :; do
   [ -n "$id" ] && break
   nap "$find_sleep" $((find_budget - (SECONDS - start)))
 done
-echo "Waiting for ci.yml's ($JOBS) of ci run $id"
+echo "Waiting for ci run $id: ($JOBS) must succeed"
 
 want=0
 for _ in $JOBS; do want=$((want + 1)); done
@@ -63,16 +67,18 @@ while :; do
   fi
   # `gh run view` lists the latest attempt's jobs, so a re-run is judged by its own results.
   verdicts=
-  if json="$(gh_call 60 run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs)"; then
+  if json="$(gh_call 60 run view "$id" --repo "$GITHUB_REPOSITORY" --json jobs,status)"; then
     # One line per wanted job: "<name> <token>", token one of success | pending | failed | missing,
     # worst over every job entry of that name. Anything unexpected (conclusion text, shape) is
-    # failed or pending, never success.
+    # failed or pending, never success. $done is true only for the exact string "completed", so a
+    # reply without a usable status keeps an absent job pending until the deadline.
     verdicts="$(jq -r --arg wanted "$JOBS" '
       (.jobs | if type == "array" then . else [] end) as $jobs
+      | (.status == "completed") as $done
       | ($wanted | split(" ")[]) as $n
       | [$jobs[] | select(.name == $n)] as $m
       | "\($n) " + (
-          if ($m | length) == 0 then (if ($jobs | length) == 0 then "pending" else "missing" end)
+          if ($m | length) == 0 then (if ($jobs | length) == 0 or ($done | not) then "pending" else "missing" end)
           elif any($m[]; .status == "completed" and .conclusion != "success") then "failed"
           elif any($m[]; .status != "completed") then "pending"
           else "success" end)' <<<"$json")" || verdicts=
