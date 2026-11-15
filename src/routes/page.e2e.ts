@@ -121,7 +121,7 @@ test.describe('the Map on a phone', () => {
 
 		const nav = page.getByRole('navigation', { name: 'Primary' });
 		await expect(page.getByRole('link', { name: 'BLC' })).toHaveAttribute('href', '/');
-		await expect(nav.getByRole('link')).toHaveCount(1); // the Map link is hidden: BLC is the way there
+		await expect(nav.getByRole('link')).toHaveCount(2); // the Map link is hidden: BLC is the way there; Guide and Settings stay
 		await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
 		// On the Map no link is marked.
 		await expect(nav.getByRole('link', { name: 'Settings' })).not.toHaveAttribute(

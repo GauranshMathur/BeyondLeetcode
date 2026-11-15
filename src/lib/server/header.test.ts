@@ -17,6 +17,7 @@ describe('headerFor', () => {
 			inPage: false,
 			links: [
 				{ key: 'map', href: '/', label: 'Map', phoneLabel: 'Map', current: true },
+				{ key: 'guide', href: '/guide', label: 'Guide', phoneLabel: 'Guide', current: false },
 				{
 					key: 'account',
 					href: '/settings',
@@ -38,6 +39,7 @@ describe('headerFor', () => {
 		});
 		expect(header.links).toEqual([
 			{ key: 'map', href: '/', label: 'Map', phoneLabel: 'Map', current: false },
+			{ key: 'guide', href: '/guide', label: 'Guide', phoneLabel: 'Guide', current: false },
 			{ key: 'account', href: '/settings', label: 'Ada', phoneLabel: 'Ada', current: true }
 		]);
 		expect(header.signOut).toBe(true);
@@ -54,6 +56,7 @@ describe('headerFor', () => {
 		expect(header.links.map((l) => [l.key, l.current])).toEqual([
 			['map', false],
 			['users', true],
+			['guide', false],
 			['account', false]
 		]);
 		expect(header.links[1]).toMatchObject({ href: '/users', label: 'Users', phoneLabel: 'Users' });
@@ -62,7 +65,47 @@ describe('headerFor', () => {
 
 	it('does not offer Users in Local Mode, where the Local Learner is an admin', () => {
 		const links = headerFor({ identity: local, mode: 'local', routeId: '/', pathname: '/' }).links;
-		expect(links.map((l) => l.key)).toEqual(['map', 'account']);
+		expect(links.map((l) => l.key)).toEqual(['map', 'guide', 'account']);
+	});
+
+	it('marks the Guide link current on /guide, in both modes', () => {
+		for (const [identity, mode] of [
+			[local, 'local'],
+			[admin, 'multi']
+		] as const) {
+			const header = headerFor({ identity, mode, routeId: '/guide', pathname: '/guide' });
+			expect(header.links.filter((l) => l.current).map((l) => l.key)).toEqual(['guide']);
+		}
+	});
+
+	it('carries the Guide link on every route that is not bare, in both modes', () => {
+		const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'routes');
+		const ids: string[] = [];
+		const walk = (dir: string) => {
+			const entries = readdirSync(dir, { withFileTypes: true });
+			if (entries.some((e) => /^\+(page|server)/.test(e.name))) {
+				const rel = dir.slice(root.length).split(sep).join('/');
+				ids.push(rel === '' ? '/' : rel);
+			}
+			for (const e of entries) if (e.isDirectory()) walk(join(dir, e.name));
+		};
+		walk(root);
+		for (const routeId of [...ids, null]) {
+			for (const [identity, mode] of [
+				[local, 'local'],
+				[learner, 'multi'],
+				[admin, 'multi']
+			] as const) {
+				const header = headerFor({ identity, mode, routeId, pathname: '/x' });
+				const guide = header.links.find((l) => l.key === 'guide');
+				expect([routeId, mode, header.bare, guide?.href]).toEqual([
+					routeId,
+					mode,
+					header.bare,
+					header.bare ? undefined : '/guide'
+				]);
+			}
+		}
 	});
 
 	it('does not draw a Multi-user page with nobody signed in as Local', () => {
