@@ -39,13 +39,17 @@ function logRefusal(kind: 'RunnerUnauthorized' | 'RunnerRefused'): void {
  * thrown value that is not an Error, is logged as a fixed word.
  */
 function logFailure(error: unknown): void {
-	const name = error instanceof Error ? error.constructor?.name : undefined;
-	const kind =
-		error instanceof Error
-			? /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name ?? '')
-				? name
-				: 'Error'
-			: 'NonError';
+	let kind = 'NonError';
+	if (error instanceof Error) {
+		kind = 'Error';
+		try {
+			// Read once and require a string: an object with a changing toString could otherwise leak text.
+			const name: unknown = error.constructor?.name;
+			if (typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) kind = name;
+		} catch {
+			// a getter that throws leaves the fixed word
+		}
+	}
 	console.error(`runner RunnerFailed ${kind}`);
 }
 
