@@ -40,17 +40,22 @@ function logRefusal(kind: 'RunnerUnauthorized' | 'RunnerRefused'): void {
  */
 function logFailure(error: unknown): void {
 	let kind = 'NonError';
-	if (error instanceof Error) {
-		kind = 'Error';
-		try {
+	// The whole read sits in the try: a Proxy's trap can throw from `instanceof` as well as from the property reads.
+	try {
+		if (error instanceof Error) {
+			kind = 'Error';
 			// Read once and require a string: an object with a changing toString could otherwise leak text.
 			const name: unknown = error.constructor?.name;
 			if (typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) kind = name;
-		} catch {
-			// a getter that throws leaves the fixed word
 		}
+	} catch {
+		// a trap or getter that throws leaves the fixed word
 	}
-	console.error(`runner RunnerFailed ${kind}`);
+	try {
+		console.error(`runner RunnerFailed ${kind}`);
+	} catch {
+		// a failing log must not turn into an unhandled error that replaces the 500 the caller gets
+	}
 }
 
 function json(status: number, body: unknown): Response {
@@ -135,7 +140,10 @@ export function createRunnerHandler(options: {
 		try {
 			body = await req.json();
 		} catch {
-			logRefusal('RunnerRefused');
+			// The Runner logs nothing whenever the request's signal is aborted: that covers a caller that left
+			// mid-body and a stalled body the server's own idle timeout cuts, as for a caller that leaves during
+			// the queue wait. Any other body-read failure is a refusal and is logged.
+			if (!req.signal.aborted) logRefusal('RunnerRefused');
 			return json(400, { error: 'Body is not JSON' });
 		}
 		const parsed = executeRequest.safeParse(body);
