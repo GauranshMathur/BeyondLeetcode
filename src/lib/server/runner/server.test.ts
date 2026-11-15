@@ -271,26 +271,26 @@ describe('Runner HTTP handler', () => {
 				const { lines } = await failing(odd);
 
 				expect(lines).toEqual(['runner RunnerFailed Error']);
+			});
 
-				it('logs a fixed word for a class name that is not a string, and survives a throwing getter', async () => {
-					const stringy = new Error('x');
-					let reads = 0;
-					Object.defineProperty(stringy, 'constructor', {
-						value: { name: { toString: () => (reads++ ? 'MESSAGE_MARKER' : 'Error') } }
-					});
-					const hostile = new Error('x');
-					Object.defineProperty(hostile, 'constructor', {
-						get() {
-							throw new Error('getter');
-						}
-					});
-
-					for (const thrown of [stringy, hostile]) {
-						const { res, lines } = await failing(thrown);
-						expect(res.status).toBe(500);
-						expect(lines).toEqual(['runner RunnerFailed Error']);
+			it('logs a fixed word for a class name that is not a string, and survives a throwing getter', async () => {
+				const stringy = new Error('x');
+				let reads = 0;
+				Object.defineProperty(stringy, 'constructor', {
+					value: { name: { toString: () => (reads++ ? 'MESSAGE_MARKER' : 'Error') } }
+				});
+				const hostile = new Error('x');
+				Object.defineProperty(hostile, 'constructor', {
+					get() {
+						throw new Error('getter');
 					}
 				});
+
+				for (const thrown of [stringy, hostile]) {
+					const { res, lines } = await failing(thrown);
+					expect(res.status).toBe(500);
+					expect(lines).toEqual(['runner RunnerFailed Error']);
+				}
 			});
 		});
 	});
