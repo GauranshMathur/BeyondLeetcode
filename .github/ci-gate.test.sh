@@ -115,6 +115,9 @@ run() {
 #     and a quoted key at job or job-field level fail;
 #   - a job header other than the plain form fails;
 #   - exactly one publish-edge job, with exactly one `needs`.
+# Job fields are a whitelist: the first line of a job and every four-space line is a plain `key:`, a
+# quoted or flow value must close on its own line, and a carriage return fails, so a job is always a
+# block mapping whose real `needs` is the one literal key this check counts.
 # A line the check cannot read is reported, so odd YAML can never make it pass by accident.
 
 # check_job_lists <ci.yml> <label>: prints one "ok" or "FAIL" line (and sets fail) for the label.
@@ -122,6 +125,7 @@ check_job_lists() {
   local yml="$1" label="$2" scan edge_needs n_edge n_needs bad gate_jobs edge_sorted gate_sorted value
   scan="$(awk '
     function bad(why) { print "BAD " why ": " $0 }
+    /\r/ { bad("carriage return") }
     /^[ ]*$/ { next }
     /^[ ]*#/ { next }
     {
@@ -138,10 +142,20 @@ check_job_lists() {
           if ($0 ~ /^  [A-Za-z0-9_-]+:[ ]*(#.*)?$/) {
             last_job = $0; sub(/^  /, "", last_job); sub(/:.*$/, "", last_job)
             if (last_job == "publish-edge") print "EDGE"
+            first_field = 1
+            next
           } else { bad("job header is not the plain form"); next }
         }
       }
       if (in_jobs) {
+        if (first_field) { first_field = 0; if (indent != 4) bad("the first line of a job is not at four spaces") }
+        if (indent == 4) {
+          if ($0 !~ /^    [A-Za-z0-9_-]+:( |$)/) bad("a four-space line in jobs does not start with a plain key")
+          else {
+            v = $0; sub(/^    [A-Za-z0-9_-]+: */, "", v)
+            if ((v ~ /^"/ && v !~ /^"([^"\\]|\\.)*"( +#.*)?$/) || (v ~ /^\047/ && v !~ /^\047([^\047]|\047\047)*\047( +#.*)?$/) || (v ~ /^\{/ && v !~ /^\{.*\}( +#.*)?$/) || (v ~ /^\[/ && v !~ /^\[.*\]( +#.*)?$/)) bad("a quoted or flow value that does not close on its line")
+          }
+        }
         if (indent == 1 || indent == 3) bad("odd indent in jobs")
         if (indent <= 4) {
           if ($0 ~ /^[ ]*(- +)?["\047]/ || $0 ~ /^[ ]*\? / || $0 ~ /(^|[ :\[{,])&[A-Za-z0-9_-]/ || $0 ~ /(: |- )\*[A-Za-z0-9_-]/) bad("quoted key, complex key, anchor or alias")
@@ -254,6 +268,24 @@ mk needs-in-text "jobs:
   publish-edge:
     if: true
 $list # the test jobs"
+mk flow-mapping "jobs:
+  publish-edge:
+    { \"needs\": [lint], name: \"edge
+$list
+    \" }"
+mk escaped-flow "jobs:
+  lint:
+    runs-on: x
+  publish-edge:
+    { \"n\\x65eds\": [lint], runs-on: x, strategy: { matrix: {
+$list
+    } }, steps: [ { run: echo } ] }"
+mk open-quote "jobs:
+  publish-edge:
+    name: \"a
+$list
+    b\""
+printf '%s\r\n' "jobs:" "  publish-edge:" "    if: true" "$list" >"$work/yml/crlf.yml"
 check_job_lists "$work/yml/real.yml" "scratch copy shaped like ci.yml passes"
 check_job_lists "$work/yml/needs-in-text.yml" "the word needs in a full-line comment or a needs.x expression is not a needs key"
 expect_fail_lists "publish-edge without needs, a later job with a comment on its header" "$work/yml/comment-header.yml"
@@ -267,5 +299,9 @@ expect_fail_lists "a quoted needs key beside the plain one" "$work/yml/quoted-ne
 expect_fail_lists "a needs key with a space before the colon" "$work/yml/spaced-needs.yml"
 expect_fail_lists "a one-space indent inside jobs" "$work/yml/one-space-indent.yml"
 expect_fail_lists "an anchor at job-field level" "$work/yml/anchor.yml"
+expect_fail_lists "publish-edge written as a flow mapping with the real key quoted" "$work/yml/flow-mapping.yml"
+expect_fail_lists "publish-edge as a flow mapping with an escaped needs key" "$work/yml/escaped-flow.yml"
+expect_fail_lists "a quoted value that continues over the plain needs line" "$work/yml/open-quote.yml"
+expect_fail_lists "carriage returns" "$work/yml/crlf.yml"
 expect_fail_lists "a tab" "$work/yml/tab.yml"
 exit $fail
