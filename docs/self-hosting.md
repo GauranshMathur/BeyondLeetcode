@@ -85,7 +85,7 @@ The `init` command writes `RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}` un
 
 ### Runner troubleshooting
 
-When a Run or Submit fails because the Runner could not be used, the Learner sees "The runner is unavailable. Try again." Look in both logs: `docker compose logs web runner`. Each failed call to the Runner makes one line in `web`'s log, `runner <kind>`. The Runner adds its own line for three of the kinds, each a fixed line with nothing from the request. Neither log holds anything from the request.
+When a Run or Submit fails because the Runner could not be used, the Learner sees "The runner is unavailable. Try again." Look in both logs: `docker compose logs web runner`. Each failed call to the Runner makes one line in `web`'s log, `runner <kind>`. The Runner adds its own line for three of the kinds, each a line of fixed words (and, for `RunnerFailed`, the error's class name) with nothing from the request. Neither log holds anything from the request.
 
 | `web` logs | What happened | Check first |
 |---|---|---|
@@ -96,7 +96,7 @@ When a Run or Submit fails because the Runner could not be used, the Learner see
 | `runner RunnerUnreachable` | No answer: the connection failed, or the Runner took longer than 30 s to answer in full. | `docker compose ps`: is `runner` running, not restarting? `docker compose logs runner` shows why it stopped; it refuses to start on a missing, placeholder or too-short `RUNNER_TOKEN` (32 characters at least) or a bad `RUNNER_MAX_CONCURRENT`. |
 | `runner RunnerFailed` | Any other answer: a 500 (the Runner logs `runner RunnerFailed <ClassName>`: the class name of the error that was thrown, never its message), a redirect, or a reply that is not a valid result. | `docker compose logs runner`. Check that nothing else is answering at the Runner's address. |
 
-The Runner logs nothing for a 200, a 404, a 405, a 503 (busy or not ready), a caller that leaves while its request waits for a slot, or a caller that leaves mid-body.
+The Runner's request handler logs nothing for a 200, a 404, a 405, a 503 (busy or not ready), a caller that leaves while its request waits for a slot, or a caller that leaves mid-body. Container handling logs its own lines: a Run stopped at the time limit adds `Kill of container <id> answered after N ms` (or `Could not kill container <id>` if the kill failed), and a container that could not be removed logs `Could not remove container ...`.
 
 #### Log rotation
 
@@ -110,7 +110,7 @@ Docker's default `json-file` driver keeps every line a container writes. The `co
         max-file: "3"
 ```
 
-The new limits take effect when the containers are recreated, and apply to the logs they write from then on.
+The new limits take effect when the containers are recreated, and apply to the logs they write from then on. Recreating them deletes the logs the old containers wrote, so save any you want first with `docker compose logs > file`.
 
 ## Upgrading
 
