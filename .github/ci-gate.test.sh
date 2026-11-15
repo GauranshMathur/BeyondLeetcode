@@ -2,6 +2,8 @@
 # Tests ci-gate.sh with a fake `gh` on PATH. Run: .github/ci-gate.test.sh
 # Job lists mirror `gh run view --json jobs` (only the fields the gate reads). "release 1.4.0" is
 # the shape of its ci run 40359423454: every test job green, publish-edge cancelled.
+# The default gate waits on the one job `tests`, which ci.yml makes depend on every test job. When a
+# needed job fails or is cancelled GitHub skips `tests`, so a skipped `tests` must fail the gate.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 work="$(mktemp -d)"
@@ -32,7 +34,8 @@ jobs() {
   done
   printf '{"jobs":[%s]}' "${out%,}"
 }
-all_ok="typecheck:completed:success lint:completed:success unit:completed:success build:completed:success e2e:completed:success sandbox:completed:success docker:completed:success"
+test_jobs="typecheck:completed:success lint:completed:success unit:completed:success build:completed:success e2e:completed:success sandbox:completed:success docker:completed:success"
+all_ok="$test_jobs tests:completed:success"
 publish="publish-sandbox-node:completed:success publish-sandbox-go:completed:success"
 
 # run <name> <expected exit> <run id> <poll JSON>...   (polls are served in order)
@@ -42,7 +45,7 @@ run() {
   rm -rf "$work/d"; mkdir "$work/d"
   for p in "$@"; do printf '%s' "$p" >"$work/d/view.$i"; i=$((i + 1)); done
   got="$(FAKE_DIR="$work/d" FAKE_RUN_ID="$runid" PATH="$work/bin:$PATH" GITHUB_REPOSITORY=o/r \
-    FAKE_SLEEP=${FAKE_SLEEP-} FAKE_SLEEP_ON=${FAKE_SLEEP_ON-} CI_GATE_FIND_BUDGET=${FIND_BUDGET:-20} CI_GATE_FIND_SLEEP=${FIND_SLEEP:-0.1} CI_GATE_POLL=${POLL:-0.1} CI_GATE_TIMEOUT=${TIMEOUT:-20} \
+    CI_GATE_JOBS=${GATE_JOBS-} FAKE_SLEEP=${FAKE_SLEEP-} FAKE_SLEEP_ON=${FAKE_SLEEP_ON-} CI_GATE_FIND_BUDGET=${FIND_BUDGET:-20} CI_GATE_FIND_SLEEP=${FIND_SLEEP:-0.1} CI_GATE_POLL=${POLL:-0.1} CI_GATE_TIMEOUT=${TIMEOUT:-20} \
     "$here/ci-gate.sh" abc 2>&1)"
   code=$?
   took=$((SECONDS - t0))
@@ -61,6 +64,10 @@ run() {
 # set a short TIMEOUT or FIND_BUDGET of their own.
 # shellcheck disable=SC2046,SC2086
 {
+  # GATE_JOBS names the jobs the gate waits for; empty means its default, the one job `tests`.
+  # The cases below until the "default" section pass the seven test jobs by name instead, so they
+  # keep exercising the gate's per-job logic (one job failing, renamed, re-run) job by job.
+  GATE_JOBS="typecheck lint unit build e2e sandbox docker"
   run "all tests green" 0 7 "$(jobs $all_ok $publish publish-edge:completed:success)"
   run "release 1.4.0: publish-edge cancelled" 0 7 "$(jobs $all_ok $publish publish-edge:completed:cancelled)"
   run "publish-edge still pending" 0 7 "$(jobs $all_ok publish-edge:queued:)"
@@ -100,5 +107,20 @@ run() {
   FIND_SLEEP=30 FIND_BUDGET=2 MAXSECS=5 run "discovery sleep longer than the budget: cut short" 1 "" ""
   FIND_BUDGET=0 MAXSECS=1 run "zero discovery budget exits at once" 1 7 "$(jobs $all_ok)"
   TIMEOUT=1 run "deadline expires while a job is pending" 1 7 "$(jobs ${all_ok/docker:completed:success/docker:queued:})"
+
+  # The default: the gate waits on `tests` alone.
+  GATE_JOBS=
+  run "default: tests succeeded" 0 7 "$(jobs $all_ok publish-edge:completed:success)"
+  run "default: tests succeeded, publish-edge cancelled" 0 7 "$(jobs $all_ok publish-edge:completed:cancelled)"
+  run "default: tests succeeded, nothing else listed" 0 7 "$(jobs tests:completed:success)"
+  # GitHub skips `tests` when a job it needs fails or is cancelled; the gate must read that as a failure.
+  run "default: tests skipped because a test job failed" 1 7 "$(jobs ${test_jobs/unit:completed:success/unit:completed:failure} tests:completed:skipped publish-edge:completed:skipped)"
+  run "default: tests skipped because a test job was cancelled" 1 7 "$(jobs ${test_jobs/e2e:completed:success/e2e:completed:cancelled} tests:completed:skipped)"
+  run "default: tests failed" 1 7 "$(jobs $test_jobs tests:completed:failure)"
+  run "default: tests cancelled" 1 7 "$(jobs $test_jobs tests:completed:cancelled)"
+  run "default: tests missing though every test job is green" 1 7 "$(jobs $test_jobs publish-edge:completed:success)"
+  run "default: tests still waiting, then green" 0 7 "$(jobs $test_jobs tests:queued:)" "$(jobs $all_ok)"
+  run "default: tests running, then skipped" 1 7 "$(jobs $test_jobs tests:in_progress:)" "$(jobs $test_jobs tests:completed:skipped)"
+  TIMEOUT=3 run "default: tests never finishes (times out)" 1 7 "$(jobs $test_jobs tests:in_progress:)"
 }
 exit $fail

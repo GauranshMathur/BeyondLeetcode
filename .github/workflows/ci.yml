@@ -259,11 +259,23 @@ jobs:
           chmod +x "$shim/bun"
           PATH="$shim:$PATH" .github/smoke.sh beyondleetcode:ci
 
+  # The one list of test jobs: publish-edge needs this job and .github/ci-gate.sh (the release gate)
+  # waits for it by name, so a job added to this `needs` gates both. It does no work. With plain
+  # `needs`, GitHub skips it when a needed job fails or is cancelled, and the gate counts a skipped
+  # job as a failure. It runs on pull requests too, so the check is exercised before a merge.
+  # publish-sandbox keeps its own, different list.
+  tests:
+    needs: [typecheck, lint, unit, build, e2e, sandbox, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: "true"
+
   # Publishes the app image as `edge` (a moving tag, overwritten by design) for amd64 and arm64.
-  # Only after every test job, the smoke test included, passed on this commit.
+  # Only after the test jobs, the smoke test included, passed on this commit (the job `tests`).
   publish-edge:
     if: github.event_name == 'push'
-    needs: [typecheck, lint, unit, build, e2e, sandbox, docker]
+    needs: [tests]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     concurrency:

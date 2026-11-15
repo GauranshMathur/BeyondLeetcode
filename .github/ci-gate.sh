@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# The release gate's wait: ci.yml's test jobs on a commit must all conclude success. The run's own
-# conclusion is ignored on purpose: publish-edge sits in a concurrency group, so a newer push
-# cancels it while pending and the run ends `cancelled` though every test passed. The publish-*
-# jobs test nothing.
+# The release gate's wait: ci.yml's job `tests` on a commit must conclude success. `tests` needs
+# every test job and is the one place that list is written, so a test job added to its `needs`
+# gates edge and a release alike. When a needed job fails or is cancelled GitHub skips `tests`;
+# a skipped job is not success here, so that reads as a failure. The run's own conclusion is
+# ignored on purpose: publish-edge sits in a concurrency group, so a newer push cancels it while
+# pending and the run ends `cancelled` though every test passed. The publish-* jobs test nothing.
 # Usage: .github/ci-gate.sh <sha>   Needs GH_TOKEN and GITHUB_REPOSITORY. Exit 0 only when every
 # job in JOBS has at least one entry and every entry with that name concluded success. A job still
 # queued or running is waited for; a missing job, or any other conclusion, fails.
@@ -13,7 +15,7 @@
 # failed over seconds.
 set -u
 sha="${1:?usage: ci-gate.sh <sha>}"
-JOBS="${CI_GATE_JOBS:-typecheck lint unit build e2e sandbox docker}"
+JOBS="${CI_GATE_JOBS:-tests}"
 find_budget="${CI_GATE_FIND_BUDGET:-300}"
 poll="${CI_GATE_POLL:-15}"
 find_sleep="${CI_GATE_FIND_SLEEP:-10}"
@@ -50,7 +52,7 @@ while :; do
   [ -n "$id" ] && break
   nap "$find_sleep" $((find_budget - (SECONDS - start)))
 done
-echo "Waiting for the test jobs ($JOBS) of ci run $id"
+echo "Waiting for ci.yml's ($JOBS) of ci run $id"
 
 want=0
 for _ in $JOBS; do want=$((want + 1)); done
@@ -86,10 +88,10 @@ while :; do
       esac
     done <<<"$verdicts"
     if [ -n "$bad" ]; then
-      echo "ci run $id did not pass its test jobs:"; echo "$verdicts"; exit 1
+      echo "ci run $id did not pass:"; echo "$verdicts"; exit 1
     fi
     if [ "$lines" = "$want" ] && [ "$ok" = "$want" ]; then
-      echo "Every test job succeeded in ci run $id"; exit 0
+      echo "Every waited-for job succeeded in ci run $id"; exit 0
     fi
   fi
   nap "$poll" "$total"
