@@ -167,6 +167,63 @@ describe('Runner HTTP handler', () => {
 			expect(lines).toEqual(['runner RunnerRefused']);
 		});
 
+		describe('for a body that is cut off', () => {
+			// A request whose body stream the test controls, so the caller can leave (abort) or the stream can fail.
+			const streaming = () => {
+				const abort = new AbortController();
+				let body!: ReadableStreamDefaultController<Uint8Array>;
+				const stream = new ReadableStream<Uint8Array>({
+					start(controller) {
+						body = controller;
+						controller.enqueue(new TextEncoder().encode('{"language":'));
+					}
+				});
+				const req = new Request('http://runner/execute', {
+					method: 'POST',
+					headers: { Authorization: `Bearer ${token}` },
+					body: stream,
+					duplex: 'half',
+					signal: abort.signal
+				} as RequestInit);
+				return { req, abort, body };
+			};
+
+			it('logs nothing when the caller left while the body was being read', async () => {
+				const { req, abort, body } = streaming();
+				const pending = logged(req);
+				abort.abort();
+				body.error(new Error('connection reset'));
+				const { lines } = await pending;
+
+				expect(lines).toEqual([]);
+			});
+
+			it('still logs a refusal when the body fails but the caller has not left', async () => {
+				const { req, body } = streaming();
+				const pending = logged(req);
+				body.error(new Error('truncated'));
+				const { res, lines } = await pending;
+
+				expect(res.status).toBe(400);
+				expect(lines).toEqual(['runner RunnerRefused']);
+			});
+
+			it('still logs a refusal for a whole body that is not JSON on a connection that stays open', async () => {
+				const abort = new AbortController();
+				const req = new Request('http://runner/execute', {
+					method: 'POST',
+					headers: { Authorization: `Bearer ${token}` },
+					body: 'not json at all',
+					signal: abort.signal
+				});
+				const { res, lines } = await logged(req);
+
+				expect(abort.signal.aborted).toBe(false);
+				expect(res.status).toBe(400);
+				expect(lines).toEqual(['runner RunnerRefused']);
+			});
+		});
+
 		it('carries nothing from the request and no line break', async () => {
 			const requests = [
 				new Request('http://runner/execute?q=QUERYTEXT', {
@@ -216,8 +273,12 @@ describe('Runner HTTP handler', () => {
 					});
 					void handle(post(valid));
 					const waited = handle(post(valid));
+					// Let the first two take the slot and the queue place, so the third meets the early refusal
+					// (before any body is read) and not the refusal inside the queue.
+					await new Promise((resolve) => setTimeout(resolve, 0));
 					const full = await handle(post(valid));
 					expect(full.status).toBe(503);
+					expect(await full.json()).toEqual({ error: 'Runner is busy' });
 					const timedOut = await waited;
 					expect(timedOut.status).toBe(503);
 					expect(spy.mock.calls).toEqual([]);
@@ -271,6 +332,20 @@ describe('Runner HTTP handler', () => {
 				const { lines } = await failing(odd);
 
 				expect(lines).toEqual(['runner RunnerFailed Error']);
+			});
+
+			it('logs a fixed word for a thrown Proxy whose traps throw', async () => {
+				const trap = () => {
+					throw new Error('trap');
+				};
+				const hostile = new Proxy(new Error('x'), {
+					getPrototypeOf: trap,
+					get: trap
+				});
+				const { res, lines } = await failing(hostile);
+
+				expect(res.status).toBe(500);
+				expect(lines).toEqual(['runner RunnerFailed NonError']);
 			});
 
 			it('logs a fixed word for a class name that is not a string, and survives a throwing getter', async () => {
