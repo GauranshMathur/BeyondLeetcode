@@ -46,7 +46,7 @@ interface Outcome {
  *
  * A whole-case retry would hide an earlier batch's wrong answer behind a lucky second attempt, so
  * when `earlierFailure` names a non-Accepted outcome the first attempt saw before the Runner
- * failed, that outcome is the case's result and nothing is retried.
+ * failed (with or without a cause), that outcome is the case's result and nothing is retried.
  */
 async function withOneRetryOnRunnerUnavailable<T, E = never>(
 	attempt: () => Promise<T>,
@@ -56,14 +56,10 @@ async function withOneRetryOnRunnerUnavailable<T, E = never>(
 	try {
 		return await attempt();
 	} catch (error) {
-		if (
-			!(error instanceof LearningError) ||
-			error.code !== 'RunnerUnavailable' ||
-			error.cause === undefined
-		)
-			throw error;
+		if (!(error instanceof LearningError) || error.code !== 'RunnerUnavailable') throw error;
 		const earlier = earlierFailure();
 		if (earlier !== undefined) return earlier;
+		if (error.cause === undefined) throw error;
 		onRetry(error.cause);
 		return await attempt();
 	}
@@ -187,7 +183,7 @@ function cases(ids: string[]) {
 						// A workflow annotation, so a retry shows on the run summary of a green job.
 						const name = cause instanceof Error ? cause.name : typeof cause;
 						console.log(
-							`::warning::Content check retried ${problemId} (${language}) after RunnerUnavailable: ${name}: ${annotationDetail(cause)}`
+							`::warning::Content check retried ${problemId} (${language}) after RunnerUnavailable: ${annotationDetail(name)}: ${annotationDetail(cause)}`
 						);
 					},
 					firstAttempt.firstFailure
@@ -297,6 +293,18 @@ describe('content check: the retry rule', () => {
 		expect(result).toBe(wrong);
 		expect(calls).toBe(1);
 		expect(retried).toEqual([]);
+	});
+
+	it('fails with an earlier wrong answer even when the Runner failure has no cause', async () => {
+		const wrong = { verdict: 'Wrong Answer', failure: { test: 'hidden-1' } };
+		const result = await withOneRetryOnRunnerUnavailable(
+			async () => {
+				throw new LearningError('RunnerUnavailable');
+			},
+			() => expect.unreachable('no retry expected'),
+			() => wrong
+		);
+		expect(result).toBe(wrong);
 	});
 
 	it('still retries once when the first attempt saw nothing wrong before the Runner failed', async () => {
