@@ -45,7 +45,7 @@ const theme = EditorView.theme({
 	'.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent' },
 	'&.cm-focused': { outline: '2px solid var(--accent)', outlineOffset: '-2px' },
 	'.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-		backgroundColor: 'var(--rule)'
+		backgroundColor: 'var(--selection-match)'
 	},
 	'.cm-selectionMatch': { backgroundColor: 'var(--selection-match)' }
 });
