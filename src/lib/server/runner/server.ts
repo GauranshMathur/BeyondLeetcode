@@ -32,6 +32,27 @@ function logRefusal(kind: 'RunnerUnauthorized' | 'RunnerRefused'): void {
 	console.error(`runner ${kind}`);
 }
 
+/**
+ * One log line for a request that threw while it ran: `runner RunnerFailed` and the error's class name, and
+ * nothing else. The message, the stack and the cause are left out because a Docker daemon's reply can reach them.
+ * The name comes from the constructor, which no request can set; a name that is not a plain identifier, or a
+ * thrown value that is not an Error, is logged as a fixed word.
+ */
+function logFailure(error: unknown): void {
+	let kind = 'NonError';
+	if (error instanceof Error) {
+		kind = 'Error';
+		try {
+			// Read once and require a string: an object with a changing toString could otherwise leak text.
+			const name: unknown = error.constructor?.name;
+			if (typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) kind = name;
+		} catch {
+			// a getter that throws leaves the fixed word
+		}
+	}
+	console.error(`runner RunnerFailed ${kind}`);
+}
+
 function json(status: number, body: unknown): Response {
 	return Response.json(body, { status });
 }
@@ -139,7 +160,7 @@ export function createRunnerHandler(options: {
 		try {
 			return json(200, await options.runner.execute(parsed.data));
 		} catch (error) {
-			console.error('Runner failed to execute a request', error);
+			logFailure(error);
 			return json(500, { error: 'Runner failed to execute the request' });
 		} finally {
 			release();

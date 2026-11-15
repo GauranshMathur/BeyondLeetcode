@@ -185,11 +185,113 @@ describe('Runner HTTP handler', () => {
 			}
 		});
 
-		it('logs nothing for a 200 or for the 503s', async () => {
+		it('logs nothing for a 200, a 404 or a 405', async () => {
 			expect((await logged(post(withContent))).lines).toEqual([]);
-			const notReady = await logged(post(withContent), []);
-			expect(notReady.res.status).toBe(503);
-			expect(notReady.lines).toEqual([]);
+			const auth = { Authorization: `Bearer ${token}` };
+			const notFound = await logged(new Request('http://runner/nope', { headers: auth }));
+			expect(notFound.res.status).toBe(404);
+			expect(notFound.lines).toEqual([]);
+			const wrongMethod = await logged(new Request('http://runner/execute', { headers: auth }));
+			expect(wrongMethod.res.status).toBe(405);
+			expect(wrongMethod.lines).toEqual([]);
+		});
+
+		describe('for the 503s', () => {
+			it('logs nothing when the Language is not ready', async () => {
+				const notReady = await logged(post(withContent), []);
+				expect(notReady.res.status).toBe(503);
+				expect(notReady.lines).toEqual([]);
+			});
+
+			it('logs nothing when slots and queue are full, or the bounded wait runs out', async () => {
+				const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+				try {
+					const handle = createRunnerHandler({
+						token,
+						runner: { execute: () => new Promise<{ results: never[] }>(() => {}) },
+						maxConcurrent: 1,
+						queueWaitMs: 30,
+						maxQueued: 1,
+						readyLanguages: () => ['python']
+					});
+					void handle(post(valid));
+					const waited = handle(post(valid));
+					const full = await handle(post(valid));
+					expect(full.status).toBe(503);
+					const timedOut = await waited;
+					expect(timedOut.status).toBe(503);
+					expect(spy.mock.calls).toEqual([]);
+				} finally {
+					spy.mockRestore();
+				}
+			});
+		});
+
+		describe('when the runner throws', () => {
+			class DaemonError extends Error {}
+			const failing = async (thrown: unknown) => {
+				const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+				try {
+					const handle = createRunnerHandler({
+						token,
+						runner: {
+							execute: () => Promise.reject(thrown)
+						},
+						maxConcurrent: 4,
+						readyLanguages: () => ['python']
+					});
+					const res = await handle(post(withContent));
+					return { res, lines: spy.mock.calls.map((call) => call.map(String).join(' ')) };
+				} finally {
+					spy.mockRestore();
+				}
+			};
+
+			it('answers 500 with one line holding the class name and nothing of the error', async () => {
+				const error = new DaemonError('MESSAGE_MARKER daemon said no', {
+					cause: new Error('CAUSE_MARKER')
+				});
+				const { res, lines } = await failing(error);
+
+				expect(res.status).toBe(500);
+				expect(await res.json()).toEqual({ error: 'Runner failed to execute the request' });
+				expect(lines).toEqual(['runner RunnerFailed DaemonError']);
+			});
+
+			it('logs a fixed word for a thrown value that is not an Error', async () => {
+				const { res, lines } = await failing('STRING_MARKER');
+
+				expect(res.status).toBe(500);
+				expect(lines).toEqual(['runner RunnerFailed NonError']);
+			});
+
+			it('logs a fixed word for a class name that is not a plain identifier', async () => {
+				const odd = new Error('x');
+				Object.defineProperty(odd, 'constructor', { value: { name: 'bad\nforged line' } });
+				const { lines } = await failing(odd);
+
+				expect(lines).toEqual(['runner RunnerFailed Error']);
+			});
+
+			it('logs a fixed word for a class name that is not a string, and survives a throwing getter', async () => {
+				const stringy = new Error('x');
+				let reads = 0;
+				Object.defineProperty(stringy, 'constructor', {
+					value: { name: { toString: () => (reads++ ? 'MESSAGE_MARKER' : 'Error') } }
+				});
+				const hostile = new Error('x');
+				Object.defineProperty(hostile, 'constructor', {
+					get() {
+						throw new Error('getter');
+					}
+				});
+
+				for (const thrown of [stringy, hostile]) {
+					const { res, lines } = await failing(thrown);
+					expect(res.status).toBe(500);
+					expect(lines).toEqual(['runner RunnerFailed Error']);
+				}
+			});
 		});
 	});
 
