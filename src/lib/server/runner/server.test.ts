@@ -193,8 +193,9 @@ describe('Runner HTTP handler', () => {
 				const pending = logged(req);
 				abort.abort();
 				body.error(new Error('connection reset'));
-				const { lines } = await pending;
+				const { res, lines } = await pending;
 
+				expect(res.status).toBe(400);
 				expect(lines).toEqual([]);
 			});
 
@@ -276,7 +277,7 @@ describe('Runner HTTP handler', () => {
 					// Let the first two take the slot and the queue place, so the third meets the early refusal
 					// (before any body is read) and not the refusal inside the queue.
 					await new Promise((resolve) => setTimeout(resolve, 0));
-					const full = await handle(post(valid));
+					const full = await handle(post('not json'));
 					expect(full.status).toBe(503);
 					expect(await full.json()).toEqual({ error: 'Runner is busy' });
 					const timedOut = await waited;

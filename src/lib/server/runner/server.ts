@@ -140,9 +140,9 @@ export function createRunnerHandler(options: {
 		try {
 			body = await req.json();
 		} catch {
-			// A caller that left mid-body made the read throw; the Runner refused nothing, so it logs nothing,
-			// as for a caller that leaves during the queue wait. Only the request's own signal says so: a body
-			// that arrives whole and is not JSON, or a read that fails with the connection open, is a refusal.
+			// The Runner logs nothing whenever the request's signal is aborted: that covers a caller that left
+			// mid-body and a stalled body the server's own idle timeout cuts, as for a caller that leaves during
+			// the queue wait. Any other body-read failure is a refusal and is logged.
 			if (!req.signal.aborted) logRefusal('RunnerRefused');
 			return json(400, { error: 'Body is not JSON' });
 		}
