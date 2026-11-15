@@ -29,7 +29,9 @@ and BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET:-} under web's environment in your
 Multi-user also needs ORIGIN set in your .env. If your compose.yaml has ORIGIN: \${ORIGIN:-}, replace ORIGIN: \${ORIGIN:-} with a bare ORIGIN:
 line: the old line passes an empty ORIGIN when .env has none, and an empty ORIGIN stops the server.
 Behind a reverse proxy, add ADDRESS_HEADER: \${ADDRESS_HEADER:-} and XFF_DEPTH: \${XFF_DEPTH:-1} under web's environment too, then set
-both in .env, and publish the port as "127.0.0.1:\${PORT}:3000" (a proxy on this machine) or keep it on the proxy's network only.`;
+both in .env, and publish the port as "127.0.0.1:\${PORT}:3000" (a proxy on this machine) or keep it on the proxy's network only.
+To rotate container logs, add under both web and runner a logging: block with driver: json-file and, under options:,
+max-size: "10m" and max-file: "3" (see docs/self-hosting.md).`;
 
 export function parseArgs(args: string[]): InitOptions {
 	let origin: string | undefined;
