@@ -41,6 +41,12 @@ services:
       - data:/data
     depends_on:
       - runner
+    logging:
+      # Docker's default keeps every line of a container's output. This keeps at most 3 files of 10 MB each.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
     networks: [default, internal]
 
@@ -54,6 +60,12 @@ services:
     volumes:
       # The only container with the engine socket. It runs learner code in sandboxes.
       - /var/run/docker.sock:/var/run/docker.sock
+    logging:
+      # Docker's default keeps every line of a container's output. This keeps at most 3 files of 10 MB each.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
     networks: [internal]
 

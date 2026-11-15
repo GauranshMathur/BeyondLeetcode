@@ -85,18 +85,32 @@ The `init` command writes `RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}` un
 
 ### Runner troubleshooting
 
-When a Run or Submit fails because the Runner could not be used, the Learner sees "The runner is unavailable. Try again." Look in both logs: `docker compose logs web runner`. Each failed call to the Runner makes one line in `web`'s log, `runner <kind>`. The Runner adds its own line for two of the kinds. Neither log holds anything from the request.
+When a Run or Submit fails because the Runner could not be used, the Learner sees "The runner is unavailable. Try again." Look in both logs: `docker compose logs web runner`. Each failed call to the Runner makes one line in `web`'s log, `runner <kind>`. The Runner adds its own line for three of the kinds, each a fixed line with nothing from the request. Neither log holds anything from the request.
 
 | `web` logs | What happened | Check first |
 |---|---|---|
 | `runner RunnerUnauthorized` (the Runner also logs `runner RunnerUnauthorized`) | The Runner answered 401: the token the web sent is not the one the Runner holds. | `RUNNER_TOKEN` must be the same in both services. After changing it in `.env`, run `docker compose up -d` so both are recreated. |
-| `runner RunnerRefused` (the Runner also logs `runner RunnerRefused`) | The Runner answered 400: it did not accept the request. | Both services should run the same image: `BEYONDLEETCODE_IMAGE` in `.env`, then `docker compose up -d`. Report it if they do. |
+| `runner RunnerRefused` (the Runner also logs `runner RunnerRefused`) | The Runner answered 400: it did not accept the request (a body that is not JSON, or not a valid request). A caller that leaves before its body arrives, or whose stalled body the Runner's idle timeout cuts, is not logged. | Both services should run the same image: `BEYONDLEETCODE_IMAGE` in `.env`, then `docker compose up -d`. Report it if they do. |
 | `runner RunnerBusy` | The Runner answered 503 "busy": every slot was taken and the queue was full or too slow. The Runner does not log this. | Wait and retry. If it keeps happening, see [How many runs at once](#how-many-runs-at-once). |
 | `runner RunnerNotReady` | The Runner answered 503 "not ready": that Language's image has not been pulled yet, or is being pulled again after it was removed from the host. The Runner does not log this. The first request to hit a removed image can get `RunnerFailed` instead. | `docker compose logs runner` for `Pulling Sandbox image`, `Could not pull Sandbox image` and `Runner lost the <language> image`. A pull that keeps failing is often a host that cannot reach Docker Hub or `ghcr.io`; the logged error says why. |
 | `runner RunnerUnreachable` | No answer: the connection failed, or the Runner took longer than 30 s to answer in full. | `docker compose ps`: is `runner` running, not restarting? `docker compose logs runner` shows why it stopped; it refuses to start on a missing, placeholder or too-short `RUNNER_TOKEN` (32 characters at least) or a bad `RUNNER_MAX_CONCURRENT`. |
-| `runner RunnerFailed` | Any other answer: a 500 (the Runner logs `Runner failed to execute a request` and the error), a redirect, or a reply that is not a valid result. | `docker compose logs runner`. Check that nothing else is answering at the Runner's address. |
+| `runner RunnerFailed` | Any other answer: a 500 (the Runner logs `runner RunnerFailed <ClassName>`: the class name of the error that was thrown, never its message), a redirect, or a reply that is not a valid result. | `docker compose logs runner`. Check that nothing else is answering at the Runner's address. |
 
-The shipped `compose.yaml` does not rotate container logs, so rotation is up to your Docker daemon's settings.
+The Runner logs nothing for a 200, a 404, a 405, a 503 (busy or not ready), a caller that leaves while its request waits for a slot, or a caller that leaves mid-body.
+
+#### Log rotation
+
+Docker's default `json-file` driver keeps every line a container writes. The `compose.yaml` that `init` writes now caps both services at 3 files of 10 MB each. That applies to new Instances only: `init` never rewrites an existing `compose.yaml`. To get the same on an existing Instance, add this block under both `web` and `runner` (beside `restart`), then run `docker compose up -d`:
+
+```yaml
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+The new limits take effect when the containers are recreated, and apply to the logs they write from then on.
 
 ## Upgrading
 
