@@ -63,6 +63,8 @@ export async function createApp(env: {
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
 }): Promise<App> {
+	// Read once, before any await: nothing later in start-up can change the answer.
+	const devModeRequested = env.DEV_MODE === '1';
 	if (!env.CONTENT_DIR) {
 		throw new Error('CONTENT_DIR is not set: point it at the content folder (see .env.example).');
 	}
@@ -88,7 +90,7 @@ export async function createApp(env: {
 				'IDENTITY_TEST_LEARNER=1 on a multi-user Instance: the test Learner switch must be off once the Instance is multi-user.'
 			);
 		}
-		if (env.DEV_MODE === '1') {
+		if (devModeRequested) {
 			throw new Error(
 				'DEV_MODE=1 on a multi-user Instance: dev mode is for a Local Mode Instance only; unset DEV_MODE.'
 			);
@@ -106,7 +108,7 @@ export async function createApp(env: {
 	});
 	// A fresh database stays empty until someone chooses; an already-Local one gets its Learner at boot.
 	if (instance.mode() === 'local') await local.ensureLocalLearner();
-	return {
+	const app: Omit<App, 'devMode'> = {
 		instance: {
 			...instance,
 			async chooseLocal() {
@@ -127,9 +129,13 @@ export async function createApp(env: {
 				return createFirstAdmin({ instance, auth: multi.auth, db }, input);
 			}
 		},
-		core: createLearningCore({ catalogue, db, runner }),
-		devMode: env.DEV_MODE === '1' && instance.mode() === 'local'
+		core: createLearningCore({ catalogue, db, runner })
 	};
+	// A non-writable data property: nothing can switch it on after start.
+	return Object.defineProperty(app, 'devMode', {
+		value: devModeRequested && instance.mode() === 'local',
+		enumerable: true
+	}) as App;
 }
 
 /**

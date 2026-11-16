@@ -407,6 +407,16 @@ describe('dev mode', () => {
 		expect(app.devMode).toBe(false);
 	}, 30_000);
 
+	it('cannot be assigned after start', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'local' } });
+		const app = await boot(url);
+		expect(() => {
+			(app as { devMode: boolean }).devMode = true;
+		}).toThrow(TypeError);
+		expect(app.devMode).toBe(false);
+	}, 30_000);
+
 	it('is read once at start: a later change to the process environment does not move it', async () => {
 		const { url, db } = await migratedDatabase();
 		await db.instance.create({ data: { mode: 'local' } });
