@@ -1,12 +1,12 @@
 # Releasing
 
-**One release per sprint.** A sprint is the unit of release: it ends with a single release, cut by the orchestrator at the sprint's exit. The `sprint-planner` chooses its version when it plans the sprint, and the sprint's last card sets it with a `Release-As` footer. Nothing merges the release PR automatically. release-please (`.github/workflows/release.yml`) only opens and refreshes the release PR, with `RELEASE_PAT` (the CI credentials and how to replace it: [`ci-credentials.md`](ci-credentials.md)), so the required checks run on it. Versions stay 1.x.
+**One release per sprint.** A sprint is the unit of release: it ends with a single release, cut by the orchestrator at the sprint's exit. The orchestrator chooses its version when it constructs the sprint (`docs/agents/board.md`, Constructing a sprint), and the sprint's last card sets it with a `Release-As` footer. Nothing merges the release PR automatically. release-please (`.github/workflows/release.yml`) only opens and refreshes the release PR, with `RELEASE_PAT` (the CI credentials and how to replace it: [`ci-credentials.md`](ci-credentials.md)), so the required checks run on it. Versions stay 1.x.
 
 Every commit merged to main joins the open release PR, so whatever merges between two cuts (a card, a plan PR, the record of the last cut) ships in the next sprint's release.
 
 ## The version
 
-The planner picks it at the sprint's start, from the previous sprint's version:
+The orchestrator picks it when it constructs the sprint, from the previous sprint's version:
 
 - the next minor if any card in the sprint is `feat`;
 - otherwise the next patch.
@@ -37,7 +37,7 @@ A content sprint (`docs/sprints.md`, The content sprints) has a Sprint option an
 
 ## Planned releases
 
-The `sprint-planner` adds a row for each sprint it plans.
+The orchestrator adds a row for each sprint it constructs.
 
 | Sprint | Release option | Version | State |
 | --- | --- | --- | --- |
@@ -55,7 +55,7 @@ The `sprint-planner` adds a row for each sprint it plans.
 
 ## The last card
 
-Every sprint ends with one card the planner files: `[Cnnn] Sprint N: exit check and Release-As X.Y.Z`, commit type `docs`, `Blocked by: every other card in Sprint N`. The orchestrator works it itself. It checks the sprint's exit criteria and writes the sprint's Status in `docs/sprints.md`. The Status counts issues closed as well as cards done, each per tier (`docs/agents/board.md`, Issues are the unit of work, and Tiers). Then it squash-merges that PR with the footer:
+Every sprint ends with one card the orchestrator files when it constructs the sprint: `[Cnnn] Sprint N: exit check and Release-As X.Y.Z`, commit type `docs`. It is worked last, when every other card in Sprint N is Done, and the orchestrator works it itself. It checks the sprint's exit criteria and writes the sprint's Status in `docs/sprints.md`. The Status counts issues closed as well as cards done, each per tier (`docs/agents/board.md`, Issues are the unit of work, and Tiers). Then it squash-merges that PR with the footer:
 
 ```sh
 gh pr merge <n> --squash --body $'Sprint N exit check.\n\nRelease-As: X.Y.Z'

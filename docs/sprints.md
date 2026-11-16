@@ -2,15 +2,15 @@
 
 Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hold. Every card carries a Sprint field on the board (IDs in `docs/agents/board.md`). The orchestrator works one sprint at a time and does not pull cards from a later sprint until the current one exits.
 
-**Size and release** (from Sprint 14). A sprint is one coherent theme drawn from the open issues, typically 12 to 25 cards; each card is still one PR. A sprint is the unit of release: it ends with one release, whose version the `sprint-planner` picks when it plans the sprint and whose last card sets it with `Release-As`. Its changelog has fixed headings and is reviewed before the release PR merges (`docs/releasing.md`).
+**Size and release** (from Sprint 14). A sprint is one coherent theme drawn from the open issues, typically 12 to 25 cards; each card is still one PR. A sprint is the unit of release: it ends with one release, whose version the orchestrator picks when it constructs the sprint and whose last card sets it with `Release-As`. Its changelog has fixed headings and is reviewed before the release PR merges (`docs/releasing.md`).
 
 **Ordering rule.** Each screen is designed in the sprint that builds it, or the one just before. Foundations rules come first so every later screen is built responsive from day one. The one exception is mobile boards, which wait for Sprint 5.
 
 **Only the current and planned sprints** (the maintainer's rule, 2026-11-10). When a sprint exits, its last card moves the sprint's section, its Status included, to `docs/sprints-archive.md`, which holds Sprints 0 to 21.
 
-**The Backlog** (the maintainer's decision, 2026-11-11). Every open issue has a ticket on the board with Status Backlog and no sprint. The planner pulls from the Backlog by tier when it plans the next sprints. Only Tier 0 work joins the sprint in progress (a bug that hurts users, a security problem, a broken CI or release), with anything a planned card cannot be built without. The rules are in `docs/agents/board.md`, Issues are the unit of work.
+**The Backlog** (the maintainer's decision, 2026-11-11). Every open issue has a ticket on the board with Status Backlog and no sprint. The principal keeps the Backlog in priority order, tier first, and the orchestrator constructs each sprint from its top (`docs/agents/board.md`, Constructing a sprint). Only Tier 0 work joins the sprint in progress (a bug that hurts users, a security problem, a broken CI or release), with anything a planned card cannot be built without. The rules are in `docs/agents/board.md`, Issues are the unit of work.
 
-**Tiers** (the maintainer's standing rule, 2026-11-14). Every open issue has one tier, assigned at intake with a one-line reason. The planner fills each sprint strictly by tier, and re-ranks at the start of every sprint and whenever a Tier 0 issue arrives. Each sprint's section gives its tier mix, and its exit Status the issues closed per tier. The rules are in `docs/agents/board.md`, Tiers.
+**Tiers** (the maintainer's standing rule, 2026-11-14). Every open issue has one tier, assigned at intake with a one-line reason. The orchestrator fills each sprint strictly by tier, from the top of the Backlog, and the principal re-orders the Backlog at the start of every sprint and whenever a Tier 0 issue arrives. Each sprint's section gives its tier mix, and its exit Status the issues closed per tier. The rules are in `docs/agents/board.md`, Tiers.
 
 - Tier 0 critical fixes: bugs that hurt users, security problems, broken CI or release.
 - Tier 1 priority: the maintainer's new items, accessibility that blocks users, and anything that unblocks them.
@@ -23,7 +23,7 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 ## The ranking (2026-11-14, at Sprint 21's start)
 
-Every open issue, 67 in all: none in Tier 0, 3 in Tier 1, 34 in Tier 2 and 30 in Tier 3. One more row is kept: #663, which the 1.19.7 release PR closed by mistake on 2026-11-14 (its changelog line reads "closes #663") and which is ranked as the open Tier 1 issue it is (`docs/agents/board.md`, Issues are the unit of work, Close). Sprint 20 closed ten issues, which have left the table: #507, #509, #510, #511, #514, #517, #565, #572, #637 and #666. Three were filed on 2026-11-14 and are new here: #676, #679 and #684. Inside a tier the order is the order of work: the sprint, then the issue number. "Backlog" means the issue's ticket waits in the Backlog column; "the maintainer's" means no agent starts it. The planner rewrites this table at the start of every sprint.
+Every open issue, 67 in all: none in Tier 0, 3 in Tier 1, 34 in Tier 2 and 30 in Tier 3. One more row is kept: #663, which the 1.19.7 release PR closed by mistake on 2026-11-14 (its changelog line reads "closes #663") and which is ranked as the open Tier 1 issue it is (`docs/agents/board.md`, Issues are the unit of work, Close). Sprint 20 closed ten issues, which have left the table: #507, #509, #510, #511, #514, #517, #565, #572, #637 and #666. Three were filed on 2026-11-14 and are new here: #676, #679 and #684. Inside a tier the order is the order of work: the sprint, then the issue number. "Backlog" means the issue's ticket waits in the Backlog column; "the maintainer's" means no agent starts it. The principal rewrites this table when it re-orders the Backlog, at the start of every sprint.
 
 | Issue | Tier | Reason | Sprint |
 |---|---|---|---|
@@ -143,8 +143,8 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
 - **Waiting on the maintainer.** Both are hard calls, asked on the issues on 2026-11-14, so the orchestrator does not take the recommended answer on its own:
   - **#660, answered 2026-11-16: no.** The question was: is dev mode allowed on a Multi-user Instance, and who may use its actions there? `mvp1.md` does not say. Recommended: no. It takes effect only in Local Mode, and a Multi-user Instance with the switch set refuses to start, as with `IDENTITY_TEST_LEARNER`. The maintainer reaches a Local Mode dev Instance over the tailnet. A security rule, so a hard call. C389 is written for this answer.
   - **#661: may it add a stored per-Learner value, a schema change?** The theme is a cookie, which does not follow an Account across browsers, and the issue asks for a value that survives signing out and in. Recommended: yes, one nullable `startingLanguage` column on `Learner`, with a migration that sets every existing Learner to `python`. A schema change, so a hard call. C397 is written for this answer.
-  - If one is answered and not the other, that issue's lane can start: #660's cards need nothing of #661's, and #661's C398 and C399 follow #660's C391 and C394 only in shared files, an order the planner can turn round at a re-rank.
-- **Decided from the issues** (their own direction): Reset progress keeps the starting Language, as it keeps the theme; the switch's name, `DEV_MODE`, is the planner's proposal.
+  - If one is answered and not the other, that issue's lane can start: #660's cards need nothing of #661's, and #661's C398 and C399 follow #660's C391 and C394 only in shared files, an order the orchestrator can turn round when the Backlog is re-ordered.
+- **Decided from the issues** (their own direction): Reset progress keeps the starting Language, as it keeps the theme; the switch's name, `DEV_MODE`, was proposed when the sprint was planned.
 - **Small cards share a PR:** C402b carries `Batch: L` and is its batch's only card, so its PR is its own.
 - **Reviews.**
   - The orchestrator's two-reader review (Fable and Codex): C389, C390, C391 and C394.
@@ -190,7 +190,7 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
 - **#560** (one recipe to start a browser test's Instance): Tier 3. C393 adds a seventh recipe; the refactor waits in the Backlog.
 - **#505** (the header model's phone bar): Tier 3; it touches `header.ts` after Sprint 21's C402a.
 - **The content redesign (#663):** the content sprints, below.
-- **Sprint 23** has no cards: `Sprint 23 · Unplanned`, Release option `R v1.21.1: Sprint 23 · Unplanned`. The planner fills and renames it from the ranking.
+- **Sprint 23** has no cards: `Sprint 23 · Unplanned`, Release option `R v1.21.1: Sprint 23 · Unplanned`. The orchestrator fills and renames it when it constructs that sprint.
 
 ## The content sprints (#663, Tier 1)
 
@@ -214,7 +214,7 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
 
 ### Content sprints 2 and 3 · Topic rewrites
 
-- **Seventeen cards, one per Topic,** each `Blocked by: the spine doc (C388) and the maintainer's confirmation of the spine`. They are placeholders: when the spine lands, the planner re-plans them from the spine's section for each Topic (files, order, lanes), and files **one card per spine milestone** for its system-design Chapter or capstone. The milestones cannot be named before the spine exists, so those cards are not filed yet.
+- **Seventeen cards, one per Topic,** each `Blocked by: the spine doc (C388) and the maintainer's confirmation of the spine`. They are placeholders: when the spine lands, the card-writer cuts them again from the spine's section for each Topic (files, order, lanes), and cuts **one card per spine milestone** for its system-design Chapter or capstone. The milestones cannot be named before the spine exists, so those cards are not filed yet.
 - **Content sprint 2 · Topic rewrites, first half** (9 cards, in the Map's order): C413 Stacks, C414 Binary search, C415 Two pointers, C416 Hash tables, C417 Linked lists, C418 Sliding window, C419 Math and geometry, C420 Bit manipulation, C421 Trees.
 - **Content sprint 3 · Topic rewrites, second half** (8 cards): C422 Backtracking, C423 Tries, C424 Heaps, C425 1-D dynamic programming, C426 Greedy, C427 2-D dynamic programming, C428 Graphs, C429 Intervals. The milestone cards join here or in a fourth content sprint, at the re-plan.
 - **How they relate to #252 to #268 and #113.** Each of #252 to #268 is the human review of one Topic, the maintainer's. A rewrite card names its Topic's issue in its `Refs` line and changes the text that review would read, so the maintainer's review of the rewrite is that review, done once, on the new text. No card ends any of them, and no rewrite card ends #663: #252 to #268 are the maintainer's to close, and #663 stays open until its last milestone card, filed at the re-plan. #113 (Dynamic arrays, the 18th Topic in `content/`) has no rewrite card: whether Dynamic arrays is rewritten too is a question for the spine.
@@ -228,4 +228,4 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
 
 ## After each build sprint
 
-After a sprint is released, a separate session reviews the architecture (`docs/agents/board.md`, After a major feature). Every finding becomes an issue with a Backlog ticket. The review proposes a tier for each finding. A Tier 0 one joins the current sprint, and the planner pulls the rest by tier.
+After a sprint is released, a separate session reviews the architecture (`docs/agents/board.md`, After a major feature). Every finding becomes an issue with a Backlog ticket. The review proposes a tier for each finding. A Tier 0 one joins the current sprint, and the rest wait in the Backlog in the principal's order.
