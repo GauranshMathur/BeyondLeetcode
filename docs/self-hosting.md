@@ -135,7 +135,7 @@ Dev mode is a tool for an operator or a content author to check the content. It 
 - **The content folder (`CONTENT_DIR`) is read again once for each request that reads content.** A saved edit to a Chapter, a Problem, a Test or Reference Code shows on the next reload, with no rebuild and no restart.
   - That costs time. On the full `content/` folder (3,428 files) one read took about 0.35 to 0.45 s, and every such request pays it, each autosave included.
   - The folder must still be valid when the web process starts, or it does not start, dev mode or not.
-- **Content that fails validation after the start makes the page answer "Invalid content".** The page lists each problem as `<path inside the content folder>: <what is wrong>`, at most 200, then one "and N more" line. Fix the file and reload: the next request reads the folder again. The web process's log still holds only `[500] <METHOD> <route id> ContentError`, as for any error.
+- **Content that fails validation after the start makes the page answer "Invalid content".** The page lists each issue as `<path inside the content folder>: <what is wrong>`, at most 200, then one "and N more" line. Fix the file and reload: the next request reads the folder again. The web process's log still holds only `[500] <METHOD> <route id> ContentError`, as for any error.
 - **The Problem screen's console has a Dev item.** Pick a Language under "reference language" and press "Run reference solution".
   - It runs that Problem's Reference Code against the Tests a Submit of it runs: its own Tests and every earlier Core Problem's. An earlier Problem's Tests show that Problem's id.
   - It goes through the Runner with a Submit's limits.
@@ -145,21 +145,21 @@ Dev mode is a tool for an operator or a content author to check the content. It 
 
 ### What stays
 
-Reading in dev mode writes nothing. What the Learner does is stored as for any Learner, and it stays after dev mode is turned off: Read marks, saved code (Run and Submit save first), Submissions, revealed Hints, and the Language chosen per Topic.
+Opening a page in dev mode writes nothing. What the Learner does is stored as for any Learner (reaching a Chapter's end marks it Read, as it does anywhere, because the page posts that on its own), and it stays after dev mode is turned off: Read marks, saved code (Run and Submit save first), Submissions, revealed Hints, and the Language chosen per Topic.
 
 - **A Topic completed in dev mode stays Complete,** and counts as a Prerequisite.
-- **A Topic that dev mode opened, but whose Prerequisites did not, is Locked again once dev mode is off.** Its saved work is kept.
+- **A Topic that dev mode opened, but whose Prerequisites did not, is Locked again once dev mode is off, unless it was completed** (a Complete Topic is never Locked). Its saved work is kept.
 - **Give dev mode a database of its own.** Never point it at the database of an Instance someone learns on. That would also be a second web process on one data volume, which this page already says not to run.
 - **Settings' Reset progress deletes all of the Learner's progress,** not only the dev-mode part.
 
 ### Safety
 
 - **Local Mode has no sign-in, so anyone who reaches the address can use dev mode.** Keep it on your own machine or your tailnet, never on a public address.
-- **Run it from the built server or the published image, never `bun run dev` (`vite dev`).** Under `vite dev` SvelteKit skips its [cross-site form check](https://github.com/sveltejs/kit/blob/%40sveltejs%2Fkit%403.1.1/packages/kit/src/runtime/server/respond.js#L101-L125) (the `if (!__SVELTEKIT_DEV__)` block, at `@sveltejs/kit@3.1.1`), so a page on any site you open could submit the Instance's forms.
+- **Run it from the built server or the published image, never `bun run dev` (`vite dev`).** Under `vite dev` SvelteKit skips its [cross-site form check](https://github.com/sveltejs/kit/blob/%40sveltejs%2Fkit%403.1.1/packages/kit/src/runtime/server/respond.js#L101-L135) (the `if (!__SVELTEKIT_DEV__)` block, at `@sveltejs/kit@3.1.1`), so a page on any site you open could submit the Instance's forms.
 
 ### From a clone
 
-You need [Bun](https://bun.com/docs/installation), and Docker for the Runner.
+You need [Bun](https://bun.com/docs/installation) 1.3.13 or later (CI builds with 1.4.3), and Docker for the Runner. On an older Bun, `bun run build` exits 0 without writing `build/`.
 
 1. Run `bun install`.
 2. Run `cp .env.example .env`. In `.env`, set:
@@ -187,8 +187,10 @@ You need [Bun](https://bun.com/docs/installation), and Docker for the Runner.
 
 ### In the published image
 
-1. **Use a folder of its own, and so a `data` volume of its own.** Run `init` with `--origin` set to the URL you will open, run `docker compose up -d`, and choose Local at Setup, as in [Install](#install-local-mode).
-2. **Beside `compose.yaml`, write a `compose.override.yaml`.** It sets `DEV_MODE: "1"` under `web`'s `environment`, and mounts the clone's `content/` folder read-only over `/app/content`, the image's `CONTENT_DIR`. Compose [reads `compose.override.yaml` on its own](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/).
+1. **Use a folder whose name no other Instance's folder has,** for example `beyondleetcode-dev`, because [Compose names the project, its containers and the `data` volume after the folder](https://docs.docker.com/compose/how-tos/project-name/). A folder with the same name as another Instance's would take over its containers and its volume, and turn dev mode on over a Learner's database. Run `init` there with `--origin` set to the URL you will open and a `--port` no other Instance uses (the default is 3000).
+2. **Run the image the content was written for.** Content the image's version cannot read stops `web` at start. For a clone of `main`, set `BEYONDLEETCODE_IMAGE` in `.env` to the `edge` tag, which is built on every push to `main`.
+3. **Run `docker compose pull && docker compose up -d`, and choose Local at Setup,** as in [Install](#install-local-mode).
+4. **Beside `compose.yaml`, write a `compose.override.yaml`.** It sets `DEV_MODE: "1"` under `web`'s `environment`, and mounts the clone's `content/` folder read-only over `/app/content`, the image's `CONTENT_DIR`. Compose [reads `compose.override.yaml` on its own](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/).
 
    ```yaml
    services:
@@ -199,15 +201,15 @@ You need [Bun](https://bun.com/docs/installation), and Docker for the Runner.
          - /path/to/your/clone/content:/app/content:ro
    ```
 
-3. **Run `docker compose up -d`.** It recreates `web` with dev mode on.
-4. **Run the image the content was written for.** Content the image's version cannot read stops `web` at start. For a clone of `main`, set `BEYONDLEETCODE_IMAGE` in `.env` to the `edge` tag, which is built on every push to `main`.
-5. **To turn it off,** delete `compose.override.yaml` and run `docker compose up -d`. The switch and the mount both go.
+5. **Run `docker compose up -d`.** It recreates `web` with dev mode on.
+6. **To turn it off,** delete `compose.override.yaml` and run `docker compose up -d`. The switch and the mount both go.
 
 ### Over the tailnet
 
 - **`ORIGIN` is the exact URL you open over the tailnet,** for example `http://<machine>.<tailnet>.ts.net:3000`. It is the `--origin` you give `init`, or `ORIGIN` in a clone's `.env`.
-- **A Local Instance needs it over plain http.** Without `ORIGIN` the built server takes every request for https, and refuses every form as cross-site. Forms work at that one URL only (see "Reach the Instance only by its `ORIGIN`" above).
-- **Listen on the tailnet only.** From a clone, set `HOST` to the machine's tailnet address, which `tailscale ip -4` prints ([`tailscale ip`](https://tailscale.com/kb/1080/cli)). The built server otherwise listens on every interface: [adapter-node's `HOST`](https://svelte.dev/docs/kit/adapter-node#Environment-variables-HOST-and-PORT) defaults to `0.0.0.0`.
+- **A Local Instance needs it over plain http.** Without `ORIGIN` the built server takes every request for [https unless you tell it otherwise](https://svelte.dev/docs/kit/adapter-node#Environment-variables-PROTOCOL_HEADER-HOST_HEADER-and-PORT_HEADER), and refuses every form as cross-site. Forms work at that one URL only (see "Reach the Instance only by its `ORIGIN`" above).
+- **The tailnet address must exist when the web process starts.** After a reboot, start it once Tailscale is up. This holds for a clone's `HOST` and for the image's `ports` line.
+- **Listen on the tailnet only.** From a clone, set `HOST` to the machine's tailnet address, which `tailscale ip -4` prints ([`tailscale ip`](https://tailscale.com/kb/1080/cli)). The built server otherwise listens on every interface: [adapter-node's `HOST`](https://svelte.dev/docs/kit/adapter-node#Environment-variables-PORT-HOST-and-SOCKET_PATH) defaults to `0.0.0.0`.
 - **In the image, change the `ports` line in `compose.yaml` itself** to `"<tailnet address>:${PORT}:3000"`, as the proxy note above does with `127.0.0.1`. Do not do it in the override file: Compose [adds an override's `ports` to the base list](https://docs.docker.com/reference/compose-file/merge/) rather than replacing it.
 
 ## Upgrading
