@@ -6,7 +6,13 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { sandboxConfig } from '../runner/config.ts';
 import { worstCaseBodyBytes } from '../runner/http-adapter.ts';
 import { batchRequest, submitPlan } from '../submit-plan.ts';
-import { type Catalogue, ContentError, loadCatalogue, type MainLinePlace } from './catalogue.ts';
+import {
+	type Catalogue,
+	ContentError,
+	createReloadingCatalogue,
+	loadCatalogue,
+	type MainLinePlace
+} from './catalogue.ts';
 
 const fixtureDir = fileURLToPath(new URL('./fixture', import.meta.url));
 
@@ -658,5 +664,120 @@ describe('malformed content', () => {
 
 		expect(error).toBeInstanceOf(ContentError);
 		expect((error as ContentError).issues).toHaveLength(2);
+	});
+});
+
+describe('a catalogue that reads again for each session', () => {
+	const copies: string[] = [];
+	afterAll(() => Promise.all(copies.map((d) => rm(d, { recursive: true, force: true }))));
+
+	async function copyOfFixture(): Promise<string> {
+		const dir = await mkdtemp(join(tmpdir(), 'content-'));
+		copies.push(dir);
+		await cp(fixtureDir, dir, { recursive: true });
+		return dir;
+	}
+	const chapterFile = (dir: string) =>
+		join(dir, 'topics/stacks/chapters/stacks-undo-log/chapter.md');
+
+	async function reloading(dir: string) {
+		let loads = 0;
+		const load = () => {
+			loads++;
+			return loadCatalogue(dir);
+		};
+		const live = createReloadingCatalogue(await loadCatalogue(dir), load);
+		return { live, loads: () => loads };
+	}
+
+	it('answers from the catalogue it started with outside any session', async () => {
+		const { live, loads } = await reloading(await copyOfFixture());
+
+		expect(live.catalogue.chapter('stacks-undo-log')?.title).toBe('An undo log');
+		expect(loads()).toBe(0);
+	});
+
+	it('reads nothing for a session that is never run', async () => {
+		const { live, loads } = await reloading(await copyOfFixture());
+
+		live.session();
+
+		expect(loads()).toBe(0);
+	});
+
+	it('reads on the first run only, and keeps that snapshot for the later runs of the session', async () => {
+		const dir = await copyOfFixture();
+		const { live, loads } = await reloading(dir);
+		const session = live.session();
+		const body = () => session.run(async () => live.catalogue.chapter('stacks-undo-log')?.body);
+
+		const first = await body();
+		await writeFile(chapterFile(dir), '# An undo log, edited\n\nNew text.\n');
+
+		expect(await body()).toBe(first);
+		expect(loads()).toBe(1);
+	});
+
+	it('gives a new session the edited folder', async () => {
+		const dir = await copyOfFixture();
+		const { live, loads } = await reloading(dir);
+		const body = () =>
+			live.session().run(async () => live.catalogue.chapter('stacks-undo-log')?.body);
+
+		expect(await body()).toMatch(/^# An undo log\n/);
+		await writeFile(chapterFile(dir), '# An undo log, edited\n\nNew text.\n');
+
+		expect(await body()).toMatch(/^# An undo log, edited\n/);
+		expect(loads()).toBe(2);
+	});
+
+	it('throws the ContentError from every run of a failed session without running the work, and the next session recovers', async () => {
+		const dir = await copyOfFixture();
+		const { live } = await reloading(dir);
+		const original = await readFile(chapterFile(dir), 'utf8');
+		let ran = 0;
+		const work = async () => {
+			ran++;
+			return live.catalogue.chapter('stacks-undo-log')?.body;
+		};
+
+		await writeFile(chapterFile(dir), '   \n');
+		const broken = live.session();
+		expect(await broken.run(work).catch((e) => e)).toBeInstanceOf(ContentError);
+		expect(await broken.run(work).catch((e) => e)).toBeInstanceOf(ContentError);
+		expect(ran).toBe(0);
+
+		await writeFile(chapterFile(dir), original);
+		expect(await live.session().run(work)).toBe(original);
+	});
+
+	it('gives each session its own whole catalogue while another swaps in a newer read', async () => {
+		const dir = await copyOfFixture();
+		const { live } = await reloading(dir);
+		const body = () => live.catalogue.chapter('stacks-undo-log')?.body;
+		let entered!: () => void;
+		const hasEntered = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		let open!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			open = resolve;
+		});
+		const first = live.session().run(async () => {
+			const before = body();
+			entered();
+			await gate;
+			return [before, body()];
+		});
+
+		await hasEntered;
+		await writeFile(chapterFile(dir), '# Edited\n\nNew text.\n');
+		const second = await live.session().run(async () => body());
+		open();
+
+		const [before, after] = await first;
+		expect(second).toMatch(/^# Edited/);
+		expect(before).toMatch(/^# An undo log\n/);
+		expect(after).toBe(before);
 	});
 });
