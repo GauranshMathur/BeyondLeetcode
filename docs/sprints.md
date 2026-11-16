@@ -6,7 +6,7 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 **Ordering rule.** Each screen is designed in the sprint that builds it, or the one just before. Foundations rules come first so every later screen is built responsive from day one. The one exception is mobile boards, which wait for Sprint 5.
 
-**Only the current and planned sprints** (the maintainer's rule, 2026-11-10). When a sprint exits, its last card moves the sprint's section, its Status included, to `docs/sprints-archive.md`, which holds Sprints 0 to 20.
+**Only the current and planned sprints** (the maintainer's rule, 2026-11-10). When a sprint exits, its last card moves the sprint's section, its Status included, to `docs/sprints-archive.md`, which holds Sprints 0 to 21.
 
 **The Backlog** (the maintainer's decision, 2026-11-11). Every open issue has a ticket on the board with Status Backlog and no sprint. The planner pulls from the Backlog by tier when it plans the next sprints. Only Tier 0 work joins the sprint in progress (a bug that hurts users, a security problem, a broken CI or release), with anything a planned card cannot be built without. The rules are in `docs/agents/board.md`, Issues are the unit of work.
 
@@ -114,152 +114,18 @@ Every open issue, 67 in all: none in Tier 0, 3 in Tier 1, 34 in Tier 2 and 30 in
 | #647 | 2 | Add a server-side guard to the no-JavaScript Registration save, and which kind? | A revision the form carries and the action checks. A hard call (Identity, and possibly what the Instance stores) | One Identity card with the two-reader review |
 | #529 | 2 | `@axe-core/playwright` (a new dependency), or the no-dependency contrast and landmark tests? | The no-dependency tests now; axe stays the maintainer's call. A hard call only for axe | The automated accessibility check; nothing else waits on it |
 
-## Sprint 21 · The guide, leftover bugs and CI gates
-
-**Goal:** the work that waits on nobody ships first: a short guide page with its header link, and the Tier 2 bugs and gaps left open are closed (selected code meets 4.5:1, two Invites from one day can be told apart, the error page reads as sentences, the Problem screen's short-phone leftovers, three flaky or noisy checks, bounded logs for the Runner and the web, and one list of test jobs for the release gate). The sprint has room, so one Tier 3 issue is drawn in: #508.
-
-Release `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates`, version 1.20.0 (the next minor after 1.19.7, because C401 and C402a are `feat`). Milestone `Sprint 21 · The guide, leftover bugs and CI gates`.
-
-**Re-planned on 2026-11-14, at the sprint's start.** The sprint planned as Sprint 21 (dev mode and the starting Language, now Sprint 22) cannot start: each of its lanes begins with a card that waits on a hard call only the maintainer can make. So this sprint, planned as Sprint 22 at 1.20.1, runs first, and takes the part of #662 that waits on nothing:
-- C401 (the guide page) no longer follows #661's C399 in `a11y.e2e.ts`: it edits the file first, and Sprint 22's C392 and C399 follow it.
-- C402 is split. C402a, the header link, ships here. C402b, the offer on the first-run choice page, needs #661's page and waits in Sprint 22. What is built is unchanged.
-- The Sprint and Release options and the milestones kept their cards and were renamed, so the option ids swap numbers (`docs/agents/board.md`, Fields). C412 is this sprint's last card and C403 is Sprint 22's.
-
-- **Tier mix: 21 cards.** Tier 1: 2 (C401, C402a). Tier 2: 16 (F22, C404 to C411, C430, C432 to C437). Tier 3: 2 (C375, C379). The last card, C412, has no tier.
-- **Issues: 12 worked on, 11 closed here.** Tier 1: #662, which stays open until Sprint 22's C402b. Tier 2, 10 closed: #569, #634, #640, #643, #649, #651, #652, #676, #679 and #684. Tier 3, 1 closed: #508.
-- **Top three:** #662, the guide page and its link (C401, C402a); #649, selected strings and numbers at 3.8:1 (F22, C404); #634 and #676, the two unit tests that time out on a slow runner, each one failure on main from Tier 0 (C409, C432).
-- **Filled by tier.** No Tier 0 issue is open. Every Tier 1 card that waits on nobody is here. Every Tier 2 issue an agent can start today is here: the seven planned before, and #676, #679 and #684, filed on 2026-11-14. #667 is not: three of its parts wait on the maintainer (The ranking, Waiting on the maintainer). The Tier 3 cards run last.
-- **Twenty-one cards.**
-  - **The guide** (#662): C401: the `/guide` page, with its text. C402a: the Guide link in the header on every screen, desktop and phone.
-  - **The editor's selection** (#649): F22: Foundations decides the selection colours and takes the `--selection-match` token; then C404: the editor, `tokens.css`, the contrast test and the doc's copy of `tokens()`.
-  - **Users** (#640): C405: the time of day in each pending Invite's name, and an e2e cleanup that cancels its own Invite.
-  - **The error page** (#643): C430: a 404 reads "Not found" with "That page does not exist. The link may be old.", a Locked Topic "This Topic is locked." with "Complete its Prerequisites on the Map to open it.", and any other 403 "Forbidden".
-  - **The Problem screen at a short phone** (#652; small, one batch PR): C406: one tab stop for the scrolling stage; C407: the Solution's editor takes the phone sizing; C408: the console's flex rule moves into `ResultsPanel.svelte`.
-  - **Tests that depend on the runner's speed:** C409: the eight-password-changes test (#634). C432: the 30-sign-ins test, which #555 made fast and which timed out again (#676). They run one after the other, and only C432 may edit the shared `test-auth.ts`.
-  - **CI:** C410: `ci-gate.test.sh` depends on nothing outside the checkout (#651). C411: publish-edge and the release gate wait on one list of test jobs (#569). C437: the `sandbox` job runs two cases at once in both steps, and its comment says when the content check is split off (#684). C436: the content check's retry says what failed, and does not discard an earlier wrong answer (#684).
-  - **Logs** (#679): C434: the Runner's 500 line is fixed text with the error's class name, and the silent answers are pinned by tests. C435: a caller that leaves mid-body is not logged as a refusal. C433: the `compose.yaml` that `init` writes rotates both services' logs, and `docs/self-hosting.md` says what an existing Instance adds.
-  - **Tier 3, with room** (#508): C375: `accept.ts` and `app.ts` say what the code does; then C379: the module map's Identity and Web rows, with rows for `logging.ts` and `languages.ts`.
-  - **Last:** C412, the exit check and `Release-As: 1.20.0`. It has no issue.
-- **Issues → cards.** The milestone `Sprint 21 · The guide, leftover bugs and CI gates` holds each issue that closes here. #662 has Sprint 22's milestone.
-
-  | Issue | Tier | Cards, in order | Last card | Lane conflicts (shared files, in this order) | Risks and review | Acceptance check |
-  |---|---|---|---|---|---|---|
-  | #662 The guide | 1 | F23, S7 (Sprint 20, Done); C401, C402a; then C402b in Sprint 22 | C402b (Sprint 22) | `guide.e2e.ts`: C401, C402a, then Sprint 22's C402b. `a11y.e2e.ts`: C401, then Sprint 22's C392 and C399. `header.ts` is C402a's alone (#505, a Tier 3 refactor of it, waits in the Backlog) | Learner-facing text: C401's PR waits for the maintainer to read it, and C402a waits for C401. Each statement about unlocks must match the Learning core | `/guide` has one `main`, a title and one h1 in `a11y.e2e.ts`, and `guide.e2e.ts` reaches it from the header on desktop and phone |
-  | #649 Selected strings and numbers miss 4.5:1 | 2 | F22, C404 | C404 | None | A design call: whether a selection and its matches look alike is Foundations' to decide in F22 | `contrast.test.ts` holds ink, muted and accent on the selection background in both themes, at 4.5:1 or more |
-  | #640 Two Invites share one name | 2 | C405 | C405 | None | None for security: the page's text and a test | `users.multi.e2e.ts` finds two different Cancel names for two Invites made in a row, and no cleanup uses `.first()` on an Invite |
-  | #643 The error page's wording | 2 | C430 | C430 | None: `+error.svelte` and `error.e2e.ts` are C430's alone | None for security: the page's words; no gate, rule or status changes. Decided on the issue on 2026-11-14; the maintainer can change the wording | `error.e2e.ts` finds "Not found" and "This Topic is locked." as the h1, each with its message and a matching tab title, and no "TopicLocked" on the page |
-  | #652 Short-phone leftovers | 2 | C406, C407, C408 | C408 | `ProblemWorkspace.svelte`: C406, then C408. `problem.e2e.ts`: C406, then C407; Sprint 22's C394 follows | None. One batch PR | At 320×256 the Run button is one Tab press nearer, the Solution's editor shows six lines, and `grep -n ":global(.console)"` on the workspace prints nothing |
-  | #634 The eight-password-changes test | 2 | C409 | C409 | None in its own file; #676's C432 follows it | The test must not weaken the hashing the app uses | The test passes 20 times in a row on a throttled CPU, or runs in under 1 s |
-  | #676 The 30-sign-ins test | 2 | C432 | C432 | After C409: the same kind of fix, and `test-auth.ts`, the setup both tests share, is C432's alone | No longer timeout (the maintainer rejected one in Sprint 18). The sign-in throttle the test checks must not change. If it fails on main before C432 merges it is Tier 0 | The test passes 20 times in a row on a throttled CPU, or runs in under 1 s, and the PR names what the time went on |
-  | #651 ci-gate.test.sh failed once | 2 | C410 | C410 | `ci-gate.sh` and `ci-gate.test.sh`: C410, then C411 | A Codex second opinion (`.github/`) | `.github/ci-gate.test.sh` passes with the network off |
-  | #569 CI's job list is written twice | 2 | C411 | C411 | After C410. `ci.yml`: after C437; Sprint 22's C393 follows | It changes what a release waits for: the two-reader review. A required check's name must not change unnoticed | Adding a job to the test list in `ci.yml` alone makes the gate wait for it or fails `ci-gate.test.sh` |
-  | #684 The content check's retry, and the fixture check's four cases | 2 | C437, C436 | C436 | `ci.yml`: C437, then C411. `content-check.sandbox.test.ts` is C436's alone | C436 is under `src/lib/server/runner/`: `sandbox-security-reviewer`. The annotation must not carry a line break or `::`. Item 1 is cut for the issue's second route (part of the message in the annotation); its first route, an error class in `container.ts`, is a Runner change the planner cuts only if needed. C437's split rule (20 minutes) is the planner's proposal | `SANDBOX_CONCURRENCY` is set once, at the `sandbox` job's level, and the retry rule's tests show a one-line cause in the annotation and no retry after a wrong answer |
-  | #679 Runner and web logs | 2 | C434, C435, C433 | C433 | `runner/server.ts` and `server.test.ts`: C434, then C435. `docs/self-hosting.md`: C433, then Sprint 22's C396. `init.ts` is C433's alone | `sandbox-security-reviewer` on all three: C434 and C435 change the Runner, and C433 edits the `runner` service that holds the socket mount. C435 waits for an answer (below). The rotation values (10 MB, 3 files) are the planner's proposal. Existing Instances keep their `compose.yaml` | `server.test.ts` shows a 500 as one fixed line and no line for the silent answers, and `init.test.ts` finds `max-size` and `max-file` under both services |
-  | #508 module-map's Identity rows | 3 | C375, C379 | C379 | `app.ts`: C375, then Sprint 22's C389, C390 and C395. `module-map.md`: C379, then Sprint 22's C396 | None. The row must name only seams that exist when the card runs | Every Identity seam the row names exists in `src/lib/server/identity/`, and the map has rows for `logging.ts` and `languages.ts` |
-
-  - C412, the exit check, has no issue.
-- **Waiting on the maintainer.** Neither stops the sprint from starting:
-  - **C401: the maintainer reads the guide's words before its PR merges.** C402a waits for C401, and the sprint's exit for both. The other 18 cards do not.
-  - **#679, C435: is a caller that disconnects mid-body its own log kind, or silent?** Recommended: silent, as the Runner already is for a caller that leaves during the queue wait. Not a hard call (one log line; no rule, answer or limit changes), so the orchestrator may take the recommended answer under its standing rule.
-- **Small cards share a PR.** C406, C407 and C408 carry `Batch: P` and share one PR (`fix` type, one round). Three more small cards are each their batch's only one, so each has a PR of its own: C375 (`Batch: A`, comments), C435 (`Batch: R`, the Runner, with its review) and C437 (`Batch: S`, the `sandbox` job). C430 is not small.
-- **Reviews.**
-  - The orchestrator's two-reader review (Fable and Codex): C411.
-  - `sandbox-security-reviewer` before merge: C433, C434, C435 and C436.
-  - The maintainer's read of the page's words: C401.
-  - None for the rest. C410 and C437 take a Codex second opinion (`.github/`).
-- **Shared files**, each an ordered chain in one lane:
-  - `guide.e2e.ts`: C401, then C402a (lane A).
-  - `.github/ci-gate.sh` and `ci-gate.test.sh`: C410, then C411 (lane A). `.github/workflows/ci.yml`: C437, then C411.
-  - `ProblemWorkspace.svelte` and `problem.e2e.ts`: C406, C407, C408 (lane B, one PR).
-  - `runner/server.ts` and `server.test.ts`: C434, then C435 (lane B); C433 follows both, for the docs.
-  - `change-password.test.ts` is C409's and `sign-in.test.ts` is C432's; C432 follows C409 and alone may edit `test-auth.ts` (lane B).
-- **Two lanes a round.**
-
-  | Round | A · The guide, Users, CI and comments | B · Tests, the Problem screen, the editor and the Runner's logs | Design |
-  |---|---|---|---|
-  | 1 | C401 guide page (#662) | C409 password test (#634) | F22 selection colours (#649) |
-  | 2 | C405 Invite names (#640) | C432 sign-ins test (#676) | |
-  | 3 | C410 ci-gate test (#651) | C437 sandbox job (#684; small) | |
-  | 4 | C411 one job list (#569) | C406 + C407 + C408 (#652; batch) | |
-  | 5 | C402a header link (#662), once C401 has merged | C404 editor selection (#649) | |
-  | 6 | C430 error page (#643) | C434 the Runner's failed line (#679) | |
-  | 7 | C436 content check retry (#684) | C435 a caller that leaves (#679; small) | |
-  | 8 | C375 comments (#508) | C433 log rotation and its docs (#679) | |
-  | 9 | C379 module map (#508) | | |
-  | 10 | C412 exit check and `Release-As: 1.20.0` | | |
-
-  The Tier 1 card goes first and the Tier 3 cards last. C402a moves down a round for each round the maintainer's read of C401 takes.
-- **Rounds: 16.** Nine build rounds; the longest chain is three cards (C434, C435, C433). There are five reviews (one two-reader, four sandbox) and the maintainer's read of C401. The last card and the cut add one round each.
-- **No limit, flag or image changes.** C434 and C435 change what the Runner logs, C436 a test file, and C433 the two services' `logging` options.
-
-**Exit:**
-- All 21 Sprint 21 cards are Done, and `ci` is green on `main`. The sprint's Status counts issues closed and cards done, each per tier.
-- `/guide` is in the accessibility e2e table, `header.test.ts` shows its link on every non-bare route, and `guide.e2e.ts` reaches it from the header on desktop and phone.
-- `contrast.test.ts` holds the three text colours on the editor's selection background in both themes, and passes.
-- `users.multi.e2e.ts` shows two same-day Invites with different names.
-- `error.e2e.ts` shows "Not found" at an unknown path and "This Topic is locked." at a Locked Topic, and no "TopicLocked" on the page.
-- At 320×256, `problem.e2e.ts` shows the Solution's editor at six lines, and `grep -n ":global(.console)" "src/routes/problems/[problemId]/ProblemWorkspace.svelte"` prints nothing.
-- The eight-password-changes test and the 30-sign-ins test each pass 20 times in a row on a throttled CPU, or run in under 1 s.
-- `.github/ci-gate.test.sh` passes with the network off, and fails when `ci.yml`'s test list and the gate's differ (or the gate waits on the one `tests` job).
-- `grep -n "SANDBOX_CONCURRENCY" .github/workflows/ci.yml` shows it once, at the `sandbox` job's level, and the retry rule's tests in `content-check.sandbox.test.ts` pass.
-- `server.test.ts` shows the Runner's 500 as one fixed line, and `init.test.ts` finds `max-size` and `max-file` under both services of the written `compose.yaml`.
-- `docs/module-map.md` has rows for `logging.ts` and `languages.ts`.
-- #508, #569, #634, #640, #643, #649, #651, #652, #676, #679 and #684 are closed, 11 issues: 10 of Tier 2 and 1 of Tier 3. #662 (Tier 1) is open, with C402b left.
-- The orchestrator cuts 1.20.0 from the release PR and records the cut.
-
-**Status (2026-11-16):** exit met.
-- **Cards:** all 21 Sprint 21 cards are Done.
-- **Tier mix (cards):** Tier 1: 2 (C401, C402a). Tier 2: 16 (F22, C404 to C411, C430, C432 to C437). Tier 3: 2 (C375, C379). The last card has no tier. Tier 0: none.
-- **Issues:** 11 closed, each by its last card. Tier 2, 10: #569, #634, #640, #643, #649, #651, #652, #676, #679 and #684. Tier 3, 1: #508. #662 (Tier 1) is open, with C402b left in Sprint 22. #640 was closed by hand: C405's PR was opened with another card's body file and merged without its closing line.
-- **CI:** `ci` is green on `main` at b6ec241, the last code card's merge.
-- **Checks:**
-  - `/guide` is in `a11y.e2e.ts`'s table; `header.test.ts` walks every route and finds the Guide link on each non-bare one in both modes; `guide.e2e.ts` reaches the page from the header on desktop and phone.
-  - `contrast.test.ts` holds ink, muted and accent on the editor's selection-match background at 4.5:1 in both themes.
-  - `users.multi.e2e.ts` shows two same-day Invites with different names (the Invite's time reads `YYYY-MM-DD HH:MM UTC`).
-  - `error.e2e.ts` shows "Not found" and "This Topic is locked.", and no "TopicLocked".
-  - `problem.e2e.ts` shows the Solution's editor at six lines at 320×256, and the `:global(.console)` grep prints nothing.
-  - The eight-password-changes test and the 30-sign-ins test: C409 gave the first a 30 s budget, and C432 gave the test Instance an in-memory database option that the second now uses. Neither failed again in the sprint. **Not re-measured here:** the 20 runs in a row on a throttled CPU were not repeated for this check.
-  - `.github/ci-gate.test.sh` passes with no network, and the gate waits on the one `tests` job (`JOBS` defaults to `tests`; 73 cases).
-  - `SANDBOX_CONCURRENCY` is set once, at the `sandbox` job's level, and the retry rule's tests pass.
-  - `server.test.ts` shows the Runner's 500 as one fixed line (`runner RunnerFailed` and a class name), and `init.test.ts` finds `max-size` and `max-file` under both services.
-  - `docs/module-map.md` has rows for `logging.ts` and `languages.ts`.
-  - The canvas (version 73) holds the `selection` token in both themes. **Not checked by eye:** the Foundations boards were raised again and nobody has rendered them; and nobody compared the header's Guide link with the S7 board (the card text and F23's decision were followed).
-- **Release:** this card's merge carries `Release-As: 1.20.0`. The orchestrator then cuts 1.20.0 from the release PR and records the cut in `docs/releasing.md`.
-- **Reviews:**
-  - **`sandbox-security-reviewer`** on C434, C436, C435 and C433: each "pass with notes". The notes are #705 and #709.
-  - **The orchestrator's two-reader review** (Fable and Codex) on C411, seven rounds over two builds. The first build, a test that read `ci.yml` line by line and compared the two lists (PR #697), went four rounds: each round the readers wrote YAML that a parser reads one way and the test another, and at the fourth both said "disagree". It was escalated, and the maintainer chose the other option on 2026-11-16. The second build, the `tests` aggregator job (PR #713), went three rounds: the first found that GitHub lists `tests` only once its `needs` finish, so the gate would have called it missing and failed every release; the second found two fail-closed edges; the third was "agree" from both. PR #697 was closed unmerged.
-- **Flakes:** two, neither caused by a card.
-  - **The fork-bomb escape test's overrun** failed `main` once (dd60fc5: 24.9 s against a 19 s bound); one re-run passed. Filed as #711, Tier 2, because the bound guards the hard stop.
-  - **The `unit` failure on C401's first head** was real, not a flake: two layout queries tied in `breakpoints.test.ts`; C401 was reworked to a fluid layout with only the phone query.
-- **Decisions and accepted changes from the cards:**
-  - **The maintainer (2026-11-16):** the guide's text is fine as written; C411 is option 2; dev mode is not allowed on a Multi-user Instance (#660); #661's schema question stays with him, so Sprint 22 starts with the dev-mode cards alone.
-  - **C401** stopped at green CI for the maintainer's read of its text, and C402a was built on its unmerged branch as a draft so both could merge on the same day. C401 differs from the S7 board in two places where the card wins: an h3 per term in three sections, and "Run and Submit sit side by side on the Problem screen".
-  - **C402a** edited five e2e files outside its Files line: each asserted the header's exact link list, which gained "Guide".
-  - **C437:** the `sandbox` job ran 14 min 33 s to 20 min 26 s afterwards. The rule written in `ci.yml`: past 20 minutes on `main`, the content check is split into its own job; the limit is not raised. `sandbox` is a required check, so the split is the maintainer's.
-  - **C435:** a caller that leaves mid-body, or whose stalled body the idle timeout cuts, is logged nothing (recommended option, recorded on #679). **C434:** a failure's line carries the error's class name only.
-  - **C433:** new Instances rotate both services' logs (`json-file`, 10 MB, 3 files); an existing Instance adds the lines by hand, as `docs/self-hosting.md` shows.
-  - **C408:** `ResultsPanel.svelte` joined `PROBLEM_SHORT`'s file list in `breakpoints.ts`.
-  - **Worker rules gained three:** one scratch subfolder per card, and the PR body read back after it is opened; issue references only in PR bodies, never in commit messages (a `Refs` line in a commit closed #663 when 1.19.7 was cut); after one branch update, merge on the checked head unless what landed touches the card's files, `ci.yml`, `package.json` or `bun.lock`.
-- **Filed from the sprint, each with a Backlog ticket:** #693 (Tier 3), #698, #702 (needs the maintainer), #705, #709 and #711 (Tier 2).
-
-**Not in the sprint:**
-- **Dev mode and the starting Language (#660, #661), and the guide's first-run offer (C402b):** Sprint 22, below. They wait on the maintainer.
-- **#667** (the sandbox reviewer's checklist), **#647, #529, and #535 with #570:** waiting on the maintainer (The ranking, above). Each joins at a re-rank once answered.
-- **The other 29 Tier 3 issues:** in the Backlog. A sprint draws from them only when it has room, by value: #560 (the browser tests' Instance recipes) and #500 and #504 (the Problem screen's tested modules) are the strongest candidates.
-- **The content redesign (#663):** the content sprints, below.
-
 ## Sprint 22 · Dev mode and the starting Language
 
 **Goal:** the maintainer's two other app items ship: a dev mode that opens everything, runs any Problem's Reference Code and previews content from disk; and a starting Language each Learner chooses before the first Problem and can change in Settings, with the guide offered on that first-run choice.
 
 Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.21.0 (the next minor after Sprint 21's 1.20.0, because the cards are `feat`). Milestone `Sprint 22 · Dev mode and the starting Language`.
 
-**Re-planned on 2026-11-14.** This was Sprint 21, at 1.20.0. It runs second because it cannot start, and starts as soon as the maintainer has answered the two questions below. The guide's page and header link (C401, C402a) moved to Sprint 21; C402b, the first-run offer, is here because it edits #661's choice page.
+**Re-planned on 2026-11-14.** This was Sprint 21, at 1.20.0. It runs second because it cannot start, and starts as soon as the maintainer has answered the two questions below. **Started 2026-11-16:** the maintainer answered #660 (dev mode is not allowed on a Multi-user Instance, the answer C389 was written for), so the dev-mode cards run; #661 is still with him, and he said not to take it for him, so C397 to C400 and C402b are held. The guide's page and header link (C401, C402a) moved to Sprint 21; C402b, the first-run offer, is here because it edits #661's choice page.
 
 - **Tier mix: 14 cards.** Tier 1: 13 (C389 to C400, C402b). The last card, C403, has no tier. No Tier 2 or Tier 3 card: the sprint is the priority items alone, and it is not padded.
 - **Issues: 3 closed here, all Tier 1:** #660, #661 and #662. Their boards (S4, P13, S5, S6, F23, S7) are Done.
 - **Top three:** #660 dev mode (C389 to C396); #661 the starting Language (C397 to C400); #662's last card, the guide offered on first run (C402b).
-- **It cannot start until the maintainer answers two questions** (below). C389 and C397, the first card of each lane, carry them as `Blocked by:` lines.
+- **One of its two questions is answered** (below): #660 on 2026-11-16, so C389 to C396 run. C397, the first card of the starting-Language lane, still carries #661's question as its `Blocked by:` line.
 - **Fourteen cards.**
   - **Dev mode** (#660): C389: the switch `DEV_MODE`, read once at start, off unless set, never set by the image. C390: with it on, the Learning core opens every Topic and writes nothing. C391: the core runs a Problem's Reference Code against its Tests, saving nothing. C392: the banner on every screen. C393: a dev-mode Instance and a `dev` Playwright project. C394: "Run reference solution" on the Problem screen, in each Language. C395: the catalogue is read from disk on each request. C396: the README, self-hosting, the module map and mvp1.md.
   - **Starting Language** (#661): C397: the stored value on `Learner`. C398: a Topic not yet started opens in it, and a Topic already worked on keeps its Language. C399: the first-run choice before the first Problem. C400: the Settings row.
@@ -275,7 +141,7 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
 
   - C403, the exit check, has no issue.
 - **Waiting on the maintainer.** Both are hard calls, asked on the issues on 2026-11-14, so the orchestrator does not take the recommended answer on its own:
-  - **#660: is dev mode allowed on a Multi-user Instance, and who may use its actions there?** `mvp1.md` does not say. Recommended: no. It takes effect only in Local Mode, and a Multi-user Instance with the switch set refuses to start, as with `IDENTITY_TEST_LEARNER`. The maintainer reaches a Local Mode dev Instance over the tailnet. A security rule, so a hard call. C389 is written for this answer.
+  - **#660, answered 2026-11-16: no.** The question was: is dev mode allowed on a Multi-user Instance, and who may use its actions there? `mvp1.md` does not say. Recommended: no. It takes effect only in Local Mode, and a Multi-user Instance with the switch set refuses to start, as with `IDENTITY_TEST_LEARNER`. The maintainer reaches a Local Mode dev Instance over the tailnet. A security rule, so a hard call. C389 is written for this answer.
   - **#661: may it add a stored per-Learner value, a schema change?** The theme is a cookie, which does not follow an Account across browsers, and the issue asks for a value that survives signing out and in. Recommended: yes, one nullable `startingLanguage` column on `Learner`, with a migration that sets every existing Learner to `python`. A schema change, so a hard call. C397 is written for this answer.
   - If one is answered and not the other, that issue's lane can start: #660's cards need nothing of #661's, and #661's C398 and C399 follow #660's C391 and C394 only in shared files, an order the planner can turn round at a re-rank.
 - **Decided from the issues** (their own direction): Reset progress keeps the starting Language, as it keeps the theme; the switch's name, `DEV_MODE`, is the planner's proposal.
