@@ -44,7 +44,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; b=$(basename \"$f\"); case \"$b\" in .env.example) exit 0;; .env|.env.*|*.pem|*.key) echo \"Blocked: $b holds secrets. Edit .env.example (the template) instead; real values are applied locally, then reverted.\" >&2; exit 2;; esac; exit 0; }"
+            "timeout": 10,
+            "onFailure": "block",
+            "command": "[ -n \"${CLAUDE_PROJECT_DIR:-}\" ] || { echo \"Blocked: CLAUDE_PROJECT_DIR is not set, so the lane-files hook cannot run.\" >&2; exit 2; }; \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lane-files.sh; rc=$?; [ \"$rc\" -eq 0 ] && exit 0; [ \"$rc\" -eq 2 ] && exit 2; echo \"Blocked: the lane-files hook could not run (exit $rc).\" >&2; exit 2"
           }
         ]
       }

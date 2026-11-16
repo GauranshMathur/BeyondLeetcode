@@ -22,3 +22,6 @@ playwright-report
 
 # Python bytecode
 __pycache__/
+
+# A builder worktree's list of the files its lane may edit, written by the orchestrator at dispatch
+.lane-files
