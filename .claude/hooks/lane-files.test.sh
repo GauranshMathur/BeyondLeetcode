@@ -70,6 +70,46 @@ ln -s "$work/outside" "$L/src/lib/new/out"
 raw 2 "a symlink in a listed folder that leaves the worktree is blocked" "{\"tool_input\":{\"file_path\":\"$L/src/lib/new/out/x.ts\"}}" "symlink"
 raw 0 "a target outside the lane's worktree is not judged" "{\"tool_input\":{\"file_path\":\"$work/outside/x.ts\"}}"
 
+# An alias that reaches into the lane's worktree from outside is judged like the path itself.
+mkdir -p "$work/alias"
+ln -s "$L/src/lib/other" "$work/alias/unlisted"
+ln -s "$L/src/routes/users" "$work/alias/listed"
+ln -s "$L/.lane-files" "$work/alias/list"
+ln -s "$L" "$work/alias/root"
+raw 2 "an alias to an unlisted folder is blocked" "{\"tool_input\":{\"file_path\":\"$work/alias/unlisted/thing.ts\"}}" "not on this lane's Files"
+raw 0 "an alias to a listed file's folder is allowed" "{\"tool_input\":{\"file_path\":\"$work/alias/listed/+page.svelte\"}}"
+raw 2 "an alias to .lane-files is blocked" "{\"tool_input\":{\"file_path\":\"$work/alias/list\"}}" ".lane-files is written by the orchestrator"
+raw 2 "an alias to the worktree root and an unlisted file is blocked" "{\"tool_input\":{\"file_path\":\"$work/alias/root/src/lib/other/x.ts\"}}" "not on this lane's Files"
+raw 2 "an alias to the worktree's .env is blocked" "{\"tool_input\":{\"file_path\":\"$work/alias/root/.env\"}}" ".env holds secrets"
+raw 2 "a /proc/self/root alias to an unlisted file is blocked" "{\"tool_input\":{\"file_path\":\"/proc/self/root$L/src/lib/other/x.ts\"}}" "not on this lane's Files"
+raw 0 "a /proc/self/root alias to a listed file is allowed" "{\"tool_input\":{\"file_path\":\"/proc/self/root$L/src/routes/users/+page.svelte\"}}"
+raw 2 "a /proc/self/root alias to .lane-files is blocked" "{\"tool_input\":{\"file_path\":\"/proc/self/root$L/.lane-files\"}}" ".lane-files is written by the orchestrator"
+
+# A secret check does not depend on external commands such as basename.
+raw 2 "a secret file with a trailing slash is blocked" "{\"tool_input\":{\"file_path\":\"$work/free/.env/\"}}" ".env holds secrets"
+nobase="$work/nobase"
+mkdir -p "$nobase"
+for t in bash cat jq realpath; do ln -sf "$(command -v "$t")" "$nobase/$t"; done
+printf '#!/bin/sh\nexit 1\n' >"$nobase/basename"
+chmod +x "$nobase/basename"
+err="$(printf '{"tool_input":{"file_path":"%s/.env"}}' "$work/free" | PATH="$nobase" "$(command -v bash)" "$here/lane-files.sh" 2>&1 >/dev/null)"
+got=$?
+if [ "$got" = 2 ] && [[ "$err" == *"holds secrets"* ]]; then echo "ok   a failing basename does not let .env through"; else echo "FAIL a failing basename: exit $got: $err"; fail=1; fi
+printf '#!/bin/sh\nexit 1\n' >"$nobase/dirname"
+chmod +x "$nobase/dirname"
+err="$(printf '{"tool_input":{"file_path":"%s/src/lib/other/x.ts"}}' "$L" | PATH="$nobase" "$(command -v bash)" "$here/lane-files.sh" 2>&1 >/dev/null)"
+got=$?
+if [ "$got" = 2 ]; then echo "ok   a failing dirname does not let an unlisted file through"; else echo "FAIL a failing dirname: exit $got"; fail=1; fi
+rm -f "$nobase/realpath"
+printf '#!/bin/sh\nexit 1\n' >"$nobase/realpath"
+chmod +x "$nobase/realpath"
+err="$(printf '{"tool_input":{"file_path":"%s/.env"}}' "$work/free" | PATH="$nobase" "$(command -v bash)" "$here/lane-files.sh" 2>&1 >/dev/null)"
+got=$?
+if [ "$got" = 2 ]; then echo "ok   a failing realpath blocks"; else echo "FAIL a failing realpath: exit $got"; fail=1; fi
+
+# settings.json asks Claude Code to block when the hook fails or times out.
+if [ "$(jq -r '.hooks.PreToolUse[0].hooks[0].onFailure' "$here/../settings.json")" = block ]; then echo "ok   the hook blocks when it fails or times out"; else echo "FAIL onFailure is not block"; fail=1; fi
+
 # Fails closed when it cannot read the call.
 raw 2 "a stdin that is not JSON is blocked" 'not json' "could not read"
 raw 2 "JSON with no tool_input is blocked" '{"other":1}' "could not read"

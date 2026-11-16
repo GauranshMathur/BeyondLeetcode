@@ -20,6 +20,14 @@
 # 5. A worktree with no `.lane-files` is not restricted by rule 4. The file is git-ignored, so a
 #    recreated worktree has none until the orchestrator writes it again.
 #
+# A path that reaches into a lane's worktree from outside (a symlink, or /proc/self/root/...) is judged
+# against that worktree's list as well, and so is an alias to `.lane-files` itself.
+#
+# Failure: a command that fails to run, or exits other than 0 or 2, would let the edit through, so
+# settings.json turns every such exit into 2 and sets `"onFailure": "block"`, which the Claude Code
+# hooks reference documents for command hooks (version 2.1.295 or later) as blocking the call when the
+# hook fails or times out. On an older version a hook cancelled at its 10 second timeout does not block.
+#
 # What this does not guard: a target outside the lane's own worktree (the main clone, another checkout,
 # a scratch file) is not judged, because the hook cannot know which agent is calling. The lane rule
 # guards the lane's worktree against a wrong file; the main clone is not guarded by it, and builders are
@@ -33,7 +41,7 @@ block() {
 }
 
 command -v jq >/dev/null 2>&1 || block "the lane-files hook needs jq and cannot find it."
-input="$(cat)"
+input="$(cat)" || block "the lane-files hook could not read its input."
 printf '%s' "$input" | jq -e 'type == "object" and (.tool_input | type == "object")' >/dev/null 2>&1 ||
   block "the lane-files hook could not read the tool call (not JSON with a tool_input)."
 
@@ -50,7 +58,13 @@ f="$(printf '%s' "$input" | jq -j '.tool_input.file_path // ""' 2>/dev/null)" ||
 resolved="$(realpath -m -- "$f")" || block "the lane-files hook could not resolve $f."
 lexical="$(realpath -m -s -- "$f")" || block "the lane-files hook could not resolve $f."
 
-for b in "$(basename -- "$f")" "$(basename -- "$resolved")"; do
+# The last path component, by parameter expansion: no external command decides a secret check.
+base_of() {
+  local p="$1"
+  while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do p="${p%/}"; done
+  printf '%s' "${p##*/}"
+}
+for b in "$(base_of "$f")" "$(base_of "$resolved")"; do
   case "$b" in
     .env.example) ;;
     .env | .env.* | *.pem | *.key)
@@ -65,17 +79,28 @@ for p in "$f" "$resolved" "$lexical"; do
   esac
 done
 
-# The worktree this path is lexically inside: the nearest ancestor holding a .lane-files.
-root=""
-d="$(dirname -- "$lexical")"
-while :; do
-  if [ -f "$d/.lane-files" ]; then
-    root="$d"
-    break
-  fi
-  [ "$d" = / ] && break
-  d="$(dirname -- "$d")"
-done
+# The worktree whose .lane-files applies: the nearest ancestor holding one, searched up the path as
+# written, and, failing that, up the path after symlinks are resolved (so an alias that reaches into a
+# worktree from outside, a symlink or /proc/self/root/..., is judged too).
+find_root() {
+  local d="$1"
+  d="${d%/*}"
+  while :; do
+    [ -n "$d" ] || d=/
+    if [ -f "$d/.lane-files" ]; then
+      printf '%s' "$d"
+      return 0
+    fi
+    [ "$d" = / ] && return 1
+    d="${d%/*}"
+  done
+}
+root="$(find_root "$lexical")" || root=""
+via_alias=0
+if [ -z "$root" ]; then
+  root="$(find_root "$resolved")" || root=""
+  via_alias=1
+fi
 [ -n "$root" ] || exit 0
 list="$root/.lane-files"
 
@@ -84,6 +109,7 @@ case "$resolved" in
   "$rootreal"/*) rel="${resolved#"$rootreal"/}" ;;
   *) block "$f leads outside this worktree through a symlink." ;;
 esac
+[ "$via_alias" = 0 ] || [ -n "$rel" ] || block "the lane-files hook could not place $f in its worktree."
 
 if [ "$rel" = .lane-files ]; then
   block ".lane-files is written by the orchestrator. If the card needs another file, report the card Blocked and name the file."
@@ -91,7 +117,8 @@ fi
 
 while IFS= read -r line || [ -n "$line" ]; do
   line="${line%%#*}"
-  line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line%"${line##*[![:space:]]}"}"
   [ -n "$line" ] || continue
   case "$line" in
     */) case "$rel" in "$line"*) exit 0 ;; esac ;;

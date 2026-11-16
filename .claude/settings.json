@@ -45,6 +45,7 @@
           {
             "type": "command",
             "timeout": 10,
+            "onFailure": "block",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lane-files.sh; rc=$?; [ \"$rc\" -eq 0 ] && exit 0; [ \"$rc\" -eq 2 ] && exit 2; echo \"Blocked: the lane-files hook could not run (exit $rc).\" >&2; exit 2"
           }
         ]
