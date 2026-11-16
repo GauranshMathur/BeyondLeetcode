@@ -35,6 +35,8 @@ export interface App {
 	/** The Multi-user Instance the factory builds (its account actions, admin actions, Invites and auth handler); null when the secret or the origin is not set. */
 	multiUser: MultiUser | null;
 	setup: Setup;
+	/** Dev mode, read once at start from `DEV_MODE=1` and never from a request, so it is a plain boolean. On only on a Local Mode Instance. */
+	readonly devMode: boolean;
 }
 
 /** Wires the Instance at server start: content, database, Learning core, Identity. */
@@ -47,6 +49,8 @@ export async function createApp(env: {
 	IDENTITY_TEST_LEARNER?: string;
 	/** 'scripted' swaps the Docker-backed Runner for a scripted one; never set outside the e2e web server. */
 	RUNNER_ADAPTER?: string;
+	/** '1' turns dev mode on, on a Local Mode Instance only; any other value is off. */
+	DEV_MODE?: string;
 	/** Read only to refuse the test switches in production. */
 	NODE_ENV?: string;
 	/** Signs sessions (Multi-user). Without a valid one, Multi-user cannot be chosen. */
@@ -84,6 +88,11 @@ export async function createApp(env: {
 				'IDENTITY_TEST_LEARNER=1 on a multi-user Instance: the test Learner switch must be off once the Instance is multi-user.'
 			);
 		}
+		if (env.DEV_MODE === '1') {
+			throw new Error(
+				'DEV_MODE=1 on a multi-user Instance: dev mode is for a Local Mode Instance only; unset DEV_MODE.'
+			);
+		}
 		if (auth.kind === 'missing') {
 			throw new Error(`This Instance is Multi-user, but ${auth.message}`);
 		}
@@ -118,7 +127,8 @@ export async function createApp(env: {
 				return createFirstAdmin({ instance, auth: multi.auth, db }, input);
 			}
 		},
-		core: createLearningCore({ catalogue, db, runner })
+		core: createLearningCore({ catalogue, db, runner }),
+		devMode: env.DEV_MODE === '1' && instance.mode() === 'local'
 	};
 }
 

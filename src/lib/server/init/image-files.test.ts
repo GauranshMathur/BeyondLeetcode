@@ -1,7 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { runInit } from './init.ts';
 
 // The image runs several roles from source (docker-entrypoint.sh). The Dockerfile copies
 // src/lib/server whole, so this test only checks the entry points: each one exists and its
@@ -68,5 +70,24 @@ describe('the image copies every entry it runs from source', () => {
 		expect(without).not.toBe(dockerfile);
 		const sources = copiedSources(without);
 		expect(entries.filter((e) => !isCopied(e, sources))).toContain('src/lib/server/web-entry.ts');
+	});
+});
+
+describe('the image and its files leave dev mode off', () => {
+	it('does not name DEV_MODE in the Dockerfile, the compose.yaml or the .env that init writes', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'beyondleetcode-image-'));
+		try {
+			await runInit(['--origin', 'https://learn.example.com/'], dir);
+			const written = {
+				Dockerfile: dockerfile,
+				'compose.yaml': readFileSync(join(dir, 'compose.yaml'), 'utf8'),
+				'.env': readFileSync(join(dir, '.env'), 'utf8')
+			};
+			for (const [name, text] of Object.entries(written)) {
+				expect(text, `${name} must not set or name DEV_MODE`).not.toContain('DEV_MODE');
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

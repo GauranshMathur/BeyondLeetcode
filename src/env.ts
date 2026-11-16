@@ -7,6 +7,7 @@ export const variables = defineEnvVars({
 	RUNNER_URL: { schema: (input) => input },
 	RUNNER_TOKEN: { schema: (input) => input },
 	IDENTITY_TEST_LEARNER: { schema: (input) => input },
+	DEV_MODE: { schema: (input) => input },
 	RUNNER_ADAPTER: { schema: (input) => input },
 	NODE_ENV: { schema: (input) => input },
 	BETTER_AUTH_SECRET: { schema: (input) => input },
