@@ -4,7 +4,7 @@ import type { InstanceMode } from './instance.js';
 
 /** A link in the bar. `phoneLabel` is what it says below 768px (F.10f); `key` names it for styling. */
 export interface HeaderLink {
-	key: 'map' | 'users' | 'account';
+	key: 'map' | 'users' | 'guide' | 'account';
 	href: string;
 	label: string;
 	phoneLabel: string;
@@ -50,6 +50,7 @@ export function headerFor({ identity, mode, routeId, pathname }: HeaderInput): H
 	// Only the admin of a Multi-user Instance has Accounts to manage. The Local Learner is an admin
 	// too, but Local Mode has no Accounts and no Users page.
 	if (multi && identity?.role === 'admin') links.push(link('users', '/users', 'Users'));
+	links.push(link('guide', '/guide', 'Guide'));
 	// The display name opens Settings; Local Mode's Identity names it "Local", and a phone says "Settings".
 	links.push(
 		link(

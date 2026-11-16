@@ -50,7 +50,7 @@ test('the admin finds Users in the nav and sees every Account on it', async ({ c
 	await context.addCookies(admin.cookies);
 	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
-	await expect(nav.getByRole('link')).toHaveText(['Map', 'Users', E2E_ADMIN.name]);
+	await expect(nav.getByRole('link')).toHaveText(['Map', 'Users', 'Guide', E2E_ADMIN.name]);
 	await expect(nav.getByRole('link', { name: 'Users' })).not.toHaveAttribute('aria-current', /.*/);
 
 	await nav.getByRole('link', { name: 'Users' }).click();
@@ -332,7 +332,7 @@ test('a learner gets 403 on Users, sees nothing of it, and has no Users link', a
 	await context.addCookies(lin.cookies);
 	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
-	await expect(nav.getByRole('link')).toHaveText(['Map', LIN.name]);
+	await expect(nav.getByRole('link')).toHaveText(['Map', 'Guide', LIN.name]);
 
 	const response = await page.goto('/users');
 
@@ -348,7 +348,7 @@ test('a user whose stored role merely contains admin is a learner here too', asy
 	await context.addCookies(sam.cookies);
 	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
-	await expect(nav.getByRole('link')).toHaveText(['Map', SAM.name]);
+	await expect(nav.getByRole('link')).toHaveText(['Map', 'Guide', SAM.name]);
 
 	const response = await page.goto('/users');
 

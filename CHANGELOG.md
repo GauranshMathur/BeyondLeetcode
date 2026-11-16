@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.20.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.7...v1.20.0) (2026-11-16)
+
+### Highlights
+
+Sprint 21 adds a Guide: one short page that explains how the site works, linked from the header on every screen. It also closes the bugs left open from earlier sprints. For Learners: selected code stays readable, the error page speaks in sentences, and the Problem screen behaves better on a phone held short. For operators: a new Instance rotates its container logs, and the Runner's log no longer carries details of a failed request.
+
+### Added
+
+- A Guide page explains how the site works: what Topics, Chapters, Problems, Builds, hints, Run and Submit are, and how progress and unlocks work. (C401, #689)
+- The header has a Guide link that opens that page, on every screen that shows the header's links. (C402a, #712)
+
+### Fixed
+
+- Selected text in the code editor stays readable, including strings and numbers. (C404, #701)
+- An unknown page and a locked Topic now say so in plain sentences instead of "Not Found" and "TopicLocked". (C430, #700)
+- Two pending Invites made on the same day now show their time, so a screen reader can tell their Cancel buttons apart. (C405, #692)
+- On a phone held short, the Problem screen has one fewer Tab stop and the Solution's code editor is sized like the Code tab's. (C406, C407, #695)
+- A Runner no longer logs a refusal for a request whose caller disconnected mid-upload. (C435, #707)
+
+### Changed
+
+- A new Instance's `compose.yaml` rotates the web and Runner container logs (3 files of 10 MB each). (C433, #710)
+
+### Content
+
+No content changes in this release.
+
+### Security
+
+- The Runner's log no longer carries error details from a failed request: it prints one fixed line with the error's class name. (C434, #703)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.20.0` (or `latest`), then run `docker compose pull && docker compose up -d`.
+
+An existing Instance's `compose.yaml` is not rewritten, so its container logs still grow without limit. To rotate them, add the `logging` lines under the `web` and `runner` services by hand, as `docs/self-hosting.md` shows. (C433, #710)
+
 ## [1.19.7](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.6...v1.19.7) (2026-11-14)
 
 ### Highlights
