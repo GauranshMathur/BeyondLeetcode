@@ -2,46 +2,40 @@
 
 ## [1.20.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.7...v1.20.0) (2026-11-16)
 
+### Highlights
 
-### Features
+Sprint 21 adds a Guide: one short page that explains how the site works, linked from the header on every screen. It also closes the bugs left open from earlier sprints. For Learners: selected code stays readable, the error page speaks in sentences, and the Problem screen behaves better on a phone held short. For operators: a new Instance rotates its container logs, and the Runner's log no longer carries details of a failed request.
 
-* **beyondleetcode:** C401 Guide: the /guide page ([#689](https://github.com/GauranshMathur/BeyondLeetcode/issues/689)) ([0a65e02](https://github.com/GauranshMathur/BeyondLeetcode/commit/0a65e021e02d38807a7e0737d46126e8b5c96ffe))
-* **beyondleetcode:** C402a Header: the Guide link on every screen ([#712](https://github.com/GauranshMathur/BeyondLeetcode/issues/712)) ([b6ec241](https://github.com/GauranshMathur/BeyondLeetcode/commit/b6ec241043e675f0756b76d878e0f75fd859c285))
+### Added
 
+- A Guide page explains how the site works: what Topics, Chapters, Problems, Builds, hints, Run and Submit are, and how progress and unlocks work. (C401, #689)
+- The header has a Guide link that opens that page, on every screen that shows the header's links. (C402a, #712)
 
-### Fixes
+### Fixed
 
-* **beyondleetcode:** C404 The editor's selected strings and numbers meet 4.5:1 ([#701](https://github.com/GauranshMathur/BeyondLeetcode/issues/701)) ([49d9635](https://github.com/GauranshMathur/BeyondLeetcode/commit/49d96351bb026835b2ca9b82e505cc9ca788c54f))
-* **beyondleetcode:** C405 Invites from one day get different names on the Users page ([#692](https://github.com/GauranshMathur/BeyondLeetcode/issues/692)) ([350eee5](https://github.com/GauranshMathur/BeyondLeetcode/commit/350eee53bdfb5c9f44e4c167c2123766601fe221))
-* **beyondleetcode:** C406 C407 Problem screen at a short phone: one tab stop, the Solution's editor ([#695](https://github.com/GauranshMathur/BeyondLeetcode/issues/695)) ([350d6ee](https://github.com/GauranshMathur/BeyondLeetcode/commit/350d6ee38de9417a0863a2ad1fa04619495891c6))
-* **beyondleetcode:** C408 The console's short-phone flex rule lives in ResultsPanel ([#699](https://github.com/GauranshMathur/BeyondLeetcode/issues/699)) ([7cb7fba](https://github.com/GauranshMathur/BeyondLeetcode/commit/7cb7fbae50cea09f6411c5180d06dda91ca20391))
-* **beyondleetcode:** C430 The error page reads a 404 and a Locked Topic as sentences ([#700](https://github.com/GauranshMathur/BeyondLeetcode/issues/700)) ([3d902e7](https://github.com/GauranshMathur/BeyondLeetcode/commit/3d902e7c1825c0ab82f277c89ba4e11fed546074))
-* **beyondleetcode:** C433 The compose.yaml that init writes rotates both services' logs ([#710](https://github.com/GauranshMathur/BeyondLeetcode/issues/710)) ([dd60fc5](https://github.com/GauranshMathur/BeyondLeetcode/commit/dd60fc5df42e84f6b35c604a05bc5bed8edea1b8))
-* **beyondleetcode:** C434 The Runner logs one fixed line for a failed request ([#703](https://github.com/GauranshMathur/BeyondLeetcode/issues/703)) ([bc1c102](https://github.com/GauranshMathur/BeyondLeetcode/commit/bc1c10238b2967f7cb73d137eb6c8a54a10223c0))
-* **beyondleetcode:** C435 A caller that leaves mid-body is not logged as a refusal ([#707](https://github.com/GauranshMathur/BeyondLeetcode/issues/707)) ([080ee35](https://github.com/GauranshMathur/BeyondLeetcode/commit/080ee35601909e437f87c5e470b5ed5e30d43110))
+- Selected text in the code editor stays readable, including strings and numbers. (C404, #701)
+- An unknown page and a locked Topic now say so in plain sentences instead of "Not Found" and "TopicLocked". (C430, #700)
+- Two pending Invites made on the same day now show their time, so a screen reader can tell their Cancel buttons apart. (C405, #692)
+- On a phone held short, the Problem screen has one fewer Tab stop and the Solution's code editor is sized like the Code tab's. (C406, C407, #695)
+- A Runner no longer logs a refusal for a request whose caller disconnected mid-upload. (C435, #707)
 
+### Changed
 
-### Documentation
+- A new Instance's `compose.yaml` rotates the web and Runner container logs (3 files of 10 MB each). (C433, #710)
 
-* **beyondleetcode:** C375 accept.ts and app.ts comments say what the code does ([#704](https://github.com/GauranshMathur/BeyondLeetcode/issues/704)) ([21261c8](https://github.com/GauranshMathur/BeyondLeetcode/commit/21261c8bd47b510eaa0cfa1fdea96f2855753328))
-* **beyondleetcode:** C379 module-map describes Identity, Logging and Languages as they are ([#708](https://github.com/GauranshMathur/BeyondLeetcode/issues/708)) ([8d11329](https://github.com/GauranshMathur/BeyondLeetcode/commit/8d113290bf4284be0dd35b083787256ec8801479))
-* **beyondleetcode:** C412 Sprint 21 exit check ([#715](https://github.com/GauranshMathur/BeyondLeetcode/issues/715)) ([0859035](https://github.com/GauranshMathur/BeyondLeetcode/commit/085903546c6c869b3de113a3622190433be66aed))
-* **beyondleetcode:** record the 1.19.7 cut, and archive Sprint 20 ([#686](https://github.com/GauranshMathur/BeyondLeetcode/issues/686)) ([ea14929](https://github.com/GauranshMathur/BeyondLeetcode/commit/ea14929b7e20481638768fb9350775858a7bdb4a))
-* **beyondleetcode:** the plan re-ranked at Sprint 21's start: unblocked work first ([#688](https://github.com/GauranshMathur/BeyondLeetcode/issues/688)) ([0ed87c5](https://github.com/GauranshMathur/BeyondLeetcode/commit/0ed87c5b9efac86bc51d2ef213124b3cea26cbe6))
+### Content
 
+No content changes in this release.
 
-### Tests
+### Security
 
-* **beyondleetcode:** C409 the eight-password-changes test gets a timeout that fits eight changes ([#690](https://github.com/GauranshMathur/BeyondLeetcode/issues/690)) ([dea3a1b](https://github.com/GauranshMathur/BeyondLeetcode/commit/dea3a1bc1ff4e044db40912bd036a5167a1a9b30))
-* **beyondleetcode:** C410 ci-gate.test.sh no longer fails when the whole-second clock ticks early ([#696](https://github.com/GauranshMathur/BeyondLeetcode/issues/696)) ([662213b](https://github.com/GauranshMathur/BeyondLeetcode/commit/662213b8bae74cc37bf90d81ced8da0e580a7ebf))
-* **beyondleetcode:** C432 the sign-in throttle tests run on an in-memory database ([#691](https://github.com/GauranshMathur/BeyondLeetcode/issues/691)) ([a61d42a](https://github.com/GauranshMathur/BeyondLeetcode/commit/a61d42a16769a15dd930da25a37c87764a59807a))
-* **beyondleetcode:** C436 CI: the content check's retry says what failed, and keeps an earlier wrong answer ([#706](https://github.com/GauranshMathur/BeyondLeetcode/issues/706)) ([db2ec33](https://github.com/GauranshMathur/BeyondLeetcode/commit/db2ec3300be5b1da92ed12c654e0a3595c32400f))
+- The Runner's log no longer carries error details from a failed request: it prints one fixed line with the error's class name. (C434, #703)
 
+### Upgrade notes
 
-### CI
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.20.0` (or `latest`), then run `docker compose pull && docker compose up -d`.
 
-* **beyondleetcode:** C411 the release gate and publish-edge wait on one list of test jobs ([#713](https://github.com/GauranshMathur/BeyondLeetcode/issues/713)) ([745ab10](https://github.com/GauranshMathur/BeyondLeetcode/commit/745ab10a15b51879f1a59265eb963b46366a7219))
-* **beyondleetcode:** C437 the sandbox job runs two cases at once in both steps and says when to split ([#694](https://github.com/GauranshMathur/BeyondLeetcode/issues/694)) ([65c6f8a](https://github.com/GauranshMathur/BeyondLeetcode/commit/65c6f8aa1b50ad96abe4bf548b36e63c91157950))
+An existing Instance's `compose.yaml` is not rewritten, so its container logs still grow without limit. To rotate them, add the `logging` lines under the `web` and `runner` services by hand, as `docs/self-hosting.md` shows. (C433, #710)
 
 ## [1.19.7](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.6...v1.19.7) (2026-11-14)
 
