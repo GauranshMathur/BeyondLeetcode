@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { phone } from './src/lib/e2e-phone';
 
-// Two servers, each on a fresh temp database, migrated here: the app never migrates on start (C8a owns that).
+// Four servers, each on a fresh temp database, migrated here: the app never migrates on start (C8a owns that).
 // The content is the catalogue fixture. The Runner is scripted (no Docker): real execution is covered by the
 // Sandbox tests and the image smoke test.
 //   4173: the Local Mode server. Its "setup" project chooses Local through the real screen.
@@ -58,11 +58,25 @@ const convert = [
 	'PORT=4175 bun ./src/lib/server/web-entry.ts'
 ].join(' && ');
 
+// 4176: a Local Instance with dev mode on (DEV_MODE=1). The switch takes effect only when the Instance is already
+// Local at start, and a fresh database is not, so the Local row is written here, the one thing the Setup screen
+// would do. Its own server and database; the others never get the switch. Same build as the others.
+const dev = [
+	'export DATABASE_URL="file:$(mktemp -d)/e2e-dev.db"',
+	'export ORIGIN=http://localhost:4176',
+	'export DEV_MODE=1',
+	...common,
+	'bunx prisma migrate deploy',
+	`bun -e 'new (require("bun:sqlite").Database)(process.env.DATABASE_URL.slice(5)).exec("INSERT INTO Instance (id, mode) VALUES ('"'"'instance'"'"', '"'"'local'"'"')")'`,
+	'PORT=4176 bun ./src/lib/server/web-entry.ts'
+].join(' && ');
+
 export default defineConfig({
 	webServer: [
 		{ command: web, port: 4173 },
 		{ command: multi, port: 4174 },
-		{ command: convert, port: 4175 }
+		{ command: convert, port: 4175 },
+		{ command: dev, port: 4176 }
 	],
 	use: { baseURL: 'http://localhost:4173' },
 	// Each file acts as its own Learner (see IDENTITY_TEST_LEARNER above), so files can run at the same time.
@@ -74,7 +88,7 @@ export default defineConfig({
 		{
 			name: 'e2e',
 			testMatch: '**/*.e2e.{ts,js}',
-			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts', '**/convert.e2e.ts'],
+			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts', '**/convert.e2e.ts', '**/*.dev.e2e.ts'],
 			// The @mobile flows run in the "mobile" project.
 			grepInvert: /@mobile/,
 			dependencies: ['setup']
@@ -89,6 +103,12 @@ export default defineConfig({
 			testMatch: '**/convert.e2e.ts',
 			use: { baseURL: 'http://localhost:4175' }
 		},
+		// The dev-mode tests (*.dev.e2e.ts) run on the fourth server; no other project runs them.
+		{
+			name: 'dev',
+			testMatch: '**/*.dev.e2e.ts',
+			use: { baseURL: 'http://localhost:4176' }
+		},
 		{
 			name: 'e2e-multi',
 			testMatch: '**/*.multi.e2e.ts',
@@ -102,7 +122,7 @@ export default defineConfig({
 		{
 			name: 'mobile',
 			testMatch: '**/*.e2e.{ts,js}',
-			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts', '**/convert.e2e.ts'],
+			testIgnore: ['**/setup.e2e.ts', '**/*.multi.e2e.ts', '**/convert.e2e.ts', '**/*.dev.e2e.ts'],
 			grep: /@mobile/,
 			use: phone,
 			dependencies: ['setup']
