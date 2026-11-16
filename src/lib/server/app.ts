@@ -32,7 +32,7 @@ export interface App {
 	identity: InstanceIdentity;
 	/** The Instance's mode, read by the hook on every request. One per server: it caches the mode. */
 	instance: Instance;
-	/** Better Auth and the Multi-user adapter; null when the secret or the origin is not set. */
+	/** The Multi-user Instance the factory builds (its account actions, admin actions, Invites and auth handler); null when the secret or the origin is not set. */
 	multiUser: MultiUser | null;
 	setup: Setup;
 }

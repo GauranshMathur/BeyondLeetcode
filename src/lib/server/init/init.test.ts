@@ -106,6 +106,8 @@ describe('.env', () => {
 		expect(USAGE).toContain(`127.0.0.1:\${PORT}:3000`);
 		// The old line passes an empty ORIGIN when .env has none, and that stops the server.
 		expect(USAGE).toContain(`replace ORIGIN: \${ORIGIN:-} with a bare ORIGIN:`);
+		expect(USAGE).toContain('max-size: "10m"');
+		expect(USAGE).toContain('max-file: "3"');
 	});
 });
 
@@ -188,5 +190,18 @@ describe('compose.yaml', () => {
 			expect(web).toContain(`${name}: \${${name}:-}`);
 			expect(runner).not.toContain(name);
 		}
+	});
+
+	it('rotates the logs of both services, so Docker does not keep every line', async () => {
+		await runInit(['--origin', 'http://a.io'], dir);
+		const compose = await read('compose.yaml');
+		const web = compose.slice(compose.indexOf('  web:'), compose.indexOf('  runner:'));
+		const runner = compose.slice(compose.indexOf('  runner:'), compose.indexOf('networks:\n'));
+		for (const service of [web, runner]) {
+			expect(service).toMatch(
+				/^ {4}logging:\n(?: {6}#.*\n)* {6}driver: json-file\n {6}options:\n {8}max-size: "10m"\n {8}max-file: "3"\n/m
+			);
+		}
+		expect(compose.match(/^ {4}logging:$/gm)?.length).toBe(2);
 	});
 });

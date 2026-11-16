@@ -821,6 +821,46 @@ test.describe('the Problem on a short phone', () => {
 		expect(await page.getByRole('banner').evaluate((el) => !!el.closest('main'))).toBe(false);
 	});
 
+	test('only the stage is a tab stop for scrolling: the statement region is not one more', async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push');
+		await expect(stage(page)).toHaveAttribute('tabindex', '0');
+		await expect(page.getByRole('region', { name: 'Problem statement' })).not.toHaveAttribute(
+			'tabindex',
+			'0'
+		);
+
+		// From the bar's first link to the strip's Run: seven presses, one fewer than while the statement region was a stop too.
+		const run = page.getByRole('button', { name: 'Run' });
+		await page.getByRole('banner').getByRole('link').first().focus();
+		let presses = 0;
+		while (!(await run.evaluate((el) => el === document.activeElement)) && presses < 40) {
+			await page.keyboard.press('Tab');
+			presses++;
+		}
+		expect(presses).toBe(7);
+
+		// The stage is still scrolled by the keyboard once focused.
+		await stage(page).evaluate((el) => el.scrollTo(0, 0));
+		await stage(page).focus();
+		await page.keyboard.press('PageDown');
+		await expect.poll(() => stage(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+	});
+
+	test('with the Solution open, the Reference Code editor shows at least six lines', async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push?tab=solution');
+		await workspaceTab(page, 'Code').click();
+		const editor = await page.locator('.cm-editor:visible').boundingBox();
+		expect(editor?.height).toBeGreaterThanOrEqual(132);
+		// As tall as its code, so the stage scrolls it rather than the editor clipping it.
+		const content = await page.locator('.cm-content:visible').boundingBox();
+		expect(editor?.height).toBeGreaterThanOrEqual(content?.height ?? Infinity);
+		await expectNoSidewaysScroll(page);
+	});
+
 	test('the Code tab keeps an editor of at least six lines, and the Tests tab keeps its console', async ({
 		page
 	}) => {

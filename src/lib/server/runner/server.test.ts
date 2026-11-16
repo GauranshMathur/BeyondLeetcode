@@ -167,6 +167,64 @@ describe('Runner HTTP handler', () => {
 			expect(lines).toEqual(['runner RunnerRefused']);
 		});
 
+		describe('for a body that is cut off', () => {
+			// A request whose body stream the test controls, so the caller can leave (abort) or the stream can fail.
+			const streaming = () => {
+				const abort = new AbortController();
+				let body!: ReadableStreamDefaultController<Uint8Array>;
+				const stream = new ReadableStream<Uint8Array>({
+					start(controller) {
+						body = controller;
+						controller.enqueue(new TextEncoder().encode('{"language":'));
+					}
+				});
+				const req = new Request('http://runner/execute', {
+					method: 'POST',
+					headers: { Authorization: `Bearer ${token}` },
+					body: stream,
+					duplex: 'half',
+					signal: abort.signal
+				} as RequestInit);
+				return { req, abort, body };
+			};
+
+			it('logs nothing when the caller left while the body was being read', async () => {
+				const { req, abort, body } = streaming();
+				const pending = logged(req);
+				abort.abort();
+				body.error(new Error('connection reset'));
+				const { res, lines } = await pending;
+
+				expect(res.status).toBe(400);
+				expect(lines).toEqual([]);
+			});
+
+			it('still logs a refusal when the body fails but the caller has not left', async () => {
+				const { req, body } = streaming();
+				const pending = logged(req);
+				body.error(new Error('truncated'));
+				const { res, lines } = await pending;
+
+				expect(res.status).toBe(400);
+				expect(lines).toEqual(['runner RunnerRefused']);
+			});
+
+			it('still logs a refusal for a whole body that is not JSON on a connection that stays open', async () => {
+				const abort = new AbortController();
+				const req = new Request('http://runner/execute', {
+					method: 'POST',
+					headers: { Authorization: `Bearer ${token}` },
+					body: 'not json at all',
+					signal: abort.signal
+				});
+				const { res, lines } = await logged(req);
+
+				expect(abort.signal.aborted).toBe(false);
+				expect(res.status).toBe(400);
+				expect(lines).toEqual(['runner RunnerRefused']);
+			});
+		});
+
 		it('carries nothing from the request and no line break', async () => {
 			const requests = [
 				new Request('http://runner/execute?q=QUERYTEXT', {
@@ -185,11 +243,131 @@ describe('Runner HTTP handler', () => {
 			}
 		});
 
-		it('logs nothing for a 200 or for the 503s', async () => {
+		it('logs nothing for a 200, a 404 or a 405', async () => {
 			expect((await logged(post(withContent))).lines).toEqual([]);
-			const notReady = await logged(post(withContent), []);
-			expect(notReady.res.status).toBe(503);
-			expect(notReady.lines).toEqual([]);
+			const auth = { Authorization: `Bearer ${token}` };
+			const notFound = await logged(new Request('http://runner/nope', { headers: auth }));
+			expect(notFound.res.status).toBe(404);
+			expect(notFound.lines).toEqual([]);
+			const wrongMethod = await logged(new Request('http://runner/execute', { headers: auth }));
+			expect(wrongMethod.res.status).toBe(405);
+			expect(wrongMethod.lines).toEqual([]);
+		});
+
+		describe('for the 503s', () => {
+			it('logs nothing when the Language is not ready', async () => {
+				const notReady = await logged(post(withContent), []);
+				expect(notReady.res.status).toBe(503);
+				expect(notReady.lines).toEqual([]);
+			});
+
+			it('logs nothing when slots and queue are full, or the bounded wait runs out', async () => {
+				const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+				try {
+					const handle = createRunnerHandler({
+						token,
+						runner: { execute: () => new Promise<{ results: never[] }>(() => {}) },
+						maxConcurrent: 1,
+						queueWaitMs: 30,
+						maxQueued: 1,
+						readyLanguages: () => ['python']
+					});
+					void handle(post(valid));
+					const waited = handle(post(valid));
+					// Let the first two take the slot and the queue place, so the third meets the early refusal
+					// (before any body is read) and not the refusal inside the queue.
+					await new Promise((resolve) => setTimeout(resolve, 0));
+					const full = await handle(post('not json'));
+					expect(full.status).toBe(503);
+					expect(await full.json()).toEqual({ error: 'Runner is busy' });
+					const timedOut = await waited;
+					expect(timedOut.status).toBe(503);
+					expect(spy.mock.calls).toEqual([]);
+				} finally {
+					spy.mockRestore();
+				}
+			});
+		});
+
+		describe('when the runner throws', () => {
+			class DaemonError extends Error {}
+			const failing = async (thrown: unknown) => {
+				const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+				try {
+					const handle = createRunnerHandler({
+						token,
+						runner: {
+							execute: () => Promise.reject(thrown)
+						},
+						maxConcurrent: 4,
+						readyLanguages: () => ['python']
+					});
+					const res = await handle(post(withContent));
+					return { res, lines: spy.mock.calls.map((call) => call.map(String).join(' ')) };
+				} finally {
+					spy.mockRestore();
+				}
+			};
+
+			it('answers 500 with one line holding the class name and nothing of the error', async () => {
+				const error = new DaemonError('MESSAGE_MARKER daemon said no', {
+					cause: new Error('CAUSE_MARKER')
+				});
+				const { res, lines } = await failing(error);
+
+				expect(res.status).toBe(500);
+				expect(await res.json()).toEqual({ error: 'Runner failed to execute the request' });
+				expect(lines).toEqual(['runner RunnerFailed DaemonError']);
+			});
+
+			it('logs a fixed word for a thrown value that is not an Error', async () => {
+				const { res, lines } = await failing('STRING_MARKER');
+
+				expect(res.status).toBe(500);
+				expect(lines).toEqual(['runner RunnerFailed NonError']);
+			});
+
+			it('logs a fixed word for a class name that is not a plain identifier', async () => {
+				const odd = new Error('x');
+				Object.defineProperty(odd, 'constructor', { value: { name: 'bad\nforged line' } });
+				const { lines } = await failing(odd);
+
+				expect(lines).toEqual(['runner RunnerFailed Error']);
+			});
+
+			it('logs a fixed word for a thrown Proxy whose traps throw', async () => {
+				const trap = () => {
+					throw new Error('trap');
+				};
+				const hostile = new Proxy(new Error('x'), {
+					getPrototypeOf: trap,
+					get: trap
+				});
+				const { res, lines } = await failing(hostile);
+
+				expect(res.status).toBe(500);
+				expect(lines).toEqual(['runner RunnerFailed NonError']);
+			});
+
+			it('logs a fixed word for a class name that is not a string, and survives a throwing getter', async () => {
+				const stringy = new Error('x');
+				let reads = 0;
+				Object.defineProperty(stringy, 'constructor', {
+					value: { name: { toString: () => (reads++ ? 'MESSAGE_MARKER' : 'Error') } }
+				});
+				const hostile = new Error('x');
+				Object.defineProperty(hostile, 'constructor', {
+					get() {
+						throw new Error('getter');
+					}
+				});
+
+				for (const thrown of [stringy, hostile]) {
+					const { res, lines } = await failing(thrown);
+					expect(res.status).toBe(500);
+					expect(lines).toEqual(['runner RunnerFailed Error']);
+				}
+			});
 		});
 	});
 
