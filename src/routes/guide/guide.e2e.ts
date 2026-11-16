@@ -43,8 +43,27 @@ test('the contents list jumps to its section and the Map link opens the Map', as
 	await expect(page).toHaveURL('/');
 });
 
+test("the header's Guide link opens the Guide from the Map", async ({ page }) => {
+	await gotoHydrated(page, '/');
+	await page
+		.getByRole('navigation', { name: 'Primary' })
+		.getByRole('link', { name: 'Guide' })
+		.click();
+	await expect(page).toHaveURL('/guide');
+	await expect(page.getByRole('heading', { level: 1, name: 'How to use the site' })).toBeVisible();
+});
+
 test.describe('on a phone', () => {
 	test.use(phone);
+
+	test("the header's Guide link opens the Guide from the Map", async ({ page }) => {
+		await gotoHydrated(page, '/');
+		await page
+			.getByRole('navigation', { name: 'Primary' })
+			.getByRole('link', { name: 'Guide' })
+			.click();
+		await expect(page).toHaveURL('/guide');
+	});
 
 	test('the Guide has no sideways scroll and every link is a full-size target', async ({
 		page

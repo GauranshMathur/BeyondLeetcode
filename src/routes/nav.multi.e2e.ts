@@ -41,7 +41,7 @@ async function expectBarFits(page: import('@playwright/test').Page) {
 	await expect(header.getByRole('button', { name: 'Sign out' })).toBeHidden();
 }
 
-test('a learner sees BLC and their name, and the name is marked on Settings', async ({
+test('a learner sees BLC, Guide and their name, and the name is marked on Settings', async ({
 	context,
 	page
 }) => {
@@ -49,7 +49,7 @@ test('a learner sees BLC and their name, and the name is marked on Settings', as
 	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
 	await expect(page.getByRole('link', { name: 'BLC' })).toHaveAttribute('href', '/');
-	await expect(nav.getByRole('link')).toHaveText([LIN.name]);
+	await expect(nav.getByRole('link')).toHaveText(['Guide', LIN.name]);
 	await expect(nav.getByRole('link', { name: LIN.name })).not.toHaveAttribute('aria-current', /.*/);
 	await expectBarFits(page);
 
@@ -60,14 +60,14 @@ test('a learner sees BLC and their name, and the name is marked on Settings', as
 	await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 });
 
-test('the admin sees Users and their name, each marked on its own page', async ({
+test('the admin sees Users, Guide and their name, each marked on its own page', async ({
 	context,
 	page
 }) => {
 	await context.addCookies(admin.cookies);
 	await gotoHydrated(page, '/');
 	const nav = page.getByRole('navigation', { name: 'Primary' });
-	await expect(nav.getByRole('link')).toHaveText(['Users', E2E_ADMIN.name]);
+	await expect(nav.getByRole('link')).toHaveText(['Users', 'Guide', E2E_ADMIN.name]);
 	await expectBarFits(page);
 
 	await nav.getByRole('link', { name: 'Users' }).click();
@@ -95,7 +95,9 @@ test('a long name is cut with an ellipsis and the bar does not widen', async ({
 	await context.addCookies(long.cookies);
 	await gotoHydrated(page, '/');
 	await expectBarFits(page);
-	const link = page.getByRole('navigation', { name: 'Primary' }).getByRole('link');
+	const link = page
+		.getByRole('navigation', { name: 'Primary' })
+		.getByRole('link', { name: LONG.name });
 	await expect(link).toHaveText(LONG.name);
 	const cut = await link.evaluate((el) => el.scrollWidth > el.clientWidth);
 	expect(cut).toBe(true);
