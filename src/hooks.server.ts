@@ -7,6 +7,7 @@ import {
 	BETTER_AUTH_SECRET,
 	CONTENT_DIR,
 	DATABASE_URL,
+	DEV_MODE,
 	IDENTITY_TEST_LEARNER,
 	NODE_ENV,
 	ORIGIN,
@@ -16,10 +17,11 @@ import {
 } from '$app/env/private';
 
 let run: Handle;
+let devMode = false;
 
 /**
  * Runs once at server start; a missing CONTENT_DIR, DATABASE_URL, RUNNER_URL or RUNNER_TOKEN stops the server here,
- * and so does a multi-user Instance without its BETTER_AUTH_SECRET or ORIGIN.
+ * a multi-user Instance without its BETTER_AUTH_SECRET or ORIGIN, and a multi-user Instance with DEV_MODE set.
  */
 export const init: ServerInit = async () => {
 	const app = await createApp({
@@ -28,16 +30,22 @@ export const init: ServerInit = async () => {
 		RUNNER_URL,
 		RUNNER_TOKEN,
 		IDENTITY_TEST_LEARNER,
+		DEV_MODE,
 		RUNNER_ADAPTER,
 		NODE_ENV,
 		BETTER_AUTH_SECRET,
 		ORIGIN
 	});
 	run = createHandle(app);
+	devMode = app.devMode;
 };
 
 /** The gate runs first (see createHandle), then Identity and the Learning core act for the request. */
-export const handle: Handle = (input) => run(input);
+export const handle: Handle = (input) => {
+	// The app's answer, fixed at start: nothing the request carries, and no second read of the environment, reaches it.
+	input.event.locals.devMode = devMode;
+	return run(input);
+};
 
 /**
  * SvelteKit 3 passes every error here, expected ones included. An error thrown with `error(...)` (the Learning

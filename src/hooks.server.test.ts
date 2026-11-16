@@ -1,15 +1,40 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { inspect } from 'node:util';
-import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, onTestFinished, vi } from 'vitest';
 
-vi.mock('$app/env/private', () => ({}));
+// The server's private environment, one object the tests change between starts.
+const env = vi.hoisted(() => {
+	const values: Record<string, string | undefined> = {};
+	// The mocked module answers for any name, so a variable the test leaves unset reads as undefined.
+	return new Proxy(values, { has: () => true });
+});
+const captured = vi.hoisted(() => ({ locals: [] as Record<string, unknown>[] }));
+vi.mock('$app/env/private', () => env);
 vi.mock('#lib/server/app.js', () => ({ createApp: vi.fn() }));
+vi.mock('#lib/server/handle.js', () => ({
+	createHandle:
+		() =>
+		async ({ event }: { event: { locals: Record<string, unknown> } }) => {
+			captured.locals.push({ ...event.locals });
+			return new Response('ok');
+		}
+}));
 
-const { handleError } = await import('./hooks.server.ts');
+const { handle, handleError, init } = await import('./hooks.server.ts');
+const { createApp } = await import('#lib/server/app.js');
+const { load: layoutLoad } = await import('./routes/+layout.server.ts');
+const { createDb } = await import('#lib/server/db.js');
 const { INVITE_LOG_PATTERNS } = await import('#lib/server/identity/invites.js');
 const { formatServerError, installLogRedaction } = await import('#lib/server/logging.js');
 
 afterEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+	for (const key of Object.keys(env)) delete env[key];
+	captured.locals.length = 0;
+});
 
 const token = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
 const event = (id: string | null) =>
@@ -433,5 +458,118 @@ describe('redaction at the console', () => {
 		expect(text).toContain('RET4');
 		// A one-byte CSI inside the path does not hide the token, and a byte-order mark is kept.
 		expect(out.includes(Buffer.from('\ufeffbom ok\n'))).toBe(true);
+	});
+});
+
+describe('dev mode through the server hook', () => {
+	async function migratedDatabase(mode?: 'local' | 'multi') {
+		const dir = mkdtempSync(join(tmpdir(), 'beyondleetcode-hook-'));
+		onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+		const url = `file:${join(dir, 'app.db')}`;
+		execFileSync('node_modules/.bin/prisma', ['migrate', 'deploy'], {
+			env: { ...process.env, DATABASE_URL: url },
+			stdio: 'pipe'
+		});
+		if (mode) {
+			const db = createDb(url);
+			await db.instance.create({ data: { mode } });
+			await db.$disconnect();
+		}
+		return url;
+	}
+
+	/** Starts the hook with the real app over a real database, and sends one request through `handle`. */
+	async function start(url: string, vars: Record<string, string | undefined>) {
+		const actual = await vi.importActual<typeof import('#lib/server/app.js')>('#lib/server/app.js');
+		vi.mocked(createApp).mockImplementation(actual.createApp);
+		Object.assign(env, {
+			CONTENT_DIR: 'src/lib/server/content/fixture',
+			DATABASE_URL: url,
+			RUNNER_URL: 'http://127.0.0.1:1',
+			RUNNER_TOKEN: 'test-token',
+			...vars
+		});
+		await init();
+	}
+	const request = (headers: Record<string, string> = {}, search = '') =>
+		({
+			event: {
+				locals: {} as Record<string, unknown>,
+				request: new Request(`http://localhost/${search}`, { headers })
+			},
+			resolve: vi.fn()
+		}) as never;
+	const devModeAfter = async (input = request()) => {
+		await handle(input);
+		return captured.locals.at(-1)?.devMode;
+	};
+
+	it('is true only for DEV_MODE=1 on a Local Instance, and false when unset, empty, 0 or true', async () => {
+		const url = await migratedDatabase('local');
+		await start(url, { DEV_MODE: '1' });
+		expect(await devModeAfter()).toBe(true);
+
+		for (const value of [undefined, '', '0', 'true']) {
+			await start(url, { DEV_MODE: value });
+			expect(await devModeAfter(), JSON.stringify(value)).toBe(false);
+		}
+	}, 120_000);
+
+	it('passes the private environment variable on, read when the app is built', async () => {
+		vi.mocked(createApp).mockResolvedValue({ devMode: true } as never);
+		env.DEV_MODE = '1';
+		await init();
+		expect(vi.mocked(createApp).mock.calls.at(-1)?.[0]).toMatchObject({ DEV_MODE: '1' });
+
+		// A later change to the environment does not reach a request: the answer is the app's.
+		env.DEV_MODE = '0';
+		expect(await devModeAfter()).toBe(true);
+	});
+
+	it('is the answer of the app itself, not one the hook works out', async () => {
+		env.DEV_MODE = '1';
+		vi.mocked(createApp).mockResolvedValue({ devMode: false } as never);
+		await init();
+		expect(await devModeAfter()).toBe(false);
+	});
+
+	it('refuses to start a Multi-user Instance with DEV_MODE set, naming the variable', async () => {
+		const url = await migratedDatabase('multi');
+		await expect(
+			start(url, {
+				DEV_MODE: '1',
+				BETTER_AUTH_SECRET: 'x'.repeat(48),
+				ORIGIN: 'http://localhost:4174'
+			})
+		).rejects.toThrow(/DEV_MODE=1 on a multi-user Instance/);
+	}, 60_000);
+
+	it('does not move for a header, a cookie or a query the request carries', async () => {
+		const url = await migratedDatabase('local');
+		await start(url, {});
+		const input = request(
+			{ 'x-dev-mode': '1', 'dev-mode': '1', cookie: 'devMode=1; DEV_MODE=1; dev_mode=1' },
+			'?devMode=1&DEV_MODE=1&dev=1'
+		);
+		expect(await devModeAfter(input)).toBe(false);
+	}, 60_000);
+});
+
+describe('what the root layout sends about dev mode', () => {
+	const loadWith = (devMode: boolean) =>
+		layoutLoad({
+			locals: { devMode, instance: { mode: () => 'local' } },
+			route: { id: '/' },
+			url: new URL('http://localhost/')
+		} as never) as unknown as Record<string, unknown>;
+
+	it('has no devMode key at all when the switch is off, not even false', () => {
+		const data = loadWith(false);
+		expect('devMode' in data).toBe(false);
+		expect(JSON.stringify(data)).not.toMatch(/dev/i);
+	});
+
+	it('carries devMode: true when the switch is on', () => {
+		expect(loadWith(true).devMode).toBe(true);
 	});
 });
