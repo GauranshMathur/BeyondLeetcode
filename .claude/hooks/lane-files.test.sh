@@ -85,6 +85,38 @@ raw 2 "a /proc/self/root alias to an unlisted file is blocked" "{\"tool_input\":
 raw 0 "a /proc/self/root alias to a listed file is allowed" "{\"tool_input\":{\"file_path\":\"/proc/self/root$L/src/routes/users/+page.svelte\"}}"
 raw 2 "a /proc/self/root alias to .lane-files is blocked" "{\"tool_input\":{\"file_path\":\"/proc/self/root$L/.lane-files\"}}" ".lane-files is written by the orchestrator"
 
+# A permissive list beside an alias cannot override the lane's own list.
+mkdir -p "$work/perm/sub"
+printf '%s\n' 'sub/' >"$work/perm/.lane-files"
+ln -s "$L/src/lib/other" "$work/perm/sub/alias"
+raw 2 "an alias out of a permissive list into an outside folder is blocked" "{\"tool_input\":{\"file_path\":\"$work/perm/sub/alias/thing.ts\"}}" "symlink"
+# A permissive outer list that covers a lane's whole folder cannot override the lane's own list.
+mkdir -p "$work/perm/lane2/src/other" "$work/perm/lane2/src/ok" "$work/perm/sub2"
+printf '%s\n' 'lane2/' 'sub2/' >"$work/perm/.lane-files"
+printf '%s\n' 'src/ok/' >"$work/perm/lane2/.lane-files"
+ln -s "$work/perm/lane2/src/other" "$work/perm/sub2/alias"
+ln -s "$work/perm/lane2/src/ok" "$work/perm/sub2/okalias"
+raw 2 "an outer permissive list does not override the inner lane's list" "{\"tool_input\":{\"file_path\":\"$work/perm/lane2/src/other/x.ts\"}}" "not on this lane's Files"
+raw 2 "an alias under a permissive list into an unlisted inner folder is blocked" "{\"tool_input\":{\"file_path\":\"$work/perm/sub2/alias/x.ts\"}}" "not on this lane's Files"
+raw 0 "an alias into a folder both lists allow passes" "{\"tool_input\":{\"file_path\":\"$work/perm/sub2/okalias/x.ts\"}}"
+raw 2 "a file named .lane-files is blocked anywhere" "{\"tool_input\":{\"file_path\":\"$work/free/.lane-files\"}}" ".lane-files is written by the orchestrator"
+raw 2 "a nested .lane-files is blocked" "{\"tool_input\":{\"file_path\":\"$work/perm/sub/.lane-files\"}}" ".lane-files is written by the orchestrator"
+
+# A symlink whose target name ends in a newline or whitespace is not matched to the listed name.
+mkdir -p "$work/nl"
+printf '%s\n' 'src/' >"$work/nl/.lane-files"
+mkdir -p "$work/nl/src"
+ln -s "$work/nl/src/a.ts"$'\n' "$work/alias/nl-link"
+raw 2 "an alias whose target ends in a newline is blocked" "{\"tool_input\":{\"file_path\":\"$work/alias/nl-link\"}}" "control character"
+ln -s "$work/nl/src/b.ts " "$work/alias/sp-link"
+raw 2 "an alias whose target ends in a space is blocked" "{\"tool_input\":{\"file_path\":\"$work/alias/sp-link\"}}" "control character"
+
+# The old rule trimmed leading whitespace before matching the secret names.
+raw 2 "a leading space before .env is blocked" "{\"tool_input\":{\"file_path\":\"$work/free/ .env\"}}" "holds secrets"
+raw 2 "a leading space before .env.local is blocked" "{\"tool_input\":{\"file_path\":\"$work/free/ .env.local\"}}" "holds secrets"
+raw 2 "a leading space before a key file is blocked" "{\"tool_input\":{\"file_path\":\"$work/free/ server.pem\"}}" "holds secrets"
+raw 0 "a leading space before .env.example passes" "{\"tool_input\":{\"file_path\":\"$work/free/ .env.example\"}}"
+
 # A secret check does not depend on external commands such as basename.
 raw 2 "a secret file with a trailing slash is blocked" "{\"tool_input\":{\"file_path\":\"$work/free/.env/\"}}" ".env holds secrets"
 nobase="$work/nobase"
@@ -139,5 +171,8 @@ printf '#!/bin/sh\nexit 1\n' >"$work/proj/.claude/hooks/lane-files.sh"
 hook_case 2 "settings command blocks when the script crashes" "$work/proj"
 printf '#!/bin/sh\nexit 2\n' >"$work/proj/.claude/hooks/lane-files.sh"
 hook_case 2 "settings command keeps the script's block" "$work/proj"
-hook_case 2 "settings command blocks when the project dir is unset" ""
+hook_case 2 "settings command blocks when the project dir is empty" ""
+printf '{"tool_input":{}}' | env -u CLAUDE_PROJECT_DIR bash -c "$cmd" >/dev/null 2>"$work/unset.err"
+got=$?
+if [ "$got" = 2 ] && grep -q "CLAUDE_PROJECT_DIR is not set" "$work/unset.err"; then echo "ok   settings command blocks, with a message, when the project dir is unset"; else echo "FAIL unset project dir: exit $got"; fail=1; fi
 exit "$fail"

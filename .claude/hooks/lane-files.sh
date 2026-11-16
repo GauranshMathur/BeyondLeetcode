@@ -31,7 +31,7 @@
 # What this does not guard: a target outside the lane's own worktree (the main clone, another checkout,
 # a scratch file) is not judged, because the hook cannot know which agent is calling. The lane rule
 # guards the lane's worktree against a wrong file; the main clone is not guarded by it, and builders are
-# told never to edit there. A shell command can still write any file. The card-reviewer checks the
+# told never to edit there. A shell command can still write any file, and every alias case above needs a symlink made from a shell, so the hook stops a mistake, not a determined builder with a shell. The card-reviewer checks the
 # diff's files against the card, and the review gate labels the PR by path.
 set -u
 
@@ -55,8 +55,14 @@ verdict="$(printf '%s' "$input" | jq -r '
 f="$(printf '%s' "$input" | jq -j '.tool_input.file_path // ""' 2>/dev/null)" || block "the lane-files hook could not read the file path."
 [ -n "$f" ] || exit 0
 
-resolved="$(realpath -m -- "$f")" || block "the lane-files hook could not resolve $f."
+# A sentinel after the path keeps command substitution from stripping a trailing newline of the name.
+resolved="$(realpath -m -- "$f" && printf x)" || block "the lane-files hook could not resolve $f."
+resolved="${resolved%x}"
+resolved="${resolved%$'\n'}"
 lexical="$(realpath -m -s -- "$f")" || block "the lane-files hook could not resolve $f."
+case "$resolved" in
+  *[[:cntrl:]]* | *[[:space:]]) block "$f resolves, through a symlink, to a path with a control character or trailing whitespace." ;;
+esac
 
 # The last path component, by parameter expansion: no external command decides a secret check.
 base_of() {
@@ -64,7 +70,10 @@ base_of() {
   while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do p="${p%/}"; done
   printf '%s' "${p##*/}"
 }
-for b in "$(base_of "$f")" "$(base_of "$resolved")"; do
+bf="$(base_of "$f")"
+br="$(base_of "$resolved")"
+# Each name as given and with leading and trailing whitespace trimmed (the old inline rule trimmed it).
+for b in "$bf" "$br" "${bf#"${bf%%[![:space:]]*}"}" "${br#"${br%%[![:space:]]*}"}"; do
   case "$b" in
     .env.example) ;;
     .env | .env.* | *.pem | *.key)
@@ -72,6 +81,10 @@ for b in "$(base_of "$f")" "$(base_of "$resolved")"; do
       ;;
   esac
 done
+# No file named .lane-files is written by an Edit or Write, anywhere: the orchestrator writes it from the shell.
+if [ "$bf" = .lane-files ] || [ "$br" = .lane-files ]; then
+  block ".lane-files is written by the orchestrator, from the shell. If the card needs another file, report the card Blocked and name the file."
+fi
 
 for p in "$f" "$resolved" "$lexical"; do
   case "/$p/" in
@@ -79,9 +92,10 @@ for p in "$f" "$resolved" "$lexical"; do
   esac
 done
 
-# The worktree whose .lane-files applies: the nearest ancestor holding one, searched up the path as
-# written, and, failing that, up the path after symlinks are resolved (so an alias that reaches into a
-# worktree from outside, a symlink or /proc/self/root/..., is judged too).
+# The worktrees whose .lane-files apply: the nearest ancestor holding one, searched up the path as
+# written and up the path after symlinks are resolved (so an alias that reaches into a worktree from
+# outside, a symlink or /proc/self/root/..., is judged too). When both searches find a list, the path
+# must be allowed by both; when only one does, by that one.
 find_root() {
   local d="$1"
   d="${d%/*}"
@@ -95,35 +109,31 @@ find_root() {
     d="${d%/*}"
   done
 }
-root="$(find_root "$lexical")" || root=""
-via_alias=0
-if [ -z "$root" ]; then
-  root="$(find_root "$resolved")" || root=""
-  via_alias=1
-fi
-[ -n "$root" ] || exit 0
-list="$root/.lane-files"
 
-rootreal="$(realpath -- "$root")" || block "the lane-files hook could not resolve the worktree."
-case "$resolved" in
-  "$rootreal"/*) rel="${resolved#"$rootreal"/}" ;;
-  *) block "$f leads outside this worktree through a symlink." ;;
-esac
-[ "$via_alias" = 0 ] || [ -n "$rel" ] || block "the lane-files hook could not place $f in its worktree."
-
-if [ "$rel" = .lane-files ]; then
-  block ".lane-files is written by the orchestrator. If the card needs another file, report the card Blocked and name the file."
-fi
-
-while IFS= read -r line || [ -n "$line" ]; do
-  line="${line%%#*}"
-  line="${line#"${line%%[![:space:]]*}"}"
-  line="${line%"${line##*[![:space:]]}"}"
-  [ -n "$line" ] || continue
-  case "$line" in
-    */) case "$rel" in "$line"*) exit 0 ;; esac ;;
-    *) [ "$rel" = "$line" ] && exit 0 ;;
+# judge <root>: allow the resolved path only if the root's .lane-files lists it; otherwise block.
+judge() {
+  local root="$1" rootreal rel line
+  local list="$root/.lane-files"
+  rootreal="$(realpath -- "$root")" || block "the lane-files hook could not resolve the worktree."
+  case "$resolved" in
+    "$rootreal"/*) rel="${resolved#"$rootreal"/}" ;;
+    *) block "$f leads outside this worktree through a symlink." ;;
   esac
-done <"$list"
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -n "$line" ] || continue
+    case "$line" in
+      */) case "$rel" in "$line"*) return 0 ;; esac ;;
+      *) [ "$rel" = "$line" ] && return 0 ;;
+    esac
+  done <"$list"
+  block "$rel is not on this lane's Files (.lane-files). Edit only the files your cards name. If the card needs this file, report the card Blocked and name the file."
+}
 
-block "$rel is not on this lane's Files (.lane-files). Edit only the files your cards name. If the card needs this file, report the card Blocked and name the file."
+root_l="$(find_root "$lexical")" || root_l=""
+root_r="$(find_root "$resolved")" || root_r=""
+[ -z "$root_l" ] || judge "$root_l"
+if [ -n "$root_r" ] && [ "$root_r" != "$root_l" ]; then judge "$root_r"; fi
+exit 0
