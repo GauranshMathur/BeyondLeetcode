@@ -207,6 +207,41 @@ Release `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates`, version
 - #508, #569, #634, #640, #643, #649, #651, #652, #676, #679 and #684 are closed, 11 issues: 10 of Tier 2 and 1 of Tier 3. #662 (Tier 1) is open, with C402b left.
 - The orchestrator cuts 1.20.0 from the release PR and records the cut.
 
+**Status (2026-11-16):** exit met.
+- **Cards:** all 21 Sprint 21 cards are Done.
+- **Tier mix (cards):** Tier 1: 2 (C401, C402a). Tier 2: 16 (F22, C404 to C411, C430, C432 to C437). Tier 3: 2 (C375, C379). The last card has no tier. Tier 0: none.
+- **Issues:** 11 closed, each by its last card. Tier 2, 10: #569, #634, #640, #643, #649, #651, #652, #676, #679 and #684. Tier 3, 1: #508. #662 (Tier 1) is open, with C402b left in Sprint 22. #640 was closed by hand: C405's PR was opened with another card's body file and merged without its closing line.
+- **CI:** `ci` is green on `main` at b6ec241, the last code card's merge.
+- **Checks:**
+  - `/guide` is in `a11y.e2e.ts`'s table; `header.test.ts` walks every route and finds the Guide link on each non-bare one in both modes; `guide.e2e.ts` reaches the page from the header on desktop and phone.
+  - `contrast.test.ts` holds ink, muted and accent on the editor's selection-match background at 4.5:1 in both themes.
+  - `users.multi.e2e.ts` shows two same-day Invites with different names (the Invite's time reads `YYYY-MM-DD HH:MM UTC`).
+  - `error.e2e.ts` shows "Not found" and "This Topic is locked.", and no "TopicLocked".
+  - `problem.e2e.ts` shows the Solution's editor at six lines at 320×256, and the `:global(.console)` grep prints nothing.
+  - The eight-password-changes test and the 30-sign-ins test: C409 gave the first a 30 s budget, and C432 gave the test Instance an in-memory database option that the second now uses. Neither failed again in the sprint. **Not re-measured here:** the 20 runs in a row on a throttled CPU were not repeated for this check.
+  - `.github/ci-gate.test.sh` passes with no network, and the gate waits on the one `tests` job (`JOBS` defaults to `tests`; 73 cases).
+  - `SANDBOX_CONCURRENCY` is set once, at the `sandbox` job's level, and the retry rule's tests pass.
+  - `server.test.ts` shows the Runner's 500 as one fixed line (`runner RunnerFailed` and a class name), and `init.test.ts` finds `max-size` and `max-file` under both services.
+  - `docs/module-map.md` has rows for `logging.ts` and `languages.ts`.
+  - The canvas (version 73) holds the `selection` token in both themes. **Not checked by eye:** the Foundations boards were raised again and nobody has rendered them; and nobody compared the header's Guide link with the S7 board (the card text and F23's decision were followed).
+- **Release:** this card's merge carries `Release-As: 1.20.0`. The orchestrator then cuts 1.20.0 from the release PR and records the cut in `docs/releasing.md`.
+- **Reviews:**
+  - **`sandbox-security-reviewer`** on C434, C436, C435 and C433: each "pass with notes". The notes are #705 and #709.
+  - **The orchestrator's two-reader review** (Fable and Codex) on C411, seven rounds over two builds. The first build, a test that read `ci.yml` line by line and compared the two lists (PR #697), went four rounds: each round the readers wrote YAML that a parser reads one way and the test another, and at the fourth both said "disagree". It was escalated, and the maintainer chose the other option on 2026-11-16. The second build, the `tests` aggregator job (PR #713), went three rounds: the first found that GitHub lists `tests` only once its `needs` finish, so the gate would have called it missing and failed every release; the second found two fail-closed edges; the third was "agree" from both. PR #697 was closed unmerged.
+- **Flakes:** two, neither caused by a card.
+  - **The fork-bomb escape test's overrun** failed `main` once (dd60fc5: 24.9 s against a 19 s bound); one re-run passed. Filed as #711, Tier 2, because the bound guards the hard stop.
+  - **The `unit` failure on C401's first head** was real, not a flake: two layout queries tied in `breakpoints.test.ts`; C401 was reworked to a fluid layout with only the phone query.
+- **Decisions and accepted changes from the cards:**
+  - **The maintainer (2026-11-16):** the guide's text is fine as written; C411 is option 2; dev mode is not allowed on a Multi-user Instance (#660); #661's schema question stays with him, so Sprint 22 starts with the dev-mode cards alone.
+  - **C401** stopped at green CI for the maintainer's read of its text, and C402a was built on its unmerged branch as a draft so both could merge on the same day. C401 differs from the S7 board in two places where the card wins: an h3 per term in three sections, and "Run and Submit sit side by side on the Problem screen".
+  - **C402a** edited five e2e files outside its Files line: each asserted the header's exact link list, which gained "Guide".
+  - **C437:** the `sandbox` job ran 14 min 33 s to 20 min 26 s afterwards. The rule written in `ci.yml`: past 20 minutes on `main`, the content check is split into its own job; the limit is not raised. `sandbox` is a required check, so the split is the maintainer's.
+  - **C435:** a caller that leaves mid-body, or whose stalled body the idle timeout cuts, is logged nothing (recommended option, recorded on #679). **C434:** a failure's line carries the error's class name only.
+  - **C433:** new Instances rotate both services' logs (`json-file`, 10 MB, 3 files); an existing Instance adds the lines by hand, as `docs/self-hosting.md` shows.
+  - **C408:** `ResultsPanel.svelte` joined `PROBLEM_SHORT`'s file list in `breakpoints.ts`.
+  - **Worker rules gained three:** one scratch subfolder per card, and the PR body read back after it is opened; issue references only in PR bodies, never in commit messages (a `Refs` line in a commit closed #663 when 1.19.7 was cut); after one branch update, merge on the checked head unless what landed touches the card's files, `ci.yml`, `package.json` or `bun.lock`.
+- **Filed from the sprint, each with a Backlog ticket:** #693 (Tier 3), #698, #702 (needs the maintainer), #705, #709 and #711 (Tier 2).
+
 **Not in the sprint:**
 - **Dev mode and the starting Language (#660, #661), and the guide's first-run offer (C402b):** Sprint 22, below. They wait on the maintainer.
 - **#667** (the sandbox reviewer's checklist), **#647, #529, and #535 with #570:** waiting on the maintainer (The ranking, above). Each joins at a re-rank once answered.
