@@ -35,7 +35,7 @@ export interface App {
 	/** The Multi-user Instance the factory builds (its account actions, admin actions, Invites and auth handler); null when the secret or the origin is not set. */
 	multiUser: MultiUser | null;
 	setup: Setup;
-	/** Dev mode, read once at start from `DEV_MODE=1` and never from a request, so it is a plain boolean. On only on a Local Mode Instance. */
+	/** Dev mode, read once at start from `DEV_MODE=1` and never from a request, so it is a plain boolean. On only on a Local Mode Instance, and that Instance cannot become Multi-user while it is on (the Instance refuses, whoever asks), so a later card may read it once at wiring time. */
 	readonly devMode: boolean;
 }
 
@@ -80,7 +80,7 @@ export async function createApp(env: {
 	const catalogue = await loadCatalogue(env.CONTENT_DIR);
 	const runner = chooseRunner(env, catalogue);
 	const db = createDb(env.DATABASE_URL);
-	const instance = await createInstance(db);
+	const instance = await createInstance(db, { devModeRequested });
 	const auth = multiUserEnvironment(env);
 	if (instance.mode() === 'multi') {
 		// The test cookie is read only by the Local adapter, which a multi-user Instance never consults;

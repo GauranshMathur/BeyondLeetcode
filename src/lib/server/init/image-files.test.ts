@@ -84,6 +84,7 @@ describe('the image and its files leave dev mode off', () => {
 				'.env': readFileSync(join(dir, '.env'), 'utf8')
 			};
 			for (const [name, text] of Object.entries(written)) {
+				expect(text.length, `${name} was read`).toBeGreaterThan(100);
 				expect(text, `${name} must not set or name DEV_MODE`).not.toContain('DEV_MODE');
 			}
 		} finally {

@@ -6,6 +6,7 @@ import { newAccountRefusal, REFUSAL_CODES } from '#lib/server/identity/account-a
 import {
 	AccountsExistError,
 	createInstance,
+	DevModeOnError,
 	InstanceAlreadySetUpError
 } from '#lib/server/instance.js';
 import { createTestDb } from '#lib/server/test-db.js';
@@ -255,6 +256,26 @@ describe('step 2: create the admin', () => {
 
 		expect(result).toMatchObject({ status: 409 });
 		expect(createFirstAdmin).not.toHaveBeenCalled();
+	});
+
+	it('a conversion refused because dev mode is on says to restart without DEV_MODE, and nothing else', async () => {
+		const createFirstAdmin = vi.fn(async () => Promise.reject(new DevModeOnError()));
+		const locals = {
+			instance: { mode: () => 'local' },
+			setup: setupWith({ kind: 'open' }, createFirstAdmin)
+		};
+
+		const result = await run(actions.admin, admin, locals, { set: vi.fn() }, '?/admin&convert');
+
+		expect(result).toMatchObject({
+			status: 409,
+			data: {
+				step: 'admin',
+				message:
+					'Dev mode is on. Restart without DEV_MODE to turn this Instance into a Multi-user one.'
+			}
+		});
+		expect(JSON.stringify(result)).not.toContain(admin.password);
 	});
 
 	it('a conversion the Instance refuses answers with the fixed already-set-up text', async () => {
