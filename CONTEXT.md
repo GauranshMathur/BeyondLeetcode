@@ -127,6 +127,9 @@ An Instance with Accounts, each keeping its own progress.
 **Instance mode**:
 Whether the Instance is Local or Multi-user. Chosen once at Setup (or by switching a Local Instance), stored in the database and read once per web process, so an Instance runs one web process per data volume.
 
+**Dev mode**:
+A state a Local Instance is started in, for an operator or a content author to check content. No Topic is Locked, and a Problem's Reference Code can be run against its Tests. It never applies to a Multi-user Instance. Progress made in it is real.
+
 **Admin**:
 The Account that sets up a Multi-user Instance and manages its Accounts, Invites and Registration Mode.
 
