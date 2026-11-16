@@ -77,4 +77,11 @@ onMount(() => {
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
+
+	/* Below 768px the header's gutter is the fixed one, so the band's text lines up with the wordmark. */
+	@media (max-width: 767.98px) {
+		.dev-banner {
+			padding: 0 var(--size-gutter);
+		}
+	}
 </style>
