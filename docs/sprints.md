@@ -194,7 +194,7 @@ Release `R v1.21.0: Sprint 22 · Dev mode`, version 1.21.0 (the next minor after
 - **Checks:**
   - With `DEV_MODE` unset: `problem.e2e.ts` finds no Dev item on the Problem screen and a POST to `?/runReference` answering 404; `a11y.e2e.ts` finds no band on any screen; `error.e2e.ts` still shows the Locked Topic's 403 page.
   - `image-files.test.ts` fails if the `Dockerfile`, or the `compose.yaml` or `.env` that `init` writes, names `DEV_MODE`.
-  - The `dev` Playwright project runs in CI's e2e job (311 tests against 264 before the sprint): a fresh Learner opens the last Topic's last Problem, the band is on every screen a Local Instance can show, and "Run reference solution" lists a result per Test in Python, TypeScript and Go.
+  - The `dev` Playwright project runs in CI's e2e job (311 tests, against 264 before the dev project was added): a fresh Learner opens the last Topic's last Problem, the band is on every screen a Local Instance can show, and "Run reference solution" lists a result per Test in Python, TypeScript and Go.
   - `core.test.ts` shows every progress table unchanged by the dev-mode reads and by the reference run, and the reference run's Runner requests equal to a Submit's.
   - `app.test.ts` shows an edited Chapter, Problem statement, Test and Reference Code read on the next request in dev mode with no restart, and not read with the switch off.
   - `hooks.server.test.ts` shows content that fails validation answered as its issues in dev mode and as the generic message with it off, logged by class name only in both.
