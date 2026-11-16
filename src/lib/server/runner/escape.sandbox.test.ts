@@ -5,6 +5,7 @@ import { createEngine } from './engine';
 import type { Language, RunnerPort } from './port';
 import { removeAttemptTimeoutMs } from './sandbox';
 import {
+	checkDestroyedBeforeResponse,
 	checkHardStop,
 	checkRemove,
 	hardStopBoundMs,
@@ -579,6 +580,10 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		expect(times).toBeDefined();
 		expect(checkHardStop(times as TeardownTimes)).toBe('pass');
 		expect(checkRemove(times as TeardownTimes)).toBe('pass');
+		// The design bound limits the container's life only because the Runner answers after the
+		// remove. Both times go onto the epoch clock: the destroy through the create event's own time,
+		// the response as the request's send time plus its duration.
+		expect(checkDestroyedBeforeResponse(times as TeardownTimes, started + elapsedMs)).toBe('pass');
 		await healthy();
 	});
 });

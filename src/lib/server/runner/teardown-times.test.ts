@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { sandboxConfig } from './config';
-import { checkHardStop, checkRemove, parseTeardownTimes } from './teardown-times.testutil';
+import {
+	checkDestroyedBeforeResponse,
+	checkHardStop,
+	checkRemove,
+	parseTeardownTimes
+} from './teardown-times.testutil';
 
 const T0 = 1_700_000_000_000;
 const nano = (ms: number) => (BigInt(ms) * 1_000_000n).toString();
@@ -34,7 +39,13 @@ describe('parseTeardownTimes', () => {
 				)
 			)
 		);
-		expect(t).toEqual({ startMs: 150, killMs: 10_000, dieMs: 12_150, destroyMs: 12_156 });
+		expect(t).toEqual({
+			createdAtMs: T0,
+			startMs: 150,
+			killMs: 10_000,
+			dieMs: 12_150,
+			destroyMs: 12_156
+		});
 	});
 
 	it('leaves the kill out for a container that ended by itself', () => {
@@ -56,7 +67,13 @@ describe('parseTeardownTimes', () => {
 			ev('kill', 'other', T0 + 300)
 		);
 		const t = parseTeardownTimes(out, T0);
-		expect(t).toEqual({ startMs: 150, killMs: undefined, dieMs: 900, destroyMs: 905 });
+		expect(t).toEqual({
+			createdAtMs: T0 + 50,
+			startMs: 150,
+			killMs: undefined,
+			dieMs: 900,
+			destroyMs: 905
+		});
 	});
 
 	it('takes nothing from an earlier test when it is the only container that started', () => {
@@ -73,6 +90,7 @@ describe('parseTeardownTimes', () => {
 			...container('second', T0 + 2_000, ['die', 700], ['destroy', 702])
 		);
 		expect(parseTeardownTimes(out, T0)).toEqual({
+			createdAtMs: T0 + 2_000,
 			startMs: 150,
 			killMs: undefined,
 			dieMs: 700,
@@ -149,5 +167,24 @@ describe('the remove check', () => {
 		const verdict = remove(['die', 900]);
 		expect(verdict).not.toBe('pass');
 		expect(verdict).toContain('no destroy');
+	});
+});
+
+describe('the destroy-before-response check', () => {
+	const t = () => times(log(...container('a', T0 + 1_000, ['die', 900], ['destroy', 903])));
+
+	it('passes when the response comes after the destroy, on the clock of the create', () => {
+		expect(checkDestroyedBeforeResponse(t(), T0 + 1_000 + 911)).toBe('pass');
+	});
+
+	it('fails a response that came before the destroy', () => {
+		const verdict = checkDestroyedBeforeResponse(t(), T0 + 1_000 + 800);
+		expect(verdict).not.toBe('pass');
+		expect(verdict).toContain('103');
+	});
+
+	it('fails a missing destroy', () => {
+		const none = times(log(...container('a', T0, ['die', 900])));
+		expect(checkDestroyedBeforeResponse(none, T0 + 5_000)).toContain('no destroy');
 	});
 });
