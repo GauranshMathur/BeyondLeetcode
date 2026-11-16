@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Reply, WireCode } from '#lib/problem-wire.js';
 import type { BuildRef, RunView, SubmitView } from '#lib/server/learning/core.js';
 import {
+	announcement as announced,
 	begin,
 	type Event,
 	may,
@@ -114,6 +115,35 @@ describe('a save the server answers with a failure', () => {
 		const { step } = play(edited(), { type: 'tick' }, respond(fail(409)));
 		expect(step.state.save).toBe('conflict');
 		expect(step.timer).toBeUndefined();
+	});
+
+	it('announces a failure once per run, and again after a save has succeeded in between', () => {
+		const tick = { type: 'tick' } as const;
+		const edit = (n: string): Event => ({ type: 'edit', files: { 'main.py': n } });
+		const failed = play(fresh(), edit('b'), tick, respond(fail(500)));
+		expect(announced(failed.state)).toBe('failed');
+		const retrying = play(failed.state, tick);
+		expect(retrying.state.save).toBe('saving');
+		expect(announced(retrying.state)).toBe('failed');
+		expect(announced(play(retrying.state, respond(fail(500))).state)).toBe('failed');
+		const saved = play(retrying.state, respond(ok({ revision: 4 })));
+		expect(announced(saved.state)).toBeUndefined();
+		const again = play(saved.state, edit('c'), tick, respond(fail(500)));
+		expect(announced(again.state)).toBe('failed');
+	});
+
+	it('stops announcing a failure once the session ends (the sign-in alert takes over)', () => {
+		const failed = play(edited(), { type: 'tick' }, respond(fail(500))).state;
+		const out = play(failed, { type: 'tick' }, respond(signedOut)).state;
+		expect(out.save).toBe('signedOut');
+		expect(announced(out)).toBeUndefined();
+	});
+
+	it('announces a rejected save and a conflict, and not saving or edited', () => {
+		expect(announced(play(edited(), { type: 'tick' }, respond(fail(400))).state)).toBe('rejected');
+		expect(announced(play(edited(), { type: 'tick' }, respond(fail(409))).state)).toBe('conflict');
+		expect(announced(play(edited(), { type: 'tick' }).state)).toBeUndefined();
+		expect(announced(edited())).toBeUndefined();
 	});
 
 	it('failed (5xx or no answer): keeps the code unsent and retries later', () => {

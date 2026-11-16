@@ -1,10 +1,11 @@
 import { createClient } from '@libsql/client';
-import { expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Db } from './db.ts';
 import {
 	AccountsExistError,
 	clearEmptyMultiInstance,
 	createInstance,
+	DevModeOnError,
 	InstanceAlreadySetUpError,
 	InvalidRegistrationModeError,
 	RegistrationNotAvailableError,
@@ -682,4 +683,36 @@ it('undo logs a fixed line, and still restores this process, when the row was al
 	expect(logged).toHaveBeenCalledWith(expect.stringMatching(/could not be undone/));
 	expect(instance.mode()).toBe('local');
 	logged.mockRestore();
+});
+
+describe('dev mode on the Instance', () => {
+	it('a Local Instance started with dev mode on refuses chooseMulti and writes nothing', async () => {
+		const db = await createTestDb();
+		await db.instance.create({ data: { mode: 'local' } });
+		const instance = await createInstance(db, { devModeRequested: true });
+
+		await expect(instance.chooseMulti()).rejects.toThrow(DevModeOnError);
+
+		expect(instance.mode()).toBe('local');
+		expect((await db.instance.findUnique({ where: { id: 'instance' } }))?.mode).toBe('local');
+	});
+
+	it('a Local Instance started without the switch still converts', async () => {
+		const db = await createTestDb();
+		await db.instance.create({ data: { mode: 'local' } });
+		const instance = await createInstance(db, { devModeRequested: false });
+
+		await instance.chooseMulti();
+
+		expect(instance.mode()).toBe('multi');
+	});
+
+	it('a fresh Instance with the switch set may still choose Multi-user: dev mode is off there', async () => {
+		const db = await createTestDb();
+		const instance = await createInstance(db, { devModeRequested: true });
+
+		await instance.chooseMulti();
+
+		expect(instance.mode()).toBe('multi');
+	});
 });

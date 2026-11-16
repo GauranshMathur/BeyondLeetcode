@@ -23,9 +23,17 @@ export interface Instance {
 	 * Makes the Instance multi: creates the row when there is none, or converts a Local one, which
 	 * takes effect in this process at once and only if the stored mode is `local` and no Account exists,
 	 * checked in the one statement that writes it. Throws if it is already multi or the conversion is
-	 * refused. The result's `undo` puts it back as it was (Local stays Local, never unset), for a setup that fails.
+	 * refused. Throws `DevModeOnError`, before anything is written, when dev mode is on in this process. The result's `undo` puts it back as it was (Local stays Local, never unset), for a setup that fails.
 	 */
 	chooseMulti(): Promise<{ undo(): Promise<void> }>;
+}
+
+/** Dev mode is on in this process, so the Instance may not become Multi-user until it restarts without it. */
+export class DevModeOnError extends Error {
+	constructor() {
+		super('Dev mode is on, so this Instance cannot become Multi-user.');
+		this.name = 'DevModeOnError';
+	}
 }
 
 export class InstanceAlreadySetUpError extends Error {
@@ -65,9 +73,17 @@ const isUniqueViolation = (error: unknown) =>
 	error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 
 /** Reads the Instance row once and holds it in memory; this module is its only writer. */
-export async function createInstance(db: Db): Promise<Instance> {
+export async function createInstance(
+	db: Db,
+	options: {
+		/** The dev-mode switch was set. It counts only when the Instance starts Local: that is when dev mode is on. */
+		devModeRequested?: boolean;
+	} = {}
+): Promise<Instance> {
 	const row = await db.instance.findUnique({ where: { id: 'instance' } });
 	let mode = (row?.mode as InstanceMode | undefined) ?? null;
+	// Fixed at construction, like the switch itself: while it holds, no path makes this Instance Multi-user.
+	const devModeOn = options.devModeRequested === true && mode === 'local';
 	// A stored value that is neither mode (a hand edit, a bad migration) reads as invite-only: unknown is closed.
 	let registration: RegistrationMode = isRegistrationMode(row?.registrationMode)
 		? row.registrationMode
@@ -145,6 +161,7 @@ export async function createInstance(db: Db): Promise<Instance> {
 			mode = 'local';
 		},
 		async chooseMulti() {
+			if (devModeOn) throw new DevModeOnError();
 			const previous = mode;
 			if (previous === 'multi') throw new InstanceAlreadySetUpError();
 			if (previous === null) {

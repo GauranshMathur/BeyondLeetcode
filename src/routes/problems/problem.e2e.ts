@@ -69,6 +69,49 @@ test('a failed save is announced', async ({ page }) => {
 	await expect(saveAnnouncement(page)).toHaveText('not saved · retrying');
 });
 
+test('a rejected save is announced', async ({ page }) => {
+	await page.route('**/problems/stacks-pop?/save', (route) =>
+		route.fulfill({
+			status: 400,
+			contentType: 'application/json',
+			body: JSON.stringify({ type: 'error', status: 400, error: { message: 'InvalidBuild' } })
+		})
+	);
+	await gotoHydrated(page, '/problems/stacks-pop');
+	await typeInEditor(page, '# refused');
+	await expect(saveStatus(page)).toHaveText('not saved — this code cannot be stored');
+	await expect(saveAnnouncement(page)).toHaveText('not saved — this code cannot be stored');
+});
+
+test('a failing save is announced once, not on every retry', async ({ page }) => {
+	let attempts = 0;
+	await page.route('**/problems/stacks-pop?/save', (route) => {
+		attempts += 1;
+		return route.abort();
+	});
+	await gotoHydrated(page, '/problems/stacks-pop');
+	// Record every text the live regions take, so a repeat of the same words shows as a second entry.
+	await page.evaluate(() => {
+		const seen: string[][] = [];
+		for (const [index, region] of document.querySelectorAll('.live').entries()) {
+			seen[index] = [];
+			new MutationObserver(() => {
+				const text = region.textContent ?? '';
+				if (seen[index].at(-1) !== text) seen[index].push(text);
+			}).observe(region, { childList: true, characterData: true, subtree: true });
+		}
+		(window as unknown as { seen: string[][] }).seen = seen;
+	});
+	await typeInEditor(page, '# offline');
+	await expect(saveAnnouncement(page)).toHaveText('not saved · retrying');
+	// Two more failed retries, one every five seconds.
+	await expect.poll(() => attempts, { timeout: 30_000 }).toBeGreaterThanOrEqual(3);
+	await expect(saveAnnouncement(page)).toHaveText('not saved · retrying');
+	const seen = await page.evaluate(() => (window as unknown as { seen: string[][] }).seen);
+	// The screen renders the notice twice (one is hidden by the layout); each copy took the text once.
+	for (const texts of seen) expect(texts).toEqual(['not saved · retrying']);
+});
+
 test('signed out while saving is announced by the alert, not the status', async ({ page }) => {
 	await page.route('**/problems/stacks-pop?/save', (route) =>
 		route.fulfill({
@@ -778,6 +821,46 @@ test.describe('the Problem on a short phone', () => {
 		expect(await page.getByRole('banner').evaluate((el) => !!el.closest('main'))).toBe(false);
 	});
 
+	test('only the stage is a tab stop for scrolling: the statement region is not one more', async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push');
+		await expect(stage(page)).toHaveAttribute('tabindex', '0');
+		await expect(page.getByRole('region', { name: 'Problem statement' })).not.toHaveAttribute(
+			'tabindex',
+			'0'
+		);
+
+		// From the bar's first link to the strip's Run: seven presses, one fewer than while the statement region was a stop too.
+		const run = page.getByRole('button', { name: 'Run' });
+		await page.getByRole('banner').getByRole('link').first().focus();
+		let presses = 0;
+		while (!(await run.evaluate((el) => el === document.activeElement)) && presses < 40) {
+			await page.keyboard.press('Tab');
+			presses++;
+		}
+		expect(presses).toBe(7);
+
+		// The stage is still scrolled by the keyboard once focused.
+		await stage(page).evaluate((el) => el.scrollTo(0, 0));
+		await stage(page).focus();
+		await page.keyboard.press('PageDown');
+		await expect.poll(() => stage(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+	});
+
+	test('with the Solution open, the Reference Code editor shows at least six lines', async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push?tab=solution');
+		await workspaceTab(page, 'Code').click();
+		const editor = await page.locator('.cm-editor:visible').boundingBox();
+		expect(editor?.height).toBeGreaterThanOrEqual(132);
+		// As tall as its code, so the stage scrolls it rather than the editor clipping it.
+		const content = await page.locator('.cm-content:visible').boundingBox();
+		expect(editor?.height).toBeGreaterThanOrEqual(content?.height ?? Infinity);
+		await expectNoSidewaysScroll(page);
+	});
+
 	test('the Code tab keeps an editor of at least six lines, and the Tests tab keeps its console', async ({
 		page
 	}) => {
@@ -822,6 +905,44 @@ test.describe('the Problem on a phone, as a flow', () => {
 		await expect(
 			page.locator('tr', { has: page.getByRole('link', { name: 'Push and size', exact: true }) })
 		).toContainText('solved');
+	});
+
+	// The Language picker lives on the Code tab. A switch that ends while another pane shows cannot focus the editor,
+	// so focus goes to the Code tab's control rather than nowhere.
+	test.describe('a Language switch that ends away from the Code tab', () => {
+		test.use({ storageState: asLearner('e2e-problem-switch') });
+
+		test('leaves focus on the Code tab, not the document', { tag: '@mobile' }, async ({ page }) => {
+			await gotoHydrated(page, '/problems/stacks-push');
+			await workspaceTab(page, 'Code').tap();
+			let release = () => {};
+			const held = new Promise<void>((done) => {
+				release = done;
+			});
+			await page.route('**/problems/stacks-push?/switchLanguage', async (route) => {
+				await held;
+				await route.continue();
+			});
+			try {
+				await page.getByLabel('build language').selectOption('typescript');
+				await page.getByRole('button', { name: 'Switch language' }).tap();
+				// The switch is still pending: the Learner moves to the Hints tab.
+				await workspaceTab(page, 'Problem').tap();
+				await page.getByRole('link', { name: 'Hints' }).tap();
+				await expect(page).toHaveURL('/problems/stacks-push?tab=hints');
+				release();
+				await expect(workspaceTab(page, 'Code')).toBeFocused();
+				await expect(workspaceTab(page, 'Problem')).toHaveAttribute('aria-pressed', 'true');
+				expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+			} finally {
+				release();
+				await page.unroute('**/problems/stacks-push?/switchLanguage');
+				await workspaceTab(page, 'Code').tap();
+				await page.getByLabel('build language').selectOption('python');
+				await page.getByRole('button', { name: 'Switch language' }).tap();
+				await expect(page.getByLabel('Code: main.py')).toBeVisible();
+			}
+		});
 	});
 
 	// A refused Run says why on the Tests tab, where the Learner already is.

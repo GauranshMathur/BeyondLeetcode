@@ -113,9 +113,13 @@ jobs:
 
   sandbox:
     runs-on: ubuntu-24.04
-    # About 7 minutes with seven Topics, the content check being 3 of them (it runs its cases four at a
-    # time, vitest.sandbox.config.ts). 30 leaves room for the Topics still to come.
+    # The content check alone took 11 min 0 s, 16 min 13 s and 11 min 22 s on three runs, so the job is well
+    # over 11 minutes, not the 7 an earlier count said. Both test steps run two cases at once (the env below):
+    # this runner has two CPUs, and four at once starved the Docker daemon. The limit stays at 30. When this job
+    # passes 20 minutes on main, split the content check into a job of its own; do not raise the limit.
     timeout-minutes: 30
+    env:
+      SANDBOX_CONCURRENCY: 2
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -255,11 +259,23 @@ jobs:
           chmod +x "$shim/bun"
           PATH="$shim:$PATH" .github/smoke.sh beyondleetcode:ci
 
+  # The one list of test jobs: publish-edge needs this job and .github/ci-gate.sh (the release gate)
+  # waits for it by name, so a job added to this `needs` gates both. It does no work. With plain
+  # `needs`, GitHub skips it when a needed job fails or is cancelled, and the gate counts a skipped
+  # job as a failure. It runs on pull requests too, so the check is exercised before a merge.
+  # publish-sandbox keeps its own, different list.
+  tests:
+    needs: [typecheck, lint, unit, build, e2e, sandbox, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - run: "true"
+
   # Publishes the app image as `edge` (a moving tag, overwritten by design) for amd64 and arm64.
-  # Only after every test job, the smoke test included, passed on this commit.
+  # Only after the test jobs, the smoke test included, passed on this commit (the job `tests`).
   publish-edge:
     if: github.event_name == 'push'
-    needs: [typecheck, lint, unit, build, e2e, sandbox, docker]
+    needs: [tests]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     concurrency:

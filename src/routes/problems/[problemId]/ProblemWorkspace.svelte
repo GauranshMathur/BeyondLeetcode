@@ -1,17 +1,27 @@
 <script lang="ts">
 import { onDestroy, onMount, type Snippet, tick, untrack } from 'svelte';
+import { MediaQuery } from 'svelte/reactivity';
 import CodeEditor from '#lib/editor/CodeEditor.svelte';
 import AppHeader from '#lib/header/AppHeader.svelte';
 import { LANGUAGES, type Language, languageById } from '#lib/languages.js';
 import { filesDigest, type Reply, toReply } from '#lib/problem-wire.js';
 import type { ProblemView, SolutionView } from '#lib/server/learning/core.js';
+import { PROBLEM_SHORT } from '#lib/styles/breakpoints.js';
 import { type ActionResult, deserialize } from '$app/forms';
 import { refreshAll } from '$app/navigation';
 import { page } from '$app/state';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
 import { afterOutcome, PANES, type ViewState } from './view';
-import { begin, type Event, may, type Request, type SaveState, transition } from './workspace';
+import {
+	announcement,
+	begin,
+	type Event,
+	may,
+	type Request,
+	type SaveState,
+	transition
+} from './workspace';
 
 let {
 	problem,
@@ -134,9 +144,24 @@ const allowed = $derived(may(session));
 let pickerEl = $state<HTMLSelectElement>();
 let restartTrigger = $state<HTMLButtonElement>();
 let editorSlot = $state<HTMLDivElement>();
+let tabbar = $state<HTMLElement>();
 
+// At a short phone the stage is the box that scrolls, so it is the one tab stop for scrolling and the statement region,
+// which no longer scrolls there, gives its stop up. Everywhere else the region scrolls and the stage has no box.
+const short = new MediaQuery(PROBLEM_SHORT);
+let stageEl = $state<HTMLDivElement>();
+$effect(() => {
+	const region = stageEl?.querySelector<HTMLElement>('[data-pane="problem"] [role="region"]');
+	if (!region) return;
+	region.tabIndex = short.current ? -1 : 0;
+});
+
+// On a phone the editor is hidden while another pane shows, and a hidden element takes no focus. Focus then goes to the
+// Code tab's control, where the editor the Learner asked for lives, so the next Tab key starts from a known element.
 function focusEditor() {
 	editorSlot?.querySelector<HTMLElement>('.cm-content')?.focus();
+	if (editorSlot?.contains(document.activeElement)) return;
+	tabbar?.querySelector<HTMLElement>('[data-pane-tab="code"]')?.focus();
 }
 
 function cancelSwitch() {
@@ -203,8 +228,8 @@ const label: Record<SaveState, string> = {
 {#snippet saveNotice(part: 'status' | 'signedOut')}
 	{#if part === 'status'}
 		<span class="mono status" class:warn={session.save === 'conflict' || session.save === 'failed' || session.save === 'rejected' || session.save === 'signedOut'}>{label[session.save]}</span>
-		<!-- Saved, edited and saving change at every pause in typing, so they stay out of the live region. A signed-out Learner is told by the alert below. -->
-		<span class="live" role="status">{session.save === 'failed' || session.save === 'conflict' ? label[session.save] : ''}</span>
+		<!-- Saved, edited and saving change at every pause in typing, so they stay out of the live region; a failure stays in it through the retries, so it is read once. A signed-out Learner is told by the alert below. -->
+		<span class="live" role="status">{announcement(session) ? label[announcement(session)!] : ''}</span>
 	{:else if session.save === 'signedOut'}
 		<p class="signed-out" role="alert">You are signed out. <a href="/signin">Sign in again</a> to keep working; your code is still here.</p>
 	{/if}
@@ -225,7 +250,7 @@ const label: Record<SaveState, string> = {
 	<!-- A short phone scrolls the bar away with the pane, so both sit in one box that does the scrolling there. The box
 	     is a plain div, so the bar stays the page's banner and the grid its one main. -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<div class="stage" tabindex="0">
+	<div class="stage" bind:this={stageEl} tabindex={short.current ? 0 : undefined}>
 	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
 	<main class="grid">
@@ -233,7 +258,7 @@ const label: Record<SaveState, string> = {
 
 		<div class="pane">
 			{#if solution}
-				<div data-pane="code"><SolutionCode {solution} startLanguage={problem.build.language} /></div>
+				<div data-pane="code" class="reference-slot"><SolutionCode {solution} startLanguage={problem.build.language} /></div>
 			{/if}
 			<div class="build" class:off={solution !== undefined}>
 				<div data-pane="code">
@@ -300,9 +325,9 @@ const label: Record<SaveState, string> = {
 
 	<!-- Phones only: the same Run and Submit, above the tab bar. -->
 	<div class="actions strip">{@render runAndSubmit()}</div>
-	<nav class="tabbar mono" aria-label="Workspace">
+	<nav class="tabbar mono" aria-label="Workspace" bind:this={tabbar}>
 		{#each PANES as pane (pane)}
-			<button type="button" aria-pressed={view.pane === pane} onclick={() => onview({ ...view, pane })}>{NAMES[pane]}</button>
+			<button type="button" data-pane-tab={pane} aria-pressed={view.pane === pane} onclick={() => onview({ ...view, pane })}>{NAMES[pane]}</button>
 		{/each}
 	</nav>
 </div>
@@ -685,17 +710,17 @@ const label: Record<SaveState, string> = {
 		.page[data-tab='tests'] [data-pane='tests'] {
 			flex: none;
 		}
-		[data-pane='tests'] :global(.console) {
-			flex: none;
-		}
-		/* Six lines at least, then as tall as the code. */
-		.editor-slot {
+		/* Six lines at least, then as tall as the code. The Solution's Reference Code takes the same sizing. */
+		.editor-slot,
+		.reference-slot {
 			--editor-min: 132px;
 		}
-		.editor-slot :global(.editor) {
+		.editor-slot :global(.editor),
+		.reference-slot :global(.editor) {
 			overflow: visible;
 		}
-		.editor-slot :global(.cm-editor) {
+		.editor-slot :global(.cm-editor),
+		.reference-slot :global(.cm-editor) {
 			height: auto;
 			min-height: 132px;
 		}

@@ -15,7 +15,7 @@ export type Db = PrismaClient;
  */
 export const BUSY_TIMEOUT_MS = 10_000;
 
-/** Opens the Instance's SQLite database through libSQL (ADR 0003), e.g. `file:/data/app.db`. */
+/** Opens the Instance's SQLite database through libSQL (ADR 0003), e.g. `file:/data/beyondleetcode.db`. */
 export function createDb(url: string): Db {
 	return new PrismaClient({ adapter: new PrismaLibSql({ url, timeout: BUSY_TIMEOUT_MS }) });
 }

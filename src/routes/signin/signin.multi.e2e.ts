@@ -375,7 +375,7 @@ onOpen.describe('a signed-in user', () => {
 			await gotoHydrated(page, '/signin');
 			await signInWith(page, people.asker.email, PASSWORD);
 			const nav = page.getByRole('navigation', { name: NAV });
-			await expect(nav.getByRole('link')).toHaveText(['Map', people.asker.name]);
+			await expect(nav.getByRole('link')).toHaveText(['Map', 'Guide', people.asker.name]);
 			await expect(nav.getByRole('button')).toHaveText(['Sign out']);
 
 			await submitHydrated(nav.getByRole('button', { name: 'Sign out' }));
@@ -534,7 +534,7 @@ base.describe('the shared Multi-user server', () => {
 			await signInWith(page, E2E_ADMIN.email, E2E_ADMIN.password);
 
 			const nav = page.getByRole('navigation', { name: NAV });
-			await expect(nav.getByRole('link')).toHaveText(['Map', 'Users', E2E_ADMIN.name]);
+			await expect(nav.getByRole('link')).toHaveText(['Map', 'Users', 'Guide', E2E_ADMIN.name]);
 			await expect(nav.getByRole('button')).toHaveText(['Sign out']);
 			await submitHydrated(nav.getByRole('button', { name: 'Sign out' }));
 			await expect(page).toHaveURL('/signin');

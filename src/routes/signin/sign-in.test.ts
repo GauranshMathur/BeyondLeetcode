@@ -636,6 +636,9 @@ describe('a provider sign-in that completes gives its start back', () => {
 	async function world() {
 		const { db, auth, instance, multiUser, admin } = await createTestInstance({
 			origin,
+			// Each start and callback writes several rows; a file database opens a connection per write, which
+			// is most of the time on a slow runner, and the throttle under test does not depend on it.
+			database: 'memory',
 			providerEnv: { GITHUB_CLIENT_ID: 'gh-id', GITHUB_CLIENT_SECRET: 'gh-secret' }
 		});
 		// A first-time GitHub sign-in is a sign-up, so the Registration Mode must be open.
