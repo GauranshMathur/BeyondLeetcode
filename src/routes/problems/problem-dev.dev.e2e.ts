@@ -72,7 +72,7 @@ test('a fresh Learner gets a row per Test in each Language, and nothing of their
 	await expect(page.getByRole('group', { name: 'Switch build language' })).toHaveCount(0);
 	expect(sent.length).toBe(savesBefore);
 	await gotoHydrated(page, '/topics/heaps');
-	await expect(page.getByText(/0 of 1 core solved/)).toBeVisible();
+	await expect(page.getByText('core solved').locator('..')).toContainText('0 of 1');
 });
 
 test('an earlier step’s Tests are listed in the core’s order', async ({ page }) => {
