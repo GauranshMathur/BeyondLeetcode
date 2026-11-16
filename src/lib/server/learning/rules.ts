@@ -42,11 +42,14 @@ export interface MapView {
 
 /**
  * The Topic Map for one Learner. Pure: Unlocked, Locked and Complete are derived from
- * Progress, never stored (docs/module-map.md).
+ * Progress, never stored (docs/module-map.md). With `devMode` no Topic is Locked: a Topic whose
+ * Prerequisites are not Complete shows Unlocked. Complete still needs every Chapter Read and every
+ * Core Problem Solved, so the Map shows true progress. This is the only place the Map decides Locked.
  */
 export function mapView(
 	catalogue: Pick<Catalogue, 'topicMap' | 'topic'>,
-	progress: Progress
+	progress: Progress,
+	devMode = false
 ): MapView {
 	const summaries = catalogue.topicMap();
 	const complete = new Set<string>();
@@ -64,7 +67,7 @@ export function mapView(
 	const topics = summaries.map(({ id, title, prerequisites }): MapTopic => {
 		const state: TopicState = complete.has(id)
 			? 'complete'
-			: prerequisites.every((p) => complete.has(p))
+			: devMode || prerequisites.every((p) => complete.has(p))
 				? 'unlocked'
 				: 'locked';
 		return {
@@ -118,14 +121,16 @@ export interface TopicView {
 /**
  * May this Learner open this Topic? Pure, from the Topic's state on the Map, without building
  * a TopicView. Returns that state; throws NotFound for an unknown id and TopicLocked while a
- * Prerequisite is not Complete.
+ * Prerequisite is not Complete, unless `devMode` is on (see `mapView`). Every read that opens a
+ * Topic, a Chapter, a Problem, its Hints or its Solution goes through here.
  */
 export function requireOpenTopic(
 	catalogue: Pick<Catalogue, 'topicMap' | 'topic'>,
 	progress: Progress,
-	topicId: string
+	topicId: string,
+	devMode = false
 ): Exclude<TopicState, 'locked'> {
-	const mapTopic = mapView(catalogue, progress).topics.find((t) => t.id === topicId);
+	const mapTopic = mapView(catalogue, progress, devMode).topics.find((t) => t.id === topicId);
 	if (!mapTopic) throw new LearningError('NotFound');
 	if (mapTopic.state === 'locked') throw new LearningError('TopicLocked');
 	return mapTopic.state;
@@ -138,9 +143,10 @@ export function requireOpenTopic(
 export function topicView(
 	catalogue: Pick<Catalogue, 'topicMap' | 'topic'>,
 	progress: Progress,
-	topicId: string
+	topicId: string,
+	devMode = false
 ): TopicView {
-	const state = requireOpenTopic(catalogue, progress, topicId); // NotFound / TopicLocked
+	const state = requireOpenTopic(catalogue, progress, topicId, devMode); // NotFound / TopicLocked
 	const topic = catalogue.topic(topicId);
 	if (!topic) throw new LearningError('NotFound');
 
@@ -208,11 +214,12 @@ export function chapterView(
 	catalogue: ChapterCatalogue,
 	progress: Progress,
 	chapterId: string,
-	renderMarkdown: (markdown: string, pageTitle?: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string,
+	devMode = false
 ): ChapterView {
 	const chapter = catalogue.chapter(chapterId);
 	if (!chapter) throw new LearningError('NotFound');
-	const topic = topicView(catalogue, progress, chapter.topicId);
+	const topic = topicView(catalogue, progress, chapter.topicId, devMode);
 	const index = topic.chapters.findIndex((c) => c.id === chapterId);
 	const own = topic.chapters[index] as TopicChapter; // the catalogue puts every Chapter in its Topic
 	const next = topic.chapters[index + 1];
@@ -244,11 +251,12 @@ export interface ProgressChange {
 export function reachChapter(
 	catalogue: ChapterCatalogue,
 	before: Progress,
-	chapterId: string
+	chapterId: string,
+	devMode = false
 ): ProgressChange {
 	const chapter = catalogue.chapter(chapterId);
 	if (!chapter) throw new LearningError('NotFound');
-	requireOpenTopic(catalogue, before, chapter.topicId); // NotFound / TopicLocked
+	requireOpenTopic(catalogue, before, chapter.topicId, devMode); // NotFound / TopicLocked
 	if (before.readChapters.has(chapterId)) {
 		return { read: true, topicCompleted: false, newlyUnlocked: [] };
 	}
@@ -260,8 +268,10 @@ export function reachChapter(
 			...before.recentTopicIds.filter((id) => id !== chapter.topicId)
 		]
 	};
-	const stateBefore = new Map(mapView(catalogue, before).topics.map((t) => [t.id, t.state]));
-	const topicsAfter = mapView(catalogue, after).topics;
+	const stateBefore = new Map(
+		mapView(catalogue, before, devMode).topics.map((t) => [t.id, t.state])
+	);
+	const topicsAfter = mapView(catalogue, after, devMode).topics;
 	return {
 		read: true,
 		topicCompleted: topicsAfter.some((t) => t.id === chapter.topicId && t.state === 'complete'),
@@ -377,11 +387,12 @@ export function problemView(
 		/** The Languages in which the source step has saved code (for the picker's notes). */
 		sourceSavedIn?: readonly Language[];
 	},
-	renderMarkdown: (markdown: string, pageTitle?: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string,
+	devMode = false
 ): ProblemView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
-	const topic = topicView(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	const topic = topicView(catalogue, progress, problem.topicId, devMode); // NotFound / TopicLocked
 	const listed = topic.chapters.flatMap((c) => c.problems).find((p) => p.id === problemId);
 	const sourceId = seedSourceOf(catalogue, problemId);
 	const start: BuildFiles =
@@ -429,11 +440,12 @@ export function hintsView(
 	progress: Progress,
 	problemId: string,
 	revealedCount: number,
-	renderMarkdown: (markdown: string, pageTitle?: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string,
+	devMode = false
 ): HintsView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
-	requireOpenTopic(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	requireOpenTopic(catalogue, progress, problem.topicId, devMode); // NotFound / TopicLocked
 	const chapter = catalogue.chapter(problem.chapterId);
 	const shown = Math.min(Math.max(revealedCount, 0), problem.hints.length);
 	return {
@@ -456,11 +468,12 @@ export function solutionView(
 	catalogue: ProblemCatalogue,
 	progress: Progress,
 	problemId: string,
-	renderMarkdown: (markdown: string, pageTitle?: string) => string
+	renderMarkdown: (markdown: string, pageTitle?: string) => string,
+	devMode = false
 ): SolutionView {
 	const problem = catalogue.problem(problemId);
 	if (!problem) throw new LearningError('NotFound');
-	requireOpenTopic(catalogue, progress, problem.topicId); // NotFound / TopicLocked
+	requireOpenTopic(catalogue, progress, problem.topicId, devMode); // NotFound / TopicLocked
 	return {
 		explanationHtml: renderMarkdown(problem.solution),
 		referenceCode: problem.referenceCode
@@ -616,15 +629,18 @@ export function acceptedDiff(
 	catalogue: Pick<Catalogue, 'topicMap' | 'topic' | 'problem' | 'mainLinePlace'>,
 	before: Progress,
 	after: Progress,
-	problemId: string
+	problemId: string,
+	devMode = false
 ): AcceptedView {
 	const problem = catalogue.problem(problemId);
 	const place = catalogue.mainLinePlace(problemId);
 	if (!problem || !place) throw new LearningError('NotFound');
 	const next = place.next;
 
-	const stateBefore = new Map(mapView(catalogue, before).topics.map((t) => [t.id, t.state]));
-	const topicsAfter = mapView(catalogue, after).topics;
+	const stateBefore = new Map(
+		mapView(catalogue, before, devMode).topics.map((t) => [t.id, t.state])
+	);
+	const topicsAfter = mapView(catalogue, after, devMode).topics;
 	return {
 		nextProblemId: next ?? null,
 		topicCompleted:

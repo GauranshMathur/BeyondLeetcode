@@ -77,6 +77,7 @@ type SetupOptions<R extends RunnerPort> = {
 	clock?: () => Date;
 	hiddenBatchTests?: number;
 	maxRunsPerLearner?: number;
+	devMode?: boolean;
 };
 
 /** The fixture Catalogue on a fresh test database, a Runner and a Learning core, with the Learner `any-learner`. */
@@ -107,7 +108,8 @@ async function setup<R extends RunnerPort = ScriptedRunner>(options: SetupOption
 		runner,
 		clock: options.clock,
 		hiddenBatchTests: options.hiddenBatchTests,
-		maxRunsPerLearner: options.maxRunsPerLearner
+		maxRunsPerLearner: options.maxRunsPerLearner,
+		devMode: options.devMode
 	});
 	return { catalogue, db, runner, core, learner: core.forLearner('any-learner') };
 }
@@ -1922,5 +1924,192 @@ describe('one Learner has at most maxRunsPerLearner Runs and Submits running', (
 			await expect(a.run(ref('stacks-push', revision), { 'main.py': 'x' })).rejects.toMatchObject({
 				code: 'RunnerUnavailable'
 			});
+	});
+});
+
+describe('dev mode', () => {
+	// The last Topic's last Problem: three Prerequisites deep, so a fresh Learner has it Locked.
+	const last = { topic: 'heaps', chapter: 'heaps-timer-queue', problem: 'heaps-insert' };
+
+	/** Every table that holds a Learner's progress, as rows. */
+	async function tables(db: Awaited<ReturnType<typeof createTestDb>>) {
+		return {
+			learner: await db.learner.findMany(),
+			chapterRead: await db.chapterRead.findMany(),
+			buildStep: await db.buildStep.findMany(),
+			topicLanguage: await db.topicLanguage.findMany(),
+			hintsRevealed: await db.hintsRevealed.findMany(),
+			submission: await db.submission.findMany()
+		};
+	}
+
+	it('opens the last Topic and its last Problem for a fresh Learner, and answers TopicLocked with it off', async () => {
+		const on = await setup({ devMode: true });
+		expect((await on.learner.problem(last.problem)).id).toBe(last.problem);
+
+		const off = await setup();
+		await expect(off.learner.problem(last.problem)).rejects.toMatchObject({
+			code: 'TopicLocked'
+		});
+		const absent = await setup({ devMode: undefined });
+		await expect(absent.learner.topic(last.topic)).rejects.toMatchObject({ code: 'TopicLocked' });
+	});
+
+	it('every read and write that checks access follows the option', async () => {
+		const reads = (l: Awaited<ReturnType<typeof setup>>['learner']) => ({
+			topic: () => l.topic(last.topic),
+			chapter: () => l.chapter(last.chapter),
+			problem: () => l.problem(last.problem),
+			hints: () => l.hints(last.problem),
+			solution: () => l.solution(last.problem),
+			readMark: () => l.reachChapterEnd(last.chapter),
+			saveCode: () => l.saveCode(ref(last.problem, 0), { 'main.py': 'x' })
+		});
+		const on = reads((await setup({ devMode: true })).learner);
+		for (const [name, call] of Object.entries(on)) {
+			await expect(call(), name).resolves.toBeDefined();
+		}
+		const off = reads((await setup()).learner);
+		for (const [name, call] of Object.entries(off)) {
+			await expect(call(), name).rejects.toMatchObject({ code: 'TopicLocked' });
+		}
+	});
+
+	it('the Map shows every Topic open but none Complete, from real progress', async () => {
+		const { learner } = await setup({ devMode: true });
+		expect((await learner.map()).topics.map((t) => t.state)).toEqual([
+			'unlocked',
+			'unlocked',
+			'unlocked'
+		]);
+		await learner.reachChapterEnd('heaps-timer-queue');
+		const map = await learner.map();
+		expect(map.topics.map((t) => [t.id, t.state, t.coreSolved])).toEqual([
+			['stacks', 'unlocked', 0],
+			['queues', 'unlocked', 0],
+			['heaps', 'unlocked', 0]
+		]);
+		expect(map.currentTopicId).toBe('heaps');
+	});
+
+	it('reading writes no row: every row of every progress table is the same before and after', async () => {
+		const { learner, db } = await setup({ devMode: true, acceptAll: true });
+		// Real rows first, so a read that deleted or rewrote progress would show.
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'x' });
+		await learner.switchLanguage('stacks-push', 'go');
+		await learner.revealHint('stacks-push');
+		await learner.submit(ref('stacks-push', 0, 'go'), { 'main.go': 'x' });
+		const before = await tables(db);
+		for (const rows of Object.values(before)) expect(rows.length).toBeGreaterThan(0);
+
+		await learner.map();
+		await learner.topic(last.topic);
+		await learner.chapter(last.chapter);
+		await learner.problem(last.problem);
+		await learner.hints(last.problem);
+		await learner.solution(last.problem);
+		await learner.topic('stacks');
+		await learner.problem('stacks-push');
+		await learner.hints('stacks-push');
+
+		expect(await tables(db)).toEqual(before);
+	});
+
+	it('completing a Prerequisite Topic is real, and reports nothing newly Unlocked, by Read mark or by Submit', async () => {
+		const onRead = (await setup({ devMode: true, acceptAll: true })).learner;
+		await onRead.reachChapterEnd('stacks-undo-log');
+		await onRead.submit(ref('stacks-push', 0), { 'main.py': 'x' });
+		await onRead.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+		expect(await onRead.reachChapterEnd('stacks-call-frames')).toEqual({
+			read: true,
+			topicCompleted: true,
+			newlyUnlocked: []
+		});
+
+		const onSubmit = (await setup({ devMode: true, acceptAll: true })).learner;
+		await onSubmit.reachChapterEnd('stacks-undo-log');
+		await onSubmit.reachChapterEnd('stacks-call-frames');
+		await onSubmit.submit(ref('stacks-push', 0), { 'main.py': 'x' });
+		const done = await onSubmit.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+		expect(done.accepted).toEqual({ nextProblemId: null, topicCompleted: true, newlyUnlocked: [] });
+		expect((await onSubmit.map()).topics.map((t) => t.state)).toEqual([
+			'complete',
+			'unlocked',
+			'unlocked'
+		]);
+	});
+
+	it('the same steps with the option off Unlock the dependent Topic', async () => {
+		const onRead = (await setup({ acceptAll: true })).learner;
+		await onRead.reachChapterEnd('stacks-undo-log');
+		await onRead.submit(ref('stacks-push', 0), { 'main.py': 'x' });
+		await onRead.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+		expect((await onRead.reachChapterEnd('stacks-call-frames')).newlyUnlocked).toEqual([
+			{ id: 'queues', title: 'Queues' }
+		]);
+
+		const onSubmit = (await setup({ acceptAll: true })).learner;
+		await onSubmit.reachChapterEnd('stacks-undo-log');
+		await onSubmit.reachChapterEnd('stacks-call-frames');
+		await onSubmit.submit(ref('stacks-push', 0), { 'main.py': 'x' });
+		const done = await onSubmit.submit(ref('stacks-pop', 0), { 'main.py': 'x' });
+		expect(done.accepted?.newlyUnlocked).toEqual([{ id: 'queues', title: 'Queues' }]);
+	});
+
+	it('two racing Read marks of the same Chapter in a Locked Topic both succeed with the option on', async () => {
+		const { core } = await setup({ devMode: true, db: await createFileTestDb() });
+		const racer = core.forLearner('racer');
+		const reads = await Promise.all([
+			racer.reachChapterEnd(last.chapter),
+			racer.reachChapterEnd(last.chapter)
+		]);
+		expect(reads.every((r) => r.read)).toBe(true);
+		expect((await racer.topic(last.topic)).counts.chaptersRead).toBe(1);
+	});
+
+	it.each([1, '1', {}, 'true'])(
+		'a truthy %j that is not true leaves the option off',
+		async (value) => {
+			const { learner } = await setup({ devMode: value as unknown as boolean });
+			await expect(learner.topic(last.topic)).rejects.toMatchObject({ code: 'TopicLocked' });
+			await expect(learner.reachChapterEnd(last.chapter)).rejects.toMatchObject({
+				code: 'TopicLocked'
+			});
+		}
+	);
+
+	it('the Learner own actions are saved as for any Learner: a Read mark, a Hint, a save, a Submit', async () => {
+		const { learner, db } = await setup({ devMode: true, acceptAll: false });
+		await learner.reachChapterEnd(last.chapter);
+		await learner.revealHint(last.problem);
+		await learner.saveCode(ref(last.problem, 0), { 'main.py': 'x' });
+		const t = await tables(db);
+		expect(t.chapterRead).toHaveLength(1);
+		expect(t.hintsRevealed).toHaveLength(1);
+		expect(t.buildStep).toHaveLength(1);
+	});
+
+	it('a Submit in an opened Topic is saved, and an Accepted answer lists nothing newly Unlocked', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const tests: NonNullable<RunnerScript['tests']> = {};
+		for (const t of [
+			...(catalogue.problem(last.problem)?.exampleTests ?? []),
+			...(catalogue.hiddenTests(last.problem) ?? [])
+		])
+			tests[t.id] = { status: 'ok', stdout: t.expected };
+		const { learner, db } = await setup({ devMode: true, script: { tests } });
+
+		const view = await learner.submit(ref(last.problem, 0), { 'main.py': 'x' });
+
+		expect(view).toMatchObject({ verdict: 'Accepted', status: 'Solved' });
+		expect(view.accepted).toEqual({
+			nextProblemId: null,
+			topicCompleted: false,
+			newlyUnlocked: []
+		});
+		expect(await db.submission.count()).toBe(1);
+		const heaps = (await learner.map()).topics.find((t) => t.id === last.topic);
+		expect(heaps).toMatchObject({ coreSolved: 1, state: 'unlocked' });
 	});
 });

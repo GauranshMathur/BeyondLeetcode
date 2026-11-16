@@ -108,6 +108,8 @@ export async function createApp(env: {
 	});
 	// A fresh database stays empty until someone chooses; an already-Local one gets its Learner at boot.
 	if (instance.mode() === 'local') await local.ensureLocalLearner();
+	// On only on a Local Mode Instance, and fixed here: the Instance refuses Multi-user while it is on.
+	const devMode = devModeRequested && instance.mode() === 'local';
 	const app: Omit<App, 'devMode'> = {
 		instance: {
 			...instance,
@@ -129,11 +131,11 @@ export async function createApp(env: {
 				return createFirstAdmin({ instance, auth: multi.auth, db }, input);
 			}
 		},
-		core: createLearningCore({ catalogue, db, runner })
+		core: createLearningCore({ catalogue, db, runner, devMode })
 	};
 	// A non-writable data property: nothing can switch it on after start.
 	return Object.defineProperty(app, 'devMode', {
-		value: devModeRequested && instance.mode() === 'local',
+		value: devMode,
 		enumerable: true
 	}) as App;
 }

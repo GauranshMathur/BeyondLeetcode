@@ -525,4 +525,21 @@ describe('dev mode', () => {
 		const { DEV_MODE: _off, ...without } = multi;
 		expect((await createApp(without)).devMode).toBe(false);
 	}, 60_000);
+
+	it('the core the app builds agrees with the switch: a Locked Topic opens for a fresh Learner only with it on', async () => {
+		const openLast = async (extra: Record<string, string | undefined>) => {
+			const { url, db } = await migratedDatabase();
+			await db.instance.create({ data: { mode: 'local' } });
+			await db.learner.create({ data: { id: 'fresh' } });
+			const app = await boot(url, extra);
+			return { app, learner: app.core.forLearner('fresh') };
+		};
+		const on = await openLast({ DEV_MODE: '1' });
+		expect(on.app.devMode).toBe(true);
+		expect((await on.learner.topic('heaps')).id).toBe('heaps');
+
+		const off = await openLast({});
+		expect(off.app.devMode).toBe(false);
+		await expect(off.learner.topic('heaps')).rejects.toMatchObject({ code: 'TopicLocked' });
+	}, 60_000);
 });

@@ -76,6 +76,12 @@ export interface LearningCoreDeps {
 	/** Most Runs and Submits one Learner has running at once; defaults to the configured limit. A test knob. */
 	maxRunsPerLearner?: number;
 	clock?: () => Date;
+	/**
+	 * Dev mode: no Topic is Locked, so a fresh Learner can open any of them. Off unless set. It is a
+	 * read-side rule: it writes no row and changes no stored progress. Fixed when the core is built, so
+	 * no call and no request can switch it.
+	 */
+	devMode?: boolean;
 }
 
 export interface Learner {
@@ -180,6 +186,7 @@ export interface LearningCore {
  */
 export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 	const now = () => (deps.clock ?? (() => new Date()))();
+	const devMode = deps.devMode === true;
 	const maxRunsPerLearner = deps.maxRunsPerLearner ?? sandboxConfig.maxRunsPerLearner;
 	/** Runs and Submits in flight per Learner id, across every `forLearner` view. */
 	const running = new Map<string, number>();
@@ -226,7 +233,8 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				requireOpenTopic(
 					deps.catalogue,
 					await loadProgress(deps.catalogue, deps.db, learnerId),
-					topicId
+					topicId,
+					devMode
 				); // TopicLocked
 				return topicId;
 			};
@@ -250,21 +258,24 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 			};
 			const learner: Learner = {
 				map: async () =>
-					mapView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId)),
+					mapView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId), devMode),
 				topic: async (topicId) =>
 					topicView(
 						deps.catalogue,
 						await loadProgress(deps.catalogue, deps.db, learnerId),
-						topicId
+						topicId,
+						devMode
 					),
 				chapter: async (chapterId) =>
 					chapterView(
 						deps.catalogue,
 						await loadProgress(deps.catalogue, deps.db, learnerId),
 						chapterId,
-						renderMarkdown
+						renderMarkdown,
+						devMode
 					),
-				reachChapterEnd: (chapterId) => recordChapterRead(deps, learnerId, chapterId, now()),
+				reachChapterEnd: (chapterId) =>
+					recordChapterRead({ ...deps, devMode }, learnerId, chapterId, now()),
 				problem: async (problemId) => {
 					const sourceId = seedSourceOf(deps.catalogue, problemId);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
@@ -283,7 +294,8 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 								? await languagesWithStep(deps.db, learnerId, topicId, sourceId)
 								: []
 						},
-						renderMarkdown
+						renderMarkdown,
+						devMode
 					);
 				},
 				saveCode: async (
@@ -348,14 +360,16 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						await loadProgress(deps.catalogue, deps.db, learnerId),
 						problemId,
 						await revealedHints(deps.db, learnerId, problemId),
-						renderMarkdown
+						renderMarkdown,
+						devMode
 					),
 				solution: async (problemId) =>
 					solutionView(
 						deps.catalogue,
 						await loadProgress(deps.catalogue, deps.db, learnerId),
 						problemId,
-						renderMarkdown
+						renderMarkdown,
+						devMode
 					),
 				resetProgress: () => resetProgress(deps.db, learnerId),
 				revealHint: async (problemId) => {
@@ -379,16 +393,20 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 								hiddenBatchTests: deps.hiddenBatchTests
 							});
 							const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-							const { submissionId, solved, accepted } = await recordSubmission(deps, learnerId, {
+							const { submissionId, solved, accepted } = await recordSubmission(
+								{ ...deps, devMode },
 								learnerId,
-								problemId,
-								topicId,
-								language,
-								files,
-								verdict,
-								failingProblemId: failingProblemId ?? null,
-								createdAt: now()
-							});
+								{
+									learnerId,
+									problemId,
+									topicId,
+									language,
+									files,
+									verdict,
+									failingProblemId: failingProblemId ?? null,
+									createdAt: now()
+								}
+							);
 							return {
 								submissionId,
 								verdict,
