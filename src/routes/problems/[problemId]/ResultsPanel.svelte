@@ -1,8 +1,16 @@
 <script lang="ts">
+import type { Snippet } from 'svelte';
 import type { RunTestStatus } from '#lib/server/learning/core.js';
 import type { Outcome } from './outcome';
 
-let { outcome }: { outcome: Outcome | undefined } = $props();
+let { outcome, dev }: { outcome: Outcome | undefined; dev?: Snippet } = $props();
+
+// With a Dev view the console has two items. A Run or Submit starting brings the Learner back to Tests, so its result is never hidden behind Dev.
+let section = $state<'tests' | 'dev'>('tests');
+$effect(() => {
+	const kind = outcome?.kind;
+	if (kind === 'running' || kind === 'submitting') section = 'tests';
+});
 
 const statusLabel: Record<RunTestStatus, string> = {
 	passed: 'pass',
@@ -46,13 +54,20 @@ const live = $derived.by((): { text: string; fail?: boolean; muted?: boolean } =
 
 <section class="console" aria-label="Console">
 	<div class="head">
-		<span class="tab mono">Tests</span>
+		{#if dev}
+			<nav class="sections mono" aria-label="Console sections">
+				<button type="button" aria-pressed={section === 'tests'} onclick={() => (section = 'tests')}>Tests</button>
+				<button type="button" aria-pressed={section === 'dev'} onclick={() => (section = 'dev')}>Dev</button>
+			</nav>
+		{:else}
+			<span class="tab mono">Tests</span>
+		{/if}
 		<!-- Always in the page, so a screen reader hears each change of its text. -->
 		<span class="mono" class:fail={live.fail} class:muted={live.muted} role="status">{live.text}</span>
 	</div>
 
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<div class="body" role="region" aria-label="Test results" tabindex="0">
+	<div class="body" class:off={dev && section === 'dev'} role="region" aria-label="Test results" tabindex="0">
 		{#if !outcome}
 			<p class="muted mono">Run your code to see how it does on the Example Tests.</p>
 		{:else if outcome.kind === 'running' || outcome.kind === 'submitting'}
@@ -122,6 +137,10 @@ const live = $derived.by((): { text: string; fail?: boolean; muted?: boolean } =
 			</ul>
 		{/if}
 	</div>
+	{#if dev}
+		<!-- Hide, never destroy: a dev run, or one in flight, survives a switch to Tests. -->
+		<div class="body dev-body" class:off={section !== 'dev'}>{@render dev()}</div>
+	{/if}
 </section>
 
 <style>
@@ -155,9 +174,32 @@ const live = $derived.by((): { text: string; fail?: boolean; muted?: boolean } =
 		border-bottom: 2px solid var(--accent);
 		color: var(--ink);
 	}
+	.sections {
+		display: flex;
+		gap: 24px;
+	}
+	.sections button {
+		padding: 14px 0 12px;
+		background: transparent;
+		border: 0;
+		border-bottom: 2px solid transparent;
+		color: var(--muted);
+		font: inherit;
+		cursor: pointer;
+	}
+	.sections button[aria-pressed='true'] {
+		color: var(--ink);
+		border-bottom-color: var(--accent);
+	}
 	.body {
 		overflow: auto;
 		padding: 0 24px 24px;
+	}
+	.body.dev-body {
+		padding: 0;
+	}
+	.body.off {
+		display: none;
 	}
 	ul {
 		list-style: none;
@@ -260,6 +302,9 @@ const live = $derived.by((): { text: string; fail?: boolean; muted?: boolean } =
 		}
 		.next {
 			width: 100%;
+		}
+		.sections button {
+			min-height: var(--size-target);
 		}
 		.topic-link {
 			display: inline-block;

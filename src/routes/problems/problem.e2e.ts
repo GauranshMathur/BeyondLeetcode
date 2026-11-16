@@ -971,3 +971,33 @@ test.describe('the Problem on a phone, as a flow', () => {
 		});
 	});
 });
+
+test('with dev mode off the page has no Dev item and the reference action answers 404', async ({
+	page
+}) => {
+	await gotoHydrated(page, '/problems/stacks-push');
+	await expect(page.getByRole('button', { name: 'Run reference solution' })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Dev', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('navigation', { name: 'Console sections' })).toHaveCount(0);
+	await expect(page.getByLabel('reference language')).toHaveCount(0);
+
+	const html = await (await page.request.get('/problems/stacks-push')).text();
+	expect(html).not.toContain('Run reference solution');
+	expect(html).not.toContain('reference language');
+
+	// Same origin, as the page's own script would post it: with and without the action header.
+	const statuses = await page.evaluate(async () => {
+		const post = async (headers: Record<string, string>) => {
+			const body = new FormData();
+			body.set('language', 'python');
+			const response = await fetch('/problems/stacks-push?/runReference', {
+				method: 'POST',
+				body,
+				headers
+			});
+			return response.status;
+		};
+		return [await post({ 'x-sveltekit-action': 'true' }), await post({})];
+	});
+	expect(statuses).toEqual([404, 404]);
+});
