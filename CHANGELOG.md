@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.21.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.20.0...v1.21.0) (2026-11-16)
+
+### Highlights
+
+Sprint 22 adds dev mode, a switch for a content author's own Local Instance. Started with `DEV_MODE=1`, the Instance opens every Topic, shows edits to the content folder on the next page load, runs any Problem's reference solution from the Problem screen, and says which file is wrong when content fails validation. It is off unless set, and it never takes effect on a Multi-user Instance. Nothing changes for Learners on an ordinary Instance.
+
+### Added
+
+- Dev mode: start a Local Instance with `DEV_MODE=1` to open every Topic from the start. Progress you make is kept as for any Learner. (C389, #714; C390, #718)
+- A dev-mode Instance shows a "Dev mode" band above every screen. (C392, #720)
+- In dev mode, edits to the content folder show on the next page load without a restart. (C395, #724)
+- In dev mode, the Problem screen's console has a Dev item that runs the reference solution in Python, TypeScript or Go and lists each Test's result. (C391, #723; C394, #727)
+- In dev mode, content that fails validation lists each file and what is wrong on the error page. (C438, #726)
+
+### Fixed
+
+No bug fixes in this release.
+
+### Changed
+
+- The README and the self-hosting guide explain dev mode: how to turn it on from a clone or the published image, what it opens, runs and keeps, and how to reach it safely over a tailnet. (C396, #730)
+
+### Content
+
+No content changes in this release.
+
+### Security
+
+- Dev mode cannot be turned on by a request: the switch is read once at start, and only the exact value `1` turns it on. A Multi-user Instance with the switch set refuses to start, and a Local Instance with dev mode on refuses to become a Multi-user one. (C389, #714)
+- With dev mode off, the reference-run action answers 404 and the page shows none of it; the server's log never carries a content error's text. (C394, #727; C438, #726)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.21.0` (or `latest`), then run `docker compose pull && docker compose up -d`.
+
+Nothing to do for dev mode: it is off unless you set `DEV_MODE=1` yourself, and neither the image nor the files `init` writes set it. If you want it, read "Dev mode" in `docs/self-hosting.md` first: use a folder name and a port no other Instance has, never a public address, and expect a restart after choosing Local Mode on a fresh Instance.
+
 ## [1.20.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.7...v1.20.0) (2026-11-16)
 
 ### Highlights
