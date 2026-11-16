@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
@@ -551,7 +551,7 @@ describe('dev mode', () => {
 	}, 60_000);
 });
 
-describe('dev mode reads the content again on each call', () => {
+describe('dev mode reads the content again for each view', () => {
 	const chapterId = 'stacks-undo-log';
 	const problemId = 'stacks-push';
 
@@ -572,41 +572,85 @@ describe('dev mode reads the content again on each call', () => {
 			problemId,
 			'statement.md'
 		);
-		return { learner: app.core.forLearner('local'), chapterFile, statementFile };
+		const problemDir = join(content, 'topics/stacks/chapters', chapterId, 'problems', problemId);
+		return {
+			core: app.core,
+			learner: app.core.forLearner('local'),
+			chapterFile,
+			statementFile,
+			exampleOutFile: join(problemDir, 'tests/example/01.out'),
+			referenceFile: join(problemDir, 'reference/python/main.py')
+		};
 	}
 
-	it('shows an edited Chapter and an edited Problem statement on the next call, with no restart', async () => {
-		const { learner, chapterFile, statementFile } = await bootOnCopy({ DEV_MODE: '1' });
-		expect((await learner.chapter(chapterId)).bodyHtml).toContain('Placeholder fixture text');
+	it('shows an edited Chapter and an edited Problem statement on the next view, with no restart', async () => {
+		const { core, chapterFile, statementFile } = await bootOnCopy({ DEV_MODE: '1' });
+		expect((await core.forLearner('local').chapter(chapterId)).bodyHtml).toContain(
+			'Placeholder fixture text'
+		);
 
 		writeFileSync(chapterFile, '# An undo log, edited\n\nFresh prose.\n');
 		writeFileSync(statementFile, 'A fresh statement.\n');
 
-		expect((await learner.chapter(chapterId)).bodyHtml).toContain('Fresh prose.');
-		expect((await learner.problem(problemId)).statementHtml).toContain('A fresh statement.');
+		expect((await core.forLearner('local').chapter(chapterId)).bodyHtml).toContain('Fresh prose.');
+		expect((await core.forLearner('local').problem(problemId)).statementHtml).toContain(
+			'A fresh statement.'
+		);
 	}, 30_000);
 
 	it('answers the ContentError for a broken file, stays alive, and recovers once it is fixed', async () => {
-		const { learner, chapterFile } = await bootOnCopy({ DEV_MODE: '1' });
+		const { core, chapterFile } = await bootOnCopy({ DEV_MODE: '1' });
 		writeFileSync(chapterFile, '   \n');
 
-		const error = await learner.chapter(chapterId).catch((e) => e);
+		const error = await core
+			.forLearner('local')
+			.chapter(chapterId)
+			.catch((e) => e);
 		expect(error).toBeInstanceOf(ContentError);
 		expect((error as ContentError).message).toContain('chapter.md');
 		expect(process.exitCode).toBeUndefined();
 
 		writeFileSync(chapterFile, '# An undo log, fixed\n\nBack.\n');
-		expect((await learner.chapter(chapterId)).bodyHtml).toContain('Back.');
+		expect((await core.forLearner('local').chapter(chapterId)).bodyHtml).toContain('Back.');
 	}, 30_000);
 
-	it('reads once per call, so two calls with no change between them read twice', async () => {
-		const { learner } = await bootOnCopy({ DEV_MODE: '1' });
+	it('shows an edited Example Test and edited Reference Code to the next view', async () => {
+		const { core, exampleOutFile, referenceFile } = await bootOnCopy({ DEV_MODE: '1' });
+		writeFileSync(exampleOutFile, '99\n');
+		appendFileSync(referenceFile, '\n# an edited reference line\n');
+
+		const view = core.forLearner('local');
+
+		expect((await view.problem(problemId)).exampleTests[0]?.expected).toContain('99');
+		expect(JSON.stringify((await view.solution(problemId)).referenceCode.python)).toContain(
+			'an edited reference line'
+		);
+	}, 30_000);
+
+	it('reads once per view, on its first call: a file edited between two calls on one view shows only on the next view', async () => {
+		const { core, chapterFile } = await bootOnCopy({ DEV_MODE: '1' });
 		vi.mocked(loadCatalogue).mockClear();
+		const view = core.forLearner('local');
+		expect(loadCatalogue).not.toHaveBeenCalled();
 
-		await learner.chapter(chapterId);
-		await learner.chapter(chapterId);
+		const first = await view.chapter(chapterId);
+		writeFileSync(chapterFile, '# An undo log, edited\n\nFresh prose.\n');
+		const second = await view.chapter(chapterId);
 
+		expect(second.bodyHtml).toBe(first.bodyHtml);
+		expect(second.bodyHtml).not.toContain('Fresh prose.');
+		expect(loadCatalogue).toHaveBeenCalledTimes(1);
+		expect((await core.forLearner('local').chapter(chapterId)).bodyHtml).toContain('Fresh prose.');
 		expect(loadCatalogue).toHaveBeenCalledTimes(2);
+	}, 30_000);
+
+	it('answers the same ContentError to every call on a view that read broken content', async () => {
+		const { core, chapterFile } = await bootOnCopy({ DEV_MODE: '1' });
+		writeFileSync(chapterFile, '   \n');
+		const view = core.forLearner('local');
+
+		expect(await view.chapter(chapterId).catch((e) => e)).toBeInstanceOf(ContentError);
+		expect(await view.map().catch((e) => e)).toBeInstanceOf(ContentError);
 	}, 30_000);
 
 	it('with the switch off keeps the first read: an edit is not seen and the folder is read once', async () => {

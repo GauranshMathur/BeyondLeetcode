@@ -104,16 +104,17 @@ export class ContentError extends Error {
 }
 
 /**
- * A catalogue that reads the content again each time `scope` is entered (dev mode). `catalogue` is
- * the one object handed to the Learning core: inside a `scope` it answers from the snapshot that
- * scope read, so one call sees one whole catalogue even while another scope swaps in a newer read;
- * outside any scope it answers from the last snapshot read successfully (the one it started with).
- * `scope` reads, and when the read throws (a ContentError while a file is half edited) it throws
- * that error and does not run `work`; the next scope reads again, so a fixed file recovers.
+ * A catalogue that reads the content again for each Learner view (dev mode). `catalogue` is the one
+ * object handed to the Learning core: inside `session.run` it answers from the snapshot that session
+ * read, so every call on one view sees one whole catalogue even while another view swaps in a newer
+ * read. A session reads lazily, on its first `run`, and keeps that snapshot (or that failure) for
+ * its later calls, so a view never used reads nothing. When the read throws (a ContentError while a
+ * file is half edited) every `run` of that session throws it and the work does not run; the next
+ * session reads again, so a fixed file recovers.
  */
 export interface ReloadingCatalogue {
 	readonly catalogue: Catalogue;
-	scope<T>(work: () => Promise<T>): Promise<T>;
+	session(): { run<T>(work: () => Promise<T>): Promise<T> };
 }
 
 export function createReloadingCatalogue(
@@ -121,6 +122,8 @@ export function createReloadingCatalogue(
 	reload: () => Promise<Catalogue>
 ): ReloadingCatalogue {
 	const scoped = new AsyncLocalStorage<Catalogue>();
+	// The last read that finished, the one the server started with until the first session reads.
+	// In dev mode the core only runs inside a session, so nothing reads this outside one.
 	let latest = initial;
 	const current = () => scoped.getStore() ?? latest;
 	const catalogue: Catalogue = {
@@ -133,10 +136,17 @@ export function createReloadingCatalogue(
 	};
 	return {
 		catalogue,
-		async scope(work) {
-			const snapshot = await reload();
-			latest = snapshot;
-			return scoped.run(snapshot, work);
+		session() {
+			let snapshot: Promise<Catalogue> | undefined;
+			return {
+				async run(work) {
+					snapshot ??= reload().then((read) => {
+						latest = read;
+						return read;
+					});
+					return scoped.run(await snapshot, work);
+				}
+			};
 		}
 	};
 }

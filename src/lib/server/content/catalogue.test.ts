@@ -667,7 +667,7 @@ describe('malformed content', () => {
 	});
 });
 
-describe('a catalogue that reads again for each scope', () => {
+describe('a catalogue that reads again for each session', () => {
 	const copies: string[] = [];
 	afterAll(() => Promise.all(copies.map((d) => rm(d, { recursive: true, force: true }))));
 
@@ -690,17 +690,39 @@ describe('a catalogue that reads again for each scope', () => {
 		return { live, loads: () => loads };
 	}
 
-	it('answers from the catalogue it started with outside any scope', async () => {
+	it('answers from the catalogue it started with outside any session', async () => {
 		const { live, loads } = await reloading(await copyOfFixture());
 
 		expect(live.catalogue.chapter('stacks-undo-log')?.title).toBe('An undo log');
 		expect(loads()).toBe(0);
 	});
 
-	it('reads the folder again on each scope and answers from what it read', async () => {
+	it('reads nothing for a session that is never run', async () => {
+		const { live, loads } = await reloading(await copyOfFixture());
+
+		live.session();
+
+		expect(loads()).toBe(0);
+	});
+
+	it('reads on the first run only, and keeps that snapshot for the later runs of the session', async () => {
 		const dir = await copyOfFixture();
 		const { live, loads } = await reloading(dir);
-		const body = () => live.scope(async () => live.catalogue.chapter('stacks-undo-log')?.body);
+		const session = live.session();
+		const body = () => session.run(async () => live.catalogue.chapter('stacks-undo-log')?.body);
+
+		const first = await body();
+		await writeFile(chapterFile(dir), '# An undo log, edited\n\nNew text.\n');
+
+		expect(await body()).toBe(first);
+		expect(loads()).toBe(1);
+	});
+
+	it('gives a new session the edited folder', async () => {
+		const dir = await copyOfFixture();
+		const { live, loads } = await reloading(dir);
+		const body = () =>
+			live.session().run(async () => live.catalogue.chapter('stacks-undo-log')?.body);
 
 		expect(await body()).toMatch(/^# An undo log\n/);
 		await writeFile(chapterFile(dir), '# An undo log, edited\n\nNew text.\n');
@@ -709,7 +731,7 @@ describe('a catalogue that reads again for each scope', () => {
 		expect(loads()).toBe(2);
 	});
 
-	it('does not run the work and throws the ContentError when the folder is invalid, then recovers', async () => {
+	it('throws the ContentError from every run of a failed session without running the work, and the next session recovers', async () => {
 		const dir = await copyOfFixture();
 		const { live } = await reloading(dir);
 		const original = await readFile(chapterFile(dir), 'utf8');
@@ -720,26 +742,38 @@ describe('a catalogue that reads again for each scope', () => {
 		};
 
 		await writeFile(chapterFile(dir), '   \n');
-		const error = await live.scope(work).catch((e) => e);
-		expect(error).toBeInstanceOf(ContentError);
+		const broken = live.session();
+		expect(await broken.run(work).catch((e) => e)).toBeInstanceOf(ContentError);
+		expect(await broken.run(work).catch((e) => e)).toBeInstanceOf(ContentError);
 		expect(ran).toBe(0);
 
 		await writeFile(chapterFile(dir), original);
-		expect(await live.scope(work)).toBe(original);
+		expect(await live.session().run(work)).toBe(original);
 	});
 
-	it('gives each scope its own whole catalogue while another is running', async () => {
+	it('gives each session its own whole catalogue while another swaps in a newer read', async () => {
 		const dir = await copyOfFixture();
 		const { live } = await reloading(dir);
-		const first = live.scope(async () => {
-			const before = live.catalogue.chapter('stacks-undo-log')?.body;
-			// Let the second scope read the edited folder and swap in before this one looks again.
-			await new Promise((r) => setTimeout(r, 50));
-			return [before, live.catalogue.chapter('stacks-undo-log')?.body];
+		const body = () => live.catalogue.chapter('stacks-undo-log')?.body;
+		let entered!: () => void;
+		const hasEntered = new Promise<void>((resolve) => {
+			entered = resolve;
 		});
-		await new Promise((r) => setTimeout(r, 10));
+		let open!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			open = resolve;
+		});
+		const first = live.session().run(async () => {
+			const before = body();
+			entered();
+			await gate;
+			return [before, body()];
+		});
+
+		await hasEntered;
 		await writeFile(chapterFile(dir), '# Edited\n\nNew text.\n');
-		const second = await live.scope(async () => live.catalogue.chapter('stacks-undo-log')?.body);
+		const second = await live.session().run(async () => body());
+		open();
 
 		const [before, after] = await first;
 		expect(second).toMatch(/^# Edited/);
