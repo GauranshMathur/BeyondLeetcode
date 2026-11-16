@@ -114,11 +114,13 @@ Every open issue, 67 in all: none in Tier 0, 3 in Tier 1, 34 in Tier 2 and 30 in
 | #647 | 2 | Add a server-side guard to the no-JavaScript Registration save, and which kind? | A revision the form carries and the action checks. A hard call (Identity, and possibly what the Instance stores) | One Identity card with the two-reader review |
 | #529 | 2 | `@axe-core/playwright` (a new dependency), or the no-dependency contrast and landmark tests? | The no-dependency tests now; axe stays the maintainer's call. A hard call only for axe | The automated accessibility check; nothing else waits on it |
 
-## Sprint 22 · Dev mode and the starting Language
+## Sprint 22 · Dev mode
 
-**Goal:** the maintainer's two other app items ship: a dev mode that opens everything, runs any Problem's Reference Code and previews content from disk; and a starting Language each Learner chooses before the first Problem and can change in Settings, with the guide offered on that first-run choice.
+**Goal:** the maintainer's dev mode ships: a switch for the author's own Local Instance that opens everything, runs any Problem's Reference Code and previews content from disk.
 
-Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.21.0 (the next minor after Sprint 21's 1.20.0, because the cards are `feat`). Milestone `Sprint 22 · Dev mode and the starting Language`.
+**Re-sliced on 2026-11-16, in progress.** The sprint was planned with a second half, the starting Language (#661) and the guide's first-run offer (#662's C402b). #661 needs a schema change, which is the maintainer's to allow; he has not answered and said not to take it for him. So that half moved to Sprint 23 as it stood (C397, C398, C399, C400 and C402b, with their Sprint and Release fields), and this sprint is dev mode alone: C389 to C396, C438 (cut on 2026-11-16 for the error page C395 left out) and the exit card C403, ten cards. Its Sprint and Release options and its milestone were renamed and kept their ids. Where the plan below names a moved card, read Sprint 23. Its issue count is one, #660; #661 and #662 close in Sprint 23.
+
+Release `R v1.21.0: Sprint 22 · Dev mode`, version 1.21.0 (the next minor after Sprint 21's 1.20.0, because the cards are `feat`). Milestone `Sprint 22 · Dev mode`.
 
 **Re-planned on 2026-11-14.** This was Sprint 21, at 1.20.0. It runs second because it cannot start, and starts as soon as the maintainer has answered the two questions below. **Started 2026-11-16:** the maintainer answered #660 (dev mode is not allowed on a Multi-user Instance, the answer C389 was written for), so the dev-mode cards run; #661 is still with him, and he said not to take it for him, so C397 to C400 and C402b are held. The guide's page and header link (C401, C402a) moved to Sprint 21; C402b, the first-run offer, is here because it edits #661's choice page.
 
@@ -131,7 +133,7 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
   - **Starting Language** (#661): C397: the stored value on `Learner`. C398: a Topic not yet started opens in it, and a Topic already worked on keeps its Language. C399: the first-run choice before the first Problem. C400: the Settings row.
   - **The guide** (#662): C402b: the first-run choice offers the guide. From S7's report: the offer ("New here? How to use the site") is drawn in the Guide board, not in the StartingLanguage board, and opening the guide from the choice page leaves the `next` redirect behind; the Learner returns with Back.
   - **Last:** C403, the exit check and `Release-As: 1.21.0`. It has no issue.
-- **Issues → cards.** The milestone `Sprint 22 · Dev mode and the starting Language` holds the three issues.
+- **Issues → cards.** The milestone `Sprint 22 · Dev mode` holds #660; #661 and #662 moved to the milestone `Sprint 23 · The starting Language` on 2026-11-16.
 
   | Issue | Tier | Cards, in order | Last card | Lane conflicts (shared files, in this order) | Risks and review | Acceptance check |
   |---|---|---|---|---|---|---|
@@ -173,16 +175,15 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
 - **No limit, flag or image changes.** C391 sends the Runner the same request shape and limits as a Submit. The image never sets `DEV_MODE`.
 
 **Exit:**
-- All 14 Sprint 22 cards are Done, and `ci` is green on `main`. The sprint's Status counts issues closed and cards done, each per tier.
-- With `DEV_MODE` unset: a Locked Topic answers 403, no banner is drawn, and the reference-run action is absent from the page and answers 404 (`problem.e2e.ts`, `a11y.e2e.ts`).
+- All 10 Sprint 22 cards are Done (C389 to C396, C438, C403), and `ci` is green on `main`. The sprint's Status counts issues closed and cards done, each per tier.
+- With `DEV_MODE` unset: a Locked Topic answers 403, no banner is drawn, and the reference-run action is absent from the page and answers 404 (`problem.e2e.ts`, `a11y.e2e.ts`, `error.e2e.ts`).
 - `image-files.test.ts` fails if the `Dockerfile` or the files `init` writes name `DEV_MODE`.
 - `bunx playwright test --project dev` passes: a fresh Learner opens the last Topic's last Problem, the banner is on every screen, and "Run reference solution" shows a result per Test in Python, TypeScript and Go.
 - `core.test.ts` shows every progress table unchanged by the dev-mode reads and the reference run, and the reference run's Runner requests carrying a Submit's limits.
 - `app.test.ts` shows an edited Chapter file read on the next request in dev mode, with no restart.
 - `grep -n "DEV_MODE" README.md docs/self-hosting.md` prints a start command in each.
-- `language.e2e.ts` and `settings.e2e.ts` pass with JavaScript off; `db.test.ts` shows an existing Learner holding `python`.
-- `guide.e2e.ts` reaches `/guide` from the first-run choice.
-- #660, #661 and #662 are closed, 3 issues, all Tier 1.
+- `hooks.server.test.ts` shows content that fails validation answered as its list of issues in dev mode and as the generic message with it off, and logged by class name only in both.
+- #660 is closed, 1 issue, Tier 1. #661 and #662 are open, in Sprint 23.
 - The orchestrator cuts 1.21.0 from the release PR and records the cut.
 
 **Not in the sprint:**
@@ -190,7 +191,26 @@ Release `R v1.21.0: Sprint 22 · Dev mode and the starting Language`, version 1.
 - **#560** (one recipe to start a browser test's Instance): Tier 3. C393 adds a seventh recipe; the refactor waits in the Backlog.
 - **#505** (the header model's phone bar): Tier 3; it touches `header.ts` after Sprint 21's C402a.
 - **The content redesign (#663):** the content sprints, below.
-- **Sprint 23** has no cards: `Sprint 23 · Unplanned`, Release option `R v1.21.1: Sprint 23 · Unplanned`. The orchestrator fills and renames it when it constructs that sprint.
+- **The starting Language (#661) and the guide's first-run offer (C402b):** Sprint 23, below.
+
+## Sprint 23 · The starting Language
+
+**Goal:** each Learner chooses a starting Language before the first Problem and can change it in Settings, and the first-run choice offers the guide.
+
+Release `R v1.22.0: Sprint 23 · The starting Language`, version 1.22.0 (the next minor after Sprint 22's 1.21.0, because the cards are `feat`). Milestone `Sprint 23 · The starting Language`.
+
+**It cannot start.** #661 asks for a stored per-Learner value, a schema change, which is the maintainer's to allow (asked on the issue on 2026-11-14; recommended: yes, one nullable `startingLanguage` column on `Learner`, with a migration that sets every existing Learner to `python`). He has said not to take that answer for him.
+
+- **Issues: 2, both Tier 1:** #661, and #662, whose last card is here.
+- **Cards, moved from Sprint 22 on 2026-11-16 as they stood:** C397 (the stored value on `Learner`), C398 (a Topic not yet started opens in it), C399 (the first-run choice), C400 (the Settings row), C402b (the first-run choice offers the guide). They are in the old card format: when the sprint starts, the card-writer cuts them again against main, and the orchestrator files the exit card.
+- **Shared files to order then:** `learning/core.ts` (C398, after Sprint 22's C391) and the Problem route's `+page.server.ts` (C399, after Sprint 22's C394).
+
+**Exit:**
+- Every Sprint 23 card is Done, and `ci` is green on `main`.
+- `language.e2e.ts` and `settings.e2e.ts` pass with JavaScript off; `db.test.ts` shows an existing Learner holding `python`.
+- `guide.e2e.ts` reaches `/guide` from the first-run choice.
+- #661 and #662 are closed, 2 issues, both Tier 1.
+- The orchestrator cuts 1.22.0 from the release PR and records the cut.
 
 ## The content sprints (#663, Tier 1)
 
