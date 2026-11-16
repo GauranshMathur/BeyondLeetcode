@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type Catalogue, loadCatalogue, type MainLinePlace } from '../content/catalogue.ts';
 import type { ExecuteRequest, ExecuteResult, RunnerPort, TestResult } from '../runner/port.ts';
-import { judgeSubmission } from './submission.ts';
+import { judgeReference, judgeSubmission } from './submission.ts';
 
 /**
  * Judging a Submission at the module's interface: a Problem, a Build and a scripted Runner in,
@@ -464,5 +464,86 @@ describe('judgeSubmission: why the Runner failed', () => {
 		const { runner } = scriptedRunner({}, () => down);
 
 		await expect(submit(runner)).rejects.toMatchObject({ code: 'RunnerUnavailable', cause: down });
+	});
+});
+
+describe('judgeReference', () => {
+	const reference = (
+		runner: RunnerPort | undefined,
+		options: { hiddenBatchTests?: number; cat?: ReturnType<typeof stubCatalogue> } = {}
+	) =>
+		judgeReference({
+			catalogue: options.cat ?? stubCatalogue(),
+			problemId: 'p',
+			language: 'python',
+			files: { 'main.py': 'x' },
+			runner,
+			hiddenBatchTests: options.hiddenBatchTests ?? 1
+		});
+
+	it('sends the same requests as a Submission of the same Problem', async () => {
+		const sub = scriptedRunner();
+		const ref = scriptedRunner();
+
+		await submit(sub.runner);
+		await reference(ref.runner);
+
+		expect(ref.calls).toEqual(sub.calls);
+		expect(ref.calls.length).toBeGreaterThan(1);
+	});
+
+	it('answers one result per Test, Examples then Hidden, with the outcome and nothing else', async () => {
+		const { runner } = scriptedRunner({
+			'p/hidden/b': { stdout: 'no\n' },
+			'q/hidden/z': { status: 'runtimeError' }
+		});
+
+		const results = await reference(runner);
+
+		expect(results).toEqual([
+			{ problemId: 'p', name: 'a', kind: 'example', status: 'passed' },
+			{ problemId: 'q', name: 'a', kind: 'example', status: 'passed' },
+			{ problemId: 'q', name: 'z', kind: 'hidden', status: 'runtimeError' },
+			{ problemId: 'p', name: 'b', kind: 'hidden', status: 'wrongAnswer' }
+		]);
+	});
+
+	it('passes an output that matches only after normalisation, as a Submission does', async () => {
+		const { runner } = scriptedRunner({ 'p/example/a': { stdout: 'ok  \r\n\r\n' } });
+
+		const results = await reference(runner);
+
+		expect(results[0]).toMatchObject({ name: 'a', kind: 'example', status: 'passed' });
+		expect(
+			(await submit(scriptedRunner({ 'p/example/a': { stdout: 'ok  \r\n\r\n' } }).runner)).verdict
+		).toBe('Accepted');
+	});
+
+	it('runs on past a timeout so every Test has a result', async () => {
+		const { runner, calls } = scriptedRunner({ 'p/example/a': { status: 'timeout', stdout: '' } });
+
+		const results = await reference(runner);
+
+		expect(results).toHaveLength(4);
+		expect(results[0]?.status).toBe('timeout');
+		expect(calls).toHaveLength(4);
+	});
+
+	it('answers RunnerUnavailable for no Runner, a failing Runner, a cut-off batch, a compile error or a missing result', async () => {
+		await expect(reference(undefined)).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+		await expect(
+			reference(scriptedRunner({}, () => new Error('down')).runner)
+		).rejects.toMatchObject({
+			code: 'RunnerUnavailable'
+		});
+		await expect(
+			reference(scriptedRunner({ 'p/example/a': { status: 'timeout', cutOff: true } }).runner)
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+		await expect(
+			reference(scriptedRunner({}, () => ({ compileError: 'bad' })).runner)
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
+		await expect(
+			reference(scriptedRunner({}, () => ({ results: [] })).runner)
+		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 	});
 });

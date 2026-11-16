@@ -8,7 +8,7 @@ import {
 	type SubmitTest
 } from '../submit-plan.ts';
 import { LearningError } from './errors.ts';
-import { normaliseOutput, type SubmitFailure, type Verdict } from './rules.ts';
+import { normaliseOutput, type RunTestStatus, type SubmitFailure, type Verdict } from './rules.ts';
 
 export type { SubmitPlan, SubmitTest };
 
@@ -55,6 +55,52 @@ export async function judgeSubmission(input: SubmissionInput): Promise<Judgement
 	);
 	const batches = await runSubmission(plan, (tests) => runBatch(runner, language, files, tests));
 	return judge(batches, problemId, (id) => catalogue.problem(id)?.title ?? id);
+}
+
+/**
+ * One Test of a Reference run: what a dev-mode run says of it, whichever kind it is. Dev only: a
+ * Learner is never told a Hidden Test's name. Never the input, the expected output or anything the
+ * Runner printed.
+ */
+export interface ReferenceTestResult {
+	readonly problemId: string;
+	readonly name: string;
+	readonly kind: SubmitTest['kind'];
+	readonly status: RunTestStatus;
+}
+
+/**
+ * Runs `files` (a Problem's Reference Code) against the Tests a Submission of that Problem runs,
+ * in the same batches through `runBatch`, and answers one result per Test in run order. Unlike a
+ * Submission it does not stop after a timeout, so every Test has a result. A compile error, which
+ * has no per-Test result, is RunnerUnavailable, as for a Hidden batch of a Submission. Throws
+ * NotFound for an unknown Problem.
+ */
+export async function judgeReference(input: SubmissionInput): Promise<ReferenceTestResult[]> {
+	const { catalogue, problemId, language, files, runner } = input;
+	const plan = submitPlan(
+		catalogue,
+		problemId,
+		input.hiddenBatchTests ?? sandboxConfig.hiddenBatchTests
+	);
+	const results: ReferenceTestResult[] = [];
+	for (const tests of [plan.visible, ...plan.hidden]) {
+		if (tests.length === 0) continue;
+		const result = await runBatch(runner, language, files, tests);
+		if (result.compileError !== undefined) throw new LearningError('RunnerUnavailable');
+		for (const test of tests) {
+			const raw = result.results.find((r) => r.id === test.id);
+			if (!raw) throw new LearningError('RunnerUnavailable');
+			const status: RunTestStatus =
+				raw.status === 'ok'
+					? normaliseOutput(raw.stdout) === normaliseOutput(test.expected)
+						? 'passed'
+						: 'wrongAnswer'
+					: raw.status;
+			results.push({ problemId: test.problemId, name: test.name, kind: test.kind, status });
+		}
+	}
+	return results;
 }
 
 /**
