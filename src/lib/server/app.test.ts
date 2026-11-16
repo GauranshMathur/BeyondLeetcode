@@ -379,3 +379,150 @@ describe('Runner adapter', () => {
 		);
 	});
 });
+
+describe('dev mode', () => {
+	const devModeOf = async (extra: Record<string, string | undefined>) => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'local' } });
+		return (await boot(url, extra)).devMode;
+	};
+
+	it('is off unless the switch is exactly 1', async () => {
+		expect(await devModeOf({})).toBe(false);
+		for (const value of ['', '0', 'true', 'yes', ' 1', '1 ', '01', 'on']) {
+			expect(await devModeOf({ DEV_MODE: value }), JSON.stringify(value)).toBe(false);
+		}
+	}, 60_000);
+
+	it('is on for 1 in Local Mode, also with NODE_ENV=production', async () => {
+		expect(await devModeOf({ DEV_MODE: '1' })).toBe(true);
+		expect(await devModeOf({ DEV_MODE: '1', NODE_ENV: 'production' })).toBe(true);
+	}, 30_000);
+
+	it('is off when the instance is not set up yet, even with the switch on', async () => {
+		const { url } = await migratedDatabase();
+		const app = await boot(url, { DEV_MODE: '1' });
+		expect(app.devMode).toBe(false);
+		await app.instance.chooseLocal();
+		expect(app.devMode).toBe(false);
+	}, 30_000);
+
+	it('cannot be assigned after start', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'local' } });
+		const app = await boot(url);
+		expect(() => {
+			(app as { devMode: boolean }).devMode = true;
+		}).toThrow(TypeError);
+		expect(app.devMode).toBe(false);
+	}, 30_000);
+
+	it('is read once at start: a later change to the process environment does not move it', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'local' } });
+		const off = await boot(url);
+		const on = await boot(url, { DEV_MODE: '1' });
+		onTestFinished(() => {
+			vi.unstubAllEnvs();
+		});
+		vi.stubEnv('DEV_MODE', '1');
+		expect(off.devMode).toBe(false);
+		vi.stubEnv('DEV_MODE', '0');
+		expect(on.devMode).toBe(true);
+		// A later start reads the env argument, not the process environment.
+		expect((await boot(url)).devMode).toBe(false);
+	}, 60_000);
+
+	const multiEnv = {
+		BETTER_AUTH_SECRET: secret,
+		ORIGIN: 'http://localhost:4174'
+	};
+	const convertInput = { ...admin, convert: true };
+
+	it('a Local Instance started in dev mode cannot be converted to Multi-user, by Setup or directly', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'local' } });
+		const app = await boot(url, { ...multiEnv, DEV_MODE: '1' });
+		await db.learner.upsert({ where: { id: 'local' }, update: {}, create: { id: 'local' } });
+
+		await expect(app.setup.createFirstAdmin(convertInput)).rejects.toThrow(/Dev mode is on/);
+		await expect(app.instance.chooseMulti()).rejects.toThrow(/Dev mode is on/);
+
+		expect(app.instance.mode()).toBe('local');
+		expect((await db.instance.findUnique({ where: { id: 'instance' } }))?.mode).toBe('local');
+		expect(await db.user.count()).toBe(0);
+		expect(app.devMode).toBe(true);
+	}, 60_000);
+
+	it('a Local Instance started without the switch still converts', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'local' } });
+		const app = await boot(url, multiEnv);
+
+		await app.setup.createFirstAdmin(convertInput);
+
+		expect(app.instance.mode()).toBe('multi');
+		expect(app.devMode).toBe(false);
+	}, 60_000);
+
+	it('a fresh Instance with the switch set may choose Multi-user, and the next start refuses', async () => {
+		const { url } = await migratedDatabase();
+		const app = await boot(url, { ...multiEnv, DEV_MODE: '1' });
+		expect(app.devMode).toBe(false);
+
+		await app.setup.createFirstAdmin({ ...admin });
+
+		expect(app.instance.mode()).toBe('multi');
+		expect(app.devMode).toBe(false);
+		await expect(boot(url, { ...multiEnv, DEV_MODE: '1' })).rejects.toThrow(/DEV_MODE=1/);
+	}, 60_000);
+
+	it('a fresh Instance with the switch set that chooses Local has it off here and on after a restart', async () => {
+		const { url } = await migratedDatabase();
+		const app = await boot(url, { DEV_MODE: '1' });
+		await app.instance.chooseLocal();
+		expect(app.devMode).toBe(false);
+
+		expect((await boot(url, { DEV_MODE: '1' })).devMode).toBe(true);
+	}, 60_000);
+
+	it('mutating the env object after start, or setting process.env while the argument omits the switch, changes nothing', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'local' } });
+		const env: Record<string, string | undefined> = {
+			CONTENT_DIR: 'src/lib/server/content/fixture',
+			DATABASE_URL: url,
+			RUNNER_URL: 'http://127.0.0.1:1',
+			RUNNER_TOKEN: 'test-token',
+			DEV_MODE: '1'
+		};
+		const on = await createApp(env);
+		env.DEV_MODE = '0';
+		expect(on.devMode).toBe(true);
+
+		onTestFinished(() => {
+			vi.unstubAllEnvs();
+		});
+		vi.stubEnv('DEV_MODE', '1');
+		delete env.DEV_MODE;
+		expect((await createApp(env)).devMode).toBe(false);
+	}, 60_000);
+
+	it('refuses to start a multi-user Instance with the switch set, in production or not', async () => {
+		const { url, db } = await migratedDatabase();
+		await db.instance.create({ data: { mode: 'multi' } });
+		const multi = {
+			CONTENT_DIR: 'src/lib/server/content/fixture',
+			DATABASE_URL: url,
+			RUNNER_URL: 'http://127.0.0.1:1',
+			RUNNER_TOKEN: 'test-token',
+			BETTER_AUTH_SECRET: secret,
+			ORIGIN: 'http://localhost:4174',
+			DEV_MODE: '1'
+		};
+		await expect(createApp(multi)).rejects.toThrow(/DEV_MODE=1 on a multi-user Instance/);
+		await expect(createApp({ ...multi, NODE_ENV: 'production' })).rejects.toThrow(/DEV_MODE/);
+		const { DEV_MODE: _off, ...without } = multi;
+		expect((await createApp(without)).devMode).toBe(false);
+	}, 60_000);
+});

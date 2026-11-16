@@ -35,6 +35,8 @@ export interface App {
 	/** The Multi-user Instance the factory builds (its account actions, admin actions, Invites and auth handler); null when the secret or the origin is not set. */
 	multiUser: MultiUser | null;
 	setup: Setup;
+	/** Dev mode, read once at start from `DEV_MODE=1` and never from a request, so it is a plain boolean. On only on a Local Mode Instance, and that Instance cannot become Multi-user while it is on (the Instance refuses, whoever asks), so a later card may read it once at wiring time. */
+	readonly devMode: boolean;
 }
 
 /** Wires the Instance at server start: content, database, Learning core, Identity. */
@@ -47,6 +49,8 @@ export async function createApp(env: {
 	IDENTITY_TEST_LEARNER?: string;
 	/** 'scripted' swaps the Docker-backed Runner for a scripted one; never set outside the e2e web server. */
 	RUNNER_ADAPTER?: string;
+	/** '1' turns dev mode on, on a Local Mode Instance only; any other value is off. */
+	DEV_MODE?: string;
 	/** Read only to refuse the test switches in production. */
 	NODE_ENV?: string;
 	/** Signs sessions (Multi-user). Without a valid one, Multi-user cannot be chosen. */
@@ -59,6 +63,8 @@ export async function createApp(env: {
 	GOOGLE_CLIENT_ID?: string;
 	GOOGLE_CLIENT_SECRET?: string;
 }): Promise<App> {
+	// Read once, before any await: nothing later in start-up can change the answer.
+	const devModeRequested = env.DEV_MODE === '1';
 	if (!env.CONTENT_DIR) {
 		throw new Error('CONTENT_DIR is not set: point it at the content folder (see .env.example).');
 	}
@@ -74,7 +80,7 @@ export async function createApp(env: {
 	const catalogue = await loadCatalogue(env.CONTENT_DIR);
 	const runner = chooseRunner(env, catalogue);
 	const db = createDb(env.DATABASE_URL);
-	const instance = await createInstance(db);
+	const instance = await createInstance(db, { devModeRequested });
 	const auth = multiUserEnvironment(env);
 	if (instance.mode() === 'multi') {
 		// The test cookie is read only by the Local adapter, which a multi-user Instance never consults;
@@ -82,6 +88,11 @@ export async function createApp(env: {
 		if (env.IDENTITY_TEST_LEARNER === '1') {
 			throw new Error(
 				'IDENTITY_TEST_LEARNER=1 on a multi-user Instance: the test Learner switch must be off once the Instance is multi-user.'
+			);
+		}
+		if (devModeRequested) {
+			throw new Error(
+				'DEV_MODE=1 on a multi-user Instance: dev mode is for a Local Mode Instance only; unset DEV_MODE.'
 			);
 		}
 		if (auth.kind === 'missing') {
@@ -97,7 +108,7 @@ export async function createApp(env: {
 	});
 	// A fresh database stays empty until someone chooses; an already-Local one gets its Learner at boot.
 	if (instance.mode() === 'local') await local.ensureLocalLearner();
-	return {
+	const app: Omit<App, 'devMode'> = {
 		instance: {
 			...instance,
 			async chooseLocal() {
@@ -120,6 +131,11 @@ export async function createApp(env: {
 		},
 		core: createLearningCore({ catalogue, db, runner })
 	};
+	// A non-writable data property: nothing can switch it on after start.
+	return Object.defineProperty(app, 'devMode', {
+		value: devModeRequested && instance.mode() === 'local',
+		enumerable: true
+	}) as App;
 }
 
 /**
