@@ -15,3 +15,15 @@ An Invite is claimed (spent) before any Account or Learner row is written. A fai
 ## Consequences
 
 `docs/self-hosting.md` tells operators to run one web process per data volume and to restart every web process after a switch. The `reset-admin-password` command writes to the database directly, so it must not run while someone is setting up or switching. A migration that adds the Learner foreign keys stops with a named error if one provider identity belongs to two Users; the operator resolves it by hand (`docs/self-hosting.md`, Upgrading).
+
+## Amended 2026-11-16
+
+Dev mode (`CONTEXT.md`, Dev mode; the `DEV_MODE=1` switch, read once when the web process starts) puts one limit on the switch from Local to Multi-user that this ADR decides.
+
+- **Dev mode is on only for an Instance that is already in Local Mode when the process starts.** An Instance that has not chosen its mode yet has dev mode off, switch or not, and it stays off in that process after Local is chosen; the next start turns it on. So a Setup that chooses Multi-user never ends with dev mode on.
+- **An Instance with dev mode on refuses to become Multi-user**, from Setup's convert form or from any other caller, before anything is written, until it is restarted without the switch. Setup tells the operator so.
+- **A Multi-user Instance started with the switch set refuses to start**, and the message names the switch.
+
+The reason is the maintainer's rule of 2026-11-16: dev mode is never on a Multi-user Instance. The rule is held in the Instance module, the one writer of the mode, so no caller can miss it; whether dev mode is on is fixed when that module is built and does not change while the process runs.
+
+The exception ends with the switch: on an Instance started without it, the conversion is exactly as decided above. The first admin's Account is linked to the `local` Learner, and the stored mode is still the only thing that says which mode an Instance is in. The switch never chooses or changes the mode; it can only refuse a start or a conversion.
