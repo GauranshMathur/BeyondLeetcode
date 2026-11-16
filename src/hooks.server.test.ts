@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspect } from 'node:util';
@@ -34,6 +34,7 @@ const { load: layoutLoad } = await import('./routes/+layout.server.ts');
 const { createDb } = await import('#lib/server/db.js');
 const { INVITE_LOG_PATTERNS } = await import('#lib/server/identity/invites.js');
 const { formatServerError, installLogRedaction } = await import('#lib/server/logging.js');
+const { ContentError } = await import('#lib/server/content/catalogue.js');
 
 afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
@@ -597,6 +598,268 @@ describe('dev mode through the server hook', () => {
 		);
 		expect(await devModeAfter(input)).toBe(false);
 	}, 60_000);
+});
+
+describe('a ContentError at the error hook', () => {
+	const contentEvent = () =>
+		({
+			request: { method: 'GET' },
+			route: { id: '/chapters/[chapterId]' },
+			url: new URL('http://localhost/chapters/stacks-undo-log')
+		}) as never;
+	const issues = ['content.json: not valid JSON', 'topics/x/topic.json: missing file'];
+	const spyConsole = () =>
+		(['log', 'info', 'warn', 'error', 'debug'] as const).map((m) =>
+			vi.spyOn(console, m).mockImplementation(() => {})
+		);
+	const loggedBy = (spies: ReturnType<typeof spyConsole>) =>
+		spies.flatMap((s) => s.mock.calls.map((call) => call.join(' ')));
+	const startWith = async (devMode: boolean) => {
+		vi.mocked(createApp).mockResolvedValue({ devMode } as never);
+		await init();
+	};
+
+	it('shows the issues in dev mode, answers no status, and logs only the class name', async () => {
+		const spies = spyConsole();
+		await startWith(true);
+
+		const result = handleError({
+			kind: 'unknown',
+			error: new ContentError(issues),
+			event: contentEvent()
+		});
+
+		expect(result).toEqual({ message: 'Invalid content', contentIssues: issues });
+		expect('status' in (result as object)).toBe(false);
+		const lines = loggedBy(spies);
+		expect(lines).toEqual(['[500] GET /chapters/[chapterId] ContentError']);
+	});
+
+	it('answers the generic message with dev mode off, and logs the same line', async () => {
+		const spies = spyConsole();
+		await startWith(false);
+
+		const result = handleError({
+			kind: 'unknown',
+			error: new ContentError(issues),
+			event: contentEvent()
+		});
+
+		expect(result).toEqual({ message: 'Internal Error' });
+		expect(loggedBy(spies)).toEqual(['[500] GET /chapters/[chapterId] ContentError']);
+	});
+
+	it('shows nothing for an error that is not a ContentError, dev mode or not', async () => {
+		spyConsole();
+		await startWith(true);
+		const named = Object.assign(new Error('x /srv/content'), { name: 'ContentError' });
+		const others = [
+			new TypeError('cannot read /srv/content/topics'),
+			Object.assign(new Error('ENOENT: no such file /srv/content/topics'), { code: 'ENOENT' }),
+			named,
+			{ issues: ['x'] }
+		];
+
+		for (const error of others) {
+			const result = handleError({ kind: 'unknown', error, event: contentEvent() });
+			expect(result).toEqual({ message: 'Internal Error' });
+			expect(result).not.toHaveProperty('contentIssues');
+		}
+		const notFound = handleError({
+			kind: 'framework',
+			error: { status: 404, message: 'x' },
+			event: contentEvent()
+		});
+		expect(notFound).toEqual({ message: 'Not Found' });
+	});
+
+	it('keeps the generic answer, and one log line, when the issues are not a list of strings', async () => {
+		const spies = spyConsole();
+		await startWith(true);
+		const withIssues = (set: (e: InstanceType<typeof ContentError>) => void) => {
+			const error = new ContentError(['a']);
+			set(error);
+			return error;
+		};
+		const broken = [
+			withIssues((e) => Object.defineProperty(e, 'issues', { value: null })),
+			withIssues((e) => Object.defineProperty(e, 'issues', { value: 'a: b' })),
+			withIssues((e) => Object.defineProperty(e, 'issues', { value: ['a', 1] })),
+			withIssues((e) =>
+				Object.defineProperty(e, 'issues', {
+					get() {
+						throw new Error('/srv/content secret');
+					}
+				})
+			)
+		];
+
+		for (const error of broken) {
+			const result = handleError({ kind: 'unknown', error, event: contentEvent() });
+			expect(result).toEqual({ message: 'Internal Error' });
+		}
+		expect(loggedBy(spies)).toEqual(
+			broken.map(() => '[500] GET /chapters/[chapterId] ContentError')
+		);
+	});
+
+	it('stays generic, with one log line and no throw, for values only a Proxy or a subclass can make', async () => {
+		const spies = spyConsole();
+		await startWith(true);
+		const withIssues = (value: unknown) =>
+			Object.defineProperty(new ContentError(['a']), 'issues', { value });
+		let reads = 0;
+		const flipping = new Proxy(['a: b'], {
+			get(target, key, receiver) {
+				if (key === '0') {
+					reads += 1;
+					return reads > 1 ? {} : Reflect.get(target, key, receiver);
+				}
+				return Reflect.get(target, key, receiver);
+			}
+		});
+		class Sneaky extends Array<string> {
+			override slice(): string[] {
+				return ['/srv/content/secret'];
+			}
+		}
+		const subclass = Sneaky.from(['a: b']);
+		const sparse = new Array<string>(2);
+		sparse[0] = 'a: b';
+		const protoThrows = new Proxy(new ContentError(['a: b']), {
+			getPrototypeOf() {
+				throw new Error('/srv/content secret');
+			}
+		});
+		const broken = [protoThrows, withIssues(sparse)];
+
+		for (const error of broken) {
+			const result = handleError({ kind: 'unknown', error, event: contentEvent() });
+			expect(result).toEqual({ message: 'Internal Error' });
+		}
+		// Each item is read once, and no method of the source is called: a changing Proxy or a subclass with its
+		// own slice gives only the items it held.
+		for (const issues of [flipping, subclass]) {
+			const result = handleError({
+				kind: 'unknown',
+				error: withIssues(issues),
+				event: contentEvent()
+			});
+			expect(result).toEqual({ message: 'Invalid content', contentIssues: ['a: b'] });
+		}
+		expect(reads).toBe(1);
+		// The Proxy hides its class from the logger, which then names only the type; no message is logged.
+		expect(loggedBy(spies)).toEqual([
+			'[500] GET /chapters/[chapterId] object',
+			...[sparse, flipping, subclass].map(() => '[500] GET /chapters/[chapterId] ContentError')
+		]);
+	});
+
+	it.each([201, 1000])(
+		'lists the first 200 of %i issues and then how many are left',
+		async (count) => {
+			spyConsole();
+			await startWith(true);
+			const all = Array.from({ length: count }, (_, i) => `topics/t${i}/topic.json: missing file`);
+
+			const result = handleError({
+				kind: 'unknown',
+				error: new ContentError(all),
+				event: contentEvent()
+			});
+
+			expect((result as { contentIssues?: string[] }).contentIssues).toEqual([
+				...all.slice(0, 200),
+				`and ${count - 200} more`
+			]);
+		}
+	);
+
+	it('lists exactly 200 issues as they are', async () => {
+		spyConsole();
+		await startWith(true);
+		const all = Array.from({ length: 200 }, (_, i) => `x${i}: y`);
+
+		const result = handleError({
+			kind: 'unknown',
+			error: new ContentError(all),
+			event: contentEvent()
+		});
+
+		expect((result as { contentIssues?: string[] }).contentIssues).toEqual(all);
+	});
+
+	describe('through the real app', () => {
+		async function reject() {
+			const dir = mkdtempSync(join(tmpdir(), 'beyondleetcode-content-'));
+			onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+			const content = join(dir, 'content');
+			cpSync('src/lib/server/content/fixture', content, { recursive: true });
+			const chapter = join(content, 'topics/stacks/chapters/stacks-undo-log/chapter.md');
+			const original = readFileSync(chapter, 'utf8');
+
+			const dbDir = mkdtempSync(join(tmpdir(), 'beyondleetcode-hook-'));
+			onTestFinished(() => rmSync(dbDir, { recursive: true, force: true }));
+			const url = `file:${join(dbDir, 'app.db')}`;
+			execFileSync('node_modules/.bin/prisma', ['migrate', 'deploy'], {
+				env: { ...process.env, DATABASE_URL: url },
+				stdio: 'pipe'
+			});
+			const db = createDb(url);
+			await db.instance.create({ data: { mode: 'local' } });
+			await db.$disconnect();
+
+			const actual =
+				await vi.importActual<typeof import('#lib/server/app.js')>('#lib/server/app.js');
+			vi.mocked(createApp).mockImplementation(actual.createApp);
+			Object.assign(env, {
+				CONTENT_DIR: content,
+				DATABASE_URL: url,
+				RUNNER_URL: 'http://127.0.0.1:1',
+				RUNNER_TOKEN: 'test-token',
+				DEV_MODE: '1'
+			});
+			await init();
+			const app = (await vi.mocked(createApp).mock.results.at(-1)?.value) as {
+				core: { forLearner(id: string): { chapter(id: string): Promise<unknown> } };
+			};
+			const view = () => app.core.forLearner('local').chapter('stacks-undo-log');
+			// Dev mode checks the folder at start and again for each view, so the file breaks after the start.
+			writeFileSync(chapter, '   \n');
+			const error = await view().then(
+				() => undefined,
+				(e: unknown) => e
+			);
+			return { dir, error, view, mend: () => writeFileSync(chapter, original) };
+		}
+
+		it('turns a blanked chapter into its issue in dev mode, and heals when the file is fixed', async () => {
+			const spies = spyConsole();
+			const { dir, error, view, mend } = await reject();
+
+			const result = handleError({ kind: 'unknown', error, event: contentEvent() });
+
+			expect(result).toEqual({
+				message: 'Invalid content',
+				contentIssues: ['topics/stacks/chapters/stacks-undo-log/chapter.md: must not be empty']
+			});
+			expect(JSON.stringify(result)).not.toContain(dir);
+			expect(loggedBy(spies)).toEqual(['[500] GET /chapters/[chapterId] ContentError']);
+			mend();
+			await expect(view()).resolves.toBeDefined();
+		}, 60_000);
+
+		it('gives the generic message for the same error when dev mode is off', async () => {
+			const spies = spyConsole();
+			const { error } = await reject();
+			await startWith(false);
+
+			const result = handleError({ kind: 'unknown', error, event: contentEvent() });
+
+			expect(result).toEqual({ message: 'Internal Error' });
+			expect(loggedBy(spies)).toEqual(['[500] GET /chapters/[chapterId] ContentError']);
+		}, 60_000);
+	});
 });
 
 describe('what the root layout sends about dev mode', () => {
