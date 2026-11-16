@@ -10,3 +10,7 @@ Format, newest last:
 
 | Date | Card | Question | Answer | Who decided |
 |---|---|---|---|---|
+| 2026-11-16 | C391 | Does each reference-run result carry its Problem's id? | Yes: Test names repeat across the Problems a Submit covers, and a Submit's failure already names the Problem, Hidden included (`catalogue.ts`, `submit-plan.ts`, `submission.ts`) | card-reviewer |
+| 2026-11-16 | C391 | What does a reference run answer for a cut-off batch or a Runner answer missing a Test? | `RunnerUnavailable`, as for a Run and a Submit (the card; `docs/module-map.md`) | card-reviewer |
+| 2026-11-16 | C391 | What does a Hidden Test's result hold in a dev-mode reference run? | Its name, that it is Hidden, and the outcome, nothing else (the card's Rule 4; `CONTEXT.md`, Test) | card-reviewer |
+| 2026-11-16 | C394 | Is the region named "Dev mode: run the reference solution" the band or the whole Dev view? | The band only; the status and the results sit outside it (the card's step 4; the P13 board) | card-reviewer |
