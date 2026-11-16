@@ -78,14 +78,33 @@ export function checkRemove(t: TeardownTimes): string {
 }
 
 /**
+ * Event delivery and the clocks' rounding (the response time comes from `Date.now()`, whole ms)
+ * can put the destroy event a few ms after a response that did wait for the remove. The tolerance
+ * loses nothing: when the hard stop fired, a Runner that answered early leaves the destroy seconds
+ * after the response; when the bomb ended by itself, Docker's AutoRemove destroys it within
+ * milliseconds whether or not the Runner waited, so no tolerance could tell those apart.
+ */
+export const destroyBeforeResponseToleranceMs = 50;
+
+/**
+ * How many ms before the response the destroy event came, on one clock: the destroy through the
+ * create event's epoch time, the response as `responseAtMs` (ms since the epoch). Negative when it
+ * came after; NaN without a destroy.
+ */
+export function destroyMarginMs(t: TeardownTimes, responseAtMs: number): number {
+	if (t.destroyMs === undefined) return Number.NaN;
+	return responseAtMs - (t.createdAtMs + t.destroyMs);
+}
+
+/**
  * The Runner answers only after it has removed the container, which is what makes the whole-request
- * bound a bound on the container's life too. `responseAtMs` is when the response arrived, in ms
- * since the epoch; the destroy event is moved onto that clock through the create event's time.
+ * bound a bound on the container's life too. Passes when the destroy came less than
+ * `destroyBeforeResponseToleranceMs` after the response, compared without rounding.
  * Returns 'pass' or a message with the numbers.
  */
 export function checkDestroyedBeforeResponse(t: TeardownTimes, responseAtMs: number): string {
 	if (t.destroyMs === undefined) return 'container not removed: no destroy event';
-	const lateMs = Math.round(t.createdAtMs + t.destroyMs - responseAtMs);
-	if (lateMs < 0) return 'pass';
-	return `the Runner answered ${lateMs} ms before the container was destroyed`;
+	const margin = destroyMarginMs(t, responseAtMs);
+	if (-margin < destroyBeforeResponseToleranceMs) return 'pass';
+	return `the Runner answered ${Math.round(-margin)} ms before the container was destroyed, tolerance ${destroyBeforeResponseToleranceMs} ms`;
 }

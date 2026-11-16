@@ -8,6 +8,7 @@ import {
 	checkDestroyedBeforeResponse,
 	checkHardStop,
 	checkRemove,
+	destroyMarginMs,
 	hardStopBoundMs,
 	parseTeardownTimes,
 	type TeardownTimes
@@ -562,7 +563,7 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 				? 'kill none (ended by itself)'
 				: `kill sent ${Math.round(times.killMs)} ms; died ${Math.round((lifetimeMs ?? Number.NaN) - times.killMs)} ms after it`;
 		console.log(
-			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; ${killLog}; destroy ${Math.round(times?.destroyMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
+			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; ${killLog}; destroy ${Math.round(times?.destroyMs ?? Number.NaN)} ms, ${Math.round(destroyMarginMs(times as TeardownTimes, started + elapsedMs))} ms before the response; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
 		);
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);

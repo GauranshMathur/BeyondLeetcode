@@ -4,6 +4,8 @@ import {
 	checkDestroyedBeforeResponse,
 	checkHardStop,
 	checkRemove,
+	destroyBeforeResponseToleranceMs,
+	destroyMarginMs,
 	parseTeardownTimes
 } from './teardown-times.testutil';
 
@@ -181,6 +183,26 @@ describe('the destroy-before-response check', () => {
 		const verdict = checkDestroyedBeforeResponse(t(), T0 + 1_000 + 800);
 		expect(verdict).not.toBe('pass');
 		expect(verdict).toContain('103');
+	});
+
+	it('allows a destroy up to just under the tolerance after the response, and no more', () => {
+		expect(destroyBeforeResponseToleranceMs).toBe(50);
+		// The destroy is at +903 on the create's clock.
+		expect(checkDestroyedBeforeResponse(t(), T0 + 1_000 + 903 - 49)).toBe('pass');
+		expect(checkDestroyedBeforeResponse(t(), T0 + 1_000 + 903 - 50)).not.toBe('pass');
+		expect(checkDestroyedBeforeResponse(t(), T0 + 1_000 + 903 - 51)).not.toBe('pass');
+	});
+
+	it('passes a destroy before the response, even by a fraction of a ms or at the same time', () => {
+		expect(checkDestroyedBeforeResponse(t(), T0 + 1_000 + 903)).toBe('pass');
+		expect(checkDestroyedBeforeResponse(t(), T0 + 1_000 + 903.3)).toBe('pass');
+		expect(checkDestroyedBeforeResponse(t(), T0 + 1_000 + 903 - 0.3)).toBe('pass');
+	});
+
+	it('gives the margin on the one clock, negative when the destroy came after', () => {
+		expect(destroyMarginMs(t(), T0 + 1_000 + 911)).toBe(8);
+		expect(destroyMarginMs(t(), T0 + 1_000 + 900)).toBe(-3);
+		expect(destroyMarginMs(times(log(...container('a', T0, ['die', 900]))), T0)).toBeNaN();
 	});
 
 	it('fails a missing destroy', () => {
