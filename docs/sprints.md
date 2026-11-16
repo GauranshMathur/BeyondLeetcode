@@ -186,6 +186,46 @@ Release `R v1.21.0: Sprint 22 · Dev mode`, version 1.21.0 (the next minor after
 - #660 is closed, 1 issue, Tier 1. #661 and #662 are open, in Sprint 23.
 - The orchestrator cuts 1.21.0 from the release PR and records the cut.
 
+**Status (2026-11-16):** exit met.
+- **Cards:** all 10 Sprint 22 cards are Done: C389 to C396, C438 and this one. The sprint was planned at 14; the re-slice of 2026-11-16 moved five to Sprint 23 and C438 was cut the same day.
+- **Tier mix (cards):** Tier 1: 9 (C389 to C396, C438). The last card has no tier. Tier 0, 2 and 3: none.
+- **Issues:** 1 closed, #660 (Tier 1), by its last card, C396. #661 and #662 (Tier 1) are open, in Sprint 23.
+- **CI:** `ci` is green on `main` at 4fcadf3, the last card's merge.
+- **Checks:**
+  - With `DEV_MODE` unset: `problem.e2e.ts` finds no Dev item on the Problem screen and a POST to `?/runReference` answering 404; `a11y.e2e.ts` finds no band on any screen; `error.e2e.ts` still shows the Locked Topic's 403 page.
+  - `image-files.test.ts` fails if the `Dockerfile`, or the `compose.yaml` or `.env` that `init` writes, names `DEV_MODE`.
+  - The `dev` Playwright project runs in CI's e2e job (311 tests, against 264 before the dev project was added): a fresh Learner opens the last Topic's last Problem, the band is on every screen a Local Instance can show, and "Run reference solution" lists a result per Test in Python, TypeScript and Go.
+  - `core.test.ts` shows every progress table unchanged by the dev-mode reads and by the reference run, and the reference run's Runner requests equal to a Submit's.
+  - `app.test.ts` shows an edited Chapter, Problem statement, Test and Reference Code read on the next request in dev mode with no restart, and not read with the switch off.
+  - `hooks.server.test.ts` shows content that fails validation answered as its issues in dev mode and as the generic message with it off, logged by class name only in both.
+  - `grep -n "DEV_MODE=1 bun" README.md docs/self-hosting.md` prints a start command in each.
+- **Exit-check numbers** (`docs/agents/board.md`, Sprint exit check):
+  - Cards that needed a second fix: 3 (C392, C394, C438).
+  - Review rounds failed: 13. Card-reviewer: 8 (C391, C392, C393, C395, C396 and C438 once each, C394 twice). Security reviews that did not pass first time: 5 (C389, C390, C392 once each, C438 twice).
+  - Questions answered at each rung: rung a, 4 (`docs/decisions.md`); rung b, none; rung c, 1 answered by the maintainer (dev mode is not allowed on a Multi-user Instance), and 3 asked and still open (#728).
+  - Issues filed by the principal against issues closed: 0 against 1. The principal was not called in this sprint; the orchestrator filed #719 and #728.
+  - Product cards against other cards: 9 against 0.
+  - Lanes that had to wait for a builder slot: 1 (C393, once C392 had merged).
+- **Release:** this card's merge carries `Release-As: 1.21.0`. The orchestrator then cuts 1.21.0 from the release PR and records the cut in `docs/releasing.md`.
+- **What the reviews caught:**
+  - **C389:** a Local Instance started with the switch could be turned into a Multi-user one from Setup while running, leaving dev mode on. Now the Instance refuses to become Multi-user while dev mode is on.
+  - **C392:** the server hook did not pass `DEV_MODE` to the app, so the switch did nothing in the running server; this card wired it and so became a reviewed card. With the band on, the Problem screen was 40 px taller than the viewport.
+  - **C395:** the content was re-read on every core call, so one page load could render from two catalogues; it is read once per request.
+  - **C393:** its first test would have passed on the Locked error page.
+  - **C438:** the error hook could throw on a malformed error, and SvelteKit would then have logged the original error's message.
+  - **C394:** changing the Language during a run re-enabled the button, so two runs could overlap and take both of the Learner's run places. It failed two card reviews and was Blocked; the second point (which region is named) was answered at rung a from the card.
+  - **C396:** the image route told the author to use "a folder of its own"; Compose names the containers and the data volume after the folder, so a second folder called `beyondleetcode` would have taken over a real Instance's data.
+- **The process changed mid-sprint** (the maintainer, 2026-11-16): PRs #673 and #674 merged after their own reviews (four rounds and two), the labels `reviewed`, `security-reviewed` and `human-verified` were created, and the review gate was shown on real pull requests (green on a docs PR with no label; red on a tier 2 PR, then green once `reviewed` was set). C389 and C390 were built under the old rules; from C392's last round on, every card had a card-reviewer pass, and C438, C394 and C396 were cut by the card-writer in the new format. `review-gate` is not yet in the ruleset: that is the maintainer's step.
+- **Flakes:** none on a card. The 1.20.0 cut's image push was refused once by the registry and passed on one re-run.
+- **Decisions and accepted changes from the cards:**
+  - **The re-slice** (the orchestrator, 2026-11-16): dev mode ships alone; the starting Language waits in Sprint 23 for the maintainer's answer on #661.
+  - **Dev mode needs a restart on a fresh Instance:** it is on only when the Instance is already in Local Mode at start.
+  - **Reads write nothing; the Learner's own actions are kept:** a Read mark, a Run, a Submit, a revealed Hint and saved code made in dev mode stay after it is turned off.
+  - **The reference run shows a Hidden Test's name and outcome only,** and Reference Code that does not compile reads as "Runner unavailable". Both are questions on #728, with one more about the log for invalid content.
+  - **Left out of the P13 board** by C394, because the core does not give them: the time column, the details row, the compile-error block and the running progress.
+  - **Not checked by eye:** nobody has looked at the band, the Dev view or the "Invalid content" page in a browser by hand; the e2e tests are the evidence. The card-writer read the P13 board from the designer's local copy, not the published canvas.
+- **Filed from the sprint, each with a Backlog ticket:** #719 (the review gate's labels are not tied to the reviewed commit; the maintainer's) and #728 (three open questions on dev mode; the maintainer's).
+
 **Not in the sprint:**
 - **Dev mode on a Multi-user Instance**, unless the maintainer answers otherwise.
 - **#560** (one recipe to start a browser test's Instance): Tier 3. C393 adds a seventh recipe; the refactor waits in the Backlog.
