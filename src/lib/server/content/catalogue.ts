@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
@@ -100,6 +101,54 @@ export class ContentError extends Error {
 		super(`Invalid content, ${issues.length} issue(s):\n${issues.map((i) => `- ${i}`).join('\n')}`);
 		this.name = 'ContentError';
 	}
+}
+
+/**
+ * A catalogue that reads the content again for each Learner view (dev mode). `catalogue` is the one
+ * object handed to the Learning core: inside `session.run` it answers from the snapshot that session
+ * read, so every call on one view sees one whole catalogue even while another view swaps in a newer
+ * read. A session reads lazily, on its first `run`, and keeps that snapshot (or that failure) for
+ * its later calls, so a view never used reads nothing. When the read throws (a ContentError while a
+ * file is half edited) every `run` of that session throws it and the work does not run; the next
+ * session reads again, so a fixed file recovers.
+ */
+export interface ReloadingCatalogue {
+	readonly catalogue: Catalogue;
+	session(): { run<T>(work: () => Promise<T>): Promise<T> };
+}
+
+export function createReloadingCatalogue(
+	initial: Catalogue,
+	reload: () => Promise<Catalogue>
+): ReloadingCatalogue {
+	const scoped = new AsyncLocalStorage<Catalogue>();
+	// The last read that finished, the one the server started with until the first session reads.
+	// In dev mode the core only runs inside a session, so nothing reads this outside one.
+	let latest = initial;
+	const current = () => scoped.getStore() ?? latest;
+	const catalogue: Catalogue = {
+		topicMap: () => current().topicMap(),
+		topic: (id) => current().topic(id),
+		chapter: (id) => current().chapter(id),
+		problem: (id) => current().problem(id),
+		hiddenTests: (id) => current().hiddenTests(id),
+		mainLinePlace: (id) => current().mainLinePlace(id)
+	};
+	return {
+		catalogue,
+		session() {
+			let snapshot: Promise<Catalogue> | undefined;
+			return {
+				async run(work) {
+					snapshot ??= reload().then((read) => {
+						latest = read;
+						return read;
+					});
+					return scoped.run(await snapshot, work);
+				}
+			};
+		}
+	};
 }
 
 /** Loads and validates the content folder at `dir`, or throws a ContentError. */
