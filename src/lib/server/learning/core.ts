@@ -85,7 +85,7 @@ export interface LearningCoreDeps {
 	/**
 	 * Dev mode: no Topic is Locked, so a fresh Learner can open any of them. Off unless set. It is a
 	 * read-side rule: it writes no row and changes no stored progress. Fixed when the core is built, so
-	 * no call and no request can switch it.
+	 * no call and no request can switch it. It also enables `runReference`, which exists only with it on.
 	 */
 	devMode?: boolean;
 }
@@ -370,7 +370,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 						})
 					),
 				runReference: async (problemId, language) => {
-					if (!devMode) throw new LearningError('NotFound');
+					if (!devMode || !LANGUAGE_IDS.includes(language)) throw new LearningError('NotFound');
 					const files = deps.catalogue.problem(problemId)?.referenceCode[language];
 					if (!files || Object.keys(files).length === 0) throw new LearningError('NotFound');
 					return withRunPlace(async () => ({

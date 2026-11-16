@@ -2144,11 +2144,24 @@ describe('learner.runReference()', () => {
 		await expect(learner.runReference('nope', 'python')).rejects.toMatchObject({
 			code: 'NotFound'
 		});
-		await expect(learner.runReference(problemId, 'cobol' as Language)).rejects.toMatchObject({
-			code: 'NotFound'
-		});
+		for (const language of ['cobol', '__proto__', 'constructor'])
+			await expect(learner.runReference(problemId, language as Language)).rejects.toMatchObject({
+				code: 'NotFound'
+			});
 		expect(runner.calls).toEqual([]);
 	});
+
+	it.each([1, '1', {}, 'true'])(
+		'a truthy %j that is not true leaves it NotFound',
+		async (value) => {
+			const { learner, runner } = await setup({ devMode: value as unknown as boolean });
+
+			await expect(learner.runReference(problemId, 'python')).rejects.toMatchObject({
+				code: 'NotFound'
+			});
+			expect(runner.calls).toEqual([]);
+		}
+	);
 
 	it.each(languages)(
 		'answers a result per Test in %s: its name, Example or Hidden, and the outcome',
@@ -2158,7 +2171,7 @@ describe('learner.runReference()', () => {
 			expect(hidden.length).toBeGreaterThan(0);
 			const example = catalogue.problem(problemId)?.exampleTests[0];
 			if (!example) throw new Error('fixture has no Example Test');
-			const { learner } = await setup({
+			const { learner, runner } = await setup({
 				devMode: true,
 				acceptAll: true,
 				script: {
@@ -2170,6 +2183,8 @@ describe('learner.runReference()', () => {
 			});
 
 			const { tests } = await learner.runReference(problemId, language);
+
+			expect(tests).toHaveLength(runner.calls.flatMap((call) => call.tests).length);
 
 			expect(
 				tests.find(

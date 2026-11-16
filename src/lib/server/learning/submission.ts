@@ -58,8 +58,9 @@ export async function judgeSubmission(input: SubmissionInput): Promise<Judgement
 }
 
 /**
- * One Test of a Reference run: what a Learner may be told of it, whichever kind it is. Never the
- * input, the expected output or anything the Runner printed.
+ * One Test of a Reference run: what a dev-mode run says of it, whichever kind it is. Dev only: a
+ * Learner is never told a Hidden Test's name. Never the input, the expected output or anything the
+ * Runner printed.
  */
 export interface ReferenceTestResult {
 	readonly problemId: string;

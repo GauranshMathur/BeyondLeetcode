@@ -508,6 +508,17 @@ describe('judgeReference', () => {
 		]);
 	});
 
+	it('passes an output that matches only after normalisation, as a Submission does', async () => {
+		const { runner } = scriptedRunner({ 'p/example/a': { stdout: 'ok  \r\n\r\n' } });
+
+		const results = await reference(runner);
+
+		expect(results[0]).toMatchObject({ name: 'a', kind: 'example', status: 'passed' });
+		expect(
+			(await submit(scriptedRunner({ 'p/example/a': { stdout: 'ok  \r\n\r\n' } }).runner)).verdict
+		).toBe('Accepted');
+	});
+
 	it('runs on past a timeout so every Test has a result', async () => {
 		const { runner, calls } = scriptedRunner({ 'p/example/a': { status: 'timeout', stdout: '' } });
 
@@ -529,7 +540,7 @@ describe('judgeReference', () => {
 			reference(scriptedRunner({ 'p/example/a': { status: 'timeout', cutOff: true } }).runner)
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 		await expect(
-			reference(scriptedRunner({}, () => ({ compileError: 'bad', results: [] })).runner)
+			reference(scriptedRunner({}, () => ({ compileError: 'bad' })).runner)
 		).rejects.toMatchObject({ code: 'RunnerUnavailable' });
 		await expect(
 			reference(scriptedRunner({}, () => ({ results: [] })).runner)
