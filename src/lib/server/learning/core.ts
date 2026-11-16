@@ -43,7 +43,12 @@ import {
 	topicView,
 	validateBuild
 } from './rules.ts';
-import { judgeSubmission, runBatch } from './submission.ts';
+import {
+	judgeReference,
+	judgeSubmission,
+	type ReferenceTestResult,
+	runBatch
+} from './submission.ts';
 
 export { LearningError, type LearningErrorCode } from './errors.ts';
 export type {
@@ -65,6 +70,7 @@ export type {
 	TopicView,
 	Verdict
 } from './rules.ts';
+export type { ReferenceTestResult } from './submission.ts';
 
 export interface LearningCoreDeps {
 	catalogue: Catalogue;
@@ -82,6 +88,11 @@ export interface LearningCoreDeps {
 	 * no call and no request can switch it.
 	 */
 	devMode?: boolean;
+}
+
+/** What running a Problem's Reference Code answers: one result per Test, in run order. */
+export interface ReferenceRunView {
+	readonly tests: readonly ReferenceTestResult[];
 }
 
 export interface Learner {
@@ -140,6 +151,15 @@ export interface Learner {
 	 * and the error carries its `revision`.
 	 */
 	submit(build: BuildRef, files: BuildFiles): Promise<SubmitView>;
+	/**
+	 * Dev mode only: runs the Problem's Reference Code in `language` against the Tests a Submit of the
+	 * Problem runs, with the same Runner requests, and answers each Test's name, kind (Example or
+	 * Hidden) and outcome, never an input, an expected output or Runner output. Saves no Build,
+	 * records no Submission and changes no progress; takes a run place like a Run. Throws NotFound
+	 * when dev mode is off, the Problem is unknown or has no Reference Code in `language`, and
+	 * RunnerUnavailable when the Runner cannot answer, a batch is cut off, or the code does not compile.
+	 */
+	runReference(problemId: string, language: Language): Promise<ReferenceRunView>;
 	/**
 	 * Builds the Problem's Topic in `language` from now on. Writes only the Learner's choice: a
 	 * Language's steps are created when first saved, seeded like any first touch (the Learner's
@@ -349,6 +369,21 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							return runView(tests, await runBatch(deps.runner, language, files, tests), revision);
 						})
 					),
+				runReference: async (problemId, language) => {
+					if (!devMode) throw new LearningError('NotFound');
+					const files = deps.catalogue.problem(problemId)?.referenceCode[language];
+					if (!files || Object.keys(files).length === 0) throw new LearningError('NotFound');
+					return withRunPlace(async () => ({
+						tests: await judgeReference({
+							catalogue: deps.catalogue,
+							problemId,
+							language,
+							files,
+							runner: deps.runner,
+							hiddenBatchTests: deps.hiddenBatchTests
+						})
+					}));
+				},
 				switchLanguage: async (problemId, language) => {
 					const topicId = await openStep(problemId); // NotFound / TopicLocked
 					if (!LANGUAGE_IDS.includes(language)) throw new LearningError('InvalidBuild');

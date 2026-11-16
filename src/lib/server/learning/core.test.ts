@@ -2113,3 +2113,183 @@ describe('dev mode', () => {
 		expect(heaps).toMatchObject({ coreSolved: 1, state: 'unlocked' });
 	});
 });
+
+describe('learner.runReference()', () => {
+	const problemId = 'stacks-pop';
+	const languages: Language[] = ['python', 'typescript', 'go'];
+
+	async function rows(db: Awaited<ReturnType<typeof createTestDb>>) {
+		return {
+			learner: await db.learner.findMany(),
+			chapterRead: await db.chapterRead.findMany(),
+			buildStep: await db.buildStep.findMany(),
+			topicLanguage: await db.topicLanguage.findMany(),
+			hintsRevealed: await db.hintsRevealed.findMany(),
+			submission: await db.submission.findMany()
+		};
+	}
+
+	it('answers NotFound with dev mode off, and sends nothing to the Runner', async () => {
+		const { learner, runner } = await setup();
+
+		await expect(learner.runReference(problemId, 'python')).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		expect(runner.calls).toEqual([]);
+	});
+
+	it('answers NotFound for an unknown Problem, and for a Language the Problem has no Reference Code in', async () => {
+		const { learner, runner } = await setup({ devMode: true });
+
+		await expect(learner.runReference('nope', 'python')).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		await expect(learner.runReference(problemId, 'cobol' as Language)).rejects.toMatchObject({
+			code: 'NotFound'
+		});
+		expect(runner.calls).toEqual([]);
+	});
+
+	it.each(languages)(
+		'answers a result per Test in %s: its name, Example or Hidden, and the outcome',
+		async (language) => {
+			const catalogue = await loadCatalogue(fixtureDir);
+			const hidden = catalogue.hiddenTests(problemId) ?? [];
+			expect(hidden.length).toBeGreaterThan(0);
+			const example = catalogue.problem(problemId)?.exampleTests[0];
+			if (!example) throw new Error('fixture has no Example Test');
+			const { learner } = await setup({
+				devMode: true,
+				acceptAll: true,
+				script: {
+					tests: {
+						[example.id]: { status: 'ok', stdout: 'wrong\n' },
+						[hidden[0]?.id ?? '']: { status: 'timeout' }
+					}
+				}
+			});
+
+			const { tests } = await learner.runReference(problemId, language);
+
+			expect(
+				tests.find(
+					(t) => t.problemId === problemId && t.kind === 'example' && t.name === example.name
+				)
+			).toEqual({
+				problemId,
+				name: example.name,
+				kind: 'example',
+				status: 'wrongAnswer'
+			});
+			expect(
+				tests.find(
+					(t) => t.problemId === problemId && t.kind === 'hidden' && t.name === hidden[0]?.name
+				)
+			).toEqual({
+				problemId,
+				name: hidden[0]?.name,
+				kind: 'hidden',
+				status: 'timeout'
+			});
+			expect(new Set(tests.map((t) => t.status))).toEqual(
+				new Set(['passed', 'wrongAnswer', 'timeout'])
+			);
+			for (const t of tests)
+				expect(Object.keys(t).sort()).toEqual(['kind', 'name', 'problemId', 'status']);
+		}
+	);
+
+	it('answers a runtime error as such', async () => {
+		const catalogue = await loadCatalogue(fixtureDir);
+		const first = catalogue.problem(problemId)?.exampleTests[0];
+		const { learner } = await setup({
+			devMode: true,
+			script: { tests: { [first?.id ?? '']: { status: 'runtimeError', stderr: 'secret trace' } } }
+		});
+
+		const { tests } = await learner.runReference(problemId, 'python');
+
+		expect(
+			tests.find((t) => t.problemId === problemId && t.name === first?.name && t.kind === 'example')
+				?.status
+		).toBe('runtimeError');
+		expect(JSON.stringify(tests)).not.toContain('secret trace');
+	});
+
+	it.each(languages)(
+		'sends the Runner the same limits, batches and files-shape in %s as a Submit of that Problem',
+		async (language) => {
+			const catalogue = await loadCatalogue(fixtureDir);
+			const files = catalogue.problem(problemId)?.referenceCode[language] ?? {};
+			const submitted = await setup({ devMode: true, acceptAll: true });
+			await submitted.learner.switchLanguage(problemId, language);
+			await submitted.learner.submit(ref(problemId, 0, language), files);
+			const submitCalls = submitted.runner.calls;
+			const reference = await setup({ devMode: true, acceptAll: true });
+
+			await reference.learner.runReference(problemId, language);
+
+			expect(submitCalls.length).toBeGreaterThan(0);
+			expect(reference.runner.calls).toEqual(submitCalls);
+			expect(reference.runner.calls.map((c) => c.limits)).toEqual(submitCalls.map((c) => c.limits));
+			expect(reference.runner.calls[0]?.files).toEqual({ ...files });
+		}
+	);
+
+	it('writes nothing: every row of every progress table is the same before and after', async () => {
+		const { learner, db } = await setup({ devMode: true, acceptAll: true });
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'x' });
+		await learner.revealHint('stacks-push');
+		await learner.switchLanguage('stacks-push', 'go');
+		const before = await rows(db);
+
+		for (const language of languages) await learner.runReference(problemId, language);
+
+		expect(await rows(db)).toEqual(before);
+		expect(before.buildStep).toHaveLength(1);
+	});
+
+	it('answers RunnerUnavailable when the Runner cannot answer', async () => {
+		const { learner } = await setup({ devMode: true, script: { unavailable: true } });
+
+		await expect(learner.runReference(problemId, 'python')).rejects.toMatchObject({
+			code: 'RunnerUnavailable'
+		});
+	});
+
+	it('takes a run place like a Run: refused when the Learner has none left, and frees it after', async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const runner: RunnerPort = {
+			execute: async (request) => {
+				await gate;
+				return {
+					results: request.tests.map(({ id }) => ({
+						id,
+						status: 'ok' as const,
+						stdout: '',
+						stderr: ''
+					}))
+				};
+			}
+		};
+		const { learner, core } = await setup({ devMode: true, runner, maxRunsPerLearner: 1 });
+		const first = learner.runReference(problemId, 'python');
+		await new Promise((r) => setTimeout(r, 20));
+
+		await expect(learner.runReference(problemId, 'python')).rejects.toMatchObject({
+			code: 'RunnerUnavailable'
+		});
+		await expect(learner.run(ref('stacks-push', 0), { 'main.py': 'x' })).rejects.toMatchObject({
+			code: 'RunnerUnavailable'
+		});
+		const bob = core.forLearner('bob').runReference(problemId, 'python');
+		release();
+		await expect(bob).resolves.toBeDefined();
+		await first;
+		await expect(learner.runReference(problemId, 'python')).resolves.toBeDefined();
+	});
+});
