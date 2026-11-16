@@ -10,11 +10,13 @@ test.use({ storageState: asLearner('e2e-problem-dev') });
 
 const consoleRegion = (page: Page) => page.getByRole('region', { name: 'Console' });
 const devButton = (page: Page) => page.getByRole('button', { name: 'Dev', exact: true });
-const view = (page: Page) =>
+// The band is the named region; the Dev view around it also holds the status and the results.
+const band = (page: Page) =>
 	page.getByRole('region', { name: 'Dev mode: run the reference solution', exact: true });
-const runButton = (page: Page) => view(page).getByRole('button', { name: /^Run(ning)? reference/ });
+const view = (page: Page) => page.locator('.dev');
+const runButton = (page: Page) => band(page).getByRole('button', { name: /^Run(ning)? reference/ });
 const picker = (page: Page) =>
-	view(page).getByRole('combobox', { name: 'reference language', exact: true });
+	band(page).getByRole('combobox', { name: 'reference language', exact: true });
 const viewStatus = (page: Page) => view(page).getByRole('status');
 const table = (page: Page, language: string) =>
 	view(page).getByRole('table', { name: `Reference solution results, ${language}` });
@@ -193,7 +195,9 @@ test('the keyboard reaches every control and a screen reader gets names', async 
 	await devButton(page).focus();
 	await page.keyboard.press('Enter');
 	await expect(devButton(page)).toHaveAttribute('aria-pressed', 'true');
-	await expect(view(page)).toBeVisible();
+	await expect(band(page)).toBeVisible();
+	await expect(band(page).getByRole('combobox')).toHaveCount(1);
+	await expect(band(page).getByRole('button')).toHaveCount(1);
 
 	await page.keyboard.press('Tab');
 	await expect(picker(page)).toBeFocused();
@@ -207,6 +211,9 @@ test('the keyboard reaches every control and a screen reader gets names', async 
 	await page.keyboard.press('Enter');
 	await expect(table(page, 'TypeScript')).toBeVisible();
 	await expect(runButton(page)).toBeFocused();
+	// The region holds the controls only: the status and the results sit outside it.
+	await expect(band(page).getByRole('status')).toHaveCount(0);
+	await expect(band(page).getByRole('table')).toHaveCount(0);
 
 	await expect(table(page, 'TypeScript').getByRole('rowheader')).toHaveText(['01', '01']);
 	await expect(page.getByRole('region', { name: 'Dev mode', exact: true })).toHaveCount(1);
@@ -225,7 +232,7 @@ test('a Run or Submit returns the console to Tests, and the dev result is still 
 		'true'
 	);
 	await expect(page.getByRole('listitem', { name: 'Example Test 01' })).toBeVisible();
-	await expect(view(page)).toHaveCount(0);
+	await expect(band(page)).toHaveCount(0);
 
 	await devButton(page).click();
 	await expect(table(page, 'Python')).toBeVisible();

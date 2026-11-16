@@ -99,8 +99,8 @@ const rowKey = (test: ReferenceTestResult) =>
 	`${test.problemId}\u0000${test.kind}\u0000${test.name}`;
 </script>
 
-<section class="dev" aria-label="Dev mode: run the reference solution">
-	<div class="band">
+<div class="dev">
+	<section class="band" aria-label="Dev mode: run the reference solution">
 		<div class="title">
 			<span class="marker" aria-hidden="true"></span>
 			<span class="label">Dev mode · reference solution</span>
@@ -114,7 +114,7 @@ const rowKey = (test: ReferenceTestResult) =>
 		</label>
 		<span id="dev-ref-help" class="help mono">Runs the reference solution on every Test. Your code is not touched.</span>
 		<button type="button" class="run mono" aria-describedby="dev-ref-help" aria-disabled={inflight} onclick={run}>{inflight ? 'Running reference…' : 'Run reference solution'}</button>
-	</div>
+	</section>
 
 	<div class="result">
 		<!-- Always in the page, so a screen reader hears each change of its text. -->
@@ -165,7 +165,7 @@ const rowKey = (test: ReferenceTestResult) =>
 			</ol>
 		{/if}
 	</div>
-</section>
+</div>
 
 <style>
 	.mono {
@@ -185,7 +185,7 @@ const rowKey = (test: ReferenceTestResult) =>
 		gap: 12px 20px;
 		padding: 16px 24px;
 		background: var(--panel);
-		border-bottom: 1px solid var(--rule);
+		border-bottom: 1px solid var(--ink);
 	}
 	.title {
 		display: flex;
