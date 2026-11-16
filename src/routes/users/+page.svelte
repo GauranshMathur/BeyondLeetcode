@@ -61,6 +61,21 @@ async function copyPassword() {
 	}
 }
 
+// An Invite is told apart by its own creation time, always in UTC read straight from the ISO string, so the
+// server and the browser print the same text. It shows to the minute, and to the second only when another
+// pending Invite still shares the minute.
+const inviteLabels = $derived.by(() => {
+	const minutes = data.pending.map((p) => p.createdAt.slice(0, 16));
+	return new Map(
+		data.pending.map((p) => {
+			const minute = p.createdAt.slice(0, 16);
+			const shared = minutes.filter((m) => m === minute).length > 1;
+			const text = (shared ? p.createdAt.slice(0, 19) : minute).replace('T', ' ');
+			return [p.id, `${text} UTC`];
+		})
+	);
+});
+
 // A reset that failed because its user is gone has no row to sit on: show it above the table instead.
 const resetOrphan = $derived(
 	form && 'resetMessage' in form && !data.accounts.some((a) => a.id === form.resetUserId)
@@ -315,14 +330,14 @@ const switchRegistration: SubmitFunction = ({ formElement, cancel }) => {
 							<th scope="row"><span class="pending">Pending invite</span></th>
 							<td>—</td>
 							<td>—</td>
-							<td>invited <time datetime={pending.createdAt}>{pending.createdAt.slice(0, 10)}</time></td>
+							<td>invited <time datetime={pending.createdAt}>{inviteLabels.get(pending.id)}</time></td>
 							<td class="actions">
 								<form method="POST" action="?/cancel" use:enhance>
 									<input type="hidden" name="id" value={pending.id} />
 									<button
 										type="submit"
 										class="quiet"
-										aria-label="Cancel invite from {pending.createdAt.slice(0, 10)}">Cancel invite</button
+										aria-label="Cancel invite from {inviteLabels.get(pending.id)}">Cancel invite</button
 									>
 								</form>
 							</td>

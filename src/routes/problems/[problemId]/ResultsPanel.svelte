@@ -266,4 +266,10 @@ const live = $derived.by((): { text: string; fail?: boolean; muted?: boolean } =
 			padding: 10px 0;
 		}
 	}
+	/* A short phone: the pane scrolls as a whole, so the console takes the height of its content instead of filling the pane. */
+	@media (max-width: 767.98px) and (max-height: 480px) {
+		.console {
+			flex: none;
+		}
+	}
 </style>

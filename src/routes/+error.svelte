@@ -1,9 +1,26 @@
 <script lang="ts">
 import { page } from '$app/state';
+
+// A Locked Topic's error carries its wire code as the message, so the page maps it to a sentence.
+const words = $derived.by((): { heading: string; message?: string } => {
+	const carried = page.error?.message ?? '';
+	if (page.status === 404) {
+		return { heading: 'Not found', message: 'That page does not exist. The link may be old.' };
+	}
+	if (page.status === 403) {
+		return carried === 'TopicLocked'
+			? {
+					heading: 'This Topic is locked.',
+					message: 'Complete its Prerequisites on the Map to open it.'
+				}
+			: { heading: 'Forbidden' };
+	}
+	return { heading: carried };
+});
 </script>
 
 <svelte:head>
-	<title>{page.error?.message} · BeyondLeetcode</title>
+	<title>{words.heading} · BeyondLeetcode</title>
 </svelte:head>
 
 <main>
@@ -11,7 +28,10 @@ import { page } from '$app/state';
 	<div class="numeral" aria-hidden="true">{page.status}</div>
 	<div class="body">
 		<span class="kicker">Error {page.status}</span>
-		<h1>{page.error?.message}</h1>
+		<h1>{words.heading}</h1>
+		{#if words.message}
+			<p class="message">{words.message}</p>
+		{/if}
 		{#if page.status === 404}
 		<svg class="figure" viewBox="0 0 560 120" width="560" height="120" role="img" aria-label="A requested path is hashed to a bucket that is empty, so the lookup misses.">
 			<rect x="0" y="30" width="190" height="60" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.25" />
@@ -64,6 +84,12 @@ import { page } from '$app/state';
 		font-size: 60px;
 		line-height: 1.04;
 		letter-spacing: -0.015em;
+	}
+	.message {
+		margin: 0;
+		font-size: 20px;
+		line-height: 1.4;
+		color: var(--muted);
 	}
 	.figure {
 		display: block;

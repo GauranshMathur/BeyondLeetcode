@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
+const editor = readFileSync(new URL('../editor/CodeEditor.svelte', import.meta.url), 'utf8');
 
 type Mode = 'light' | 'dark';
 
@@ -62,6 +63,11 @@ describe('colour tokens meet WCAG contrast', () => {
 			}
 		}
 	}
+
+	it("the editor's plain selection is drawn on the selection token the pairs above hold", () => {
+		const rule = editor.match(/'\.cm-selectionBackground[^']*':\s*\{([^}]*)\}/);
+		expect(rule?.[1]).toContain("backgroundColor: 'var(--selection-match)'");
+	});
 
 	it('the light accent is the canvas vermilion', () => {
 		expect(token('accent', 'light').toLowerCase()).toBe('#ae3f1d');
