@@ -687,3 +687,46 @@ describe('a leading h1 that repeats the page title', () => {
 		expect(solution.explanationHtml).toBe(`<h1>${title}</h1>\n<p>Solution text</p>\n`);
 	});
 });
+
+describe('dev mode', () => {
+	const chain = catalogueOf([topic('a', []), topic('b', ['a']), topic('c', ['a', 'b'])]);
+
+	it('shows no Topic Locked, and Complete still needs real progress', () => {
+		expect(states(mapView(chain, none, true))).toEqual({
+			a: 'unlocked',
+			b: 'unlocked',
+			c: 'unlocked'
+		});
+		expect(states(mapView(chain, progress(['b-c'], ['b-p']), true))).toEqual({
+			a: 'unlocked',
+			b: 'complete',
+			c: 'unlocked'
+		});
+	});
+
+	it('is off by default and when false: the same Map as without the option', () => {
+		expect(mapView(chain, none, false)).toEqual(mapView(chain, none));
+		expect(states(mapView(chain, none))).toMatchObject({ b: 'locked', c: 'locked' });
+	});
+
+	it('opens a Topic that would be Locked, and still says NotFound for an unknown one', () => {
+		expect(requireOpenTopic(chain, none, 'c', true)).toBe('unlocked');
+		expect(() => requireOpenTopic(chain, none, 'c')).toThrow(
+			expect.objectContaining({ code: 'TopicLocked' })
+		);
+		expect(() => requireOpenTopic(chain, none, 'zzz', true)).toThrow(
+			expect.objectContaining({ code: 'NotFound' })
+		);
+	});
+
+	it('lets a Read mark in a Locked Topic count, and reports nothing newly Unlocked', () => {
+		expect(() => reachChapter(chain, none, 'b-c')).toThrow(
+			expect.objectContaining({ code: 'TopicLocked' })
+		);
+		expect(reachChapter(chain, none, 'b-c', true)).toEqual({
+			read: true,
+			topicCompleted: false,
+			newlyUnlocked: []
+		});
+	});
+});

@@ -15,6 +15,8 @@ import {
 export interface ProgressDeps {
 	catalogue: Catalogue;
 	db: Db;
+	/** Dev mode (see `mapView`); off when absent. */
+	devMode?: boolean;
 }
 
 /** What a Submission stores. */
@@ -69,13 +71,13 @@ export async function loadProgress(
  * not, gets none.
  */
 export async function recordChapterRead(
-	{ catalogue, db }: ProgressDeps,
+	{ catalogue, db, devMode }: ProgressDeps,
 	learnerId: string,
 	chapterId: string,
 	readAt: Date
 ): Promise<ProgressChange> {
 	const current = await loadProgress(catalogue, db, learnerId);
-	const change = reachChapter(catalogue, current, chapterId); // NotFound / TopicLocked
+	const change = reachChapter(catalogue, current, chapterId, devMode); // NotFound / TopicLocked
 	if (current.readChapters.has(chapterId)) return change;
 	try {
 		// The insert comes first so the transaction writes before it reads anything: the read below
@@ -84,12 +86,17 @@ export async function recordChapterRead(
 		return await db.$transaction(async (tx) => {
 			await tx.chapterRead.create({ data: { learnerId, chapterId, readAt } });
 			const before = await loadProgress(catalogue, tx, learnerId, { chapterId });
-			return reachChapter(catalogue, before, chapterId);
+			return reachChapter(catalogue, before, chapterId, devMode);
 		});
 	} catch (e) {
 		if (!isUniqueViolation(e)) throw e;
 		// A concurrent call inserted the mark first and reports it; this one changed nothing.
-		return reachChapter(catalogue, await loadProgress(catalogue, db, learnerId), chapterId);
+		return reachChapter(
+			catalogue,
+			await loadProgress(catalogue, db, learnerId),
+			chapterId,
+			devMode
+		);
 	}
 }
 
@@ -98,7 +105,7 @@ export async function recordChapterRead(
  * the Accepted panel. One short transaction; the Runner has already answered.
  */
 export async function recordSubmission(
-	{ catalogue, db }: ProgressDeps,
+	{ catalogue, db, devMode }: ProgressDeps,
 	learnerId: string,
 	submission: SubmissionRecord
 ): Promise<{ submissionId: string; solved: boolean; accepted?: AcceptedView }> {
@@ -113,7 +120,7 @@ export async function recordSubmission(
 			submissionId,
 			solved: after.solvedProblems.has(submission.problemId),
 			...(submission.verdict === 'Accepted' && {
-				accepted: acceptedDiff(catalogue, before, after, submission.problemId)
+				accepted: acceptedDiff(catalogue, before, after, submission.problemId, devMode)
 			})
 		};
 	});
