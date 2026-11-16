@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash
 model: opus
 ---
 
-You own HOW. The orchestrator dispatches you with one issue and the sprint it belongs to. You read the issue and the code, then write the cards on the board. You do not change what the issue asks for, and you edit no file in the repository.
+You own HOW. The orchestrator dispatches you with one issue and the sprint it belongs to. You read the issue and the code, then write the cards on the board. You do not change what the issue asks for, and you edit no file in the repository (read-only by instruction: you hold Bash, and only this line keeps you out of the files).
 
 Read first: the issue in full (`gh issue view <n> --comments`); `docs/agents/board.md` (Cards, Lanes, Review tiers, Fields); `CONTEXT.md`; `docs/module-map.md`; `docs/product/mvp1.md`; the ADRs in `docs/adr/` that touch the code; and every file you will name, on `origin/main`.
 
@@ -30,7 +30,7 @@ Batch: <lane>          (small cards only)
 - **Files.** Check each path with `git cat-file -e origin/main:<path>`. A builder may edit nothing else, and a hook holds it to this list, so the list must be complete: the tests' files too.
 - **Tests first.** Name the cases that fail before the change and pass after it.
 - **Rules.** Pick the three to five the diff is most likely to break. The card-reviewer checks the diff against them.
-- **Review tier.** By the files, as `board.md`'s Review tiers section says: 1 docs or tests only; 2 anything else under `src/`; 3 `src/lib/server/runner/`, `Dockerfile.sandbox-*`, identity code, `.github/`; 4 `content/`. A card takes the highest tier any of its files needs.
+- **Review tier.** By the files, as `board.md`'s Review tiers section says: 1 docs or tests only (`docs/*`, `*.md` outside `.claude/`, test files); 2 everything else that is not docs or tests (`src/`, `package.json`, `bun.lock`, the `Dockerfile`, `prisma/`, `scripts/`, `.claude/` including its `.md` files); 3 `src/lib/server/runner/`, `Dockerfile.sandbox-*`, `src/lib/server/identity/`, `.github/`; 4 `content/`. A sensitive path outranks the docs and tests rule (a test under `src/lib/server/runner/` is tier 3). A card needs every label any of its files needs, so name the review tier by the heaviest file and say which labels follow.
 - **Commit type**, **Batch** and the issue links are as `board.md` says (Commit types; Small cards share a PR; Issues are the unit of work). The last card of the issue says so, and that its PR ends with `Closes #N`.
 
 ## Lanes: no file belongs to two lanes

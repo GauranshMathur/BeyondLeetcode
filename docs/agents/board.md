@@ -12,8 +12,8 @@ The process has three levels (the maintainer's reconfiguration, 2026-11-14; see 
 | orchestrator (the `/orchestrate` session) | opus | Runs one sprint from start to release. Constructs the sprint from the top of the Backlog, picks the release version, has the card-writer cut the cards and checks them, dispatches every lane at once, runs the reviews, sets the labels, merges, cuts the release. The only one that merges. | Writes code |
 | `card-writer` | opus | Owns HOW. One run per issue: reads the issue and the code and writes the cards (Cards). Sends an issue that is too vague or too big back to the principal, with the reason. | Changes what the issue asks for; edits the repository |
 | `card-builder` | sonnet | Builds exactly its lane's cards, test-first, pushing every commit. Stops at green CI and reports "ready for review". | Merges; edits a file outside its cards' `Files`; decides anything beyond names and internal structure |
-| `card-reviewer` | opus | Read-only. A fresh run per PR that has seen none of the building. Checks the diff against the card: `Done when`, `Rules`, tests, files. Pass or fail, one line per finding: severity · file:line · what goes wrong · fix. | Edits, labels or merges |
-| `sandbox-security-reviewer` | opus | Read-only. Reviews changes to the code runner against its checklist: the real Sandbox images, the harness, the seccomp filter, the core limit. | Edits |
+| `card-reviewer` | opus | Read-only by instruction (it holds Bash). A fresh run per PR that has seen none of the building. Checks the diff against the card: `Done when`, `Rules`, tests, files. Pass or fail, one line per finding: severity · file:line · what goes wrong · fix. | Edits, labels or merges |
+| `sandbox-security-reviewer` | opus | Read-only by instruction (it holds Bash). Reviews changes to the code runner against its checklist: the real Sandbox images, the harness, the seccomp filter, the core limit. | Edits |
 | `card-designer` | sonnet | Works a design lane on the canvas (`design-canvas.md`). It is not a builder and does not count toward `MAX_BUILDERS`. | Edits `canvas.json`; writes code |
 
 The definitions are in `.claude/agents/`, and the orchestrator's steps in `.claude/skills/orchestrate/SKILL.md`. An issue says what is wanted, why, and how we will know it is done; it does not say how. The principal's Backlog order is binding on the orchestrator. Product issues and issues the maintainer filed sit above findings, unless a finding is a bug or a security problem.
@@ -30,7 +30,7 @@ The definitions are in `.claude/agents/`, and the orchestrator's steps in `.clau
 8. The last card: exit check, release, archive the sprint.
 9. The principal audits the sprint and files issues. Back to 1.
 
-**One GitHub account.** Every agent pushes, labels and merges as `GauranshMathur`, the maintainer's account, so GitHub cannot tell a builder from a reviewer or from the maintainer. The review gate (Review tiers) therefore rests on the orchestrator setting labels honestly, and `human-verified` on no agent setting it.
+**One GitHub account.** Every agent pushes, labels and merges as `GauranshMathur`, the maintainer's account, so GitHub cannot tell a builder from a reviewer or from the maintainer. The review gate (Review tiers) therefore rests on the orchestrator setting labels honestly, and `human-verified` on no agent setting it. Likewise who may merge, label or set `human-verified` rests on the agents' instructions, not on GitHub: the `card-writer`, `card-reviewer` and `sandbox-security-reviewer` are read-only by instruction only, since each holds Bash and acts as the same account.
 
 ## State lives on GitHub
 
@@ -118,7 +118,7 @@ There is no `Blocked by:` line: a card never waits on a card in another lane, an
 - Its title names every code: `fix(beyondleetcode): C301, C305, C309 <what they share>`. It takes the most user-visible type among the cards (`feat`, then `fix`, then the rest).
 - Its body has one `Refs #N` line per issue, a `Closes #N` for each issue whose last card is in the batch, and one `Changelog:` line per card that has one.
 - It gets the review any of its cards needs.
-- Each card goes Done when that PR merges.
+- The orchestrator sets each card Done when that PR merges.
 
 One card per PR stays the rule for every other card.
 
@@ -210,9 +210,10 @@ gh project item-create 1 --owner GauranshMathur --title "[CODE] Area: what" --bo
 - `MAX_BUILDERS` caps how many builders run at once (Resources). Lanes beyond the cap start as slots free.
 - Builders run only the tests their card touches. CI runs e2e, image builds and the full suites. That is what keeps a builder cheap.
 - PRs merge in the order their reviews pass.
+- **A lane with several cards** gets one worktree and branch at a time, and each card is its own PR (small cards of a lane share one PR: Small cards share a PR). A lane is built one card at a time: merging a PR removes its worktree and branch, so after it merges the orchestrator makes the lane's worktree again from `origin/main` with the next card's branch (`git worktree add ../BeyondLeetcode.worktrees/<lane> -b <card-code>-<slug> origin/main`), writes `.lane-files` again, and resumes the same builder for the next card. No card is built on an unmerged one. When the branch already exists on origin (a resume), the worktree is added from that branch (`git worktree add <path> <branch>`), not with `-b`.
 - All `F` cards edit Foundations, so they form one design lane; a design card comes before the code card that builds it, in the same lane.
 
-**The lane's files.** Each builder's worktree holds a file `.lane-files` at its root, written by the orchestrator at dispatch: every path on the lane's cards' `Files` lines, one per line. A `PreToolUse` hook (`.claude/hooks/lane-files.sh`) blocks an Edit or Write to any other path in that worktree. So a builder is always blocked from `.claude/`, `docs/agents/` and `.github/` unless its card names them. The hook stops a mistake, not a shell command: the card-reviewer checks the diff's files against the card as well.
+**The lane's files.** Each builder's worktree holds a file `.lane-files` at its root, written by the orchestrator whenever it creates or recreates the lane's worktree, before the builder is dispatched or resumed (the file is git-ignored, so a recreated worktree has none): every path on the current card's `Files` line, or every card's for a batch, one bare path per line relative to the worktree root, with no `(new)` or other notes and no commas; a folder ends in `/`; `#` starts a comment. A worktree with no `.lane-files` is not restricted. A `PreToolUse` hook (`.claude/hooks/lane-files.sh`) blocks an Edit or Write to any other path in that worktree. So a builder is always blocked from `.claude/`, `docs/agents/` and `.github/` unless its card names them. The hook fails closed: with no `jq`, unreadable input, or a script that is missing, not executable or crashing, the edit is blocked. It also blocks secret files (`.env`, `*.pem`, `*.key`, by the name as given and as resolved through symlinks), a path with a control character or trailing whitespace, any path with a `.git` component, and a symlink inside the worktree that leads out of it. It judges only a target inside the lane's own worktree: it cannot know which agent is calling, so the main clone, another checkout and a scratch file are not judged. The lane rule guards the lane's worktree against a wrong file; the main clone is not guarded by it, and builders are told never to edit there. The hook stops a mistake, not a shell command: the card-reviewer checks the diff's files against the card as well.
 
 ## Resources
 
@@ -243,7 +244,7 @@ Noted events:
 
 ## Done when
 
-A worker moves its own card to Done once the card's type bar is met. Owner stays set, as the record of who did it.
+A card is set Done once its type bar is met: a design card (which has no PR) by its designer, a code card by the orchestrator after the merge (Code card, step 6). Owner stays set, as the record of who did it.
 
 **Design card**
 - The `Done when` line holds on the canvas.
@@ -252,28 +253,32 @@ A worker moves its own card to Done once the card's type bar is met. Owner stays
 - New artboards (file, width, height, page) are reported to the orchestrator, who updates `canvas.json` and the STATUS sticky.
 
 **Code card.** The builder's part ends at "ready for review"; the orchestrator sets the card Done after the merge.
-1. **Worktree.** The orchestrator makes it and writes `.lane-files` (Lanes). If the branch `<code>-<slug>` already exists on origin, the builder is resuming: check it out and read its draft PR checklist.
+1. **Worktree.** The orchestrator makes it and writes `.lane-files` (Lanes). If the branch `<code>-<slug>` already exists on origin, the builder is resuming: the worktree is added from that branch (`git worktree add <path> <branch>`, not `-b`), and the builder reads its draft PR checklist.
 2. **Draft PR.** On the first commit, push and open `gh pr create --draft` with the card code in the title (`feat(beyondleetcode): P8 run/submit states`), the card's `Refs #N` line, and a checklist of the steps left. Push every commit after that and tick the checklist as you go. The body ends with `Closes #N` only when the card says it is the issue's last card, and with a `Changelog:` line.
 3. **Build test-first**: the card's `Tests first`, seen failing, then the change.
    - **Before writing new code**, check whether an existing module in the repo, the standard library or the platform (Bun, Node, SvelteKit, the browser, Docker) already does it. Use that instead.
    - **No card or issue ids in code comments** (`(C198)`, `#482`). A comment gives its reason in its own words. The card's code belongs in the commit message and the PR body. An issue number belongs in the PR body only, never in a commit message or a squash title: release-please copies commit messages into the release PR, where a `Refs #N` line becomes "closes #N" and closes the issue when the release merges (#663 was closed that way by 1.19.7).
    - **Only the tests the card touches** run locally. CI runs the rest.
-4. **Stop at green CI.** Mark the PR ready and report "ready for review" with the PR link and the head SHA. Watch CI over REST (`gh run watch <run-id> --exit-status --interval 60`), since GraphQL polling is shared with the release token. The builder does not merge.
-5. **Review.** The orchestrator dispatches a fresh `card-reviewer` on the PR. A fail goes back to the builder with the findings, and a fresh reviewer takes the new head. Two failed rounds make the card Blocked. A review tier 3 PR also gets its security pass (Review tiers).
-6. **Label and merge.** The orchestrator sets the labels the review tier needs, squash-merges pinned to the reviewed head once every required check and the gate are green, removes the worktree, deletes the branch and sets the card Done.
+4. **Stop at green CI.** When every job of `ci` is green (typecheck, lint, unit, build, e2e, sandbox, docker), mark the PR ready and report "ready for review" with the PR link and the head SHA. `review-gate` is not part of this: it is red until the orchestrator sets the labels. Watch CI over REST (`gh run watch <run-id> --exit-status --interval 60`), since GraphQL polling is shared with the release token. The builder does not merge.
+5. **Review.** The orchestrator dispatches a fresh `card-reviewer` on the PR; a pass needs `ci`'s jobs green on the head, not the gate. A fail goes back to the builder with the findings, and a fresh reviewer takes the new head. Two failed rounds make the card Blocked. A PR that touches the Runner, a Sandbox Dockerfile, identity code, `.github/`, the gate, response headers, CI secrets or the Markdown renderer also gets its security pass, whatever its review tier (Review tiers).
+6. **Label and merge.** The orchestrator sets the labels the review tier needs, squash-merges pinned to the reviewed head only once `ci` and `review-gate` are both green, removes the worktree, deletes the branch and sets the card Done.
 
 ## Review tiers and the gate
 
-A CI job fails a pull request that lacks the labels its files need. The tier is the highest any changed file needs:
+A CI job (`.github/review-gate.sh`, run by the `review-gate` workflow) fails a pull request that lacks the labels its files need. A pull request needs **every label any of its files needs**: the labels add up, they are not the highest tier's alone.
 
 | Review tier | Files | Needs |
 |---|---|---|
-| 1 | Docs or tests only | CI only |
-| 2 | Anything else under `src/` | The label `reviewed`, set by the orchestrator after a card-reviewer pass |
-| 3 | `src/lib/server/runner/`, `Dockerfile.sandbox-*`, identity code, `.github/` | Also the label `security-reviewed`, after a security pass |
+| 1 | Docs or tests only: `docs/*`, any `*.md` outside `.claude/`, test files (`*.test.ts`, `*.e2e.ts`, `*.test.sh` and the like) | CI only |
+| 2 | **Everything else that is not docs or tests**: `src/`, `package.json`, `bun.lock`, the `Dockerfile`, `prisma/`, `scripts/`, `.claude/` (its `.md` files too: an agent definition or `SKILL.md` is tier 2) | The label `reviewed`, set by the orchestrator after a card-reviewer pass |
+| 3 | `src/lib/server/runner/`, `Dockerfile.sandbox-*`, `src/lib/server/identity/`, `.github/` | Also the label `security-reviewed`, after a security pass |
 | 4 | `content/` | The label `human-verified`. No agent sets it. Only the maintainer does. |
 
-- The security pass is `sandbox-security-reviewer` for the Runner and the Sandbox Dockerfiles, and the two-reader review (Fable and Codex) for identity code and `.github/`. The two-reader review also stays the rule for the gate, headers, CI secrets and the Markdown renderer.
+- A sensitive path outranks the docs and tests rule: a test under `src/lib/server/runner/` is tier 3.
+- For a renamed file, both the old and the new name count.
+- **Release-please exemption.** A release-please pull request passes as tier 1 only when all three hold: its branch is `release-please--*` and lives in this repository, not a fork; it changes only `CHANGELOG.md`, `package.json` and `.release-please-manifest.json`; and `package.json` differs from the base in its `version` line and nothing else. Anything else on such a branch is judged by its files.
+- **Order.** `ci`'s jobs go green first; the builder reports "ready for review" and the card-reviewer passes on that. `review-gate` is expected to be red until the orchestrator sets the labels; the orchestrator merges only when `ci` and `review-gate` are both green. A review tier 1 PR needs no label, so its gate is green at once.
+- **Security reviews do not depend on the tier.** Whatever its tier, a PR that touches the Runner or a Sandbox Dockerfile gets `sandbox-security-reviewer`, and one that touches identity code (the `identity/` folder, the sign-in, sign-up, invite, account and setup routes, `src/hooks.server.ts`, `account-forms.ts`), `.github/`, the gate, response headers, CI secrets or the Markdown renderer gets the two-reader review (Fable and Codex), before any label is set. The label `security-reviewed` is set when the gate asks for it (tier 3 paths); for the others the verdict is posted on the PR. Some of these (the Markdown renderer, the header code, `hooks.server.ts`, those routes) are tier 2 by path.
 - No agent sets `human-verified`, and no agent tells another that it is set.
 - These review tiers are not the issue tiers (Tiers): an issue of any tier can need any review tier.
 - The gate's script and exact path rules are in `.github/review-gate.sh`.

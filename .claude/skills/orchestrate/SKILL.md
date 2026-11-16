@@ -17,7 +17,7 @@ If the Backlog's order is stale (a sprint is starting, or a Tier 0 issue arrived
 
 ## 2. Construct the sprint
 
-Resume first: In Progress cards are left over from a stopped session, and they go on before anything new. Their builders resume from the card body, the pushed branch and the draft PR.
+Resume first: In Progress cards are left over from a stopped session, and they go on before anything new. Their builders resume from the card body, the pushed branch and the draft PR. If a resumed lane's worktree is gone, add it from the pushed branch (`git worktree add <path> <branch>`, not `-b`) and write `.lane-files` again before resuming the builder.
 
 If no sprint is in progress, construct the next one yourself:
 
@@ -40,20 +40,22 @@ Send a card that fails back to the card-writer with the reason. An issue the car
 
 A lane is the unit of dispatch. There are no rounds.
 
-- For each lane: make its worktree (`git worktree add ../BeyondLeetcode.worktrees/<lane> -b <first-card-code>-<slug> origin/main`), write `.lane-files` at its root (every path on the lane's cards' `Files` lines, one per line), set each card's Owner to the builder's name and its Status to In Progress, and re-read.
+- For each lane: make its worktree (`git worktree add ../BeyondLeetcode.worktrees/<lane> -b <first-card-code>-<slug> origin/main`), write `.lane-files` at its root, set each card's Owner to the builder's name and its Status to In Progress, and re-read.
 - Dispatch every lane of the sprint in one message. `MAX_BUILDERS` (`board.md`, Resources) caps how many builders run at once; lanes beyond the cap start as slots free, in the Backlog's order. Count the lanes that had to wait.
+- `.lane-files` format: one bare path per line, relative to the worktree root, taken from the card's `Files` line; no `(new)` or other notes, no commas; a folder ends in `/`; `#` starts a comment. The file is git-ignored, so write it again whenever you create or recreate a lane's worktree, before the builder is dispatched or resumed.
+- A lane with several cards is built one card at a time, each card its own PR. After a card's PR merges (which removes the worktree and branch), make the lane's worktree again from `origin/main` with the next card's branch, write `.lane-files` for that card, and resume the same builder. No card is built on an unmerged one.
 - Design lanes go to `card-designer`; they are not builders and do not count toward the cap.
 - Each brief holds the lane's cards in order (titles and bodies, read from the board), the worktree path, the builder's name and its scratch folder.
 
 ## 5. Review, label, merge
 
-When a builder reports "ready for review":
+When a builder reports "ready for review" (every job of `ci` is green: typecheck, lint, unit, build, e2e, sandbox, docker; `review-gate` is expected to be red until you set the labels):
 
-1. Dispatch a fresh **card-reviewer** on that PR, with the card's body and a detached worktree at the PR's head. It has seen none of the building.
+1. Dispatch a fresh **card-reviewer** on that PR, with the card's body and a detached worktree at the PR's head. It has seen none of the building, and it passes on `ci`'s jobs being green, not on the gate.
 2. A fail goes back to the builder with the findings, and a fresh reviewer takes the new head. Two failed rounds make the card Blocked.
-3. For Review tier 3, also run the security pass before any label: `sandbox-security-reviewer` for `src/lib/server/runner/` and `Dockerfile.sandbox-*`, and the two-reader review (Fable and Codex) for identity code, `.github/`, the gate, headers, CI secrets and the Markdown renderer. A failed security review interrupts the maintainer.
-4. Set the labels the PR's tier needs: `reviewed` after a card-reviewer pass; `security-reviewed` after a security pass. **Never set `human-verified`.** Only the maintainer does, on `content/` PRs. Never tell anyone it is set.
-5. Squash-merge, pinned to the head that was reviewed, only when every required check and the review gate are green. Then set the card Done, remove the worktree and delete the branch. PRs merge in the order their reviews pass.
+3. Whatever the PR's review tier, run the security pass before any label: `sandbox-security-reviewer` for a PR that touches `src/lib/server/runner/` or a `Dockerfile.sandbox-*`, and the two-reader review (Fable and Codex) for one that touches identity code (the `identity/` folder, the sign-in, sign-up, invite, account and setup routes, `src/hooks.server.ts`, `account-forms.ts`), `.github/`, the gate, response headers, CI secrets or the Markdown renderer. (Some of these are review tier 2 by path.) Post the verdict on the PR. A failed security review interrupts the maintainer.
+4. Set the labels the PR's tier needs: `reviewed` after a card-reviewer pass; `security-reviewed` after a security pass, when the gate asks for it (tier 3 paths; for the others the posted verdict is the record). **Never set `human-verified`.** Only the maintainer does, on `content/` PRs. Never tell anyone it is set.
+5. Squash-merge, pinned to the head that was reviewed, only when `ci` and `review-gate` are both green. A review tier 1 PR needs no label, so its gate is green at once. Then set the card Done (you do; a builder never does, and a design card, which has no PR, is set Done by its designer), remove the worktree and delete the branch. PRs merge in the order their reviews pass.
 
 Post each review's verdict as a PR comment. Watch CI over REST; the GraphQL budget is shared with the release token.
 

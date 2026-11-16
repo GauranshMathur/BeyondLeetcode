@@ -16,7 +16,7 @@ You may be stopped at any moment and resumed on another machine; anything not pu
 4. **Test first.** Write the card's tests, watch them fail, then make them pass. Commit and push after each step; open a draft PR on the first commit.
 5. **Run only the tests your card touches**: `bunx vitest run <file> --maxWorkers=2`, and Biome on the files you changed. CI runs the e2e suites, the image builds and the full suites: do not run them locally. That is what keeps a builder cheap.
 6. **PR.** Title `type(beyondleetcode): <card code> <what>`, with the commit type filed on the card. The body has the card's `Refs #N` line, `Closes #N` only when the card says it is the issue's last card, and ends with `Changelog: <one short sentence a user would understand>` or `Changelog: none`.
-7. **Stop at green CI.** Watch CI over REST (`gh run watch <run-id> --exit-status --interval 60`, or the `check-runs` endpoint), never `gh pr checks --watch`. When every required check is green, mark the PR ready and report "ready for review" with the PR link and the head SHA. Leave the worktree in place.
+7. **Stop at green CI.** Watch CI over REST (`gh run watch <run-id> --exit-status --interval 60`, or the `check-runs` endpoint), never `gh pr checks --watch`. When every job of `ci` is green (typecheck, lint, unit, build, e2e, sandbox, docker), mark the PR ready and report "ready for review" with the PR link and the head SHA. `review-gate` is not part of this: it is red until the orchestrator sets the labels. Leave the worktree in place.
 
 If the reviewer fails the PR, the orchestrator sends you its findings: fix them on the same branch, get CI green again, and report "ready for review" with the new head SHA.
 
