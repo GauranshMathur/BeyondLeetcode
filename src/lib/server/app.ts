@@ -1,4 +1,4 @@
-import { type Catalogue, loadCatalogue } from './content/catalogue.ts';
+import { type Catalogue, createReloadingCatalogue, loadCatalogue } from './content/catalogue.ts';
 import { createDb } from './db.ts';
 import { createIdentity, createLocalIdentity, type InstanceIdentity } from './identity/index.ts';
 import { createMultiUserInstance, type MultiUser } from './identity/multi-user-instance.ts';
@@ -6,7 +6,7 @@ import { parseOrigin } from './identity/origin.ts';
 import { MIN_SECRET_LENGTH, secretProblem } from './identity/secret.ts';
 import { createFirstAdmin, type FirstAdminInput } from './identity/setup.ts';
 import { createInstance, type Instance } from './instance.ts';
-import { createLearningCore, type LearningCore } from './learning/core.ts';
+import { createLearningCore, type Learner, type LearningCore } from './learning/core.ts';
 import { createHttpRunner } from './runner/http-adapter.ts';
 import type { RunnerPort } from './runner/port.ts';
 import { createCatalogueScriptedRunner } from './runner/scripted-catalogue.ts';
@@ -77,8 +77,12 @@ export async function createApp(env: {
 		);
 	}
 	refuseAuthEnvOverrides();
-	const catalogue = await loadCatalogue(env.CONTENT_DIR);
-	const runner = chooseRunner(env, catalogue);
+	const contentDir = env.CONTENT_DIR;
+	const catalogue = await loadCatalogue(contentDir);
+	// In dev mode the core gets a catalogue that reads CONTENT_DIR again on each call (decided below,
+	// once the Instance mode is known); the Runner shares it so a scripted Runner sees the same edit.
+	const reloading = createReloadingCatalogue(catalogue, () => loadCatalogue(contentDir));
+	const runner = chooseRunner(env, devModeRequested ? reloading.catalogue : catalogue);
 	const db = createDb(env.DATABASE_URL);
 	const instance = await createInstance(db, { devModeRequested });
 	const auth = multiUserEnvironment(env);
@@ -131,13 +135,41 @@ export async function createApp(env: {
 				return createFirstAdmin({ instance, auth: multi.auth, db }, input);
 			}
 		},
-		core: createLearningCore({ catalogue, db, runner, devMode })
+		core: devMode
+			? readingFreshContent(
+					createLearningCore({ catalogue: reloading.catalogue, db, runner, devMode }),
+					reloading.scope
+				)
+			: createLearningCore({ catalogue, db, runner, devMode })
 	};
 	// A non-writable data property: nothing can switch it on after start.
 	return Object.defineProperty(app, 'devMode', {
 		value: devMode,
 		enumerable: true
 	}) as App;
+}
+
+/**
+ * Dev mode: every call on a Learner reads CONTENT_DIR again and runs against that one snapshot. A
+ * folder that fails validation answers its ContentError from the call and nothing else changes, so
+ * the next call reads again. The folder is the one the operator set; a request names nothing to read.
+ */
+function readingFreshContent(
+	core: LearningCore,
+	scope: <T>(work: () => Promise<T>) => Promise<T>
+): LearningCore {
+	return {
+		forLearner(learnerId) {
+			const learner = core.forLearner(learnerId);
+			return Object.fromEntries(
+				Object.entries(learner).map(([name, method]) => [
+					name,
+					(...args: unknown[]) =>
+						scope(() => (method as (...a: unknown[]) => Promise<unknown>)(...args))
+				])
+			) as unknown as Learner;
+		}
+	};
 }
 
 /**

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
@@ -100,6 +101,44 @@ export class ContentError extends Error {
 		super(`Invalid content, ${issues.length} issue(s):\n${issues.map((i) => `- ${i}`).join('\n')}`);
 		this.name = 'ContentError';
 	}
+}
+
+/**
+ * A catalogue that reads the content again each time `scope` is entered (dev mode). `catalogue` is
+ * the one object handed to the Learning core: inside a `scope` it answers from the snapshot that
+ * scope read, so one call sees one whole catalogue even while another scope swaps in a newer read;
+ * outside any scope it answers from the last snapshot read successfully (the one it started with).
+ * `scope` reads, and when the read throws (a ContentError while a file is half edited) it throws
+ * that error and does not run `work`; the next scope reads again, so a fixed file recovers.
+ */
+export interface ReloadingCatalogue {
+	readonly catalogue: Catalogue;
+	scope<T>(work: () => Promise<T>): Promise<T>;
+}
+
+export function createReloadingCatalogue(
+	initial: Catalogue,
+	reload: () => Promise<Catalogue>
+): ReloadingCatalogue {
+	const scoped = new AsyncLocalStorage<Catalogue>();
+	let latest = initial;
+	const current = () => scoped.getStore() ?? latest;
+	const catalogue: Catalogue = {
+		topicMap: () => current().topicMap(),
+		topic: (id) => current().topic(id),
+		chapter: (id) => current().chapter(id),
+		problem: (id) => current().problem(id),
+		hiddenTests: (id) => current().hiddenTests(id),
+		mainLinePlace: (id) => current().mainLinePlace(id)
+	};
+	return {
+		catalogue,
+		async scope(work) {
+			const snapshot = await reload();
+			latest = snapshot;
+			return scoped.run(snapshot, work);
+		}
+	};
 }
 
 /** Loads and validates the content folder at `dir`, or throws a ContentError. */
