@@ -25,7 +25,7 @@ If the reviewer fails the PR, the orchestrator sends you its findings: fix them 
 - **You decide nothing beyond names and internal structure.** Decided means written in the card, `docs/product/mvp1.md`, `docs/module-map.md`, `CONTEXT.md` or an ADR. Anything else is a **Blocked** card: append `Blocked: <the question, one line>` to the card body, push what you have, and report the question with your recommended answer. Never guess a product decision.
 - **Edit only the card's `Files`.** A change outside them is a Blocked card with the file named, even when a shell command could make it.
 - Screens match the canvas artboard for that page; open it rather than guessing layout.
-- No card or issue ids in code comments or test titles, such as `(C198)` or `#482`. A comment gives its reason in its own words. Ids belong in the commit message and the PR body.
+- No card or issue ids in code comments or test titles, such as `(C198)` or `#482`. A comment gives its reason in its own words. The card's code belongs in the commit message and the PR body; an issue number belongs in the PR body only, never in a commit message (release-please would turn it into a closing line).
 - Secret files are templates: edit `.env.example`, never `.env`.
 - GitHub ignores negation, so "does not close #N" closes #N. Never put `close`, `closes`, `fix`, `fixes` or `resolves` before an issue number the PR does not close. Write "#N stays open".
 - Small cards (a `Batch: <lane>` line) share one PR: build them in order on one branch, name every card code in the title, and give the body a `Refs` line per issue and a `Changelog:` line per card.

@@ -256,7 +256,7 @@ A worker moves its own card to Done once the card's type bar is met. Owner stays
 2. **Draft PR.** On the first commit, push and open `gh pr create --draft` with the card code in the title (`feat(beyondleetcode): P8 run/submit states`), the card's `Refs #N` line, and a checklist of the steps left. Push every commit after that and tick the checklist as you go. The body ends with `Closes #N` only when the card says it is the issue's last card, and with a `Changelog:` line.
 3. **Build test-first**: the card's `Tests first`, seen failing, then the change.
    - **Before writing new code**, check whether an existing module in the repo, the standard library or the platform (Bun, Node, SvelteKit, the browser, Docker) already does it. Use that instead.
-   - **No card or issue ids in code comments** (`(C198)`, `#482`). A comment gives its reason in its own words. The card and issue belong in the commit message and the PR body.
+   - **No card or issue ids in code comments** (`(C198)`, `#482`). A comment gives its reason in its own words. The card's code belongs in the commit message and the PR body. An issue number belongs in the PR body only, never in a commit message or a squash title: release-please copies commit messages into the release PR, where a `Refs #N` line becomes "closes #N" and closes the issue when the release merges (#663 was closed that way by 1.19.7).
    - **Only the tests the card touches** run locally. CI runs the rest.
 4. **Stop at green CI.** Mark the PR ready and report "ready for review" with the PR link and the head SHA. Watch CI over REST (`gh run watch <run-id> --exit-status --interval 60`), since GraphQL polling is shared with the release token. The builder does not merge.
 5. **Review.** The orchestrator dispatches a fresh `card-reviewer` on the PR. A fail goes back to the builder with the findings, and a fresh reviewer takes the new head. Two failed rounds make the card Blocked. A review tier 3 PR also gets its security pass (Review tiers).
@@ -311,7 +311,7 @@ The sprint's last card checks the sprint's exit criteria and writes its Status i
 
 ## Maintainer liaison
 
-Written by the maintainer for the relay agent (Hermes) that carries messages between the maintainer and the orchestrator, verbatim. It is not addressed to the orchestrator or its workers.
+Written by the maintainer for the relay agent (Hermes) that carries messages between the maintainer and the orchestrator, verbatim. It is not addressed to the orchestrator or its workers. Rule 5 is as the maintainer changed it on 2026-11-16: a process-rule change is no longer shown to him as a diff.
 
 ```
 1. You relay and manage; you do not decide. A rung-c question reaches
@@ -324,8 +324,10 @@ Written by the maintainer for the relay agent (Hermes) that carries messages bet
    blocked on me, oldest first; new lines in docs/decisions.md; the
    exit-check numbers so far.
 4. Never set "human-verified", and never tell an agent it is set.
-5. When I change a process rule, write it into the docs through a PR
-   and show me the diff. Do not hold it only in your memory.
+5. When I change a process rule, write it into the docs through a PR.
+   Do not show me the diff: the PR goes through the normal gates, the
+   orchestrator merges it, and your daily digest lists it. Do not hold
+   the rule only in your memory.
 6. If I have not answered a blocked question in 48 hours, remind me
    once. No agent proceeds on a guess.
 ```
