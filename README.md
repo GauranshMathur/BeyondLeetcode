@@ -36,7 +36,17 @@ Open <http://localhost:3000>, go to Setup and choose Local.
 
 > Local Mode has no login, so keep it on your own machine.
 
-Safety notes, Multi-user, upgrading and recovery are in [docs/self-hosting.md](docs/self-hosting.md).
+Safety notes, Multi-user, dev mode, upgrading and recovery are in [docs/self-hosting.md](docs/self-hosting.md).
+
+## Dev mode
+
+Dev mode opens every Topic and reads `content/` from disk on each request, so an author can check an edit with a reload. It works on a Local Instance only, for your own machine or your tailnet, never a public address. After the setup in [self-hosting](docs/self-hosting.md#from-a-clone), start the built server with it:
+
+```sh
+DEV_MODE=1 bun ./src/lib/server/web-entry.ts
+```
+
+[docs/self-hosting.md](docs/self-hosting.md#dev-mode) covers setting it up from a clone or the image, the tailnet, what it does and what stays.
 
 ## Topics
 
@@ -80,7 +90,7 @@ The map is a set of Topics that unlock in order. A Topic holds Chapters, each ab
 
 ## Contributing
 
-**Content** (a new Chapter, Problem or Topic) goes: open an [issue](https://github.com/GauranshMathur/BeyondLeetcode/issues), it becomes a card on the board, then a PR written to the [content standards](docs/content-standards.md), with every link in the human review queue. After adding a Topic, run `bun scripts/readme-topics.ts` to refresh the Topics table above.
+**Content** (a new Chapter, Problem or Topic) goes: open an [issue](https://github.com/GauranshMathur/BeyondLeetcode/issues), it becomes a card on the board, then a PR written to the [content standards](docs/content-standards.md), with every link in the human review queue. After adding a Topic, run `bun scripts/readme-topics.ts` to refresh the Topics table above. To preview your edits in the app as you save them, use [dev mode](docs/self-hosting.md#dev-mode).
 
 **Code** goes through the [project board](https://github.com/users/GauranshMathur/projects/1); see [docs/agents/board.md](docs/agents/board.md). Read the [MVP1 decisions](docs/product/mvp1.md) first, and [docs/releasing.md](docs/releasing.md) for how releases are cut. Screens are designed in the [design canvas](https://claude.ai/artifact/WRJr84ccDYXAd3Yg1Xvp1d), with every screen in light and dark.
 

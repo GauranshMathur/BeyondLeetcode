@@ -37,6 +37,10 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
   - Removing a user deletes their progress.
   - There is one admin, the account created at setup. An admin who forgets their password runs a command on the server that prints a one-time password.
 - Instance settings beyond the registration toggle live in config, not UI, for MVP1.
+- **Dev mode** is an operator and author tool, not a Learner feature.
+  - `DEV_MODE=1` works on a Local Instance only. That is the maintainer's answer on #660, 2026-11-16: not on a Multi-user Instance.
+  - It opens every Topic, shows a band, reads the content from disk for each request, shows invalid content on the error page, and runs a Problem's Reference Code against its Tests.
+  - It edits no content: content is still written in the repository (ADR 0005).
 
 **Devices.** Desktop first. Mobile must work, including writing and submitting code. Mobile boards exist for Problem, Map, Topic, Chapter and Sign in.
 

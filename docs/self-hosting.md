@@ -1,6 +1,6 @@
 # Self-hosting BeyondLeetcode
 
-Operator details for running an Instance: install, moving to Multi-user, sign-in providers, the Runner, upgrading and recovery. For a first run, start with the [quick start](../README.md#quick-start).
+Operator details for running an Instance: install, moving to Multi-user, sign-in providers, the Runner, dev mode, upgrading and recovery. For a first run, start with the [quick start](../README.md#quick-start).
 
 ## Install (Local Mode)
 
@@ -111,6 +111,104 @@ Docker's default `json-file` driver keeps every line a container writes. The `co
 ```
 
 The new limits take effect when the containers are recreated, and apply to the logs they write from then on. Recreating them deletes the logs the old containers wrote, so save any you want first with `docker compose logs > file`.
+
+## Dev mode
+
+Dev mode is a tool for an operator or a content author to check the content. It is not a Learner feature. It is on only for a Local Instance started with `DEV_MODE=1`.
+
+### The switch
+
+- **Only exactly `1` turns it on.** Unset, empty, `0`, `true` or any other value leaves it off.
+- **It is read once, when the web process starts,** so turning it on or off takes a restart. Nothing a request sends can turn it on.
+- **The image never sets it,** and neither do the `compose.yaml` and `.env` that `init` writes. `compose.yaml` does not list `DEV_MODE`, so a `DEV_MODE` line in `.env` alone never reaches the container. [In the published image](#in-the-published-image) says what does.
+
+### Local Mode only
+
+- **It takes effect only when the Instance is already Local as the process starts.** On a fresh Instance it stays off even with the switch set, and Setup can still make the Instance Multi-user, after which a start with the switch refuses. So start without the switch, choose Local at Setup, then restart with it.
+- **A Multi-user Instance with the switch set refuses to start.** The message says to unset `DEV_MODE`.
+- **A Local Instance with dev mode on cannot be switched to Multi-user.** Setup answers "Dev mode is on. Restart without DEV_MODE to turn this Instance into a Multi-user one." Restart without the switch first.
+
+### What it does
+
+- **No Topic is Locked.** Every Topic, Chapter and Problem opens. The Map still shows Complete only from real progress, and an Accepted panel names no newly Unlocked Topic.
+- **A band reading "Dev mode" and "Everything is unlocked." sits above every screen.**
+- **The content folder (`CONTENT_DIR`) is read again once for each request that reads content.** A saved edit to a Chapter, a Problem, a Test or Reference Code shows on the next reload, with no rebuild and no restart.
+  - That costs time. On the full `content/` folder (3,428 files) one read took about 0.35 to 0.45 s, and every such request pays it, each autosave included.
+  - The folder must still be valid when the web process starts, or it does not start, dev mode or not.
+- **Content that fails validation after the start makes the page answer "Invalid content".** The page lists each problem as `<path inside the content folder>: <what is wrong>`, at most 200, then one "and N more" line. Fix the file and reload: the next request reads the folder again. The web process's log still holds only `[500] <METHOD> <route id> ContentError`, as for any error.
+- **The Problem screen's console has a Dev item.** Pick a Language under "reference language" and press "Run reference solution".
+  - It runs that Problem's Reference Code against the Tests a Submit of it runs: its own Tests and every earlier Core Problem's. An earlier Problem's Tests show that Problem's id.
+  - It goes through the Runner with a Submit's limits.
+  - It lists one row per Test: its name, Example or Hidden, and pass or the failure (wrong answer, runtime error, time limit exceeded). A row shows nothing else: no input, no expected output, no output and no time.
+  - Reference Code that does not compile, a Runner that is down, and a batch the Runner cut off all read "Runner unavailable".
+  - It saves no code, records no Submission and changes no progress. It uses one of the Learner's two run places, as a Run does.
+
+### What stays
+
+Reading in dev mode writes nothing. What the Learner does is stored as for any Learner, and it stays after dev mode is turned off: Read marks, saved code (Run and Submit save first), Submissions, revealed Hints, and the Language chosen per Topic.
+
+- **A Topic completed in dev mode stays Complete,** and counts as a Prerequisite.
+- **A Topic that dev mode opened, but whose Prerequisites did not, is Locked again once dev mode is off.** Its saved work is kept.
+- **Give dev mode a database of its own.** Never point it at the database of an Instance someone learns on. That would also be a second web process on one data volume, which this page already says not to run.
+- **Settings' Reset progress deletes all of the Learner's progress,** not only the dev-mode part.
+
+### Safety
+
+- **Local Mode has no sign-in, so anyone who reaches the address can use dev mode.** Keep it on your own machine or your tailnet, never on a public address.
+- **Run it from the built server or the published image, never `bun run dev` (`vite dev`).** Under `vite dev` SvelteKit skips its [cross-site form check](https://github.com/sveltejs/kit/blob/%40sveltejs%2Fkit%403.1.1/packages/kit/src/runtime/server/respond.js#L101-L125) (the `if (!__SVELTEKIT_DEV__)` block, at `@sveltejs/kit@3.1.1`), so a page on any site you open could submit the Instance's forms.
+
+### From a clone
+
+You need [Bun](https://bun.com/docs/installation), and Docker for the Runner.
+
+1. Run `bun install`.
+2. Run `cp .env.example .env`. In `.env`, set:
+   - `CONTENT_DIR=content`. The example points at the test fixture.
+   - A `DATABASE_URL` of its own, as an absolute path, for example `file:/home/you/beyondleetcode-dev.db`.
+   - A `RUNNER_TOKEN` of 32 or more random characters, for example from `openssl rand -hex 24`. The Runner refuses the example's.
+   - `ORIGIN` to the URL you will open: `http://localhost:3000` on your own machine (the built server listens on port 3000 unless `PORT` is set), or the tailnet URL ([Over the tailnet](#over-the-tailnet)).
+3. Load `.env` into the shell, because `prisma.config.ts` reads `DATABASE_URL` from the process environment. Then migrate the database and build:
+
+   ```sh
+   set -a; . ./.env; set +a
+   bunx prisma migrate deploy
+   bun run build
+   ```
+
+4. In a second terminal, load `.env` the same way, then run `bun run runner`. The Runner pulls the three Sandbox images before it can run code.
+5. Run `bun ./src/lib/server/web-entry.ts`, open `ORIGIN`, choose Local at Setup, then stop the web process.
+6. Start it again with the switch:
+
+   ```sh
+   DEV_MODE=1 bun ./src/lib/server/web-entry.ts
+   ```
+
+   The band shows. Edit files under `content/` and reload. A change to the app's own code still needs `bun run build` and a restart.
+
+### In the published image
+
+1. **Use a folder of its own, and so a `data` volume of its own.** Run `init` with `--origin` set to the URL you will open, run `docker compose up -d`, and choose Local at Setup, as in [Install](#install-local-mode).
+2. **Beside `compose.yaml`, write a `compose.override.yaml`.** It sets `DEV_MODE: "1"` under `web`'s `environment`, and mounts the clone's `content/` folder read-only over `/app/content`, the image's `CONTENT_DIR`. Compose [reads `compose.override.yaml` on its own](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/).
+
+   ```yaml
+   services:
+     web:
+       environment:
+         DEV_MODE: "1"
+       volumes:
+         - /path/to/your/clone/content:/app/content:ro
+   ```
+
+3. **Run `docker compose up -d`.** It recreates `web` with dev mode on.
+4. **Run the image the content was written for.** Content the image's version cannot read stops `web` at start. For a clone of `main`, set `BEYONDLEETCODE_IMAGE` in `.env` to the `edge` tag, which is built on every push to `main`.
+5. **To turn it off,** delete `compose.override.yaml` and run `docker compose up -d`. The switch and the mount both go.
+
+### Over the tailnet
+
+- **`ORIGIN` is the exact URL you open over the tailnet,** for example `http://<machine>.<tailnet>.ts.net:3000`. It is the `--origin` you give `init`, or `ORIGIN` in a clone's `.env`.
+- **A Local Instance needs it over plain http.** Without `ORIGIN` the built server takes every request for https, and refuses every form as cross-site. Forms work at that one URL only (see "Reach the Instance only by its `ORIGIN`" above).
+- **Listen on the tailnet only.** From a clone, set `HOST` to the machine's tailnet address, which `tailscale ip -4` prints ([`tailscale ip`](https://tailscale.com/kb/1080/cli)). The built server otherwise listens on every interface: [adapter-node's `HOST`](https://svelte.dev/docs/kit/adapter-node#Environment-variables-HOST-and-PORT) defaults to `0.0.0.0`.
+- **In the image, change the `ports` line in `compose.yaml` itself** to `"<tailnet address>:${PORT}:3000"`, as the proxy note above does with `127.0.0.1`. Do not do it in the override file: Compose [adds an override's `ports` to the base list](https://docs.docker.com/reference/compose-file/merge/) rather than replacing it.
 
 ## Upgrading
 
