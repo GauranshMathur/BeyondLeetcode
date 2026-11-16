@@ -666,11 +666,75 @@ describe('a ContentError at the error hook', () => {
 			expect(result).not.toHaveProperty('contentIssues');
 		}
 		const notFound = handleError({
-			kind: 'known',
+			kind: 'framework',
 			error: { status: 404, message: 'x' },
 			event: contentEvent()
-		} as never);
+		});
 		expect(notFound).toEqual({ message: 'Not Found' });
+	});
+
+	it('keeps the generic answer, and one log line, when the issues are not a list of strings', async () => {
+		const spies = spyConsole();
+		await startWith(true);
+		const withIssues = (set: (e: InstanceType<typeof ContentError>) => void) => {
+			const error = new ContentError(['a']);
+			set(error);
+			return error;
+		};
+		const broken = [
+			withIssues((e) => Object.defineProperty(e, 'issues', { value: null })),
+			withIssues((e) => Object.defineProperty(e, 'issues', { value: 'a: b' })),
+			withIssues((e) => Object.defineProperty(e, 'issues', { value: ['a', 1] })),
+			withIssues((e) =>
+				Object.defineProperty(e, 'issues', {
+					get() {
+						throw new Error('/srv/content secret');
+					}
+				})
+			)
+		];
+
+		for (const error of broken) {
+			const result = handleError({ kind: 'unknown', error, event: contentEvent() });
+			expect(result).toEqual({ message: 'Internal Error' });
+		}
+		expect(loggedBy(spies)).toEqual(
+			broken.map(() => '[500] GET /chapters/[chapterId] ContentError')
+		);
+	});
+
+	it.each([201, 1000])(
+		'lists the first 200 of %i issues and then how many are left',
+		async (count) => {
+			spyConsole();
+			await startWith(true);
+			const all = Array.from({ length: count }, (_, i) => `topics/t${i}/topic.json: missing file`);
+
+			const result = handleError({
+				kind: 'unknown',
+				error: new ContentError(all),
+				event: contentEvent()
+			});
+
+			expect((result as { contentIssues?: string[] }).contentIssues).toEqual([
+				...all.slice(0, 200),
+				`and ${count - 200} more`
+			]);
+		}
+	);
+
+	it('lists exactly 200 issues as they are', async () => {
+		spyConsole();
+		await startWith(true);
+		const all = Array.from({ length: 200 }, (_, i) => `x${i}: y`);
+
+		const result = handleError({
+			kind: 'unknown',
+			error: new ContentError(all),
+			event: contentEvent()
+		});
+
+		expect((result as { contentIssues?: string[] }).contentIssues).toEqual(all);
 	});
 
 	describe('through the real app', () => {
