@@ -336,7 +336,7 @@ const label: Record<SaveState, string> = {
 	.page {
 		display: flex;
 		flex-direction: column;
-		min-height: 100vh;
+		min-height: calc(100vh - var(--dev-banner-height, 0px));
 	}
 	.crumbs {
 		display: flex;
@@ -530,7 +530,7 @@ const label: Record<SaveState, string> = {
 	/* Wide screens: the workspace is exactly one screen tall and each pane scrolls on its own. */
 	@media (width > 900px) {
 		.page {
-			height: 100dvh;
+			height: calc(100dvh - var(--dev-banner-height, 0px));
 			min-height: 0;
 			overflow: hidden;
 		}
@@ -558,7 +558,7 @@ const label: Record<SaveState, string> = {
 	/* Phones: one pane at a time between the 56px bar and the strip and tab bar; the document never scrolls. */
 	@media (max-width: 767.98px) {
 		.page {
-			height: 100dvh;
+			height: calc(100dvh - var(--dev-banner-height, 0px));
 			min-height: 0;
 			overflow: hidden;
 		}

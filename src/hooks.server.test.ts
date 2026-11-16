@@ -11,16 +11,21 @@ const env = vi.hoisted(() => {
 	// The mocked module answers for any name, so a variable the test leaves unset reads as undefined.
 	return new Proxy(values, { has: () => true });
 });
-const captured = vi.hoisted(() => ({ locals: [] as Record<string, unknown>[] }));
+const captured = vi.hoisted(() => ({
+	locals: [] as Record<string, unknown>[],
+	/** Set to build the real handle instead of the one that records the locals. */
+	real: undefined as ((app: unknown) => unknown) | undefined
+}));
 vi.mock('$app/env/private', () => env);
 vi.mock('#lib/server/app.js', () => ({ createApp: vi.fn() }));
 vi.mock('#lib/server/handle.js', () => ({
-	createHandle:
-		() =>
-		async ({ event }: { event: { locals: Record<string, unknown> } }) => {
-			captured.locals.push({ ...event.locals });
-			return new Response('ok');
-		}
+	createHandle: (app: unknown) =>
+		captured.real
+			? captured.real(app)
+			: async ({ event }: { event: { locals: Record<string, unknown> } }) => {
+					captured.locals.push({ ...event.locals });
+					return new Response('ok');
+				}
 }));
 
 const { handle, handleError, init } = await import('./hooks.server.ts');
@@ -34,6 +39,7 @@ afterEach(() => vi.restoreAllMocks());
 beforeEach(() => {
 	for (const key of Object.keys(env)) delete env[key];
 	captured.locals.length = 0;
+	captured.real = undefined;
 });
 
 const token = 'CX-OaV5gtW0OAMlGz72BwwkqueZXgU1hi11UKrLIecc';
@@ -542,6 +548,44 @@ describe('dev mode through the server hook', () => {
 				ORIGIN: 'http://localhost:4174'
 			})
 		).rejects.toThrow(/DEV_MODE=1 on a multi-user Instance/);
+	}, 60_000);
+
+	it('is false on a fresh Instance that has not chosen a mode, even with DEV_MODE=1', async () => {
+		const url = await migratedDatabase();
+		await start(url, { DEV_MODE: '1' });
+		expect(await devModeAfter()).toBe(false);
+	}, 60_000);
+
+	/** The next start builds the real handle, so the gate answers the request. */
+	async function useRealHandle() {
+		const actual =
+			await vi.importActual<typeof import('#lib/server/handle.js')>('#lib/server/handle.js');
+		captured.real = actual.createHandle as (app: unknown) => unknown;
+	}
+	const realRequest = (path: string, routeId: string) => {
+		const url = new URL(`http://localhost${path}`);
+		const event = {
+			locals: {} as Record<string, unknown>,
+			url,
+			request: new Request(url),
+			route: { id: routeId },
+			isRemoteRequest: false,
+			isDataRequest: false,
+			cookies: { get: () => undefined, getAll: () => [] }
+		};
+		return { event, resolve: vi.fn(async () => new Response('page')) } as never;
+	};
+
+	it('gives the same answer when the gate refuses the request, through the real handle', async () => {
+		const url = await migratedDatabase('local');
+		await useRealHandle();
+		await start(url, { DEV_MODE: '1' });
+		const input = realRequest('/users', '/users') as unknown as {
+			event: { locals: Record<string, unknown> };
+		};
+		const response = await handle(input as never);
+		expect(response?.status).toBe(404);
+		expect(input.event.locals.devMode).toBe(true);
 	}, 60_000);
 
 	it('does not move for a header, a cookie or a query the request carries', async () => {

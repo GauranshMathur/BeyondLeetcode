@@ -17,22 +17,35 @@ onMount(() => {
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-{#if data.devMode}
-<!-- A standing state, not news: a region, not a live region. The visible label is hidden from a screen reader so the name is not read twice. -->
-<section class="dev-banner" aria-label="Dev mode">
-	<span class="marker" aria-hidden="true"></span>
-	<span class="label" aria-hidden="true">Dev mode</span>
-	<span>Everything is unlocked.</span>
-</section>
-{/if}
-
+{#snippet screen()}
 {#if !data.header.inPage || page.error}
 <AppHeader header={data.header} />
 {/if}
 
 {@render children()}
+{/snippet}
+
+{#if data.devMode}
+<!-- Wraps the banner and the screen only when the banner is drawn: the screens that fill the viewport (the Problem screen, the Chapter page) subtract the band's height through this property, and read 0px without it. -->
+<div class="dev-scope">
+	<!-- A standing state, not news: a region, not a live region. The visible label is hidden from a screen reader so the name is not read twice. -->
+	<section class="dev-banner" aria-label="Dev mode">
+		<span class="marker" aria-hidden="true"></span>
+		<span class="label" aria-hidden="true">Dev mode</span>
+		<span>Everything is unlocked.</span>
+	</section>
+	{@render screen()}
+</div>
+{:else}
+{@render screen()}
+{/if}
 
 <style>
+	.dev-scope {
+		display: contents;
+		--dev-banner-height: 40px;
+	}
+
 	.dev-banner {
 		box-sizing: border-box;
 		display: flex;

@@ -21,7 +21,7 @@ let devMode = false;
 
 /**
  * Runs once at server start; a missing CONTENT_DIR, DATABASE_URL, RUNNER_URL or RUNNER_TOKEN stops the server here,
- * a multi-user Instance without its BETTER_AUTH_SECRET or ORIGIN, and a multi-user Instance with DEV_MODE set.
+ * a multi-user Instance without its BETTER_AUTH_SECRET or ORIGIN, and a multi-user Instance with DEV_MODE=1.
  */
 export const init: ServerInit = async () => {
 	const app = await createApp({
