@@ -4,6 +4,13 @@ import { containerLabel, sandboxConfig } from './config';
 import { createEngine } from './engine';
 import type { Language, RunnerPort } from './port';
 import { removeAttemptTimeoutMs } from './sandbox';
+import {
+	checkHardStop,
+	checkRemove,
+	hardStopBoundMs,
+	parseTeardownTimes,
+	type TeardownTimes
+} from './teardown-times.testutil';
 import { containersOwnedBy, startTestRunner, stopTestRunners } from './wait-healthy.testutil';
 
 /**
@@ -64,13 +71,11 @@ function dockerHostGateway(): string {
 }
 
 /**
- * The bomb container's own times, in ms after its create: when it died and when Docker destroyed
- * it. The bomb container is the last this Runner instance created at or after `sinceMs` that also
- * started; undefined when Docker reported no such container or no die event.
+ * The bomb container's own times, from Docker's event stream; undefined when Docker reported no
+ * such container or no die event. Only the `docker events` call lives here: picking the container
+ * and reading its times is `parseTeardownTimes`.
  */
-function bombContainerTimes(
-	sinceMs: number
-): { lifetimeMs: number; destroyMs?: number } | undefined {
+function bombContainerTimes(sinceMs: number): TeardownTimes | undefined {
 	let out: string;
 	try {
 		out = execFileSync(
@@ -86,36 +91,15 @@ function bombContainerTimes(
 				'--filter',
 				`label=${containerLabel}=${instanceId}`,
 				'--format',
-				'{{.Action}} {{.ID}} {{.TimeNano}}'
+				'{{.Action}} {{.Actor.ID}} {{.TimeNano}}'
 			],
 			{ encoding: 'utf8', timeout: 20_000 }
 		);
 	} catch {
 		return undefined;
 	}
-	const events = lines(out).map((l) => {
-		const [action, id, nano] = l.split(' ');
-		return { action, id, ms: Number(BigInt(nano)) / 1e6 };
-	});
-	const at = (action: string, id: string) =>
-		events.find((e) => e.action === action && e.id === id)?.ms;
-	// A create that failed (an accepted outcome) leaves no start; never fall back to an earlier test's container.
-	const bombId = events.findLast(
-		(e) => e.action === 'create' && e.ms >= sinceMs && at('start', e.id) !== undefined
-	)?.id;
-	if (bombId === undefined) return undefined;
-	const created = at('create', bombId) as number;
-	const died = at('die', bombId);
-	const destroyed = at('destroy', bombId);
-	if (died === undefined) return undefined;
-	return {
-		lifetimeMs: died - created,
-		destroyMs: destroyed === undefined ? undefined : destroyed - created
-	};
+	return parseTeardownTimes(out, sinceMs);
 }
-
-/** Docker's destroy event trails the remove call by event delivery and scheduling. */
-const destroySlackMs = 500;
 
 const lines = (s: string) => s.split('\n').filter(Boolean);
 
@@ -551,8 +535,9 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 	it('ends a bomb that forks without bound within the design bound, as a verdict or a refusal', async () => {
 		const bomb = 'import os\nwhile True:\n    os.fork()\n';
 		// What the code allows: the hard stop plus two of `removeContainer`'s three attempts, each
-		// giving up at removeAttemptTimeoutMs. A slower teardown is a regression, not a reason to
-		// widen this.
+		// giving up at removeAttemptTimeoutMs. The kernel may take 15 s to end the bomb's PID
+		// namespace after the kill, which this still has room for; a request that takes longer is a
+		// regression, not a reason to widen this.
 		const designBoundMs = sandboxConfig.containerTimeoutMs + 2 * removeAttemptTimeoutMs;
 		const started = Date.now();
 
@@ -565,26 +550,33 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		);
 		const elapsedMs = Date.now() - started;
 
-		// So drift shows in the CI log: the container's own lifetime, apart from create and teardown.
+		// So each step shows in the CI log: when the kill was sent, how long the container then took
+		// to die, and when Docker destroyed it.
 		const times = bombContainerTimes(started);
-		const lifetimeMs = times?.lifetimeMs;
+		const lifetimeMs = times?.dieMs;
 		// A broken `docker events` pairing must fail here, not print "unavailable".
 		expect(lifetimeMs).toBeDefined();
+		const killedAtMs = times?.killMs;
+		const diedAfterKillMs =
+			times?.killMs === undefined ? Number.NaN : (lifetimeMs ?? Number.NaN) - times.killMs;
 		console.log(
-			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; destroy ${Math.round(times?.destroyMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
+			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; kill sent ${killedAtMs === undefined ? 'no kill' : `${Math.round(killedAtMs)} ms`}; died ${Number.isNaN(diedAfterKillMs) ? 'no kill' : `${Math.round(diedAfterKillMs)} ms`} after the kill; destroy ${Math.round(times?.destroyMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
 		);
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
 		expect(elapsedMs).toBeLessThan(designBoundMs);
-		// The container's own life: the hard stop plus one remove attempt. Past this, the container
-		// outlived the first forced remove. CI's runs so far all ended before the hard stop
-		// (the kernel ended PID 1, exit 137), so this guards the hard-stop path without measuring it.
-		expect(lifetimeMs).toBeLessThan(sandboxConfig.containerTimeoutMs + removeAttemptTimeoutMs);
-		// The other way the teardown can run long: the container died promptly and the daemon removed it slowly.
-		expect(times?.destroyMs).toBeDefined();
-		expect(times?.destroyMs).toBeLessThan(
-			sandboxConfig.containerTimeoutMs + removeAttemptTimeoutMs + destroySlackMs
-		);
+		// The premises of the bounds below, so they cannot drift into bounds a missing hard stop
+		// would pass: the hard stop must come before the in-container deadline, which is what ends
+		// the container next, and a request that takes the whole design bound must still answer the
+		// adapter.
+		expect(hardStopBoundMs).toBeLessThan(sandboxConfig.containerDeadlineS * 1000);
+		expect(designBoundMs).toBeLessThan(sandboxConfig.adapterTimeoutMs);
+		// The two steps the Runner owns: the kill is sent on time, and the dead container is removed
+		// at once. How long the kernel then takes to end a PID namespace full of forking processes is
+		// not the Runner's and has measured from 5 to 15 s, so no bound is set on it.
+		expect(times).toBeDefined();
+		expect(checkHardStop(times as TeardownTimes)).toBe('pass');
+		expect(checkRemove(times as TeardownTimes)).toBe('pass');
 		await healthy();
 	});
 });
