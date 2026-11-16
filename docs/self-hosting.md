@@ -1,6 +1,6 @@
 # Self-hosting BeyondLeetcode
 
-Operator details for running an Instance: install, moving to Multi-user, sign-in providers, upgrading and recovery. For a first run, start with the [quick start](../README.md#quick-start).
+Operator details for running an Instance: install, moving to Multi-user, sign-in providers, the Runner, upgrading and recovery. For a first run, start with the [quick start](../README.md#quick-start).
 
 ## Install (Local Mode)
 
@@ -15,6 +15,7 @@ docker compose up -d
 Open the `--origin` URL. **Open Setup straight after the first start:** on a fresh Instance the first visitor to Setup chooses the mode. Choose Local for one Learner and no sign-in.
 
 - **Local Mode has no login.** Anyone who can reach the Instance can read its progress, reset it, or switch it to Multi-user and become the admin. Keep it on your own machine or a trusted network. A web page in a browser on your LAN can also reach it through DNS rebinding, so do not run a Local Instance on a network where you open untrusted pages.
+- **The first start pulls three Sandbox images, and each Language waits for its own.** The Runner asks the Docker daemon on your host (not the container) to pull the Python, TypeScript and Go images, so the host needs a route to Docker Hub and `ghcr.io`. Until a Language's image has arrived, a Run or Submit in that Language fails with "The runner is unavailable. Try again." Watch `docker compose logs -f runner`: it logs `Pulling Sandbox image ...` and then `Runner ready for <language>` as each one finishes. A failed pull is logged and retried, with a longer wait each time up to 30 s, until it works. See [Runner troubleshooting](#runner-troubleshooting).
 - **Reach the Instance only by its `ORIGIN`.** A request to any other host name or address gets a 403 on every form. If you set `--origin http://localhost:3000`, open `http://localhost:3000`, not `http://127.0.0.1:3000`.
 - **Run exactly one web process per data volume.** The Instance mode and the Registration Mode are read once at start and cached in each process (see below).
 - Stop with `docker compose down`. Add `-v` only if you want to delete the database volume too.
@@ -52,7 +53,7 @@ Shell access to the server is the proof. From the folder with `compose.yaml`:
 docker compose exec web docker-entrypoint.sh reset-admin-password
 ```
 
-It prints a one-time password once and signs the admin out everywhere. Sign in with it and you are asked to choose a new one. It changes nothing if there is no Account. If there are no Accounts at all on a Multi-user Instance, it clears the stored mode instead and asks you to restart `web` and open Setup. **Never run it while someone is setting up or switching to Multi-user:** it can undo their step.
+It prints a one-time password once and signs the admin out everywhere. Sign in with it and you are asked to choose a new one. It needs an Account whose role is admin. With none it changes nothing and says so, even if other Accounts exist. If there are no Accounts at all on a Multi-user Instance, it clears the stored mode instead and asks you to restart `web` and open Setup. If an admin exists but the Instance has lost its stored mode, it stores Multi-user again before it resets the password; restart `web` afterwards, as it asks. **Never run it while someone is setting up or switching to Multi-user:** it can undo their step.
 
 ## Before you turn on Multi-user
 
@@ -71,6 +72,45 @@ These settings go in the `.env` next to `compose.yaml`.
 - **Behind a reverse proxy, set its read timeout to at least about 100 s.** One Submit makes up to three Runner calls of up to 30 s each, so it can take 90 s before the web process answers. [nginx's `proxy_read_timeout`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_read_timeout) defaults to 60 s, so a slow Submit gets a 504 while the web process still finishes and records it. In nginx, set `proxy_read_timeout 120s;` in the `location` that proxies to the app. Any reverse proxy with a shorter read timeout needs the same change.
 - **Open registration has a small budget, and emails are not verified.** With registration Open, one address can create 20 Accounts per 10 minutes, and one client can spend that budget for everyone behind the same NAT, LAN `/64` or proxy (when `ADDRESS_HEADER` is not set). Emails are never verified, so anyone can sign up with someone else's email address. Use Invite only if that matters.
 - **A crash in a Learner's code costs the Runner host two kernel log lines.** If the host's `core_pattern` is a pipe (Ubuntu's apport is one), each crash that would dump (`os.abort()`, a fatal signal, or a Go crash with `GOTRACEBACK=crash`; a default Go panic exits with status 2 and dumps nothing) logs "has RLIMIT_CORE set to 1" and "Aborting core". They are not rate-limited, and the process name in them is one the Learner chooses. The Runner holds every Sandbox's core limit at 1 byte, so no core file is written and the helper does not run. To make it silent, give the Runner host a non-pipe pattern that lasts: disable apport (`systemctl disable --now apport`, since its service writes `core_pattern` again at boot), then set `kernel.core_pattern=core` in a file under `/etc/sysctl.d/` and run `sysctl --system`. A plain `sysctl kernel.core_pattern=core` lasts only until the next reboot. With a non-pipe pattern, a limit of 1 writes nothing.
+
+## The Runner
+
+The `runner` service runs Learners' code in Sandbox containers. Its settings are in `.env` and reach it through `compose.yaml`.
+
+### How many runs at once
+
+`RUNNER_MAX_CONCURRENT` is the most runs the Runner executes at the same time. Leave it empty and it is one per CPU of the machine. A run beyond that waits in a short queue (up to 8 requests, for up to 8 s), and the Runner then answers "busy". Set a whole number of 1 or more in `.env`, then run `docker compose up -d`. The Runner will not start on any other value.
+
+The `init` command writes `RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}` under `runner`'s `environment` in `compose.yaml`. If an older `init` wrote yours, `.env` is not enough: the variable reaches the container only if `compose.yaml` lists it. Add that line to `runner`'s `environment`, put `RUNNER_MAX_CONCURRENT=<number>` in `.env`, and run `docker compose up -d`. Do not add it to `web`.
+
+### Runner troubleshooting
+
+When a Run or Submit fails because the Runner could not be used, the Learner sees "The runner is unavailable. Try again." Look in both logs: `docker compose logs web runner`. Each failed call to the Runner makes one line in `web`'s log, `runner <kind>`. The Runner adds its own line for three of the kinds, each a line of fixed words (and, for `RunnerFailed`, the error's class name) with nothing from the request. Neither log holds anything from the request.
+
+| `web` logs | What happened | Check first |
+|---|---|---|
+| `runner RunnerUnauthorized` (the Runner also logs `runner RunnerUnauthorized`) | The Runner answered 401: the token the web sent is not the one the Runner holds. | `RUNNER_TOKEN` must be the same in both services. After changing it in `.env`, run `docker compose up -d` so both are recreated. |
+| `runner RunnerRefused` (the Runner also logs `runner RunnerRefused`) | The Runner answered 400: it did not accept the request (a body that is not JSON, or not a valid request). A caller that leaves before its body arrives, or whose stalled body the Runner's idle timeout cuts, is not logged. | Both services should run the same image: `BEYONDLEETCODE_IMAGE` in `.env`, then `docker compose up -d`. Report it if they do. |
+| `runner RunnerBusy` | The Runner answered 503 "busy": every slot was taken and the queue was full or too slow. The Runner does not log this. | Wait and retry. If it keeps happening, see [How many runs at once](#how-many-runs-at-once). |
+| `runner RunnerNotReady` | The Runner answered 503 "not ready": that Language's image has not been pulled yet, or is being pulled again after it was removed from the host. The Runner does not log this. The first request to hit a removed image can get `RunnerFailed` instead. | `docker compose logs runner` for `Pulling Sandbox image`, `Could not pull Sandbox image` and `Runner lost the <language> image`. A pull that keeps failing is often a host that cannot reach Docker Hub or `ghcr.io`; the logged error says why. |
+| `runner RunnerUnreachable` | No answer: the connection failed, or the Runner took longer than 30 s to answer in full. | `docker compose ps`: is `runner` running, not restarting? `docker compose logs runner` shows why it stopped; it refuses to start on a missing, placeholder or too-short `RUNNER_TOKEN` (32 characters at least) or a bad `RUNNER_MAX_CONCURRENT`. |
+| `runner RunnerFailed` | Any other answer: a 500 (the Runner logs `runner RunnerFailed <ClassName>`: the class name of the error that was thrown, never its message), a redirect, or a reply that is not a valid result. | `docker compose logs runner`. Check that nothing else is answering at the Runner's address. |
+
+The Runner's request handler logs nothing for a 200, a 404, a 405, a 503 (busy or not ready), a caller that leaves while its request waits for a slot, or a caller that leaves mid-body. Container handling logs its own lines: a Run stopped at the time limit adds `Kill of container <id> answered after N ms` (or `Could not kill container <id>` if the kill failed), and a container that could not be removed logs `Could not remove container ...`.
+
+#### Log rotation
+
+Docker's default `json-file` driver keeps every line a container writes. The `compose.yaml` that `init` writes now caps both services at 3 files of 10 MB each. That applies to new Instances only: `init` never rewrites an existing `compose.yaml`. To get the same on an existing Instance, add this block under both `web` and `runner` (beside `restart`), then run `docker compose up -d`:
+
+```yaml
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+The new limits take effect when the containers are recreated, and apply to the logs they write from then on. Recreating them deletes the logs the old containers wrote, so save any you want first with `docker compose logs > file`.
 
 ## Upgrading
 
@@ -105,4 +145,4 @@ These settings go in the `.env` next to `compose.yaml`.
    docker compose up -d
    ```
 
-**Upgrading from a version before 0.60.0 on a Multi-user Instance:** an Account whose Learner row was never created (its sign-up's Account or Session insert failed, after which the user signed in and saved work) loses that saved progress when the 0.60.0 migration runs. The Account itself is repaired at the next start and keeps working. Each Multi-user start also repairs Accounts and Learners that drifted apart, and logs `Multi-user startup repair: N missing Learner(s) created, M orphan Learner(s) removed.` only when it changed something: it created a Learner for an Account that had none, and removed Learners no Account references, with their progress. If the repair itself fails, the server stops rather than serve with Accounts and Learners out of step (fail-closed).
+**Upgrading from a version before 0.60.0 on a Multi-user Instance:** an Account whose Learner row was never created (its sign-up's Account or Session insert failed, after which the user signed in and saved work) loses that saved progress when the 0.60.0 migration runs. The Account itself is repaired at the next start and keeps working. Each Multi-user start also repairs Accounts and Learners that drifted apart, and logs `Multi-user startup repair: N missing Learner(s) created, M orphan Learner(s) removed.` only when it changed something: it created a Learner for an Account that had none, and removed Learners no Account references, with their progress. The same start also removes sessions that can no longer be used, and logs `Multi-user startup repair: N unusable session(s) removed.` only when it removed any. If the repair itself fails, the server stops rather than serve with Accounts and Learners out of step (fail-closed).

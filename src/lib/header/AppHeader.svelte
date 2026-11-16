@@ -132,7 +132,7 @@ let { header, crumbs, actions }: { header: Header; crumbs?: Snippet; actions?: S
 		}
 	}
 
-	/* Below 768px (F.10f): a bar, BLC left, at most two target-sized links right, Sign out only on Settings.
+	/* Below 768px (F.10f): a bar, BLC left, the target-sized links right (Users, Guide and the name for an admin), Sign out only on Settings.
 	   A long name truncates with an ellipsis instead of widening the bar. */
 	@media (max-width: 767.98px) {
 		header {
@@ -181,7 +181,8 @@ let { header, crumbs, actions }: { header: Header; crumbs?: Snippet; actions?: S
 		nav a {
 			white-space: nowrap;
 		}
-		.users {
+		.users,
+		.guide {
 			flex-shrink: 0;
 		}
 		.account {

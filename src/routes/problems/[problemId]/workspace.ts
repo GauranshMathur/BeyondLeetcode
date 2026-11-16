@@ -89,7 +89,15 @@ export interface Session {
 	 * as a save, never as itself, so no Submission is recorded twice.
 	 */
 	readonly unreplied?: Unreplied;
+	/**
+	 * The save trouble a screen reader has been told about, kept until a save succeeds. The retry
+	 * timer cycles failed, saving, failed; the live region holds this, not the save state, so
+	 * "not saved · retrying" is read once per failure run rather than on every retry.
+	 */
+	readonly announced?: Announced;
 }
+
+export type Announced = 'failed' | 'rejected' | 'conflict';
 
 export type Event =
 	| { type: 'edit'; files: Files }
@@ -222,7 +230,40 @@ function follow(s: Session, failed: boolean): Step {
 	return { state: s, timer: { afterMs: failed ? RETRY_DELAY_MS : 0 } };
 }
 
+/** The save trouble to put in the live region: sticky across the retries of one failure run. */
+export function announcement(s: Session): Announced | undefined {
+	return s.announced;
+}
+
+/** A save, Run or Submit that the server stored: the failure run is over. */
+function stored(event: Event, before: Session): boolean {
+	if (event.type !== 'response' || !before.inFlight || before.inFlight === 'switch') return false;
+	const { reply } = event;
+	if (reply.ok) return true;
+	return (
+		reply.kind === 'refused' &&
+		reply.code === 'RunnerUnavailable' &&
+		typeof reply.revision === 'number'
+	);
+}
+
 export function transition(s: Session, event: Event): Step {
+	const step = move(s, event);
+	// A refused event hands the same Session back, and the screen relies on that.
+	if (step.state === s) return step;
+	const { save } = step.state;
+	const announced: Announced | undefined =
+		save === 'failed' || save === 'rejected' || save === 'conflict'
+			? save
+			: stored(event, s) || save === 'saved' || save === 'signedOut'
+				? undefined
+				: step.state.announced;
+	return announced === step.state.announced
+		? step
+		: { ...step, state: { ...step.state, announced } };
+}
+
+function move(s: Session, event: Event): Step {
 	switch (event.type) {
 		case 'edit':
 			if (may(s).readOnly) return { state: s };

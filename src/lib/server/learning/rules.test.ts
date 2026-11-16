@@ -78,13 +78,14 @@ function catalogueOf(topics: Topic[]): Pick<Catalogue, 'topicMap' | 'topic' | 'c
 const none: Progress = {
 	readChapters: new Set(),
 	solvedProblems: new Set(),
-	attemptedProblems: new Set()
+	attemptedProblems: new Set(),
+	recentTopicIds: []
 };
-const progress = (read: string[], solved: string[], recentTopicId?: string): Progress => ({
+const progress = (read: string[], solved: string[], recentTopicIds: string[] = []): Progress => ({
 	readChapters: new Set(read),
 	solvedProblems: new Set(solved),
 	attemptedProblems: new Set(),
-	recentTopicId
+	recentTopicIds
 });
 const states = (view: ReturnType<typeof mapView>) =>
 	Object.fromEntries(view.topics.map((t) => [t.id, t.state]));
@@ -170,7 +171,18 @@ describe('map counts and current Topic', () => {
 
 	it('has no current Topic without activity, else the most recently active one', () => {
 		expect(mapView(cat, none).currentTopicId).toBeUndefined();
-		expect(mapView(cat, progress([], [], 'a')).currentTopicId).toBe('a');
+		expect(mapView(cat, progress([], [], ['a'])).currentTopicId).toBe('a');
+	});
+
+	it('skips a Locked most recent Topic for the most recent open one', () => {
+		// b needs a, which is not Complete, so b is Locked despite the newest activity.
+		expect(mapView(cat, progress([], [], ['b', 'a'])).currentTopicId).toBe('a');
+	});
+
+	it('has no current Topic when only a Locked Topic has activity', () => {
+		const view = mapView(cat, progress([], [], ['b']));
+		expect(view.topics.find((t) => t.id === 'b')?.state).toBe('locked');
+		expect(view.currentTopicId).toBeUndefined();
 	});
 });
 

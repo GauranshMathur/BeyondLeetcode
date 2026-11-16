@@ -49,7 +49,7 @@ const inviteNotAtFault = (status: 400 | 503) =>
  * form post without JavaScript).
  *
  * `load` only checks the Invite (`lookup`) and puts the token in an httpOnly cookie. `action` signs up
- * through Better Auth with that token as the invite cookie of the call; the registration gate checks it
+ * with `accounts.signUp`, passing the URL's token as the call's invite; the registration gate checks it
  * and Better Auth's `user.create.before` hook claims it, atomically (`Invites.claim`). Nothing here spends it.
  */
 export function createAccept() {

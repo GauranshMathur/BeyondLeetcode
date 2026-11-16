@@ -27,9 +27,11 @@ The board's `Release` field (id `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY`) has one option
 | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | `d6739981` |
 | `R v1.19.6: Sprint 19 · Accessibility` (renamed 2026-11-10; was `Runner and the Build`) | `ba3b24a7` |
 | `R v1.19.7: Sprint 20 · Drifted rules and docs` (renamed 2026-11-10; was `Identity forms and policy`) | `41225006` |
-| `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide` (renamed 2026-11-14; was `R v1.19.8: Sprint 21 · Unplanned`) | `647d8bbc` |
-| `R v1.20.1: Sprint 22 · Leftover bugs and CI gates` (renamed 2026-11-14; was `R v1.19.9: Sprint 22 · Unplanned`) | `30fe09ec` |
-| `R v1.20.2: Sprint 23 · Unplanned` (renamed 2026-11-14; was `R v1.19.10: Sprint 23 · Unplanned`) | `59e6d8b2` |
+| `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates` (renamed 2026-11-14 at the sprint's start; was `R v1.20.1: Sprint 22 · Leftover bugs and CI gates`) | `30fe09ec` |
+| `R v1.21.0: Sprint 22 · Dev mode and the starting Language` (renamed 2026-11-14 at Sprint 21's start; was `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide`) | `647d8bbc` |
+| `R v1.21.1: Sprint 23 · Unplanned` (renamed 2026-11-14; was `R v1.20.2: Sprint 23 · Unplanned`) | `59e6d8b2` |
+
+The two options for Sprints 21 and 22 swapped numbers on 2026-11-14: the sprint that waits on nobody runs first, and each option kept its cards.
 
 A content sprint (`docs/sprints.md`, The content sprints) has a Sprint option and no Release option: its PRs ship in the app release open when they merge. A content card that is `feat` makes that release a minor one.
 
@@ -46,10 +48,10 @@ The `sprint-planner` adds a row for each sprint it plans.
 | 17 · Runner and CI hardening | `R v1.19.4: Sprint 17 · Runner and CI hardening` | 1.19.4 | cut 2026-11-08 |
 | 18 · Submission, Runner and Identity seams | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | 1.19.5 | cut 2026-11-11 |
 | 19 · Accessibility | `R v1.19.6: Sprint 19 · Accessibility` | 1.19.6 | cut 2026-11-11 |
-| 20 · Drifted rules and docs | `R v1.19.7: Sprint 20 · Drifted rules and docs` | 1.19.7 | in progress (re-ranked by tier 2026-11-14: 23 cards) |
-| 21 · Dev mode, starting Language and the guide | `R v1.20.0: Sprint 21 · Dev mode, starting Language and the guide` | 1.20.0 | planned 2026-11-14 (minor: its cards are `feat`) |
-| 22 · Leftover bugs and CI gates | `R v1.20.1: Sprint 22 · Leftover bugs and CI gates` | 1.20.1 | planned 2026-11-14 (1.21.0 instead if a content rewrite, `feat`, merges in it) |
-| 23 · Unplanned | `R v1.20.2: Sprint 23 · Unplanned` | 1.20.2 | no cards: option kept, renumbered 2026-11-14 |
+| 20 · Drifted rules and docs | `R v1.19.7: Sprint 20 · Drifted rules and docs` | 1.19.7 | cut 2026-11-14 |
+| 21 · The guide, leftover bugs and CI gates | `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates` | 1.20.0 | planned 2026-11-14 (minor: C401 and C402a, the guide, are `feat`) |
+| 22 · Dev mode and the starting Language | `R v1.21.0: Sprint 22 · Dev mode and the starting Language` | 1.21.0 | planned 2026-11-14 (minor: its cards are `feat`); starts when the maintainer has answered #660 and #661 |
+| 23 · Unplanned | `R v1.21.1: Sprint 23 · Unplanned` | 1.21.1 | no cards: option kept, renumbered 2026-11-14 |
 
 ## The last card
 
@@ -90,6 +92,7 @@ Only when every card in the sprint is Done, the last card included, and `ci` is 
    - the required checks are green on the release PR's head, which is the changelog commit (a newer push to main makes release-please rewrite the branch: then go back to step 3);
    - no card in the sprint is open: `select(.sprint=="Sprint N · <Theme>" and .status != "Done")` prints nothing;
    - the PR's version is the sprint's version in Planned releases.
+   - the PR's body closes only issues that are finished. release-please turns a `Refs #N` or `Closes #N` line in a commit message into "closes #N" in the release PR's body, and GitHub closes that issue when the release PR merges. List them with `gh pr view <n> --json body --jq .body | grep -oE 'closes \[#[0-9]+\]'`; for each issue that must stay open, edit that text out of the PR's body before merging (`gh pr edit <n> --body-file`). #663 was closed this way by the 1.19.7 release and reopened. Issue references belong in a pull request's body, not in a commit message.
 6. **Merge**, pinned to the head you checked:
 
    ```sh
@@ -125,3 +128,4 @@ Only when every card in the sprint is Done, the last card included, and `ci` is 
 | 1.19.4 | `R v1.19.4: Sprint 17 · Runner and CI hardening` | 2026-11-08 | #499 | 98899d1 (C219, #552), with `Release-As: 1.19.4` | The notes went into the release PR as `docs(beyondleetcode): 1.19.4 changelog` (504342e), were reviewed in the diff, and the PR merged pinned to that head (bd8e840). Its `release` run (42495511016) tagged `v1.19.4`, passed `release-gate`, and published the image as `v1.19.4` and `latest` with one digest (`sha256:1d2640f4…`). The webhook answered `delivered`, and the same notes are set on the GitHub release. The run still warns that `authkey` is deprecated, until C220. The first release built with every third-party action pinned by SHA, and the binfmt image pinned by digest (C212). |
 | 1.19.5 | `R v1.19.5: Sprint 18 · Submission, Runner and Identity seams` | 2026-11-11 | #554 | fe9009e (C246, #619), with `Release-As: 1.19.5` | The notes went into the release PR as `docs(beyondleetcode): 1.19.5 changelog` (1c74f65), were reviewed in the diff, and the PR merged pinned to that head (f91863d). Its `release` run (42948212334) tagged `v1.19.5`, passed `release-gate`, and published the image as `v1.19.5` and `latest` from one build (`sha256:89c8c369…`). The webhook answered `delivered`, and the same notes are set on the GitHub release. The run still warns that `authkey` is deprecated, until C220. C346's PR said `Changelog: none`; its arm64 `ptrace` fix has a Security bullet anyway, because it closes a sandbox gap (#598) an operator should know about. The first cut whose sprint Status counts issues closed: 16. |
 | 1.19.6 | `R v1.19.6: Sprint 19 · Accessibility` | 2026-11-11 | #621 | 64b67ea (C365, #653), with `Release-As: 1.19.6` | The notes went into the release PR as `docs(beyondleetcode): 1.19.6 changelog` (7f747f4), were reviewed in the diff, and the PR merged pinned to that head (2613708). Its `release` run (43050903964) tagged `v1.19.6`, passed `release-gate`, and published the image as `v1.19.6` and `latest` from one build (`sha256:3e34d914…`). The webhook answered `delivered`, and the same notes are set on the GitHub release. The run still warns that `authkey` is deprecated, until C220. PR #627 held two cards, so it has two bullets; C349's fix has a bullet under Content and one under Security. |
+| 1.19.7 | `R v1.19.7: Sprint 20 · Drifted rules and docs` | 2026-11-14 | #655 | 76be6d2 (C383, #685), with `Release-As: 1.19.7` | The notes went into the release PR as `docs(beyondleetcode): 1.19.7 changelog` (1ac32d7), were reviewed in the diff, and the PR merged pinned to that head (5441c86). Its `release` run (43633677556) tagged `v1.19.7`, passed `release-gate`, and published the image as `v1.19.7` and `latest` from one build (`sha256:9a80502f…`). The webhook answered `delivered`, and the same notes are set on the GitHub release. The run still warns that `authkey` is deprecated, until C220. C378's PR (#671) said `Changelog: none`; its log lines have a Changed bullet and its redirect hardening a Security bullet, since operators see both. |

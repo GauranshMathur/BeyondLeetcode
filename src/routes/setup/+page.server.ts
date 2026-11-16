@@ -6,7 +6,11 @@ import {
 	refusalOf
 } from '#lib/server/identity/account-actions.js';
 import { forwardSetCookies } from '#lib/server/identity/auth-handler.js';
-import { AccountsExistError, InstanceAlreadySetUpError } from '#lib/server/instance.js';
+import {
+	AccountsExistError,
+	DevModeOnError,
+	InstanceAlreadySetUpError
+} from '#lib/server/instance.js';
 import { logFailure } from '#lib/server/logging.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -53,6 +57,8 @@ const REFUSAL_PROBLEMS: Record<RefusalCode, Problem | null> = {
 	MUST_CHANGE_HOLD: null
 };
 const LOCAL_REFUSED = 'This instance already has accounts, so it cannot start in Local mode.';
+const DEV_MODE_ON =
+	'Dev mode is on. Restart without DEV_MODE to turn this Instance into a Multi-user one.';
 const ALREADY_SET_UP = 'This instance has already been set up.';
 const text = (data: FormData, key: string) => {
 	const value = data.get(key);
@@ -126,6 +132,9 @@ export const actions: Actions = {
 			const refusal = refusalOf(error);
 			const problem = refusal && REFUSAL_PROBLEMS[refusal.refused];
 			if (problem) return fail(400, adminStep(typed, problem));
+			if (error instanceof DevModeOnError) {
+				return fail(409, adminStep(typed, { message: DEV_MODE_ON }));
+			}
 			if (error instanceof InstanceAlreadySetUpError) {
 				return fail(409, adminStep(typed, { message: ALREADY_SET_UP }));
 			}

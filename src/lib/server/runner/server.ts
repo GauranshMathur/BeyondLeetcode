@@ -23,6 +23,41 @@ function digest(value: string): Buffer {
 	return createHash('sha256').update(value).digest();
 }
 
+/**
+ * One log line for a refusal the caller caused, in the shape the web's adapter logs the same failure
+ * (`runner <kind>`), so a line in one log matches a line in the other. The line is a fixed string: nothing
+ * from the request (token, header, body, path, query) can reach it, so a caller cannot write text into the log.
+ */
+function logRefusal(kind: 'RunnerUnauthorized' | 'RunnerRefused'): void {
+	console.error(`runner ${kind}`);
+}
+
+/**
+ * One log line for a request that threw while it ran: `runner RunnerFailed` and the error's class name, and
+ * nothing else. The message, the stack and the cause are left out because a Docker daemon's reply can reach them.
+ * The name comes from the constructor, which no request can set; a name that is not a plain identifier, or a
+ * thrown value that is not an Error, is logged as a fixed word.
+ */
+function logFailure(error: unknown): void {
+	let kind = 'NonError';
+	// The whole read sits in the try: a Proxy's trap can throw from `instanceof` as well as from the property reads.
+	try {
+		if (error instanceof Error) {
+			kind = 'Error';
+			// Read once and require a string: an object with a changing toString could otherwise leak text.
+			const name: unknown = error.constructor?.name;
+			if (typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) kind = name;
+		}
+	} catch {
+		// a trap or getter that throws leaves the fixed word
+	}
+	try {
+		console.error(`runner RunnerFailed ${kind}`);
+	} catch {
+		// a failing log must not turn into an unhandled error that replaces the 500 the caller gets
+	}
+}
+
 function json(status: number, body: unknown): Response {
 	return Response.json(body, { status });
 }
@@ -82,7 +117,10 @@ export function createRunnerHandler(options: {
 
 	return async function handle(req: Request): Promise<Response> {
 		const given = digest(req.headers.get('authorization') ?? '');
-		if (!timingSafeEqual(given, expected)) return json(401, { error: 'Unauthorized' });
+		if (!timingSafeEqual(given, expected)) {
+			logRefusal('RunnerUnauthorized');
+			return json(401, { error: 'Unauthorized' });
+		}
 
 		const { pathname } = new URL(req.url);
 		if (pathname === '/health' && req.method === 'GET') {
@@ -102,10 +140,17 @@ export function createRunnerHandler(options: {
 		try {
 			body = await req.json();
 		} catch {
+			// The Runner logs nothing whenever the request's signal is aborted: that covers a caller that left
+			// mid-body and a stalled body the server's own idle timeout cuts, as for a caller that leaves during
+			// the queue wait. Any other body-read failure is a refusal and is logged.
+			if (!req.signal.aborted) logRefusal('RunnerRefused');
 			return json(400, { error: 'Body is not JSON' });
 		}
 		const parsed = executeRequest.safeParse(body);
-		if (!parsed.success) return json(400, { error: 'Invalid request' });
+		if (!parsed.success) {
+			logRefusal('RunnerRefused');
+			return json(400, { error: 'Invalid request' });
+		}
 		if (!options.readyLanguages().includes(parsed.data.language))
 			return json(503, { error: 'Runner is not ready' });
 
@@ -123,7 +168,7 @@ export function createRunnerHandler(options: {
 		try {
 			return json(200, await options.runner.execute(parsed.data));
 		} catch (error) {
-			console.error('Runner failed to execute a request', error);
+			logFailure(error);
 			return json(500, { error: 'Runner failed to execute the request' });
 		} finally {
 			release();
