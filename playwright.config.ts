@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { phone } from './src/lib/e2e-phone';
 
-// Four servers, each on a fresh temp database, migrated here: the app never migrates on start (C8a owns that).
+// Four servers, each on a fresh temp database, migrated here: the app never migrates on start (migrating is a separate step, not the server's job).
 // The content is the catalogue fixture. The Runner is scripted (no Docker): real execution is covered by the
 // Sandbox tests and the image smoke test.
 //   4173: the Local Mode server. Its "setup" project chooses Local through the real screen.
@@ -59,15 +59,15 @@ const convert = [
 ].join(' && ');
 
 // 4176: a Local Instance with dev mode on (DEV_MODE=1). The switch takes effect only when the Instance is already
-// Local at start, and a fresh database is not, so the Local row is written here, the one thing the Setup screen
-// would do. Its own server and database; the others never get the switch. Same build as the others.
+// Local at start, and a fresh database is not, so Local Mode is chosen here through the app's own Instance module
+// (the call the Setup screen makes). Its own server and database; the others never get the switch. Same build as the others.
 const dev = [
 	'export DATABASE_URL="file:$(mktemp -d)/e2e-dev.db"',
 	'export ORIGIN=http://localhost:4176',
 	'export DEV_MODE=1',
 	...common,
 	'bunx prisma migrate deploy',
-	`bun -e 'new (require("bun:sqlite").Database)(process.env.DATABASE_URL.slice(5)).exec("INSERT INTO Instance (id, mode) VALUES ('"'"'instance'"'"', '"'"'local'"'"')")'`,
+	`bun -e 'const d = process.cwd() + "/src/lib/server/"; const db = (await import(d + "db.ts")).createDb(process.env.DATABASE_URL); await (await (await import(d + "instance.ts")).createInstance(db)).chooseLocal(); await db.$disconnect()'`,
 	'PORT=4176 bun ./src/lib/server/web-entry.ts'
 ].join(' && ');
 

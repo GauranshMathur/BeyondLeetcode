@@ -13,25 +13,28 @@ import { gotoHydrated } from '../lib/test/hydrated.ts';
 test.use({ storageState: asLearner('e2e-dev-mode') });
 
 const SCREENS = [
-	{ name: 'the Map', path: '/' },
-	{ name: 'a Topic', path: '/topics/stacks' },
-	{ name: 'a Chapter', path: '/chapters/stacks-undo-log' },
-	{ name: 'a Problem', path: '/problems/stacks-push' },
-	{ name: 'Settings', path: '/settings' },
-	{ name: 'the Guide', path: '/guide' },
-	{ name: 'a Not Found error', path: '/no/such/page' },
-	{ name: 'an unknown Problem error', path: '/problems/no-such-problem' }
+	{ name: 'the Map', path: '/', status: 200 },
+	{ name: 'a Topic', path: '/topics/stacks', status: 200 },
+	{ name: 'a Chapter', path: '/chapters/stacks-undo-log', status: 200 },
+	{ name: 'a Problem', path: '/problems/stacks-push', status: 200 },
+	{ name: 'Settings', path: '/settings', status: 200 },
+	{ name: 'the Guide', path: '/guide', status: 200 },
+	{ name: 'a Not Found error', path: '/no/such/page', status: 404 },
+	{ name: 'an unknown Problem error', path: '/problems/no-such-problem', status: 404 }
 ];
 
 const band = (page: Page) => page.getByRole('region', { name: 'Dev mode' });
 
-test('a fresh Learner opens the last Topic’s last Problem, which is Locked without dev mode', async ({
+test('a fresh Learner opens the last Topic\u2019s last Problem, which is Locked without dev mode', async ({
 	page
 }) => {
-	await gotoHydrated(page, '/problems/heaps-insert');
+	const response = await page.goto('/problems/heaps-insert');
+	expect(response?.status()).toBe(200);
 	await expect(page).toHaveURL('/problems/heaps-insert');
-	await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-	await expect(page.getByRole('main')).toHaveCount(1);
+	// The Problem's own title (heaps-insert's problem.json), not the Locked error page.
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Insert and min');
+	await expect(page.getByText('This Topic is locked.')).toHaveCount(0);
+	await expect(page.getByLabel(/^Code: /)).toBeVisible();
 	await expect(band(page)).toBeVisible();
 });
 
@@ -46,7 +49,9 @@ for (const theme of ['light', 'dark'] as const) {
 			for (const screen of SCREENS) {
 				test(`is on ${screen.name}`, async ({ context, page, baseURL }) => {
 					await context.addCookies([{ name: 'theme', value: theme, url: baseURL as string }]);
-					await page.goto(screen.path);
+					// The status tells the real screen from an error page, which carries the band too.
+					const response = await page.goto(screen.path);
+					expect(response?.status()).toBe(screen.status);
 					await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 					await expect(band(page)).toHaveCount(1);
 					await expect(band(page)).toBeVisible();
@@ -58,16 +63,15 @@ for (const theme of ['light', 'dark'] as const) {
 }
 
 test('the banner has no tab stop, and one landmark carries its name', async ({ page }) => {
-	await gotoHydrated(page, '/');
+	expect((await gotoHydrated(page, '/'))?.status()).toBe(200);
 	await expect(band(page)).toHaveCount(1);
-	await expect(band(page).locator('a, button, input, select, textarea, [tabindex]')).toHaveCount(0);
+	const region = band(page);
+	await expect(region.locator('a, button, input, select, textarea, [tabindex]')).toHaveCount(0);
 	// Tab from the top of the page through the first stops: none of them is inside the band.
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 	for (let i = 0; i < 6; i++) {
 		await page.keyboard.press('Tab');
-		const inBand = await page.evaluate(
-			() => document.activeElement?.closest('[aria-label="Dev mode"]') !== null
-		);
+		const inBand = await region.evaluate((el) => el.contains(document.activeElement));
 		expect(inBand).toBe(false);
 	}
 });
@@ -100,11 +104,13 @@ for (const [name, size] of [
 	['desktop', { width: 1280, height: 800 }],
 	['phone', phone.viewport]
 ] as const) {
-	test(`the banner's text lines up with the wordmark on the Map on a ${name}`, async ({ page }) => {
+	test(`the banner's left edge lines up with the wordmark on the Map on a ${name}`, async ({
+		page
+	}) => {
 		await page.setViewportSize(size);
-		await gotoHydrated(page, '/');
+		expect((await gotoHydrated(page, '/'))?.status()).toBe(200);
 		const wordmark = await page.locator('header a.brand').boundingBox();
-		const bandContent = await band(page).locator('span').first().boundingBox();
+		const bandContent = await band(page).locator('.marker').boundingBox();
 		expect(wordmark).not.toBeNull();
 		expect(bandContent).not.toBeNull();
 		expect(Math.abs((bandContent?.x ?? 0) - (wordmark?.x ?? 100))).toBeLessThanOrEqual(1);
