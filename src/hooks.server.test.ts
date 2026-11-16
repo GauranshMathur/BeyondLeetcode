@@ -703,6 +703,58 @@ describe('a ContentError at the error hook', () => {
 		);
 	});
 
+	it('stays generic, with one log line and no throw, for values only a Proxy or a subclass can make', async () => {
+		const spies = spyConsole();
+		await startWith(true);
+		const withIssues = (value: unknown) =>
+			Object.defineProperty(new ContentError(['a']), 'issues', { value });
+		let reads = 0;
+		const flipping = new Proxy(['a: b'], {
+			get(target, key, receiver) {
+				if (key === '0') {
+					reads += 1;
+					return reads > 1 ? {} : Reflect.get(target, key, receiver);
+				}
+				return Reflect.get(target, key, receiver);
+			}
+		});
+		class Sneaky extends Array<string> {
+			override slice(): string[] {
+				return ['/srv/content/secret'];
+			}
+		}
+		const subclass = Sneaky.from(['a: b']);
+		const sparse = new Array<string>(2);
+		sparse[0] = 'a: b';
+		const protoThrows = new Proxy(new ContentError(['a: b']), {
+			getPrototypeOf() {
+				throw new Error('/srv/content secret');
+			}
+		});
+		const broken = [protoThrows, withIssues(sparse)];
+
+		for (const error of broken) {
+			const result = handleError({ kind: 'unknown', error, event: contentEvent() });
+			expect(result).toEqual({ message: 'Internal Error' });
+		}
+		// Each item is read once, and no method of the source is called: a changing Proxy or a subclass with its
+		// own slice gives only the items it held.
+		for (const issues of [flipping, subclass]) {
+			const result = handleError({
+				kind: 'unknown',
+				error: withIssues(issues),
+				event: contentEvent()
+			});
+			expect(result).toEqual({ message: 'Invalid content', contentIssues: ['a: b'] });
+		}
+		expect(reads).toBe(1);
+		// The Proxy hides its class from the logger, which then names only the type; no message is logged.
+		expect(loggedBy(spies)).toEqual([
+			'[500] GET /chapters/[chapterId] object',
+			...[sparse, flipping, subclass].map(() => '[500] GET /chapters/[chapterId] ContentError')
+		]);
+	});
+
 	it.each([201, 1000])(
 		'lists the first 200 of %i issues and then how many are left',
 		async (count) => {

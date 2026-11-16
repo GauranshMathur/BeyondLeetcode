@@ -52,15 +52,25 @@ export const handle: Handle = (input) => {
 const MAX_ISSUES = 200;
 
 /**
- * The ContentError's issues for the page, or undefined when they are not a list of strings. This hook must not
- * throw (SvelteKit would then log the original error with its message), so the read is guarded.
+ * What the dev-mode error page lists for this error, or undefined when it is not a ContentError whose issues are a
+ * list of strings. This hook must not throw (SvelteKit would then log the original error with its message), so
+ * the whole decision and the read are guarded. The issues are read once, by index, into a new plain array: no
+ * method of the source is called, so a Proxy or an Array subclass cannot hand back anything but its items.
  */
-function pageIssues(error: ContentError): string[] | undefined {
+function contentIssuesFor(error: unknown): string[] | undefined {
 	try {
+		if (!(error instanceof ContentError)) return;
 		const { issues } = error;
-		if (!Array.isArray(issues) || !issues.every((issue) => typeof issue === 'string')) return;
-		const shown: string[] = issues.slice(0, MAX_ISSUES);
-		if (issues.length > MAX_ISSUES) shown.push(`and ${issues.length - MAX_ISSUES} more`);
+		if (!Array.isArray(issues)) return;
+		const length: unknown = issues.length;
+		if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0) return;
+		const shown: string[] = [];
+		for (let i = 0; i < Math.min(length, MAX_ISSUES); i++) {
+			const item: unknown = issues[i];
+			if (typeof item !== 'string') return;
+			shown.push(item);
+		}
+		if (length > MAX_ISSUES) shown.push(`and ${length - MAX_ISSUES} more`);
 		return shown;
 	} catch {
 		return;
@@ -79,8 +89,8 @@ export const handleError: HandleServerError = (input) => {
 	const { error, event, kind } = input;
 	const status = kind === 'unknown' ? 500 : error.status;
 	console.error(formatServerError(status, error, event));
-	if (devMode && kind === 'unknown' && error instanceof ContentError) {
-		const contentIssues = pageIssues(error);
+	if (devMode && kind === 'unknown') {
+		const contentIssues = contentIssuesFor(error);
 		if (contentIssues) return { message: 'Invalid content', contentIssues };
 	}
 	return { message: status === 404 ? 'Not Found' : 'Internal Error' };
