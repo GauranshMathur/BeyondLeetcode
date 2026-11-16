@@ -6,7 +6,7 @@ Sprints are goal-based, not time-boxed: a sprint ends when its exit criteria hol
 
 **Ordering rule.** Each screen is designed in the sprint that builds it, or the one just before. Foundations rules come first so every later screen is built responsive from day one. The one exception is mobile boards, which wait for Sprint 5.
 
-**Only the current and planned sprints** (the maintainer's rule, 2026-11-10). When a sprint exits, its last card moves the sprint's section, its Status included, to `docs/sprints-archive.md`, which holds Sprints 0 to 21.
+**Only the current and planned sprints** (the maintainer's rule, 2026-11-10). When a sprint exits, its last card moves the sprint's section, its Status included, to `docs/sprints-archive.md`, which holds Sprints 0 to 22.
 
 **The Backlog** (the maintainer's decision, 2026-11-11). Every open issue has a ticket on the board with Status Backlog and no sprint. The principal keeps the Backlog in priority order, tier first, and the orchestrator constructs each sprint from its top (`docs/agents/board.md`, Constructing a sprint). Only Tier 0 work joins the sprint in progress (a bug that hurts users, a security problem, a broken CI or release), with anything a planned card cannot be built without. The rules are in `docs/agents/board.md`, Issues are the unit of work.
 
@@ -113,125 +113,6 @@ Every open issue, 67 in all: none in Tier 0, 3 in Tier 1, 34 in Tier 2 and 30 in
 | #535 | 2 | Create the Tailscale OAuth client (`TS_OAUTH_SECRET`); keep `RELEASE_PAT` or move release-please to a GitHub App token? | Create the OAuth client; keep `RELEASE_PAT` until the shared rate limit fails a release again. A hard call (a token and a new action) | C220, C221, and C340 (#570), which have no sprint |
 | #647 | 2 | Add a server-side guard to the no-JavaScript Registration save, and which kind? | A revision the form carries and the action checks. A hard call (Identity, and possibly what the Instance stores) | One Identity card with the two-reader review |
 | #529 | 2 | `@axe-core/playwright` (a new dependency), or the no-dependency contrast and landmark tests? | The no-dependency tests now; axe stays the maintainer's call. A hard call only for axe | The automated accessibility check; nothing else waits on it |
-
-## Sprint 22 · Dev mode
-
-**Goal:** the maintainer's dev mode ships: a switch for the author's own Local Instance that opens everything, runs any Problem's Reference Code and previews content from disk.
-
-**Re-sliced on 2026-11-16, in progress.** The sprint was planned with a second half, the starting Language (#661) and the guide's first-run offer (#662's C402b). #661 needs a schema change, which is the maintainer's to allow; he has not answered and said not to take it for him. So that half moved to Sprint 23 as it stood (C397, C398, C399, C400 and C402b, with their Sprint and Release fields), and this sprint is dev mode alone: C389 to C396, C438 (cut on 2026-11-16 for the error page C395 left out) and the exit card C403, ten cards. Its Sprint and Release options and its milestone were renamed and kept their ids. Where the plan below names a moved card, read Sprint 23. Its issue count is one, #660; #661 and #662 close in Sprint 23.
-
-Release `R v1.21.0: Sprint 22 · Dev mode`, version 1.21.0 (the next minor after Sprint 21's 1.20.0, because the cards are `feat`). Milestone `Sprint 22 · Dev mode`.
-
-**Re-planned on 2026-11-14.** This was Sprint 21, at 1.20.0. It runs second because it cannot start, and starts as soon as the maintainer has answered the two questions below. **Started 2026-11-16:** the maintainer answered #660 (dev mode is not allowed on a Multi-user Instance, the answer C389 was written for), so the dev-mode cards run; #661 is still with him, and he said not to take it for him, so C397 to C400 and C402b are held. The guide's page and header link (C401, C402a) moved to Sprint 21; C402b, the first-run offer, is here because it edits #661's choice page.
-
-- **Tier mix: 14 cards.** Tier 1: 13 (C389 to C400, C402b). The last card, C403, has no tier. No Tier 2 or Tier 3 card: the sprint is the priority items alone, and it is not padded.
-- **Issues: 3 closed here, all Tier 1:** #660, #661 and #662. Their boards (S4, P13, S5, S6, F23, S7) are Done.
-- **Top three:** #660 dev mode (C389 to C396); #661 the starting Language (C397 to C400); #662's last card, the guide offered on first run (C402b).
-- **One of its two questions is answered** (below): #660 on 2026-11-16, so C389 to C396 run. C397, the first card of the starting-Language lane, still carries #661's question as its `Blocked by:` line.
-- **Fourteen cards.**
-  - **Dev mode** (#660): C389: the switch `DEV_MODE`, read once at start, off unless set, never set by the image. C390: with it on, the Learning core opens every Topic and writes nothing. C391: the core runs a Problem's Reference Code against its Tests, saving nothing. C392: the banner on every screen. C393: a dev-mode Instance and a `dev` Playwright project. C394: "Run reference solution" on the Problem screen, in each Language. C395: the catalogue is read from disk on each request. C396: the README, self-hosting, the module map and mvp1.md.
-  - **Starting Language** (#661): C397: the stored value on `Learner`. C398: a Topic not yet started opens in it, and a Topic already worked on keeps its Language. C399: the first-run choice before the first Problem. C400: the Settings row.
-  - **The guide** (#662): C402b: the first-run choice offers the guide. From S7's report: the offer ("New here? How to use the site") is drawn in the Guide board, not in the StartingLanguage board, and opening the guide from the choice page leaves the `next` redirect behind; the Learner returns with Back.
-  - **Last:** C403, the exit check and `Release-As: 1.21.0`. It has no issue.
-- **Issues → cards.** The milestone `Sprint 22 · Dev mode` holds #660; #661 and #662 moved to the milestone `Sprint 23 · The starting Language` on 2026-11-16.
-
-  | Issue | Tier | Cards, in order | Last card | Lane conflicts (shared files, in this order) | Risks and review | Acceptance check |
-  |---|---|---|---|---|---|---|
-  | #660 Dev mode | 1 | S4, P13 (Sprint 20, Done); C389, C390, C391, C392, C393, C394, C395, C396 | C396 | `app.ts`: C389, C390, C395, after Sprint 21's C375. `core.ts`: C390, C391, then #661's C398. The Problem route's `+page.server.ts`: C394, then #661's C399. `a11y.e2e.ts`: C392, then C399, after Sprint 21's C401. `ci.yml`: C393, after Sprint 21's C411. `self-hosting.md` and `module-map.md`: C396, after Sprint 21's C433 and C379 | A switch that opens everything must be impossible to turn on from a request: the two-reader review on C389, C390, C391 and C394, and `sandbox-security-reviewer` on C391 (a new request through the Runner port, with no new flag, mount, image or limit). Unlocking and the reference run must write no progress row. A fourth e2e web server on a 2-CPU host | `bunx playwright test --project dev` passes (a fresh Learner opens the last Topic's last Problem, sees the banner on every screen, and gets a result per Test in three Languages), and `image-files.test.ts` fails if the image names `DEV_MODE` |
-  | #661 Starting Language | 1 | S5, S6 (Sprint 20, Done); C397, C398, C399, C400 | C400 | `core.ts`: after C391. The Problem route's `+page.server.ts`: after C394. `language/+page.svelte`: C399, then #662's C402b | A schema change, the maintainer's to allow. Every e2e Learner would meet the first-run choice unless the test Learners are made with a Language (in C399). A Topic with saved code must keep its Language when the setting changes | `language.e2e.ts` shows a new Learner asked, with none preselected and JavaScript off; `settings.e2e.ts` shows the setting changed and kept after a reload |
-  | #662 The guide | 1 | F23, S7 (Sprint 20, Done); C401, C402a (Sprint 21); C402b | C402b | `language/+page.svelte`: after C399. `guide.e2e.ts`: after Sprint 21's C402a | None: one link on a page that C399 builds | `guide.e2e.ts` reaches `/guide` from the first-run choice, as well as from the header |
-
-  - C403, the exit check, has no issue.
-- **Waiting on the maintainer.** Both are hard calls, asked on the issues on 2026-11-14, so the orchestrator does not take the recommended answer on its own:
-  - **#660, answered 2026-11-16: no.** The question was: is dev mode allowed on a Multi-user Instance, and who may use its actions there? `mvp1.md` does not say. Recommended: no. It takes effect only in Local Mode, and a Multi-user Instance with the switch set refuses to start, as with `IDENTITY_TEST_LEARNER`. The maintainer reaches a Local Mode dev Instance over the tailnet. A security rule, so a hard call. C389 is written for this answer.
-  - **#661: may it add a stored per-Learner value, a schema change?** The theme is a cookie, which does not follow an Account across browsers, and the issue asks for a value that survives signing out and in. Recommended: yes, one nullable `startingLanguage` column on `Learner`, with a migration that sets every existing Learner to `python`. A schema change, so a hard call. C397 is written for this answer.
-  - If one is answered and not the other, that issue's lane can start: #660's cards need nothing of #661's, and #661's C398 and C399 follow #660's C391 and C394 only in shared files, an order the orchestrator can turn round when the Backlog is re-ordered.
-- **Decided from the issues** (their own direction): Reset progress keeps the starting Language, as it keeps the theme; the switch's name, `DEV_MODE`, was proposed when the sprint was planned.
-- **Small cards share a PR:** C402b carries `Batch: L` and is its batch's only card, so its PR is its own.
-- **Reviews.**
-  - The orchestrator's two-reader review (Fable and Codex): C389, C390, C391 and C394.
-  - `sandbox-security-reviewer` before merge: C391.
-  - None for the rest. C399 gets none provided `route-policy.ts` is untouched and its return address is checked.
-- **Shared files**, each an ordered chain:
-  - `app.ts` and `app.test.ts`: C389, C390, C395.
-  - `learning/core.ts` and `core.test.ts`: C390, C391, C398 (lane A).
-  - `problems/[problemId]/+page.server.ts`: C394, then C399 (lane A).
-  - `a11y.e2e.ts`: C392, then C399.
-  - `language/+page.svelte`: C399, then C402b.
-- **Two lanes a round.**
-
-  | Round | A · The core, the Problem screen and first run | B · Schema, layout, e2e, content and Settings |
-  |---|---|---|
-  | 1 | C389 the switch (#660) | C397 schema (#661) |
-  | 2 | C390 unlock (#660) | |
-  | 3 | C391 reference run (#660) | C392 banner (#660) |
-  | 4 | C398 starting-Language rule (#661) | C393 dev e2e project (#660) |
-  | 5 | C394 reference run on the screen (#660) | C395 catalogue from disk (#660) |
-  | 6 | C399 first-run choice (#661) | C400 Settings row (#661) |
-  | 7 | C402b the guide offered on first run (#662; small) | C396 dev-mode docs (#660) |
-  | 8 | C403 exit check and `Release-As: 1.21.0` | |
-
-- **Rounds: 14.** The longest chain is seven cards (C389, C390, C392, C393, C394, C399, C402b). There are five reviews (four two-reader, one sandbox). The last card and the cut add one round each.
-- **No limit, flag or image changes.** C391 sends the Runner the same request shape and limits as a Submit. The image never sets `DEV_MODE`.
-
-**Exit:**
-- All 10 Sprint 22 cards are Done (C389 to C396, C438, C403), and `ci` is green on `main`. The sprint's Status counts issues closed and cards done, each per tier.
-- With `DEV_MODE` unset: a Locked Topic answers 403, no banner is drawn, and the reference-run action is absent from the page and answers 404 (`problem.e2e.ts`, `a11y.e2e.ts`, `error.e2e.ts`).
-- `image-files.test.ts` fails if the `Dockerfile` or the files `init` writes name `DEV_MODE`.
-- `bunx playwright test --project dev` passes: a fresh Learner opens the last Topic's last Problem, the banner is on every screen, and "Run reference solution" shows a result per Test in Python, TypeScript and Go.
-- `core.test.ts` shows every progress table unchanged by the dev-mode reads and the reference run, and the reference run's Runner requests carrying a Submit's limits.
-- `app.test.ts` shows an edited Chapter file read on the next request in dev mode, with no restart.
-- `grep -n "DEV_MODE" README.md docs/self-hosting.md` prints a start command in each.
-- `hooks.server.test.ts` shows content that fails validation answered as its list of issues in dev mode and as the generic message with it off, and logged by class name only in both.
-- #660 is closed, 1 issue, Tier 1. #661 and #662 are open, in Sprint 23.
-- The orchestrator cuts 1.21.0 from the release PR and records the cut.
-
-**Status (2026-11-16):** exit met.
-- **Cards:** all 10 Sprint 22 cards are Done: C389 to C396, C438 and this one. The sprint was planned at 14; the re-slice of 2026-11-16 moved five to Sprint 23 and C438 was cut the same day.
-- **Tier mix (cards):** Tier 1: 9 (C389 to C396, C438). The last card has no tier. Tier 0, 2 and 3: none.
-- **Issues:** 1 closed, #660 (Tier 1), by its last card, C396. #661 and #662 (Tier 1) are open, in Sprint 23.
-- **CI:** `ci` is green on `main` at 4fcadf3, the last card's merge.
-- **Checks:**
-  - With `DEV_MODE` unset: `problem.e2e.ts` finds no Dev item on the Problem screen and a POST to `?/runReference` answering 404; `a11y.e2e.ts` finds no band on any screen; `error.e2e.ts` still shows the Locked Topic's 403 page.
-  - `image-files.test.ts` fails if the `Dockerfile`, or the `compose.yaml` or `.env` that `init` writes, names `DEV_MODE`.
-  - The `dev` Playwright project runs in CI's e2e job (311 tests, against 264 before the dev project was added): a fresh Learner opens the last Topic's last Problem, the band is on every screen a Local Instance can show, and "Run reference solution" lists a result per Test in Python, TypeScript and Go.
-  - `core.test.ts` shows every progress table unchanged by the dev-mode reads and by the reference run, and the reference run's Runner requests equal to a Submit's.
-  - `app.test.ts` shows an edited Chapter, Problem statement, Test and Reference Code read on the next request in dev mode with no restart, and not read with the switch off.
-  - `hooks.server.test.ts` shows content that fails validation answered as its issues in dev mode and as the generic message with it off, logged by class name only in both.
-  - `grep -n "DEV_MODE=1 bun" README.md docs/self-hosting.md` prints a start command in each.
-- **Exit-check numbers** (`docs/agents/board.md`, Sprint exit check):
-  - Cards that needed a second fix: 3 (C392, C394, C438).
-  - Review rounds failed: 13. Card-reviewer: 8 (C391, C392, C393, C395, C396 and C438 once each, C394 twice). Security reviews that did not pass first time: 5 (C389, C390, C392 once each, C438 twice).
-  - Questions answered at each rung: rung a, 4 (`docs/decisions.md`); rung b, none; rung c, 1 answered by the maintainer (dev mode is not allowed on a Multi-user Instance), and 3 asked and still open (#728).
-  - Issues filed by the principal against issues closed: 0 against 1. The principal was not called in this sprint; the orchestrator filed #719 and #728.
-  - Product cards against other cards: 9 against 0.
-  - Lanes that had to wait for a builder slot: 1 (C393, once C392 had merged).
-- **Release:** this card's merge carries `Release-As: 1.21.0`. The orchestrator then cuts 1.21.0 from the release PR and records the cut in `docs/releasing.md`.
-- **What the reviews caught:**
-  - **C389:** a Local Instance started with the switch could be turned into a Multi-user one from Setup while running, leaving dev mode on. Now the Instance refuses to become Multi-user while dev mode is on.
-  - **C392:** the server hook did not pass `DEV_MODE` to the app, so the switch did nothing in the running server; this card wired it and so became a reviewed card. With the band on, the Problem screen was 40 px taller than the viewport.
-  - **C395:** the content was re-read on every core call, so one page load could render from two catalogues; it is read once per request.
-  - **C393:** its first test would have passed on the Locked error page.
-  - **C438:** the error hook could throw on a malformed error, and SvelteKit would then have logged the original error's message.
-  - **C394:** changing the Language during a run re-enabled the button, so two runs could overlap and take both of the Learner's run places. It failed two card reviews and was Blocked; the second point (which region is named) was answered at rung a from the card.
-  - **C396:** the image route told the author to use "a folder of its own"; Compose names the containers and the data volume after the folder, so a second folder called `beyondleetcode` would have taken over a real Instance's data.
-- **The process changed mid-sprint** (the maintainer, 2026-11-16): PRs #673 and #674 merged after their own reviews (four rounds and two), the labels `reviewed`, `security-reviewed` and `human-verified` were created, and the review gate was shown on real pull requests (green on a docs PR with no label; red on a tier 2 PR, then green once `reviewed` was set). C389 and C390 were built under the old rules; from C392's last round on, every card had a card-reviewer pass, and C438, C394 and C396 were cut by the card-writer in the new format. `review-gate` is not yet in the ruleset: that is the maintainer's step.
-- **Flakes:** none on a card. The 1.20.0 cut's image push was refused once by the registry and passed on one re-run.
-- **Decisions and accepted changes from the cards:**
-  - **The re-slice** (the orchestrator, 2026-11-16): dev mode ships alone; the starting Language waits in Sprint 23 for the maintainer's answer on #661.
-  - **Dev mode needs a restart on a fresh Instance:** it is on only when the Instance is already in Local Mode at start.
-  - **Reads write nothing; the Learner's own actions are kept:** a Read mark, a Run, a Submit, a revealed Hint and saved code made in dev mode stay after it is turned off.
-  - **The reference run shows a Hidden Test's name and outcome only,** and Reference Code that does not compile reads as "Runner unavailable". Both are questions on #728, with one more about the log for invalid content.
-  - **Left out of the P13 board** by C394, because the core does not give them: the time column, the details row, the compile-error block and the running progress.
-  - **Not checked by eye:** nobody has looked at the band, the Dev view or the "Invalid content" page in a browser by hand; the e2e tests are the evidence. The card-writer read the P13 board from the designer's local copy, not the published canvas.
-- **Filed from the sprint, each with a Backlog ticket:** #719 (the review gate's labels are not tied to the reviewed commit; the maintainer's) and #728 (three open questions on dev mode; the maintainer's).
-
-**Not in the sprint:**
-- **Dev mode on a Multi-user Instance**, unless the maintainer answers otherwise.
-- **#560** (one recipe to start a browser test's Instance): Tier 3. C393 adds a seventh recipe; the refactor waits in the Backlog.
-- **#505** (the header model's phone bar): Tier 3; it touches `header.ts` after Sprint 21's C402a.
-- **The content redesign (#663):** the content sprints, below.
-- **The starting Language (#661) and the guide's first-run offer (C402b):** Sprint 23, below.
 
 ## Sprint 23 · The starting Language
 
