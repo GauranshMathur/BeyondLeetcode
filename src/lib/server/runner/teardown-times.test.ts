@@ -59,6 +59,27 @@ describe('parseTeardownTimes', () => {
 		expect(t).toEqual({ startMs: 150, killMs: undefined, dieMs: 900, destroyMs: 905 });
 	});
 
+	it('takes nothing from an earlier test when it is the only container that started', () => {
+		const out = log(
+			...container('old', T0 - 5_000, ['die', 900], ['destroy', 903]),
+			ev('create', 'bomb', T0 + 50)
+		);
+		expect(parseTeardownTimes(out, T0)).toBeUndefined();
+	});
+
+	it('takes the last started create after the start', () => {
+		const out = log(
+			...container('first', T0 + 10, ['die', 900], ['destroy', 903]),
+			...container('second', T0 + 2_000, ['die', 700], ['destroy', 702])
+		);
+		expect(parseTeardownTimes(out, T0)).toEqual({
+			startMs: 150,
+			killMs: undefined,
+			dieMs: 700,
+			destroyMs: 702
+		});
+	});
+
 	it('is undefined without a started container or without a die', () => {
 		expect(parseTeardownTimes(log(ev('create', 'a', T0)), T0)).toBeUndefined();
 		expect(parseTeardownTimes(log(...container('a', T0)), T0)).toBeUndefined();
@@ -103,6 +124,13 @@ describe('the hard-stop check', () => {
 });
 
 describe('the remove check', () => {
+	it('passes the run of 2026-11-15', () => {
+		const t = times(
+			log(...container('a', T0, ['kill', 10_000], ['die', 24_874], ['destroy', 24_878]))
+		);
+		expect(checkRemove(t)).toBe('pass');
+	});
+
 	const remove = (...rest: [string, number][]) =>
 		checkRemove(times(log(...container('a', T0, ...rest))));
 

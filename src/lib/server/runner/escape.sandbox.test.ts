@@ -556,11 +556,12 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		const lifetimeMs = times?.dieMs;
 		// A broken `docker events` pairing must fail here, not print "unavailable".
 		expect(lifetimeMs).toBeDefined();
-		const killedAtMs = times?.killMs;
-		const diedAfterKillMs =
-			times?.killMs === undefined ? Number.NaN : (lifetimeMs ?? Number.NaN) - times.killMs;
+		const killLog =
+			times?.killMs === undefined
+				? 'kill none (ended by itself)'
+				: `kill sent ${Math.round(times.killMs)} ms; died ${Math.round((lifetimeMs ?? Number.NaN) - times.killMs)} ms after it`;
 		console.log(
-			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; kill sent ${killedAtMs === undefined ? 'no kill' : `${Math.round(killedAtMs)} ms`}; died ${Number.isNaN(diedAfterKillMs) ? 'no kill' : `${Math.round(diedAfterKillMs)} ms`} after the kill; destroy ${Math.round(times?.destroyMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
+			`fork-bomb container lifetime ${Math.round(lifetimeMs ?? Number.NaN)} ms; ${killLog}; destroy ${Math.round(times?.destroyMs ?? Number.NaN)} ms; whole request ${elapsedMs} ms; design bound ${designBoundMs} ms; outcome ${outcome}`
 		);
 
 		expect(['timeout', 'runtimeError', 'Runner responded 500']).toContain(outcome);
@@ -573,7 +574,8 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		expect(designBoundMs).toBeLessThan(sandboxConfig.adapterTimeoutMs);
 		// The two steps the Runner owns: the kill is sent on time, and the dead container is removed
 		// at once. How long the kernel then takes to end a PID namespace full of forking processes is
-		// not the Runner's and has measured from 5 to 15 s, so no bound is set on it.
+		// not the Runner's and has measured from 5 to 15 s, so no bound is set on it here; the
+		// whole-request design bound above still caps it.
 		expect(times).toBeDefined();
 		expect(checkHardStop(times as TeardownTimes)).toBe('pass');
 		expect(checkRemove(times as TeardownTimes)).toBe('pass');
