@@ -2,6 +2,8 @@
 # Tests ci-gate.sh with a fake `gh` on PATH. Run: .github/ci-gate.test.sh
 # Job lists mirror `gh run view --json jobs` (only the fields the gate reads). "release 1.4.0" is
 # the shape of its ci run 40359423454: every test job green, publish-edge cancelled.
+# The default gate waits on the one job `tests`, which ci.yml makes depend on every test job. When a
+# needed job fails or is cancelled GitHub skips `tests`, so a skipped `tests` must fail the gate.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 work="$(mktemp -d)"
@@ -23,17 +25,31 @@ FAKE
 chmod +x "$work/bin/gh"
 fail=0
 
-# jobs <name:status:conclusion>... -> the JSON of one poll
+# jobs <name:status:conclusion>... -> the JSON of one poll. The run's own status is RUN_STATUS,
+# `completed` unless a case says otherwise: that keeps the meaning of every case written before the
+# gate read the run's status (a job list was then the whole run). RUN_STATUS=none leaves it out.
 jobs() {
   local spec out=
   for spec in "$@"; do
     IFS=: read -r n s c <<<"$spec"
     out="$out{\"name\":\"$n\",\"status\":\"$s\",\"conclusion\":\"$c\"},"
   done
-  printf '{"jobs":[%s]}' "${out%,}"
+  if [ "${RUN_STATUS-completed}" = none ]; then
+    printf '{"jobs":[%s]}' "${out%,}"
+  else
+    printf '{"status":"%s","jobs":[%s]}' "${RUN_STATUS-completed}" "${out%,}"
+  fi
 }
-all_ok="typecheck:completed:success lint:completed:success unit:completed:success build:completed:success e2e:completed:success sandbox:completed:success docker:completed:success"
+test_jobs="typecheck:completed:success lint:completed:success unit:completed:success build:completed:success e2e:completed:success sandbox:completed:success docker:completed:success"
+all_ok="$test_jobs tests:completed:success"
 publish="publish-sandbox-node:completed:success publish-sandbox-go:completed:success"
+
+# jobs_in <run status> <name:status:conclusion>... -> the same, for a run in that status
+jobs_in() {
+  local RUN_STATUS="$1"
+  shift
+  jobs "$@"
+}
 
 # run <name> <expected exit> <run id> <poll JSON>...   (polls are served in order)
 run() {
@@ -42,12 +58,14 @@ run() {
   rm -rf "$work/d"; mkdir "$work/d"
   for p in "$@"; do printf '%s' "$p" >"$work/d/view.$i"; i=$((i + 1)); done
   got="$(FAKE_DIR="$work/d" FAKE_RUN_ID="$runid" PATH="$work/bin:$PATH" GITHUB_REPOSITORY=o/r \
-    FAKE_SLEEP=${FAKE_SLEEP-} FAKE_SLEEP_ON=${FAKE_SLEEP_ON-} CI_GATE_FIND_BUDGET=${FIND_BUDGET:-20} CI_GATE_FIND_SLEEP=${FIND_SLEEP:-0.1} CI_GATE_POLL=${POLL:-0.1} CI_GATE_TIMEOUT=${TIMEOUT:-20} \
+    CI_GATE_JOBS=${GATE_JOBS-} FAKE_SLEEP=${FAKE_SLEEP-} FAKE_SLEEP_ON=${FAKE_SLEEP_ON-} CI_GATE_FIND_BUDGET=${FIND_BUDGET:-20} CI_GATE_FIND_SLEEP=${FIND_SLEEP:-0.1} CI_GATE_POLL=${POLL:-0.1} CI_GATE_TIMEOUT=${TIMEOUT:-20} \
     "$here/ci-gate.sh" abc 2>&1)"
   code=$?
   took=$((SECONDS - t0))
   if [ "$code" != "$want" ]; then
     echo "FAIL $name: exit $code, want $want"; echo "$got"; fail=1
+  elif [ -n "${WANT_TEXT-}" ] && ! grep -qF "$WANT_TEXT" <<<"$got"; then
+    echo "FAIL $name: output lacks \"$WANT_TEXT\""; echo "$got"; fail=1
   elif [ -n "${MAXSECS-}" ] && [ "$took" -gt "$MAXSECS" ]; then
     echo "FAIL $name: took ${took}s, more than ${MAXSECS}s"; fail=1
   else
@@ -61,6 +79,10 @@ run() {
 # set a short TIMEOUT or FIND_BUDGET of their own.
 # shellcheck disable=SC2046,SC2086
 {
+  # GATE_JOBS names the jobs the gate waits for; empty means its default, the one job `tests`.
+  # The cases below until the "default" section pass the seven test jobs by name instead, so they
+  # keep exercising the gate's per-job logic (one job failing, renamed, re-run) job by job.
+  GATE_JOBS="typecheck lint unit build e2e sandbox docker"
   run "all tests green" 0 7 "$(jobs $all_ok $publish publish-edge:completed:success)"
   run "release 1.4.0: publish-edge cancelled" 0 7 "$(jobs $all_ok $publish publish-edge:completed:cancelled)"
   run "publish-edge still pending" 0 7 "$(jobs $all_ok publish-edge:queued:)"
@@ -100,5 +122,56 @@ run() {
   FIND_SLEEP=30 FIND_BUDGET=2 MAXSECS=5 run "discovery sleep longer than the budget: cut short" 1 "" ""
   FIND_BUDGET=0 MAXSECS=1 run "zero discovery budget exits at once" 1 7 "$(jobs $all_ok)"
   TIMEOUT=1 run "deadline expires while a job is pending" 1 7 "$(jobs ${all_ok/docker:completed:success/docker:queued:})"
+
+  # The default: the gate waits on `tests` alone.
+  GATE_JOBS=
+  run "default: tests succeeded" 0 7 "$(jobs $all_ok publish-edge:completed:success)"
+  run "default: tests succeeded, publish-edge cancelled" 0 7 "$(jobs $all_ok publish-edge:completed:cancelled)"
+  run "default: tests succeeded, nothing else listed" 0 7 "$(jobs tests:completed:success)"
+  # GitHub skips `tests` when a job it needs fails or is cancelled; the gate must read that as a failure.
+  run "default: tests skipped because a test job failed" 1 7 "$(jobs ${test_jobs/unit:completed:success/unit:completed:failure} tests:completed:skipped publish-edge:completed:skipped)"
+  run "default: tests skipped because a test job was cancelled" 1 7 "$(jobs ${test_jobs/e2e:completed:success/e2e:completed:cancelled} tests:completed:skipped)"
+  run "default: tests failed" 1 7 "$(jobs $test_jobs tests:completed:failure)"
+  run "default: tests cancelled" 1 7 "$(jobs $test_jobs tests:completed:cancelled)"
+  WANT_TEXT="tests missing" run "default: tests missing, run completed" 1 7 "$(jobs $test_jobs publish-edge:completed:success)" "$(jobs $test_jobs publish-edge:completed:success)"
+  WANT_TEXT="tests missing" run "default: completed run with an empty job list is missing" 1 7 '{"status":"completed","jobs":[]}' '{"status":"completed","jobs":[]}'
+  run "default: empty job list while the run is queued, then green" 0 7 '{"status":"queued","jobs":[]}' "$(jobs $all_ok)"
+  WANT_TEXT="Gave up waiting" TIMEOUT=3 run "default: empty job list, run never starts (times out, not missing)" 1 7 '{"status":"in_progress","jobs":[]}'
+  # `gh run view` reads the run and then its jobs in two requests. A re-run begun in between pairs
+  # the old `completed` status with the new attempt's list, which has no `tests`: one confirming
+  # read before failing on missing.
+  run "default: missing once, then the re-run shows in progress, then success" 0 7 "$(jobs ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs_in in_progress ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs $all_ok)"
+  WANT_TEXT="tests missing" run "default: missing twice fails" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs)"
+  WANT_TEXT="Gave up waiting" POLL=30 TIMEOUT=2 MAXSECS=5 run "default: missing, deadline before the confirming read" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs)"
+  run "default: missing, a failed read, missing, then success (the two misses were not in a row)" 0 7 "$(jobs $test_jobs)" EXIT1 "$(jobs $test_jobs)" "$(jobs $all_ok)"
+  run "default: missing, malformed reply, missing, then success" 0 7 "$(jobs $test_jobs)" "not json {" "$(jobs $test_jobs)" "$(jobs $all_ok)"
+  run "default: missing once, then tests success" 0 7 "$(jobs $test_jobs)" "$(jobs $all_ok)"
+  run "default: missing once, then tests skipped" 1 7 "$(jobs $test_jobs)" "$(jobs $test_jobs tests:completed:skipped)"
+  run "default: tests neutral" 1 7 "$(jobs $test_jobs tests:completed:neutral)"
+  run "default: tests timed out" 1 7 "$(jobs $test_jobs tests:completed:timed_out)"
+  run "default: duplicate tests, success then failure" 1 7 "$(jobs $all_ok tests:completed:failure)"
+  run "default: duplicate tests, failure then success" 1 7 "$(jobs $test_jobs tests:completed:failure tests:completed:success)"
+  WANT_TEXT="Gave up waiting" TIMEOUT=3 run "default: tests absent, run in progress, times out (not missing)" 1 7 "$(jobs_in in_progress $test_jobs)"
+  # GitHub creates the job entry of `tests` only when its needs have finished, so a poll made while
+  # the run is in progress can list the test jobs without it. That is waiting, not missing.
+  run "default: tests absent mid-run, then success" 0 7 "$(jobs_in in_progress ${test_jobs/docker:completed:success/docker:in_progress:})" "$(jobs_in in_progress $test_jobs)" "$(jobs $all_ok)"
+  run "default: tests absent mid-run, then skipped" 1 7 "$(jobs_in in_progress ${test_jobs/unit:completed:success/unit:completed:failure} sandbox:in_progress:)" "$(jobs_in in_progress ${test_jobs/unit:completed:success/unit:completed:failure} tests:completed:skipped)"
+  run "default: tests absent mid-run, then the run completes without it" 1 7 "$(jobs_in in_progress $test_jobs)" "$(jobs_in completed $test_jobs)"
+  TIMEOUT=3 run "default: tests absent and the run never completes (times out)" 1 7 "$(jobs_in queued $test_jobs)"
+  TIMEOUT=3 run "default: a job failed early, tests absent, run still going (times out)" 1 7 "$(jobs_in in_progress ${test_jobs/unit:completed:success/unit:completed:failure} sandbox:in_progress:)"
+  TIMEOUT=3 run "default: no status in the reply: waits, never success" 1 7 "$(jobs_in none $test_jobs)"
+  run "default: no status in the reply, tests success" 0 7 "$(jobs_in none $all_ok)"
+  TIMEOUT=3 run "default: status is not a string: waits, never success" 1 7 "$(jobs $test_jobs | sed 's/"status":"completed"/"status":["completed"]/')" "$(jobs $test_jobs | sed 's/"status":"completed"/"status":true/')"
+  # A re-run of failed jobs sets the run back to in progress; the latest attempt's list has no
+  # `tests` until its needs are done again, and that is read as waiting.
+  run "default: re-run in progress, tests absent, then success" 0 7 "$(jobs_in in_progress ${test_jobs/e2e:completed:success/e2e:queued:})" "$(jobs $all_ok)"
+  # With the seven names given, an absent name is waited for the same way while the run goes on.
+  GATE_JOBS="typecheck lint unit build e2e sandbox docker"
+  run "named jobs: one absent mid-run, then green" 0 7 "$(jobs_in in_progress ${all_ok/docker:completed:success/})" "$(jobs $all_ok)"
+  run "named jobs: one absent, run completed" 1 7 "$(jobs ${all_ok/docker:completed:success/})"
+  GATE_JOBS=
+  run "default: tests still waiting, then green" 0 7 "$(jobs $test_jobs tests:queued:)" "$(jobs $all_ok)"
+  run "default: tests running, then skipped" 1 7 "$(jobs $test_jobs tests:in_progress:)" "$(jobs $test_jobs tests:completed:skipped)"
+  TIMEOUT=3 run "default: tests never finishes (times out)" 1 7 "$(jobs $test_jobs tests:in_progress:)"
 }
 exit $fail
