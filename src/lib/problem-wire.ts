@@ -1,5 +1,10 @@
 import type { BuildFiles } from '#lib/server/content/catalogue.js';
-import type { HintsView, RunView, SubmitView } from '#lib/server/learning/core.js';
+import type {
+	HintsView,
+	ReferenceRunView,
+	RunView,
+	SubmitView
+} from '#lib/server/learning/core.js';
 import type { LearningErrorCode } from '#lib/server/learning/errors.js';
 import type { ActionResult } from '$app/forms';
 import type { Language } from './languages';
@@ -72,6 +77,7 @@ export interface ReplyData {
 	switchLanguage: { language: Language };
 	startFromReferenceCode: { files: BuildFiles; revision: number };
 	revealHint: { hints: HintsView };
+	runReference: ReferenceRunView;
 }
 
 /** What the browser makes of an answer: the data, or why there is none. */

@@ -10,6 +10,7 @@ import { PROBLEM_SHORT } from '#lib/styles/breakpoints.js';
 import { type ActionResult, deserialize } from '$app/forms';
 import { refreshAll } from '$app/navigation';
 import { page } from '$app/state';
+import DevReferenceRun from './DevReferenceRun.svelte';
 import ResultsPanel from './ResultsPanel.svelte';
 import SolutionCode from './SolutionCode.svelte';
 import { afterOutcome, PANES, type ViewState } from './view';
@@ -240,6 +241,10 @@ const label: Record<SaveState, string> = {
 	<button type="button" class="run submit mono" aria-disabled={!allowed.submit} onclick={() => dispatch({ type: 'submit' })}>{session.outcome?.kind === 'submitting' ? 'Submitting…' : 'Submit'}</button>
 {/snippet}
 
+{#snippet devView()}
+	<DevReferenceRun problemId={problem.id} startLanguage={problem.build.language} />
+{/snippet}
+
 {#snippet crumbs()}
 	<nav class="crumbs" aria-label="Breadcrumb">
 		<a href="/">map</a><span aria-hidden="true">›</span><a href="/topics/{problem.topicId}">{problem.topicTitle}</a>
@@ -316,7 +321,7 @@ const label: Record<SaveState, string> = {
 						{@render saveNotice('status')}
 						{@render saveNotice('signedOut')}
 					</div>
-					<ResultsPanel outcome={session.outcome} />
+					<ResultsPanel outcome={session.outcome} dev={page.data.devMode === true ? devView : undefined} />
 				</div>
 			</div>
 		</div>

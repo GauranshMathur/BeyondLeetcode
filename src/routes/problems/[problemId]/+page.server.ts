@@ -101,5 +101,18 @@ export const actions: Actions = {
 	run: buildAction((learner, build, files) => learner.run(build, files)),
 
 	/** Submit: saves, runs every Test, records the Submission. Hidden Test data never leaves the server. */
-	submit: buildAction((learner, build, files) => learner.submit(build, files))
+	submit: buildAction((learner, build, files) => learner.submit(build, files)),
+
+	/**
+	 * Dev mode only: runs this Problem's Reference Code in one Language against its Tests and answers a
+	 * result per Test. With dev mode off it is a 404 before the body is read. It saves nothing.
+	 */
+	runReference: async ({ locals, params, request }) => {
+		if (locals.devMode !== true) refuse({ code: 'NotFound' });
+		const language = languageById((await request.formData()).get('language'))?.id;
+		if (!language) refuse({ code: 'BadRequest' });
+		return withLearningErrors(() =>
+			signedIn(locals).learning.runReference(params.problemId, language)
+		);
+	}
 };
