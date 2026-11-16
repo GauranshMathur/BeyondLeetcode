@@ -28,6 +28,8 @@ const chosen = $derived(language ?? startLanguage);
 let shown = $state<Shown>({ kind: 'idle' });
 // Each run takes a number; an answer that comes back after the select changed carries an old one and is dropped.
 let latest = 0;
+// True from the press until the answer is back, whatever the select did meanwhile: one request at a time.
+let inflight = $state(false);
 
 const nameOf = (id: Language) => languageById(id)?.name ?? id;
 
@@ -43,7 +45,8 @@ function testsOf(data: unknown): readonly ReferenceTestResult[] | undefined {
 }
 
 async function run() {
-	if (shown.kind === 'running') return;
+	if (inflight) return;
+	inflight = true;
 	const asked = chosen;
 	const mine = ++latest;
 	shown = { kind: 'running', language: asked };
@@ -63,7 +66,10 @@ async function run() {
 		const reply = toReply(response, result);
 		const tests = reply.ok ? testsOf(reply.data) : undefined;
 		if (tests) outcome = { kind: 'result', language: asked, tests };
-	} catch {}
+	} catch {
+	} finally {
+		inflight = false;
+	}
 	if (mine === latest) shown = outcome;
 }
 
@@ -107,7 +113,7 @@ const rowKey = (test: ReferenceTestResult) =>
 			</select>
 		</label>
 		<span id="dev-ref-help" class="help mono">Runs the reference solution on every Test. Your code is not touched.</span>
-		<button type="button" class="run mono" aria-describedby="dev-ref-help" aria-disabled={shown.kind === 'running'} onclick={run}>{shown.kind === 'running' ? 'Running reference…' : 'Run reference solution'}</button>
+		<button type="button" class="run mono" aria-describedby="dev-ref-help" aria-disabled={inflight} onclick={run}>{inflight ? 'Running reference…' : 'Run reference solution'}</button>
 	</div>
 
 	<div class="result">

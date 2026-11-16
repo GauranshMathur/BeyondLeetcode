@@ -5,15 +5,21 @@ import { actions } from './+page.server';
 // The dev-mode action runs a Problem's Reference Code. It reads the Instance's own switch before it reads
 // anything the request carries, and passes the core exactly two values.
 
+function toForm(fields: Record<string, string | File>) {
+	const form = new FormData();
+	for (const [key, value] of Object.entries(fields)) form.set(key, value);
+	return form;
+}
+
 function call(options: {
-	devMode: boolean;
-	fields?: Record<string, string>;
+	devMode: unknown;
+	fields?: Record<string, string | File>;
 	headers?: Record<string, string>;
 	search?: string;
 	runReference?: ReturnType<typeof vi.fn>;
 }) {
 	const runReference = options.runReference ?? vi.fn(async () => ({ tests: [] }));
-	const formData = vi.fn(async () => new URLSearchParams(options.fields ?? {}));
+	const formData = vi.fn(async () => toForm(options.fields ?? {}));
 	const event = {
 		locals: { devMode: options.devMode, identity: {}, learning: { runReference } },
 		params: { problemId: 'stacks-push' },
@@ -30,7 +36,20 @@ const refusalOf = async (result: Promise<unknown>) =>
 		(e: { status: number; body: { message: string; revision?: number } }) => e
 	);
 
+// The default-server e2e cannot catch the removal of this route's own check: with dev mode off the core's
+// runReference refuses with NotFound too, so the page answers 404 either way. This unit test is the guard.
 describe('the runReference action with dev mode off', () => {
+	it.each([1, '1', 'true', {}])(
+		'treats %j, which is not the boolean true, as off',
+		async (devMode) => {
+			const { result, runReference, formData } = call({ devMode, fields: { language: 'python' } });
+
+			expect(await refusalOf(result)).toMatchObject({ status: 404, body: { message: 'NotFound' } });
+			expect(runReference).not.toHaveBeenCalled();
+			expect(formData).not.toHaveBeenCalled();
+		}
+	);
+
 	it('answers 404 without calling the core or reading the body', async () => {
 		const { result, runReference, formData } = call({
 			devMode: false,
@@ -68,6 +87,16 @@ describe('the runReference action with dev mode on', () => {
 		const { result, runReference } = call({
 			devMode: true,
 			fields: language === undefined ? {} : { language }
+		});
+
+		expect(await refusalOf(result)).toMatchObject({ status: 400, body: { message: 'BadRequest' } });
+		expect(runReference).not.toHaveBeenCalled();
+	});
+
+	it('refuses a language sent as a file with BadRequest', async () => {
+		const { result, runReference } = call({
+			devMode: true,
+			fields: { language: new File(['python'], 'python') }
 		});
 
 		expect(await refusalOf(result)).toMatchObject({ status: 400, body: { message: 'BadRequest' } });

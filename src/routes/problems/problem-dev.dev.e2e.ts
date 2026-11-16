@@ -11,9 +11,10 @@ test.use({ storageState: asLearner('e2e-problem-dev') });
 const consoleRegion = (page: Page) => page.getByRole('region', { name: 'Console' });
 const devButton = (page: Page) => page.getByRole('button', { name: 'Dev', exact: true });
 const view = (page: Page) =>
-	page.getByRole('region', { name: 'Dev mode: run the reference solution' });
+	page.getByRole('region', { name: 'Dev mode: run the reference solution', exact: true });
 const runButton = (page: Page) => view(page).getByRole('button', { name: /^Run(ning)? reference/ });
-const picker = (page: Page) => view(page).getByLabel('reference language');
+const picker = (page: Page) =>
+	view(page).getByRole('combobox', { name: 'reference language', exact: true });
 const viewStatus = (page: Page) => view(page).getByRole('status');
 const table = (page: Page, language: string) =>
 	view(page).getByRole('table', { name: `Reference solution results, ${language}` });
@@ -123,13 +124,24 @@ test('a run in flight is shown, sends nothing twice, and is dropped when the lan
 	});
 	await runButton(page).click();
 	await expect(viewStatus(page)).toContainText('Running');
+	await expect.poll(() => seen).toBe(2);
 	await picker(page).selectOption('go');
 	await expect(viewStatus(page)).toHaveText('');
+	// The earlier request is still on the wire: the button stays shut and a press sends nothing.
+	await expect(runButton(page)).toHaveText('Running reference…');
+	await expect(runButton(page)).toHaveAttribute('aria-disabled', 'true');
+	await runButton(page).click({ force: true });
+	await expect(runButton(page)).toHaveText('Running reference…');
+	expect(seen).toBe(2);
+	// Wait for the late answer to come back before asserting that it was dropped.
+	const landed = page.waitForEvent('requestfinished', (r) => r.url().endsWith('?/runReference'));
 	release();
-	await expect.poll(() => seen).toBe(2);
+	await landed;
+	await expect(runButton(page)).toHaveText('Run reference solution');
 	await expect(table(page, 'Python')).toHaveCount(0);
 	await expect(table(page, 'Go')).toHaveCount(0);
 	await expect(viewStatus(page)).toHaveText('');
+	expect(seen).toBe(2);
 });
 
 test('a failing result says Reference failed and shows no input, expected or got', async ({
