@@ -2,38 +2,40 @@
 
 ## [1.21.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.20.0...v1.21.0) (2026-11-16)
 
+### Highlights
 
-### Features
+Sprint 22 adds dev mode, a switch for a content author's own Local Instance. Started with `DEV_MODE=1`, the Instance opens every Topic, shows edits to the content folder on the next page load, runs any Problem's reference solution from the Problem screen, and says which file is wrong when content fails validation. It is off unless set, and it never takes effect on a Multi-user Instance. Nothing changes for Learners on an ordinary Instance.
 
-* **beyondleetcode:** C389 App: the dev-mode switch is read once at start, and is off unless set ([#714](https://github.com/GauranshMathur/BeyondLeetcode/issues/714)) ([4b8f663](https://github.com/GauranshMathur/BeyondLeetcode/commit/4b8f663f6155d0e7e92191909903d95d96d68eaa))
-* **beyondleetcode:** C390 Learning core: with dev mode on, every Topic is open, and nothing is written ([#718](https://github.com/GauranshMathur/BeyondLeetcode/issues/718)) ([35098f9](https://github.com/GauranshMathur/BeyondLeetcode/commit/35098f93140df0eb8dc69a0a7df35e75c8392ac3))
-* **beyondleetcode:** C391 Learning core: dev mode runs a Problem's Reference Code against its Tests, saving nothing ([#723](https://github.com/GauranshMathur/BeyondLeetcode/issues/723)) ([24c38bb](https://github.com/GauranshMathur/BeyondLeetcode/commit/24c38bbef2624bdc3239291371ca5a0606b38496))
-* **beyondleetcode:** C392 Layout: the dev-mode banner is on every screen, and the hook passes DEV_MODE to the app ([#720](https://github.com/GauranshMathur/BeyondLeetcode/issues/720)) ([7ad10c8](https://github.com/GauranshMathur/BeyondLeetcode/commit/7ad10c892db13afe1f882d7137241bbef5cebe46))
-* **beyondleetcode:** C394 Problem screen: "Run reference solution" in each Language, in dev mode only ([#727](https://github.com/GauranshMathur/BeyondLeetcode/issues/727)) ([3f87dba](https://github.com/GauranshMathur/BeyondLeetcode/commit/3f87dba7a175c6bdee2ce50eb83dac9ba90a4176))
-* **beyondleetcode:** C395 dev mode reads the content once per Learner view ([#724](https://github.com/GauranshMathur/BeyondLeetcode/issues/724)) ([3ef8082](https://github.com/GauranshMathur/BeyondLeetcode/commit/3ef80823e3bda16b9d85617c9243d3fd146aec19))
-* **beyondleetcode:** C438 Error page: in dev mode, content that fails validation shows each file and what is wrong ([#726](https://github.com/GauranshMathur/BeyondLeetcode/issues/726)) ([3e46741](https://github.com/GauranshMathur/BeyondLeetcode/commit/3e4674175d6b783fe1adab2a40eaa0012916eca5))
+### Added
 
+- Dev mode: start a Local Instance with `DEV_MODE=1` to open every Topic from the start. Progress you make is kept as for any Learner. (C389, #714; C390, #718)
+- A dev-mode Instance shows a "Dev mode" band above every screen. (C392, #720)
+- In dev mode, edits to the content folder show on the next page load without a restart. (C395, #724)
+- In dev mode, the Problem screen's console has a Dev item that runs the reference solution in Python, TypeScript or Go and lists each Test's result. (C391, #723; C394, #727)
+- In dev mode, content that fails validation lists each file and what is wrong on the error page. (C438, #726)
 
-### Documentation
+### Fixed
 
-* **beyondleetcode:** C396 Docs: how to start dev mode, and how to reach it over the tailnet ([#730](https://github.com/GauranshMathur/BeyondLeetcode/issues/730)) ([4fcadf3](https://github.com/GauranshMathur/BeyondLeetcode/commit/4fcadf3987278a0dd8b12c5956f2a27aca8cab1e))
-* **beyondleetcode:** C403 Sprint 22 exit check ([#732](https://github.com/GauranshMathur/BeyondLeetcode/issues/732)) ([cf414f0](https://github.com/GauranshMathur/BeyondLeetcode/commit/cf414f0faff3e7086ece792ac33e180884e2cb57))
-* **beyondleetcode:** four answers from the card-reviewers, in the decisions log ([#729](https://github.com/GauranshMathur/BeyondLeetcode/issues/729)) ([1b4539e](https://github.com/GauranshMathur/BeyondLeetcode/commit/1b4539efec30cfc143647269787041ce80e49654))
-* **beyondleetcode:** record the 1.20.0 cut, and archive Sprint 21 ([#717](https://github.com/GauranshMathur/BeyondLeetcode/issues/717)) ([1af32df](https://github.com/GauranshMathur/BeyondLeetcode/commit/1af32df5c04cda7bdd4476375ee14688ee3291af))
-* **beyondleetcode:** Sprint 22 is dev mode alone, and the starting Language moves to Sprint 23 ([#731](https://github.com/GauranshMathur/BeyondLeetcode/issues/731)) ([fb79537](https://github.com/GauranshMathur/BeyondLeetcode/commit/fb7953742e1ad374238b22c3ecacad310f390502))
-* **beyondleetcode:** the process in three levels: principal, orchestrator, card-writer, builders and reviewers ([#673](https://github.com/GauranshMathur/BeyondLeetcode/issues/673)) ([30e2f86](https://github.com/GauranshMathur/BeyondLeetcode/commit/30e2f86d2c0544072ae167be2f4fa74033edb205))
-* **beyondleetcode:** the sandbox reviewer's trigger names the Sandbox Dockerfiles, the harness and the image tags ([#722](https://github.com/GauranshMathur/BeyondLeetcode/issues/722)) ([23ccde1](https://github.com/GauranshMathur/BeyondLeetcode/commit/23ccde1f03360117946b977c3959dd18b047a966))
-* **beyondleetcode:** the sprint and release docs name the orchestrator and the principal, not the retired planner ([#721](https://github.com/GauranshMathur/BeyondLeetcode/issues/721)) ([d12790b](https://github.com/GauranshMathur/BeyondLeetcode/commit/d12790b09d447f8e16ffe962803ae0166a8cf234))
+No bug fixes in this release.
 
+### Changed
 
-### Tests
+- The README and the self-hosting guide explain dev mode: how to turn it on from a clone or the published image, what it opens, runs and keeps, and how to reach it safely over a tailnet. (C396, #730)
 
-* **beyondleetcode:** C393 a dev-mode server and a dev Playwright project ([#725](https://github.com/GauranshMathur/BeyondLeetcode/issues/725)) ([4369715](https://github.com/GauranshMathur/BeyondLeetcode/commit/436971520872b228f39cc7aea315390829862380))
+### Content
 
+No content changes in this release.
 
-### CI
+### Security
 
-* **beyondleetcode:** a review gate that fails a pull request without the labels its files need ([#674](https://github.com/GauranshMathur/BeyondLeetcode/issues/674)) ([911acee](https://github.com/GauranshMathur/BeyondLeetcode/commit/911acee4b6157900b76407cd41c9464b1c5b3338))
+- Dev mode cannot be turned on by a request: the switch is read once at start, and only the exact value `1` turns it on. A Multi-user Instance with the switch set refuses to start, and a Local Instance with dev mode on refuses to become a Multi-user one. (C389, #714)
+- With dev mode off, the reference-run action answers 404 and the page shows none of it; the server's log never carries a content error's text. (C394, #727; C438, #726)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.21.0` (or `latest`), then run `docker compose pull && docker compose up -d`.
+
+Nothing to do for dev mode: it is off unless you set `DEV_MODE=1` yourself, and neither the image nor the files `init` writes set it. If you want it, read "Dev mode" in `docs/self-hosting.md` first: use a folder name and a port no other Instance has, never a public address, and expect a restart after choosing Local Mode on a fresh Instance.
 
 ## [1.20.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.19.7...v1.20.0) (2026-11-16)
 
