@@ -1,5 +1,6 @@
 import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
 import { createApp } from '#lib/server/app.js';
+import { ContentError } from '#lib/server/content/catalogue.js';
 import { createHandle } from '#lib/server/handle.js';
 import { INVITE_LOG_PATTERNS } from '#lib/server/identity/invites.js';
 import { formatServerError, installLogRedaction } from '#lib/server/logging.js';
@@ -51,12 +52,17 @@ export const handle: Handle = (input) => {
  * SvelteKit 3 passes every error here, expected ones included. An error thrown with `error(...)` (the Learning
  * core's refusals) is the app's own and already safe: it goes out unchanged and is not logged, as before. Anything
  * else is logged as the route id, the class name and a known code only, and answers with the generic message.
+ * Dev mode adds one thing: for a ContentError (the content folder fails validation) the answer also carries the
+ * issues the Content catalogue wrote, so the author sees which file is wrong. The log line stays the same.
  */
 export const handleError: HandleServerError = (input) => {
 	if (input.kind === 'app') return input.error;
 	const { error, event, kind } = input;
 	const status = kind === 'unknown' ? 500 : error.status;
 	console.error(formatServerError(status, error, event));
+	if (devMode && kind === 'unknown' && error instanceof ContentError) {
+		return { message: 'Invalid content', contentIssues: [...error.issues] };
+	}
 	return { message: status === 404 ? 'Not Found' : 'Internal Error' };
 };
 

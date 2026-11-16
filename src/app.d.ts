@@ -10,6 +10,8 @@ declare global {
 		interface Error {
 			/** Set when the code was saved before the refusal: the revision the save produced. */
 			revision?: number;
+			/** Set only in dev mode, for a ContentError: the issues as the Content catalogue wrote them, one `path: what is wrong` each. */
+			contentIssues?: string[];
 		}
 		interface Locals {
 			/** The Instance: its mode and the one-time choice Setup makes. */

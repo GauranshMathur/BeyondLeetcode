@@ -29,6 +29,13 @@ const words = $derived.by((): { heading: string; message?: string } => {
 	<div class="body">
 		<span class="kicker">Error {page.status}</span>
 		<h1>{words.heading}</h1>
+		{#if page.error?.contentIssues}
+			<ul class="issues">
+				{#each page.error.contentIssues as issue}
+					<li>{issue}</li>
+				{/each}
+			</ul>
+		{/if}
 		{#if words.message}
 			<p class="message">{words.message}</p>
 		{/if}
@@ -90,6 +97,20 @@ const words = $derived.by((): { heading: string; message?: string } => {
 		font-size: 20px;
 		line-height: 1.4;
 		color: var(--muted);
+	}
+	.issues {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		font-family: var(--font-mono);
+		font-size: 20px;
+		line-height: 1.4;
+		color: var(--muted);
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 	}
 	.figure {
 		display: block;
