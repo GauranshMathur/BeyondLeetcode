@@ -44,6 +44,9 @@ async function expectOneMainTitleAndH1(page: Page, theme: 'light' | 'dark') {
 	expect((await page.title()).trim()).not.toBe('');
 	await expect(page.getByRole('main')).toHaveCount(1);
 	await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+	// The default e2e servers start with dev mode off, so no screen carries the banner, whatever its name or text.
+	await expect(page.getByRole('region', { name: 'Dev mode' })).toHaveCount(0);
+	await expect(page.getByText('Everything is unlocked.')).toHaveCount(0);
 }
 
 for (const theme of ['light', 'dark'] as const) {

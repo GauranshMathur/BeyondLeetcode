@@ -102,7 +102,7 @@ $effect(() => {
 <style>
 	.page {
 		display: flex;
-		min-height: calc(100vh - 93px);
+		min-height: calc(100vh - 93px - var(--dev-banner-height, 0px));
 	}
 	.mono,
 	.crumbs {

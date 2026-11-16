@@ -14,6 +14,8 @@ declare global {
 		interface Locals {
 			/** The Instance: its mode and the one-time choice Setup makes. */
 			instance: Instance;
+			/** The app's dev-mode answer, fixed at start: true only for a Local Mode Instance started with the switch on. */
+			devMode: boolean;
 			/** What the Setup screen needs: the Multi-user choice and creating the first admin. */
 			setup: Setup;
 			/** The account actions, admin actions, Invites and the auth HTTP handler; set only in Multi-user Mode. */
