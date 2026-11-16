@@ -1,6 +1,6 @@
 ---
 name: sandbox-security-reviewer
-description: Read-only (by instruction) review of changes to the BeyondLeetcode code runner — the container flags, the runner process, and anything that reaches the Docker socket. Use before merging any PR that touches them.
+description: Read-only (by instruction) review of changes to the BeyondLeetcode code runner and its Sandbox — anything under src/lib/server/runner/ (the container flags, the runner process, harness.py, the image tags in config.ts), any Dockerfile.sandbox-*, and anything that reaches the Docker socket. Use before merging any PR that touches one of them, a Dockerfile or harness-only change included.
 tools: Read, Glob, Grep, Bash
 model: opus
 ---
