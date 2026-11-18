@@ -52,7 +52,6 @@ setup_failed=""
 socket=""
 images=()
 problems=()
-summary_broken=""
 checks_started=""
 pkgs_to_install=()
 pkgs_present=()
@@ -61,9 +60,24 @@ pkgs_present=()
 
 # Output shown, logged and put in the summary is cut to 64 KiB and stripped of anything that is not text, so a
 # step can never put an image stream into the job log or an uploaded file.
-printable() { head -c 65536 "$1" | tr -c '\11\12\40-\176' '?'; }
+# A long file keeps its head and its tail, because the last lines are where a step's error is.
+printable() {
+  local size
+  size="$(wc -c <"$1")"
+  if [ "$size" -le 65536 ]; then
+    tr -c '\11\12\40-\176' '?' <"$1"
+  else
+    { head -c 16384 "$1"; printf '\n[... %s bytes cut ...]\n' "$((size - 49152))"; tail -c 32768 "$1"; } | tr -c '\11\12\40-\176' '?'
+  fi
+}
 
-summary_add() { printf '%s\n' "$1" >>"$out/summary.md" || summary_broken=1; }
+# A record the leg could not write makes the leg red.
+write_failed() {
+  echo "::error::could not write $1"
+  case " ${problems[*]:-} " in *"could not write $1"*) ;; *) problems+=("could not write $1") ;; esac
+}
+
+summary_add() { printf '%s\n' "$1" >>"$out/summary.md" || write_failed summary.md; }
 
 fail_setup() {
   setup_failed="$1"
@@ -80,7 +94,7 @@ fail_setup() {
 }
 
 publish_summary() {
-  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat "$out/summary.md" >>"$GITHUB_STEP_SUMMARY"; fi
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then cat "$out/summary.md" >>"$GITHUB_STEP_SUMMARY" || write_failed '$GITHUB_STEP_SUMMARY'; fi
 }
 
 # run_step <step> <command> [args]: runs a command as given, never through a string; a failure stops the leg.
@@ -94,7 +108,7 @@ run_step() {
   printable "$work/step.out" >"$work/step.txt"
   cat "$work/step.txt"
   echo "::endgroup::"
-  { echo "== $step"; printf '+ '; printf '%q ' "$@"; echo; cat "$work/step.txt"; } >>"$out/setup.log"
+  { echo "== $step"; printf '+ '; printf '%q ' "$@"; echo; cat "$work/step.txt"; } >>"$out/setup.log" || write_failed setup.log
   [ "$rc" -eq 0 ] || fail_setup "$step"
 }
 
@@ -103,7 +117,7 @@ run_step() {
 change() {
   local line
   line="- $1: \`$(shift; printf '%q ' "$@")\`"
-  printf '%s\n' "$line" >>"$out/changes.md" || summary_broken=1
+  printf '%s\n' "$line" >>"$out/changes.md" || write_failed changes.md
   summary_add "$line"
   run_step "$@"
 }
@@ -128,7 +142,7 @@ record() {
     [ "$rc" -eq 0 ] || echo "(exit status $rc)"
     echo '```'
     echo
-  } >>"$out/summary.md" || summary_broken=1
+  } >>"$out/summary.md" || write_failed summary.md
 }
 
 # Rootful Docker, whatever Docker context the client has been switched to.
@@ -147,7 +161,7 @@ install_missing_packages() {
   if [ "${#pkgs_to_install[@]}" -gt 0 ]; then
     change "refresh the apt package index" sudo apt-get update
     change "install the missing packages from the Ubuntu archive" sudo apt-get install -y "${pkgs_to_install[@]}"
-    summary_add "- (installed on this runner from the Ubuntu archive: ${pkgs_to_install[*]}; already present: ${pkgs_present[*]:-none})"
+    summary_add "- (the packages this script asked apt for, not the dependencies apt pulled in: ${pkgs_to_install[*]}; already present: ${pkgs_present[*]:-none})"
   else
     summary_add "- (nothing installed from the Ubuntu archive; already present: ${pkgs_present[*]:-none})"
   fi
@@ -187,16 +201,16 @@ assert_runner_docker_ce() {
 
 user_cgroup_dir() { echo "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service"; }
 
-# The controllers the user's systemd manager has, which is what a rootless engine can hand to a container.
-assert_delegated() {
-  local c k
-  c=" $(cat "$(user_cgroup_dir)/cgroup.controllers") "
-  for k in cpu memory pids; do
-    case "$c" in
-      *" $k "*) ;;
-      *) echo "delegation did not take effect by the documented steps: controller $k is missing (the user manager has:$c)"; return 1 ;;
-    esac
-  done
+# The engine's own report, through the socket the tests use: cpu, memory and pids limits must be available. A user
+# manager that never got the drop-in reports one of them missing.
+assert_engine_limits() {
+  local o
+  o="$(docker_info '{{.CPUCfsQuota}} {{.MemoryLimit}} {{.PidsLimit}}')" || return 1
+  [ "$o" = "true true true" ] || {
+    echo "delegation did not take effect by the documented steps: the engine reports CPUCfsQuota MemoryLimit PidsLimit as '$o'"
+    echo "warnings: $(docker_info '{{json .Warnings}}')"
+    return 1
+  }
 }
 
 show_user_cgroup() {
@@ -246,12 +260,12 @@ prepare_rootless_user() {
   need_package dbus-user-session "$dbus_user_session_pin"
   [ "$engine" != rootless-docker ] || need_package slirp4netns "$slirp4netns_pin"
   install_missing_packages
-  change "subordinate ids for $user" bash -c '{ grep -q "^$1:" /etc/subuid && grep -q "^$1:" /etc/subgid; } || sudo usermod --add-subuids 231072-296607 --add-subgids 231072-296607 "$1"' _ "$user"
+  change "subordinate ids for $user" bash -o pipefail -c '{ grep -q "^$1:" /etc/subuid && grep -q "^$1:" /etc/subgid; } || sudo usermod --add-subuids 231072-296607 --add-subgids 231072-296607 "$1"' _ "$user"
   # Docker's "Limiting resources" (https://docs.docker.com/engine/security/rootless/tips/): the drop-in and a systemd
   # reload, and nothing more. On a hosted runner the user's manager may already be running (the image enables linger),
   # in which case this may not reach it; the docs give no further step, so what the engine sees is recorded below and
   # a missing controller fails the setup.
-  change "delegate cgroup controllers to user sessions" sudo bash -c 'mkdir -p /etc/systemd/system/user@.service.d && printf "[Service]\nDelegate=cpu cpuset io memory pids\n" >/etc/systemd/system/user@.service.d/delegate.conf'
+  change "delegate cgroup controllers to user sessions" sudo bash -o pipefail -c 'mkdir -p /etc/systemd/system/user@.service.d && printf "[Service]\nDelegate=cpu cpuset io memory pids\n" >/etc/systemd/system/user@.service.d/delegate.conf'
   change "reload systemd" sudo systemctl daemon-reload
   change "enable linger for $user" sudo loginctl enable-linger "$user"
   export XDG_RUNTIME_DIR="/run/user/$uid"
@@ -314,7 +328,7 @@ case "$engine" in
   rootless-docker)
     run_step "the runner's docker-ce is the pinned version" assert_runner_docker_ce
     prepare_rootless_user
-    change "download docker-ce-rootless-extras, checked against the pinned sha256" bash -c 'cd "$1" && curl -fsSLO "$2" && echo "$3  $4" | sha256sum -c -' _ "$work" "$rootless_extras_url" "$rootless_extras_sha256" "$rootless_extras_deb"
+    change "download docker-ce-rootless-extras, checked against the pinned sha256" bash -o pipefail -c 'cd "$1" && curl -fsSLO "$2" && echo "$3  $4" | sha256sum -c -' _ "$work" "$rootless_extras_url" "$rootless_extras_sha256" "$rootless_extras_deb"
     change "install docker-ce-rootless-extras" sudo dpkg -i "$work/$rootless_extras_deb"
     # Docker's rootless Troubleshoot page (https://docs.docker.com/engine/security/rootless/troubleshoot/, "Distribution-specific
     # hint", Ubuntu tab): with the deb package the rootlesskit AppArmor profile comes with the apparmor package, so
@@ -329,7 +343,7 @@ case "$engine" in
     record "docker version" env "DOCKER_HOST=unix://$socket" docker version
     record "docker info" docker_info_text
     record_rootless_facts
-    run_step "the cpu, memory and pids controllers reach the user's manager" assert_delegated
+    run_step "the engine reports cpu, memory and pids limits available" assert_engine_limits
     run_step "copy the Sandbox images into rootless Docker" copy_images_into env "DOCKER_HOST=unix://$socket" docker load
     ;;
 
@@ -352,17 +366,17 @@ case "$engine" in
     record "podman info (mode fields and cgroup controllers)" podman_mode_fields
     record "the socket's docker info" docker_info_text
     record_rootless_facts
-    run_step "the cpu, memory and pids controllers reach the user's manager" assert_delegated
+    run_step "the engine reports cpu, memory and pids limits available" assert_engine_limits
     run_step "copy the Sandbox images into Podman" copy_images_into podman load
     ;;
 
   gvisor)
     # gVisor's installation guide ("Install latest release") and Docker Quick Start.
-    change "download gVisor, checked against the pinned sha256" bash -c 'cd "$1" && curl -fsSLO "$2" && echo "$3  $4" | sha256sum -c -' _ "$work" "$gvisor_url" "$gvisor_sha256" "$gvisor_tarball"
+    change "download gVisor, checked against the pinned sha256" bash -o pipefail -c 'cd "$1" && curl -fsSLO "$2" && echo "$3  $4" | sha256sum -c -' _ "$work" "$gvisor_url" "$gvisor_sha256" "$gvisor_tarball"
     change "install gVisor into /usr/local/bin" sudo tar -xjf "$work/$gvisor_tarball" -C /usr/local/bin
     change "register the runsc runtime with Docker" sudo /usr/local/bin/runsc install
     # The Runner names no runtime on a container, so the default runtime is the only way to run it under gVisor.
-    change "make runsc Docker's default runtime" bash -c 'jq "$1" /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.new >/dev/null && sudo mv /etc/docker/daemon.json.new /etc/docker/daemon.json' _ '."default-runtime" = "runsc"'
+    change "make runsc Docker's default runtime" bash -o pipefail -c 'jq "$1" /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json.new >/dev/null && sudo mv /etc/docker/daemon.json.new /etc/docker/daemon.json' _ '."default-runtime" = "runsc"'
     change "restart Docker" sudo systemctl restart docker
     socket="$rootful_socket"
     run_step "Docker's default runtime is runsc" assert_default_runtime_runsc
@@ -375,30 +389,9 @@ case "$engine" in
     ;;
 esac
 
-# The Sandbox tests. DOCKER_SOCKET is what the tests' engine and their Runner process read; DOCKER_HOST is for the
-# docker command some tests call. The exit status is kept, not acted on.
-echo "::group::bun run test:sandbox"
-DOCKER_SOCKET="$socket" DOCKER_HOST="unix://$socket" SANDBOX_CONCURRENCY=2 \
-  bun run test:sandbox --reporter=default --reporter=junit --outputFile.junit="$out/junit.xml" 2>&1 | tee "$out/test-output.log"
-test_status="${PIPESTATUS[0]}"
-tee_status="${PIPESTATUS[1]}"
-echo "::endgroup::"
-[ "$tee_status" -eq 0 ] || problems+=("could not write test-output.log")
-[ "$test_status" -eq 0 ] || problems+=("bun run test:sandbox exited $test_status")
-
-summary_add ""
-summary_add "## Tests"
-summary_add ""
-summary_add "Exit status of \`bun run test:sandbox\`: $test_status"
-summary_add ""
-ratio="$(grep -h 'three busy processes used' "$out/test-output.log" 2>/dev/null | head -n 1)"
-summary_add "CPU ratio line from the test: ${ratio:-not found in the test output}"
-summary_add ""
-retries="$(grep -c 'Content check retried' "$out/test-output.log" 2>/dev/null)"
-summary_add "Content check retries (a retried case still counts as passed): ${retries:-0}"
-summary_add ""
-if [ -s "$out/junit.xml" ]; then
-  if python3 -I - "$out/junit.xml" >"$work/junit.txt" 2>&1 <<'PY'
+# >>> tests (the stub test in the scratch folder sources this and runs it in a subshell)
+# Totals and the full name of every failed test, from the junit file.
+junit_report_py='
 import sys
 import xml.etree.ElementTree as ET
 
@@ -411,59 +404,92 @@ for case in root.iter("testcase"):
         skipped += 1
     elif case.find("failure") is not None or case.find("error") is not None:
         failed += 1
-        names.append(f'{case.get("classname", "")} > {case.get("name", "")}')
-print(f"Tests: {total}, passed: {total - failed - skipped}, failed: {failed}, skipped: {skipped}")
+        names.append(case.get("classname", "") + " > " + case.get("name", ""))
+print("Tests: %d, passed: %d, failed: %d, skipped: %d" % (total, total - failed - skipped, failed, skipped))
 print()
 for name in names:
-    print(f"- FAILED: {name}")
-PY
-  then
-    printable "$work/junit.txt" >>"$out/summary.md" || summary_broken=1
+    print("- FAILED: " + name)
+'
+
+after_setup() {
+  # The Sandbox tests. DOCKER_SOCKET is what the tests' engine and their Runner process read; DOCKER_HOST is for the
+  # docker command some tests call. The exit status is kept, not acted on.
+  echo "::group::bun run test:sandbox"
+  DOCKER_SOCKET="$socket" DOCKER_HOST="unix://$socket" SANDBOX_CONCURRENCY=2 \
+    bun run test:sandbox --reporter=default --reporter=junit --outputFile.junit="$out/junit.xml" 2>&1 | tee "$out/test-output.log"
+  statuses=("${PIPESTATUS[@]}")
+  test_status="${statuses[0]:-1}"
+  tee_status="${statuses[1]:-1}"
+  echo "::endgroup::"
+  [ "$tee_status" -eq 0 ] || problems+=("could not write test-output.log")
+  [ "$test_status" -eq 0 ] || problems+=("bun run test:sandbox exited $test_status")
+
+  summary_add ""
+  summary_add "## Tests"
+  summary_add ""
+  summary_add "Exit status of \`bun run test:sandbox\`: $test_status"
+  summary_add ""
+  ratio="$(grep -h 'three busy processes used' "$out/test-output.log" 2>/dev/null | head -n 1)"
+  summary_add "CPU ratio line from the test: ${ratio:-not found in the test output}"
+  summary_add ""
+  retries="$(grep -c 'Content check retried' "$out/test-output.log" 2>/dev/null)"
+  summary_add "Content check retries (a retried case still counts as passed): ${retries:-0}"
+  summary_add ""
+  if [ -s "$out/junit.xml" ]; then
+    if python3 -I -c "$junit_report_py" "$out/junit.xml" >"$work/junit.txt" 2>&1
+    then
+      printable "$work/junit.txt" >>"$out/summary.md" || write_failed summary.md
+    else
+      summary_add "The junit file could not be read:"
+      printable "$work/junit.txt" >>"$out/summary.md"
+      problems+=("the junit file could not be read")
+    fi
   else
-    summary_add "The junit file could not be read:"
-    printable "$work/junit.txt" >>"$out/summary.md"
-    problems+=("the junit file could not be read")
+    summary_add "No junit file was written after the test step."
+    problems+=("no junit file was written after the test step")
   fi
-else
-  summary_add "No junit file was written after the test step."
-  problems+=("no junit file was written after the test step")
-fi
-summary_add ""
-
-# Containers the Runner should have removed, polled for up to 120 s.
-summary_add "## Leftover containers"
-summary_add ""
-left=""
-query_failed=""
-for _ in $(seq 1 24); do
-  left="$(DOCKER_HOST="unix://$socket" docker ps -a --filter label=beyondleetcode.runner --format '{{.Names}} {{.State}}' 2>&1)"
-  if [ "$?" -ne 0 ]; then query_failed="$left"; break; fi
-  [ -z "$left" ] && break
-  sleep 5
-done
-if [ -n "$query_failed" ]; then
-  summary_add "The leftover check failed: $(printf '%s' "$query_failed" | head -c 2000 | tr -c '\11\12\40-\176' '?')"
-  problems+=("the leftover check failed")
-elif [ -n "$left" ]; then
-  summary_add "Left after 120 s:"
   summary_add ""
-  summary_add '```'
-  summary_add "$(printf '%s' "$left" | head -c 4000 | tr -c '\11\12\40-\176' '?')"
-  summary_add '```'
-  problems+=("containers were left behind")
-else
-  summary_add "None left."
-fi
 
-if [ "${#problems[@]}" -gt 0 ]; then
+  # Containers the Runner should have removed, polled for up to 120 s.
+  summary_add "## Leftover containers"
   summary_add ""
-  summary_add "## Why this leg is red"
-  summary_add ""
-  for p in "${problems[@]}"; do summary_add "- $p"; done
-fi
-publish_summary
+  left=""
+  query_failed=""
+  for _ in $(seq 1 24); do
+    if left="$(DOCKER_HOST="unix://$socket" docker ps -a --filter label=beyondleetcode.runner --format '{{.Names}} {{.State}}' 2>&1)"; then
+      query_failed=""
+    else
+      query_failed=1
+      break
+    fi
+    [ -z "$left" ] && break
+    sleep 5
+  done
+  if [ -n "$query_failed" ]; then
+    summary_add "The leftover check failed: $(printf '%s' "$left" | head -c 2000 | tr -c '\11\12\40-\176' '?')"
+    problems+=("the leftover check failed")
+  elif [ -n "$left" ]; then
+    summary_add "Left after 120 s:"
+    summary_add ""
+    summary_add '```'
+    summary_add "$(printf '%s' "$left" | head -c 4000 | tr -c '\11\12\40-\176' '?')"
+    summary_add '```'
+    problems+=("containers were left behind")
+  else
+    summary_add "None left."
+  fi
 
-status=0
-[ "${#problems[@]}" -eq 0 ] || status=1
-[ -z "$summary_broken" ] || { echo "::error::could not write the summary"; status=1; }
-exit "$status"
+  if [ "${#problems[@]}" -gt 0 ]; then
+    summary_add ""
+    summary_add "## Why this leg is red"
+    summary_add ""
+    for p in "${problems[@]}"; do summary_add "- $p"; done
+  fi
+  publish_summary
+
+  [ "${#problems[@]}" -eq 0 ] || exit 1
+  exit 0
+}
+# <<< tests
+
+after_setup
