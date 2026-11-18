@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { sandboxConfig } from './config';
-import { createHarnessDecoder, type HarnessEnd } from './harness';
+import {
+	createHarnessDecoder,
+	type HarnessEnd,
+	HarnessExitError,
+	HarnessLineError,
+	MissingResultError,
+	OutputOverflowError
+} from './harness';
 
 /**
  * The read side of the harness protocol: frames in, how the container ended, a result or a Runner
@@ -165,14 +172,21 @@ describe('harness decoder: output the Runner cannot trust', () => {
 		]
 	])('fails the Run on %s', (_name, output) => {
 		expect(() => decode([[1, ok(0) + output]], exited0)).toThrow(/unexpected line/);
+		expect(() => decode([[1, ok(0) + output]], exited0)).toThrow(HarnessLineError);
+		expect(() => decode([[1, ok(0) + output]], { kind: 'hardStop' })).toThrow(HarnessLineError);
 	});
 
 	it('fails the Run on a byte-order mark at the start of stdout, rather than dropping it', () => {
 		expect(() => decode([[1, `\uFEFF${ok(0)}${ok(1)}`]], exited0)).toThrow(/unexpected line/);
+		expect(() => decode([[1, `\uFEFF${ok(0)}${ok(1)}`]], exited0)).toThrow(HarnessLineError);
+		expect(() => decode([[1, `\uFEFF${ok(0)}${ok(1)}`]], { kind: 'hardStop' })).toThrow(
+			HarnessLineError
+		);
 	});
 
 	it('fails the Run on trailing output that no newline ends', () => {
 		expect(() => decode([[1, `${ok(0)}${ok(1)}{"i"`]], exited0)).toThrow(/unexpected line/);
+		expect(() => decode([[1, `${ok(0)}${ok(1)}{"i"`]], exited0)).toThrow(HarnessLineError);
 	});
 
 	it.each([
@@ -189,10 +203,18 @@ describe('harness decoder: output the Runner cannot trust', () => {
 		expect(() =>
 			decode([[1, ok(0) + line({ i, status: 'ok', stdout: '', stderr: '' })]], exited0)
 		).toThrow(/Test count/);
+		for (const end of [exited0, { kind: 'hardStop' } as HarnessEnd]) {
+			expect(() =>
+				decode([[1, ok(0) + line({ i, status: 'ok', stdout: '', stderr: '' })]], end)
+			).toThrow(HarnessLineError);
+		}
 	});
 
 	it('fails the Run on a duplicate i, even with the same result', () => {
 		expect(() => decode([[1, ok(0) + ok(0) + ok(1)]], exited0)).toThrow(/Test 0 twice/);
+		for (const end of [exited0, { kind: 'hardStop' } as HarnessEnd]) {
+			expect(() => decode([[1, ok(0) + ok(0) + ok(1)]], end)).toThrow(HarnessLineError);
+		}
 	});
 
 	it('fails the Run on a duplicate i that comes with a compile error', () => {
@@ -203,7 +225,19 @@ describe('harness decoder: output the Runner cannot trust', () => {
 
 	it('fails the Run on a missing result when the container was not hard-stopped', () => {
 		expect(() => decode([[1, ok(0)]], exited0)).toThrow(/without a result for Test b/);
+		expect(() => decode([[1, ok(0)]], exited0)).toThrow(MissingResultError);
 	});
+
+	it.each([OutputOverflowError, HarnessExitError, HarnessLineError, MissingResultError])(
+		'%s sets its name to its class name',
+		(Class) => {
+			const error = new Class('x');
+
+			expect(error.name).toBe(Class.name);
+			expect(error).toBeInstanceOf(Error);
+			expect(error.message).toBe('x');
+		}
+	);
 
 	it('names the harness stderr in a Runner error, capped at 4096 characters', () => {
 		const decoder = createHarnessDecoder(tests);
@@ -219,6 +253,7 @@ describe('harness decoder: how the container ended', () => {
 		expect(() => decode([[1, ok(0) + ok(1)]], { kind: 'exited', code })).toThrow(
 			new RegExp(`status ${code}`)
 		);
+		expect(() => decode([[1, ok(0) + ok(1)]], { kind: 'exited', code })).toThrow(HarnessExitError);
 	});
 
 	it('reports the exit status with the harness stderr', () => {
@@ -286,6 +321,7 @@ describe('harness decoder: how the container ended', () => {
 
 	it('fails the Run on output overflow, whatever else it printed', () => {
 		expect(() => decode([[1, ok(0) + ok(1)]], { kind: 'overflow' })).toThrow(/more output/);
+		expect(() => decode([[1, ok(0) + ok(1)]], { kind: 'overflow' })).toThrow(OutputOverflowError);
 	});
 
 	it('stops reading at the output cap and fails the Run', () => {
@@ -296,5 +332,6 @@ describe('harness decoder: how the container ended', () => {
 		expect(decoder.frame(1, half)).toBe(false);
 		expect(decoder.frame(1, bytes(ok(0)))).toBe(false);
 		expect(() => decoder.finish(exited0)).toThrow(/more output/);
+		expect(() => decoder.finish(exited0)).toThrow(OutputOverflowError);
 	});
 });

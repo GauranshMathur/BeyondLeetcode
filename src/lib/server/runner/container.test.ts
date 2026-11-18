@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sandboxConfig } from './config';
 import { runContainer } from './container';
-import { deadline } from './deadline';
-import { type Engine, ImageMissingError, NameConflictError } from './engine';
+import { DeadlineError, deadline } from './deadline';
+import { DockerReplyError, type Engine, ImageMissingError, NameConflictError } from './engine';
 
 /** Runs a container with an empty spec; a test overrides only what it is about. */
 const run = (engine: Engine, extra: Partial<Parameters<typeof runContainer>[1]> = {}) =>
@@ -131,10 +131,12 @@ describe('Container: how it ends', () => {
 			const { engine, calls } = fakeEngine({ waitMs: sandboxConfig.containerTimeoutMs + 1 });
 			const pending = run(engine);
 			const outcome = expect(pending).rejects.toThrow('Sandbox start-up exceeded the time limit');
+			const kind = expect(pending).rejects.toBeInstanceOf(DeadlineError);
 
 			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
 
 			await outcome;
+			await kind;
 			expect(calls).not.toContain('start c1');
 			expect(calls).toContain('remove c1');
 		} finally {
@@ -260,11 +262,13 @@ describe('deadline', () => {
 			await vi.advanceTimersByTimeAsync(400);
 			expect(d.left()).toBe(600);
 
-			const outcome = expect(d.bound(new Promise(() => {}), 'too slow')).rejects.toThrow(
-				'too slow'
-			);
+			const slow = d.bound(new Promise(() => {}), 'too slow');
+			const outcome = expect(slow).rejects.toThrow('too slow');
+			const kind = expect(slow).rejects.toBeInstanceOf(DeadlineError);
 			await vi.advanceTimersByTimeAsync(600);
 			await outcome;
+			await kind;
+			await expect(slow).rejects.toMatchObject({ name: 'DeadlineError' });
 			expect(d.left()).toBe(0);
 		} finally {
 			vi.useRealTimers();
@@ -275,11 +279,12 @@ describe('deadline', () => {
 		vi.useFakeTimers();
 		try {
 			const d = deadline(10_000);
-			const capped = expect(d.bound(new Promise(() => {}), 'capped', 100)).rejects.toThrow(
-				'capped'
-			);
+			const cappedCall = d.bound(new Promise(() => {}), 'capped', 100);
+			const capped = expect(cappedCall).rejects.toThrow('capped');
+			const cappedKind = expect(cappedCall).rejects.toBeInstanceOf(DeadlineError);
 			await vi.advanceTimersByTimeAsync(100);
 			await capped;
+			await cappedKind;
 
 			await expect(d.bound(Promise.resolve(7), 'late')).resolves.toBe(7);
 			await expect(d.bound(Promise.reject(new Error('boom')), 'late')).rejects.toThrow('boom');
@@ -295,11 +300,12 @@ describe('Container: leaks and stalls', () => {
 			attach: async () => Promise.reject(new Error('attach failed')),
 			removeFails: true
 		});
-		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 		await expect(run(engine)).rejects.toThrow(/attach failed/);
 
 		expect(engine.remove).toHaveBeenCalledTimes(3);
+		logged.mockRestore();
 	});
 
 	it('logs each failed remove with its class name and nothing of the daemon reply', async () => {
@@ -310,8 +316,6 @@ describe('Container: leaks and stalls', () => {
 			throw new Error('Docker remove failed (500): MESSAGE_MARKER\nsecond line');
 		});
 		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-		// earlier tests leave this spy installed with its calls
-		logged.mockClear();
 
 		await expect(run(engine)).rejects.toThrow(/attach failed/);
 
@@ -420,6 +424,59 @@ describe('Container: a create that fails or times out', () => {
 		vi.restoreAllMocks();
 	});
 
+	it.each([
+		[
+			'a deadline',
+			() => new DeadlineError('Docker remove of c1 is still in progress'),
+			'DeadlineError'
+		],
+		[
+			'a daemon reply',
+			() => new DockerReplyError('Docker remove failed (500): x'),
+			'DockerReplyError'
+		]
+	])('logs a remove that failed on %s with that class', async (_name, make, kind) => {
+		const { engine } = fakeEngine({
+			attach: async () => Promise.reject(new Error('attach failed'))
+		});
+		engine.remove = vi.fn(async () => {
+			throw make();
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(run(engine)).rejects.toThrow(/attach failed/);
+
+		expect(logged.mock.calls[0]).toEqual([`Could not remove container c1 (attempt 1/3): ${kind}`]);
+		logged.mockRestore();
+	});
+
+	it.each([
+		['a deadline', () => new DeadlineError('Docker call timed out'), 'DeadlineError'],
+		[
+			'a daemon reply',
+			() => new DockerReplyError('Docker kill failed (500): x'),
+			'DockerReplyError'
+		]
+	])('logs a kill that failed on %s with that class', async (_name, make, kind) => {
+		vi.useFakeTimers();
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const { engine } = fakeEngine({ neverEnds: true, exitCode: 137 });
+			engine.kill = vi.fn(async () => {
+				throw make();
+			});
+			const pending = run(engine);
+
+			await vi.advanceTimersByTimeAsync(sandboxConfig.containerTimeoutMs + 1);
+			await pending;
+
+			expect(logged.mock.calls).toEqual([[`Could not kill container c1: ${kind}`]]);
+		} finally {
+			logged.mockRestore();
+			vi.useRealTimers();
+		}
+	});
+
 	it('logs a failed remove by name with its class name and nothing of the daemon reply', async () => {
 		const engine = {
 			create: async () => {
@@ -433,7 +490,7 @@ describe('Container: a create that fails or times out', () => {
 
 		await expect(run(engine)).rejects.toThrow(/create failed/);
 
-		const lines = logged.mock.calls.map((call) => call);
+		const lines = logged.mock.calls;
 		expect(lines).toHaveLength(1);
 		expect(lines[0]).toHaveLength(1);
 		expect(lines[0][0]).toMatch(
