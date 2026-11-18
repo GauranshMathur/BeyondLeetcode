@@ -20,7 +20,7 @@ Everything is from runs and files in this repository's CI and from Prisma's sour
 - **The two failed jobs' logs**: `job/134874335057` (`runs/44325154845`, PR head `7740bda`) and `job/133244904937` (`runs/43851495481`, release PR head `ede18aa`), fetched over REST with `gh api`.
 - **Their build records** (`.dockerbuild` artifacts of those runs, plus the passing re-run of the first, `job/134886001920`), unpacked and read for base image digests, Bun versions and cached stages.
 - **ci's history**: every `ci` run created on or after 2026-11-11 (480 runs, the newest 2026-11-18 21:28 UTC), and every `docker` job attempt of each (`/runs/<id>/jobs?filter=all`, 493 attempts). Every failed attempt's log was read for a `PrismaClient` line.
-- **The `smoke-repeat` workflow** (on `main`), dispatched four times, each 10 jobs of 20 browser-flow runs on a fresh Instance each, plus the Prisma stress in the image and from a checkout:
+- **The `smoke-repeat` workflow** (on `main`), dispatched five times, each 10 jobs of 20 browser-flow runs on a fresh Instance each, plus the Prisma stress in the image and from a checkout:
 
 | Run | Date | Image | Flows | Counted | Query-engine | Other | Stress rounds (image + checkout) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -87,7 +87,7 @@ On a panic the engine discards the compiler and disconnects (`#withLocalPanicHan
 | --- | --- | --- | --- | --- |
 | `v1.21.1` image, `runs/44402958861` and `runs/44407363818` | 400 (399 passed, 1 other) | 0 | 0 of 399 | image 32,000, errors=0 |
 | Image built from `main` `ba51fd4`, `runs/44404870965`, `runs/44408880436` and `runs/44415991803` | 600 (599 passed, 1 query-engine) | **1**, `[500] POST /problems/[problemId] PrismaClientUnknownRequestError` | 1 of 600 | image 182,000, errors=0 |
-| A checkout on Bun 1.2.19, the same four runs | not a flow | | | 214,000 rounds (1,712,000 calls), errors=0 |
+| A checkout on Bun 1.2.19, all five runs | not a flow | | | 214,000 rounds (1,712,000 calls), errors=0 |
 
 - **The crash reproduces, once, on the image built from `main`.** It is the Submit signature of the 2026-11-18 failure with the other class (`UnknownRequestError` where that one was `RustPanicError`). It happened in run 5 of 20 on a runner that had already run four flows, so not a cold runner.
 - **The published `v1.21.1` image did not crash in 399 counted flows.** That does not show it cannot: at the rate measured in CI (0.41%) no crash in 399 flows has a probability of about 19%, and at the pooled 0.20% about 45%. Rates above about 3/399 = 0.75% are unlikely. The two images are the same build in the facts that matter: the image facts in the two records are the same apart from file times and the image digests (`v1.21.1` is `sha256:bba48aa0...`, the build from `main` `sha256:ea386d57...`), and the second `prisma:warn` line sits in a different place in the two migrate outputs, which is only how the two output streams interleave. Both builds use the same two Bun images (below).
