@@ -3,7 +3,7 @@
 # installed, every change it made to the host, the engine's version and mode, and which tests passed. It is the
 # body of the on-demand sandbox-engines workflow and is never run on the maintainer's host: it installs packages
 # and rewrites system files. A red result is the trial's finding, not a fault to retry away.
-# Usage: .github/sandbox-engines.sh <docker|rootless-docker|podman|gvisor> <out-dir>   (from the repo root)
+# Usage: .github/sandbox-engines.sh <docker|rootless-docker|podman|gvisor> <out-dir>   (from the repo root, with PLAYWRIGHT_IMAGE set)
 set -u
 set -o pipefail
 
@@ -18,6 +18,11 @@ case "$engine" in
   *) usage ;;
 esac
 [ -n "$out_arg" ] || usage
+# The Playwright image of the browser flow comes from the workflow; it ends up on a docker command line.
+if ! [[ ${PLAYWRIGHT_IMAGE:-} =~ ^[a-z0-9][a-z0-9./:@_-]*$ ]]; then
+  echo "::error::PLAYWRIGHT_IMAGE is not set to an image name"
+  exit 2
+fi
 
 cd "$(dirname "$0")/.." || exit 1
 mkdir -p "$out_arg" || exit 1
@@ -227,7 +232,7 @@ podman_remote() { podman --remote --url "unix://$socket" "$@"; }
 # (it reads CPUCfsQuota from a cgroup v1 file). An error from the command is an engine error, not a delegation failure.
 assert_podman_controllers() {
   local o k
-  o="$(podman_remote info --format '{{json .Host.CgroupControllers}}' 2>&1)" || { echo "podman info failed (an engine error, not a delegation result): $o"; return 1; }
+  o="$(podman_remote info --format '{{json .Host.CgroupControllers}}' 2>"$work/podman-info.err")" || { echo "podman info failed (an engine error, not a delegation result): $o $(cat "$work/podman-info.err")"; return 1; }
   for k in cpu memory pids; do
     case "$o" in
       *"\"$k\""*) ;;
@@ -268,7 +273,352 @@ DefaultRuntime={{.DefaultRuntime}}
 Runtimes={{json .Runtimes}}
 Warnings={{json .Warnings}}'
 }
+# --- The composed Instance: the compose.yaml that `init` writes, run under the engine being tested.
+
+app_image=localhost/beyondleetcode:engines
+composed_dir=""
+composed_failed=""
+composed_ran=""
+composed_up=""
+composed_ready_seconds=""
+composed_up_clock=0
+composed_try=0
+composed_origin=http://localhost:3000
+
+engine_docker() { DOCKER_HOST="unix://$socket" "$@"; }
+
+# docker compose for the composed Instance, against the engine under test.
+composed() { ( cd "$composed_dir" && DOCKER_HOST="unix://$socket" docker compose "$@" ); }
+
+# Copies the app image from the runner's own Docker into the engine under test: the loader command is the arguments.
+copy_app_image_into() { rootful docker save "$app_image" | "$@"; }
+
+# composed_step <title> <command> [args]: one step of the composed part. The first failure stops the rest of the part
+# (later steps are listed as skipped) and its exact output goes in the summary.
+composed_step() {
+  local title="$1" rc
+  shift
+  composed_ran=""
+  if [ -n "$composed_failed" ]; then
+    summary_add "- $title: skipped (an earlier step failed)"
+    return 1
+  fi
+  composed_ran=1
+  echo "::group::composed: $title"
+  "$@" >"$work/comp.out" 2>&1
+  rc=$?
+  printable "$work/comp.out"
+  echo "::endgroup::"
+  if [ "$rc" -eq 0 ]; then
+    summary_add "- $title: ok"
+  else
+    composed_failed="$title"
+    summary_add "- $title: FAILED (exit status $rc)"
+    summary_add ""
+    summary_add '```'
+    printable "$work/comp.out" | tail -n 60 >>"$out/summary.md" || write_failed summary.md
+    summary_add '```'
+    summary_add ""
+  fi
+  return "$rc"
+}
+
+# A fenced block of a file in the summary, under a line saying what it is.
+summary_block() { # <line> <file>
+  summary_add ""
+  summary_add "$1"
+  summary_add ""
+  summary_add '```'
+  printable "$2" | tail -n 80 >>"$out/summary.md" || write_failed summary.md
+  summary_add '```'
+  summary_add ""
+}
+
+# What the engine needs in compose.override.yaml, or nothing. Compose reads that file on its own and merges `volumes`
+# by their path in the container, so this mount replaces the one `init` writes. <runner runtime, or empty>
+write_override() {
+  local runtime="$1" file="$composed_dir/compose.override.yaml"
+  rm -f "$file" || return 1
+  case "$engine" in
+    rootless-docker | podman)
+      case "$socket" in /*) ;; *) echo "the engine socket '$socket' is not an absolute path"; return 1 ;; esac
+      if printf '%s' "$socket" | grep -q '[^A-Za-z0-9_./-]'; then echo "the engine socket '$socket' has an unexpected character"; return 1; fi
+      printf 'services:\n  runner:\n    volumes:\n      - %s:/var/run/docker.sock\n' "$socket" >"$file" || return 1
+      ;;
+  esac
+  if [ -n "$runtime" ]; then
+    [ "$runtime" = runc ] || { echo "unexpected runtime '$runtime'"; return 1; }
+    if [ -f "$file" ]; then
+      printf '    runtime: %s\n' "$runtime" >>"$file" || return 1
+    else
+      printf 'services:\n  runner:\n    runtime: %s\n' "$runtime" >"$file" || return 1
+    fi
+  fi
+  if [ -f "$file" ]; then cat "$file"; else echo "(no compose.override.yaml: this engine needs no change)"; fi
+}
+
+# Reads the merged configuration: prints runner's volumes and runtime, and fails unless runner has exactly one socket
+# mount, which comes from the engine's socket, and web has none.
+composed_config_check_py='
+import json
+import sys
+
+cfg = json.load(sys.stdin)
+expected = sys.argv[1]
+runner = cfg["services"]["runner"]
+web = cfg["services"]["web"]
+print("runner volumes: " + json.dumps(runner.get("volumes", [])))
+print("runner runtime: " + str(runner.get("runtime", "(not set)")))
+
+
+def is_socket(v):
+    return str(v.get("source", "")).endswith(".sock") or str(v.get("target", "")).endswith(".sock")
+
+
+# Any mount of a socket, anywhere, on either service, other than the one expected on runner.
+bad = [("web", v) for v in web.get("volumes", []) if is_socket(v)]
+bad += [("runner", v) for v in runner.get("volumes", []) if is_socket(v) and not (v.get("target") == "/var/run/docker.sock" and v.get("source") == expected)]
+if bad:
+    print("unexpected socket mounts: " + json.dumps(bad))
+    sys.exit(1)
+socks = [v for v in runner.get("volumes", []) if v.get("target") == "/var/run/docker.sock"]
+if len(socks) != 1:
+    print("runner has %d socket mounts at /var/run/docker.sock, not one" % len(socks))
+    sys.exit(1)
+print("runner has exactly one socket mount, from " + expected + ", and web has none")
+'
+
+check_merged_config() {
+  local json
+  json="$(composed config --format json)" || return 1
+  printf '%s' "$json" | python3 -I -c "$composed_config_check_py" "$socket"
+}
+
+# Polls a URL until it answers 200: 30 tries, 2 s apart.
+wait_for_200() {
+  local url="$1" _
+  for _ in $(seq 1 30); do
+    [ "$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)" = 200 ] && return 0
+    sleep 2
+  done
+  echo "$url never answered 200"
+  return 1
+}
+
+check_sockets() {
+  if composed exec -T web test -e /var/run/docker.sock; then
+    echo "the web container has the engine socket"
+    return 1
+  fi
+  composed exec -T runner test -S /var/run/docker.sock || { echo "the runner container has no socket at /var/run/docker.sock"; return 1; }
+}
+
+# The Runner's /health, asked from inside its container: 200 and every Language listed.
+runner_health_js='
+const r = await fetch("http://127.0.0.1:8787/health", { headers: { Authorization: `Bearer ${process.env.RUNNER_TOKEN}` } });
+if (r.status !== 200) process.exit(1);
+const { languages } = await r.json();
+process.exit(["python", "typescript", "go"].every((l) => languages.includes(l)) ? 0 : 1);
+'
+
+# Up to 5 minutes: 150 tries, 2 s apart.
+wait_for_runner_ready() {
+  local _
+  for _ in $(seq 1 150); do
+    if composed exec -T runner bun -e "$runner_health_js" >/dev/null 2>&1; then
+      composed_ready_seconds="$((SECONDS - composed_up_clock))"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "the Runner's /health did not answer 200 listing python, typescript and go in 5 minutes"
+  return 1
+}
+
+# The browser flow of ci's docker job: test:smoke inside the Playwright image, started by the runner's own Docker with
+# the host network, so localhost:3000 is the composed Instance. Under gVisor the browser is kept off runsc.
+browser_flow() {
+  local extra=() bun_real
+  [ "$engine" != gvisor ] || extra=(--runtime runc)
+  bun_real="$(readlink -f "$(command -v bun)")" || return 1
+  rootful docker run --rm --init --ipc=host --network host "${extra[@]}" -e CI -e "SMOKE_BASE_URL=$composed_origin" \
+    -v "$PWD:$PWD" -w "$PWD" -v "$bun_real:/usr/local/bin/bun:ro" \
+    "$PLAYWRIGHT_IMAGE" bun run test:smoke --reporter=list
+}
+
+# A step of the composed part that is not a command: a failed record write stops the rest of the part like any step.
+composed_fail() {
+  composed_failed="$1"
+  summary_add "- $1: FAILED"
+}
+
+# From the init step to the Runner being ready. <runner runtime, or empty>
+composed_attempt() {
+  local runtime="$1"
+  composed_try=$((composed_try + 1))
+  composed_step "write the override" write_override "$runtime" || return 1
+  cp "$work/comp.out" "$work/override-$composed_try.txt" || { composed_fail "keep the override record"; return 1; }
+  composed_step "the merged configuration has one socket mount, from the engine" check_merged_config || return 1
+  cp "$work/comp.out" "$work/merged-$composed_try.txt" || { composed_fail "keep the merged configuration record"; return 1; }
+  composed_up=1
+  composed_up_clock="$SECONDS"
+  composed_step "docker compose up -d" composed up -d --pull never || return 1
+  composed_step "Setup answers 200" wait_for_200 "$composed_origin/setup" || return 1
+  composed_step "web has no engine socket and runner has one" check_sockets || return 1
+  composed_step "the Runner is ready" wait_for_runner_ready || return 1
+}
+
+# docker compose down -v, with the last lines of the runner and web logs first if asked.
+composed_down() { # <log heading, or empty>
+  local rc svc dropped
+  [ -n "$composed_up" ] || return 0
+  if [ -n "$1" ]; then
+    for svc in runner web; do
+      composed logs --tail 80 "$svc" >"$work/svc.raw" 2>&1
+      rc=$?
+      # A line holding a 48-hex string could be one of init's secrets: it never reaches the summary.
+      dropped="$(grep -Ec '[0-9a-fA-F]{48}' "$work/svc.raw")"
+      grep -Ev '[0-9a-fA-F]{48}' "$work/svc.raw" >"$work/svc.log"
+      [ "${dropped:-0}" -eq 0 ] || echo "(${dropped} lines holding a 48-hex string were dropped)" >>"$work/svc.log"
+      [ "$rc" -eq 0 ] || echo "(docker compose logs $svc exited $rc)" >>"$work/svc.log"
+      summary_block "The $svc log $1" "$work/svc.log"
+    done
+  fi
+  composed down -v >"$work/down.out" 2>&1
+  rc=$?
+  composed_up=""
+  if [ "$rc" -eq 0 ]; then
+    summary_add "- docker compose down -v: ok"
+  else
+    summary_add "- docker compose down -v: FAILED (exit status $rc)"
+    summary_block "Its output:" "$work/down.out"
+    problems+=("docker compose down -v exited $rc")
+    echo "::error::docker compose down -v exited $rc under $engine"
+  fi
+}
+
+# The composed part: the verdict goes to the summary, and to problems when a step failed.
+composed_part() {
+  summary_add "## Composed Instance"
+  summary_add ""
+  case "$engine" in
+    docker | gvisor) summary_add "The app image is built on the runner's own Docker as $app_image. That Docker is the engine under test, so nothing is copied. It is run from the compose.yaml that init writes." ;;
+    *) summary_add "The app image is built on the runner's own Docker as $app_image, copied into the engine under test, and run from the compose.yaml that init writes." ;;
+  esac
+  summary_add ""
+  composed_failed=""
+  composed_step "build the app image on the runner's Docker" rootful docker build -t "$app_image" . || true
+  case "$engine" in
+    rootless-docker) composed_step "copy the app image into rootless Docker" copy_app_image_into env "DOCKER_HOST=unix://$socket" docker load || true ;;
+    podman) composed_step "copy the app image into Podman" copy_app_image_into podman load || true ;;
+  esac
+  composed_dir="$work/instance"
+  composed_step "make the Instance folder" mkdir -p "$composed_dir" || true
+  composed_step "init" engine_docker docker run --rm --pull never -v "$composed_dir:/out" -e "BEYONDLEETCODE_IMAGE=$app_image" "$app_image" init --origin "$composed_origin" || true
+  composed_step "the .env names the app image" grep -q -x "BEYONDLEETCODE_IMAGE=$app_image" "$composed_dir/.env" || true
+  composed_attempt "" || true
+  if [ "$engine" = gvisor ] && [ "$composed_failed" = "the Runner is ready" ]; then
+    # With runsc as Docker's default runtime the Runner's own container runs under gVisor too, and gVisor does not by
+    # default let a container connect to a socket on the host: runsc's --host-uds defaults to none, and the one gVisor
+    # docs page that mentions the flag (https://gvisor.dev/docs/user_guide/observability/) adds --host-uds=all to the
+    # runtime to reach a host socket. The second try gives only the Runner's own container runc; every Sandbox it
+    # starts still gets the default runtime, runsc.
+    summary_add "First try, no override: the Runner was not ready. This is recorded; the second try follows."
+    problems+=("gvisor: the Runner's own container, running under runsc, was not ready in 5 minutes on the first try (its log is in the summary); the second try with runtime runc on the runner service is recorded separately")
+    echo "::error::the Runner's own container, running under runsc, was not ready in 5 minutes on the first try"
+    composed_down "after the first try:"
+    composed_failed=""
+    composed_attempt runc || true
+  fi
+  summary_add ""
+  local t
+  for t in 1 2; do
+    [ ! -s "$work/override-$t.txt" ] || summary_block "The override used, try $t:" "$work/override-$t.txt"
+    [ ! -s "$work/merged-$t.txt" ] || summary_block "The merged configuration of the runner service, try $t:" "$work/merged-$t.txt"
+  done
+  if [ -n "$composed_ready_seconds" ]; then
+    summary_add "Time from docker compose up until the Runner was ready: ${composed_ready_seconds} s."
+  else
+    summary_add "The Runner was never ready."
+  fi
+  summary_add ""
+  summary_add "Browser flow (ci's docker job's test:smoke, in the Playwright image). It is one smoke test: Map, Topic, Chapter, Problem, then Run and Submit in Python, TypeScript and Go in turn, and it stops at its first failure. Its output does not name a Language, so a failure shows the failing line of src/routes/smoke.smoke.ts (marked >) and the Languages after it did not run."
+  summary_add ""
+  composed_step "browser flow (one smoke test, three Languages)" browser_flow || true
+  if [ -n "$composed_ran" ] && [ -z "$composed_failed" ]; then
+    # Only on success: a failure's output is already in the summary, under the step.
+    # The list reporter's tick is not ASCII; the summary keeps text only, so it becomes a word first.
+    sed -e 's/✓/ok/g' "$work/comp.out" >"$work/browser.txt" || cp "$work/comp.out" "$work/browser.txt"
+    summary_block "What the browser flow printed:" "$work/browser.txt"
+  fi
+  summary_add ""
+  if [ -n "$composed_failed" ]; then
+    problems+=("composed Instance: $composed_failed failed")
+    echo "::error::composed Instance under $engine: $composed_failed failed"
+    composed_down "at the failure:"
+  else
+    composed_down ""
+  fi
+  summary_add ""
+  leftover_check "Leftover containers after the composed Instance"
+}
+
+# Containers the Runner should have removed, polled for up to 120 s: 24 tries, 5 s apart.
+leftover_check() { # <heading>
+  local left query_failed _
+  summary_add "## $1"
+  summary_add ""
+  left=""
+  query_failed=""
+  for _ in $(seq 1 24); do
+    if left="$(DOCKER_HOST="unix://$socket" docker ps -a --filter label=beyondleetcode.runner --format '{{.Names}} {{.State}}' 2>&1)"; then
+      query_failed=""
+    else
+      query_failed=1
+      break
+    fi
+    [ -z "$left" ] && break
+    sleep 5
+  done
+  if [ -n "$query_failed" ]; then
+    summary_add "The leftover check failed: $(printf '%s' "$left" | head -c 2000 | tr -c '\11\12\40-\176' '?')"
+    problems+=("the leftover check failed ($1)")
+    echo "::error::the leftover check failed ($1)"
+  elif [ -n "$left" ]; then
+    summary_add "Left after 120 s:"
+    summary_add ""
+    summary_add '```'
+    summary_add "$(printf '%s' "$left" | head -c 4000 | tr -c '\11\12\40-\176' '?')"
+    summary_add '```'
+    problems+=("containers were left behind ($1)")
+    echo "::error::containers were left behind ($1)"
+  else
+    summary_add "None left."
+  fi
+  summary_add ""
+}
+# The exit trap: a composed stack still up (an unexpected exit after `up`) is taken down, with its volume, before the
+# temporary folder goes; the exit status is kept, and a teardown that fails is recorded. Further signals are ignored
+# once clean-up has begun.
+cleanup_exit() {
+  local status=$?
+  trap '' INT TERM HUP
+  if [ -n "${composed_up:-}" ]; then
+    composed_up=""
+    if ! ( cd "$composed_dir" && DOCKER_HOST="unix://$socket" timeout 180 docker compose down -v ) >"$work/exit-down.out" 2>&1; then
+      echo "::error::docker compose down -v failed at exit under $engine"
+      printf '%s\n' "- docker compose down -v at exit: FAILED" >>"$out/summary.md"
+      [ "$status" -ne 0 ] || status=1
+    fi
+  fi
+  rm -rf "$work"
+  exit "$status"
+}
 # <<< helpers
+trap cleanup_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 # What the engine sees after the documented steps, per rootless leg.
 record_rootless_facts() {
@@ -455,7 +805,7 @@ after_setup() {
   summary_add ""
   summary_add "Exit status of \`bun run test:sandbox\`: $test_status"
   summary_add ""
-  ratio="$(grep -h 'three busy processes used' "$out/test-output.log" 2>/dev/null | head -n 1)"
+  ratio="$(grep -h 'three busy processes used' "$out/test-output.log" 2>/dev/null | head -n 1 | tr -c '\11\12\40-\176' '?')"
   summary_add "CPU ratio line from the test: ${ratio:-not found in the test output}"
   summary_add ""
   retries="$(grep -c 'Content check retried' "$out/test-output.log" 2>/dev/null)"
@@ -476,35 +826,11 @@ after_setup() {
   fi
   summary_add ""
 
-  # Containers the Runner should have removed, polled for up to 120 s.
-  summary_add "## Leftover containers"
-  summary_add ""
-  left=""
-  query_failed=""
-  for _ in $(seq 1 24); do
-    if left="$(DOCKER_HOST="unix://$socket" docker ps -a --filter label=beyondleetcode.runner --format '{{.Names}} {{.State}}' 2>&1)"; then
-      query_failed=""
-    else
-      query_failed=1
-      break
-    fi
-    [ -z "$left" ] && break
-    sleep 5
-  done
-  if [ -n "$query_failed" ]; then
-    summary_add "The leftover check failed: $(printf '%s' "$left" | head -c 2000 | tr -c '\11\12\40-\176' '?')"
-    problems+=("the leftover check failed")
-  elif [ -n "$left" ]; then
-    summary_add "Left after 120 s:"
-    summary_add ""
-    summary_add '```'
-    summary_add "$(printf '%s' "$left" | head -c 4000 | tr -c '\11\12\40-\176' '?')"
-    summary_add '```'
-    problems+=("containers were left behind")
-  else
-    summary_add "None left."
-  fi
+  leftover_check "Leftover containers"
+  composed_part
 
+  # Before the red entry is written, so it is in the file whichever copy fails: can the job summary be appended to?
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then : >>"$GITHUB_STEP_SUMMARY" || write_failed '$GITHUB_STEP_SUMMARY'; fi
   if [ "${#problems[@]}" -gt 0 ]; then
     summary_add ""
     summary_add "## Why this leg is red"

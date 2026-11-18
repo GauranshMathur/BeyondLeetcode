@@ -7,7 +7,7 @@ name: sandbox-engines
 # is not a required check.
 # It never runs on the maintainer's host; the engines are installed on the runner and gone with it.
 # Start it with: gh workflow run sandbox-engines.yml --ref <branch>
-# Each leg uploads its record (versions, every host change, test results) as the artifact sandbox-engines-<engine>.
+# Each leg uploads its record (versions, every host change, test results, the composed Instance) as the artifact sandbox-engines-<engine>.
 # No ${{ }} appears inside a run: script; the engine reaches the script through env:.
 
 on:
@@ -15,6 +15,12 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # The browser flow of the composed Instance runs in this image, as ci's docker job runs it. The tag and digest are
+  # the same as ci.yml's PLAYWRIGHT_IMAGE and the two move together: the "Check the Playwright image" step below
+  # fails the leg with the line to change when it differs from @playwright/test in bun.lock.
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
 
 concurrency:
   group: sandbox-engines
@@ -36,6 +42,20 @@ jobs:
         with:
           bun-version: 1.2.19
       - run: bun install --frozen-lockfile
+      - name: Check the Playwright image
+        run: |
+          version="$(bun -e 'console.log(JSON.parse(require("fs").readFileSync("node_modules/@playwright/test/package.json", "utf8")).version)')"
+          ci_image="$(sed -n 's/^  PLAYWRIGHT_IMAGE: //p' .github/workflows/ci.yml)"
+          if [ "$ci_image" != "$PLAYWRIGHT_IMAGE" ]; then
+            echo "::error::PLAYWRIGHT_IMAGE in .github/workflows/sandbox-engines.yml is $PLAYWRIGHT_IMAGE but ci.yml has $ci_image. Make them the same line."
+            exit 1
+          fi
+          case "$PLAYWRIGHT_IMAGE" in
+            *":v$version-"*) echo "Playwright $version matches $PLAYWRIGHT_IMAGE" ;;
+            *)
+              echo "::error::@playwright/test is $version (bun.lock) but PLAYWRIGHT_IMAGE in .github/workflows/sandbox-engines.yml is $PLAYWRIGHT_IMAGE. Set it to mcr.microsoft.com/playwright:v$version-noble@sha256:<index digest from 'docker buildx imagetools inspect mcr.microsoft.com/playwright:v$version-noble'>, here and in ci.yml."
+              exit 1 ;;
+          esac
       - name: Set up the engine and run the Sandbox tests
         run: .github/sandbox-engines.sh "$ENGINE" "$RUNNER_TEMP/engines"
         env:
