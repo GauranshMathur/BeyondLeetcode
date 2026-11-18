@@ -2,6 +2,8 @@
 # An on-demand check of dev mode against the real thing: it follows "From a clone" in docs/self-hosting.md step by
 # step, with "Over the tailnet", on the machine it runs on (the dev-run workflow's hosted runner), with the real
 # Runner and the real content/ folder, and drives the screens with a Playwright walk (src/routes/dev-run.walk.ts).
+# It then follows the guide's second route, "In the published image", the same way, with the published image
+# pulled with no login, its own folder, its own port and its own Sandbox images pulled by its Runner.
 # It records every step in <out-dir>/summary.md as passed, failed (with its last error line) or not reached, and
 # fails at the end if any step failed. A step that fails does not stop the script.
 #
@@ -21,7 +23,14 @@ RUNNER_PID=""
 LAUNCHED_PID=""
 TOKEN=""
 TOKEN_FILE=""
+TOKENS=()
 AUTH_FILE=""
+BASE_PHASE=base
+WALK_OUT=""
+WEB_LOG=""
+IMG_DIR=""
+IMG_NAME=ghcr.io/gauranshmathur/beyondleetcode
+IMG_PORT=3001
 RUNNER_FAILED=0
 ADDR=""
 DBDIR=""
@@ -78,24 +87,41 @@ last_error_line() {
   grep -v '^[[:space:]]*$' "$1" | tail -n 1 | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | redact | cut -c1-300
 }
 
-# Blanks the Runner token in what it reads. The token is read from its file by this function and handed to awk
-# in awk's environment, so it is on no command line. With no token file yet there is nothing to blank. A token
-# file that cannot be read, or whose content is not a token, fails closed: nothing is passed on.
+# read_tokens: fills TOKENS from the token file, one secret per line (the clone route's Runner token, then the
+# Runner token and the auth secret `init` wrote for the image route). One to three lines, each exactly 48 lower
+# case hex characters; an empty line would match everything in a search, so anything else fails.
+read_tokens() {
+  local t
+  TOKENS=()
+  mapfile -t TOKENS <"$TOKEN_FILE" || return 1
+  [ "${#TOKENS[@]}" -ge 1 ] && [ "${#TOKENS[@]}" -le 3 ] || return 1
+  for t in "${TOKENS[@]}"; do
+    [[ "$t" =~ ^[0-9a-f]{48}$ ]] || return 1
+  done
+}
+
+# Blanks every secret of the token file in what it reads. The secrets are read from the file by this function and
+# handed to awk in awk's environment, so they are on no command line. With no token file yet there is nothing to
+# blank. A token file that cannot be read, or whose content is not secrets, fails closed: nothing is passed on.
 redact() {
   if [ -z "$TOKEN_FILE" ]; then
     cat
     return
   fi
-  local t=""
-  IFS= read -r t <"$TOKEN_FILE" || [ -n "$t" ] || return 1
-  [[ "$t" =~ ^[0-9a-f]{48}$ ]] || return 1
-  DEVRUN_TOKEN="$t" awk '
-    BEGIN { t = ENVIRON["DEVRUN_TOKEN"] }
+  local joined
+  read_tokens || return 1
+  joined="$(printf '%s\n' "${TOKENS[@]}")" || return 1
+  DEVRUN_TOKENS="$joined" awk '
+    BEGIN { n = split(ENVIRON["DEVRUN_TOKENS"], ts, "\n") }
     {
       line = $0
-      out = ""
-      while ((i = index(line, t)) > 0) { out = out substr(line, 1, i - 1) "***"; line = substr(line, i + length(t)) }
-      print out line
+      for (k = 1; k <= n; k++) {
+        t = ts[k]
+        out = ""
+        while ((i = index(line, t)) > 0) { out = out substr(line, 1, i - 1) "***"; line = substr(line, i + length(t)) }
+        line = out line
+      }
+      print line
     }'
 }
 
@@ -113,7 +139,7 @@ out_dir_ok() {
 
 # is_screenshot <name> <file>: a screenshot of the walk by its name, and a PNG by its signature.
 is_screenshot() {
-  [[ "$1" =~ ^(map|problem-dev|invalid-content)-(light|dark)-(desktop|phone)\.png$ ]] &&
+  [[ "$1" =~ ^(image/)?(map|problem-dev|invalid-content)-(light|dark)-(desktop|phone)\.png$ ]] &&
     [ "$(head -c 8 "$2" | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ]
 }
 
@@ -135,13 +161,12 @@ is_text() {
 # held does the step output `record=clean` get written, and the workflow uploads only then; every other path
 # publishes nothing. The reason of a failure goes to the job log only, redacted.
 finalize_record() {
-  local file name reason="" shots=0 others="" list="$WORK/files" odd expected=0 handled=0 hits tok="" st
+  local file name reason="" shots=0 others="" list="$WORK/files" odd expected=0 handled=0 hits st
   out_dir_ok "$OUT" || reason="the out-dir is not a folder beneath RUNNER_TEMP"
-  # The token is read once, here, and both final searches get this value (never from the file again, never on a
-  # command line).
-  IFS= read -r tok <"$TOKEN_FILE" || [ -n "$tok" ]
-  [[ "$tok" =~ ^[0-9a-f]{48}$ ]] || reason="${reason:-the Runner token could not be read, or is not a token}"
-  for name in clone-web.log clone-runner.log; do
+  # The secrets are read once, here, and both final searches get these values (never from the file again, never
+  # on a command line).
+  read_tokens || reason="${reason:-the Runner token could not be read, or is not a token}"
+  for name in clone-web.log clone-runner.log image-web-dev.log image-web.log image-runner.log; do
     if [ -z "$reason" ] && [ -e "$WORK/$name" ]; then cp -- "$WORK/$name" "$OUT/$name" || reason="cannot copy $name"; fi
   done
   if [ -z "$reason" ]; then
@@ -206,7 +231,7 @@ finalize_record() {
   fi
   # The last word does not rest on the list or the loop: the whole folder is searched for the token, and only
   # "no file holds it" (grep status 1) lets the marker be written.
-  hits="$(LC_ALL=C grep -rlaF -f <(printf '%s\n' "$tok") -- "$OUT")"
+  hits="$(LC_ALL=C grep -rlaF -f <(printf '%s\n' "${TOKENS[@]}") -- "$OUT")"
   case $? in
   1) ;;
   0)
@@ -219,7 +244,7 @@ finalize_record() {
     ;;
   esac
   # The names count too: no path under the out-dir may hold the token (a hit, or an error of find or grep, fails).
-  find "$OUT" -print0 | LC_ALL=C grep -zaF -f <(printf '%s\n' "$tok") >/dev/null
+  find "$OUT" -print0 | LC_ALL=C grep -zaF -f <(printf '%s\n' "${TOKENS[@]}") >/dev/null
   st=("${PIPESTATUS[@]}")
   if [ "${st[0]}" -ne 0 ] || [ "${st[1]}" -ne 1 ]; then
     echo "dev-run: the record is not published: a path in the out-dir holds the token, or the search of the names failed" >&2
@@ -229,7 +254,8 @@ finalize_record() {
 }
 
 # step [-s] [-a] <phase> <label> <command...>: runs one step and records it.
-#   phase   base, dev or off. A step is not reached when its phase, or base, already had a failing step.
+#   phase   base, dev or off (ibase, idev and ioff for the image route). A step is not reached when its phase, or
+#           the route's base phase, already had a failing step.
 #   -s      soft: a failure is recorded but does not stop the later steps of the phase
 #   -a      always: runs even when the phase is broken (the steps that stop processes)
 # The command runs in this shell (a function can set STEP_NOTE, the detail of a passing step), its output goes to
@@ -247,9 +273,9 @@ step() {
   local phase="$1" label="$2"
   shift 2
   STEP_NOTE=""
-  if [ "$always" -eq 0 ] && { [ -n "${BROKEN[base]:-}" ] || [ -n "${BROKEN[$phase]:-}" ]; }; then
+  if [ "$always" -eq 0 ] && { [ -n "${BROKEN[$BASE_PHASE]:-}" ] || [ -n "${BROKEN[$phase]:-}" ]; }; then
     STEP_RESULT=notreached
-    record "$ROUTE" "$label" "not reached" "needs: ${BROKEN[base]:-${BROKEN[$phase]}}"
+    record "$ROUTE" "$label" "not reached" "needs: ${BROKEN[$BASE_PHASE]:-${BROKEN[$phase]}}"
     return 1
   fi
   STEP_N=$((STEP_N + 1))
@@ -368,14 +394,17 @@ stop_proc() {
   return 0
 }
 
-# wait_for_200 <url> <seconds> <pid to watch>: polls until the URL answers 200, or the process is gone.
+# wait_for_200 <url> <seconds> [pid to watch]: polls until the URL answers 200, or the process is gone. The image
+# route has no process of its own to watch.
 wait_for_200() {
-  local url="$1" limit=$((SECONDS + $2)) pid="$3" code=none
+  local url="$1" limit=$((SECONDS + $2)) pid="${3:-}" code=none
   while [ "$SECONDS" -lt "$limit" ]; do
-    kill -0 "$pid" 2>/dev/null || {
-      echo "the process exited before $url answered 200"
-      return 1
-    }
+    if [ -n "$pid" ]; then
+      kill -0 "$pid" 2>/dev/null || {
+        echo "the process exited before $url answered 200"
+        return 1
+      }
+    fi
     code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url")" || code=000
     [ "$code" = 200 ] && return 0
     sleep 2
@@ -470,19 +499,20 @@ loopback_refused() {
   }
 }
 
-# "What it does": the log holds the one 500 line for the route and no line with the broken file's path.
+# "What it does": the log holds the one 500 line for the route and no line with the broken file's path. The log is
+# the clone route's web log unless WEB_LOG names the image route's.
 web_log_check() {
-  local path route
-  path="$(jq -er .problemJson "$OUT/chosen.json")" || {
+  local path route log="${WEB_LOG:-$WORK/clone-web.log}"
+  path="$(jq -er .problemJson "$WALK_OUT/chosen.json")" || {
     echo "the walk wrote no chosen.json"
     return 1
   }
-  route="$(jq -er .routeId "$OUT/chosen.json")" || return 1
-  grep -Fq -- "[500] GET $route ContentError" "$WORK/clone-web.log" || {
+  route="$(jq -er .routeId "$WALK_OUT/chosen.json")" || return 1
+  grep -Fq -- "[500] GET $route ContentError" "$log" || {
     echo "no [500] GET $route ContentError line in the web log"
     return 1
   }
-  if grep -Fq -- "$path" "$WORK/clone-web.log"; then
+  if grep -Fq -- "$path" "$log"; then
     echo "a line of the web log holds the broken file's path: $path"
     return 1
   fi
@@ -501,7 +531,7 @@ report_first_error() {
 # run_walk <tag> <report name>: one group of the walk, in the Playwright image as ci runs its e2e step. When it
 # fails, the last line says which way: a failing test, an error before the tests ran, or the command's own.
 run_walk() {
-  local bun_bin report="$OUT/report-$2.json" out="$WORK/walk-$2.out" code first
+  local bun_bin report="$WALK_OUT/report-$2.json" out="$WORK/walk-$2.out" code first
   local env_flags=()
   bun_bin="$(readlink -f "$(command -v bun)")" || return 1
   if [ "$RUNNER_FAILED" -ne 0 ]; then env_flags=(-e DEV_RUN_NO_RUNNER=1); fi
@@ -509,7 +539,7 @@ run_walk() {
   docker run --rm --init --ipc=host --network host -e CI \
     -v "$PWD:$PWD" -w "$PWD" -v "$OUT:$OUT" \
     -v "$bun_bin:/usr/local/bin/bun:ro" -v "$bun_bin:/usr/local/bin/bunx:ro" \
-    -e DEV_RUN_BASE_URL="$ORIGIN" -e DEV_RUN_OUT="$OUT" -e "DEV_RUN_CONTENT=$PWD/content" \
+    -e DEV_RUN_BASE_URL="$ORIGIN" -e DEV_RUN_OUT="$WALK_OUT" -e "DEV_RUN_CONTENT=$PWD/content" \
     -e "DEV_RUN_REPORT=$report" "${env_flags[@]}" \
     "$PLAYWRIGHT_IMAGE" bunx playwright test -c playwright.dev-run.config.ts --grep "$1" >"$out" 2>&1
   code=$?
@@ -535,7 +565,7 @@ run_walk() {
 
 # record_walk <label> <report name>: one summary row for each test of the group, from the JSON report.
 record_walk() {
-  local label="$1" report="$OUT/report-$2.json" rows errors status duration title error result
+  local label="$1" report="$WALK_OUT/report-$2.json" rows errors status duration title error result
   if [ ! -s "$report" ]; then
     record "$ROUTE · walk $label" "(no report)" "not reached" "no JSON report was written"
     return 0
@@ -573,7 +603,7 @@ record_walk() {
 
 # The walk's test 6 ran, so a broken file was served and the web log can be checked for it.
 broken_file_test_ran() {
-  jq -e '[.. | objects | select(has("specs")) | .specs[] | select(.title | startswith("6. ")) | (.tests[0].status // "skipped")] | any(. != "skipped")' "$OUT/report-dev-on.json" >/dev/null 2>&1
+  jq -e '[.. | objects | select(has("specs")) | .specs[] | select(.title | startswith("6. ")) | (.tests[0].status // "skipped")] | any(. != "skipped")' "$WALK_OUT/report-dev-on.json" >/dev/null 2>&1
 }
 
 # group <phase> <label> <tag> <report name> [-s]: runs one group of the walk, then lists its tests.
@@ -598,12 +628,327 @@ stats() {
       end' "$1"
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# "In the published image". It runs in a folder of its own, as `docker compose` there; nothing of the clone route
+# is reused except the helpers above. `init` writes a Runner token and an auth secret into .env: they are read by
+# name into the token file (see adopt_secrets), so every log, summary line and file is blanked of them like the
+# clone route's token. .env and the output of `docker compose config` are never recorded; only named fields are.
+
+# dc <args>: docker compose in the image route's folder.
+dc() {
+  ( cd "$IMG_DIR" && docker compose "$@" )
+}
+
+# The three Sandbox images, read from config.ts (the one place they are listed) as ci.yml's sandbox-images job
+# reads them: the Python image by its constant, and the two ghcr.io images by their constants. Each is checked
+# against an image-name pattern before it reaches a command, and there must be exactly three.
+sandbox_image_names() {
+  local names line n=0 ok=1
+  names="$(sed -n "s/^const \(python\|typescript\|go\)Image = '\([^']*\)';\$/\2/p" src/lib/server/runner/config.ts)" || return 1
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    [[ "$line" =~ ^[a-z0-9][a-z0-9./_-]*:[A-Za-z0-9_.-]+$ ]] || ok=0
+    n=$((n + 1))
+    printf '%s\n' "$line"
+  done <<<"$names"
+  [ "$ok" -eq 1 ] && [ "$n" -eq 3 ]
+}
+
+# Between the routes: stops what the clone route left, removes the Sandbox containers and the three Sandbox
+# images from this Docker, so the image route's Runner pulls its own as "Install (Local Mode)" says the first
+# start does.
+between_routes() {
+  local names name
+  stop_all || return 1
+  rm -f .env
+  docker ps -aq --filter label=beyondleetcode.runner | xargs -r docker rm -f >/dev/null || return 1
+  names="$(sandbox_image_names)" || {
+    echo "config.ts does not name exactly three valid Sandbox images"
+    return 1
+  }
+  while IFS= read -r name; do
+    if docker image inspect "$name" >/dev/null 2>&1; then
+      docker image rm -- "$name" >/dev/null || {
+        echo "cannot remove the image $name"
+        return 1
+      }
+    fi
+    if docker image inspect "$name" >/dev/null 2>&1; then
+      echo "the image $name is still there"
+      return 1
+    fi
+  done <<<"$names"
+  STEP_NOTE="removed $(printf '%s' "$names" | tr '\n' ' ')"
+}
+
+# env_secret <.env> <name>: one field of .env by its name, checked to be 48 lower case hex characters, printed.
+env_secret() {
+  local value
+  value="$(awk -v k="$2" 'index($0, k "=") == 1 { print substr($0, length(k) + 2) }' "$1")" || return 1
+  [[ "$value" =~ ^[0-9a-f]{48}$ ]] || return 1
+  printf '%s\n' "$value"
+}
+
+# adopt_secrets <.env>: the Runner token and the auth secret `init` wrote join the token file, so the redactor and
+# the final searches know them. Nothing is printed. A secret that cannot be read, or is not 48 hex characters,
+# fails the step: nothing holds it in a log then, because nothing has printed it.
+adopt_secrets() {
+  local runner auth
+  runner="$(env_secret "$1" RUNNER_TOKEN)" || {
+    echo "RUNNER_TOKEN in the .env that init wrote is not 48 hex characters"
+    return 1
+  }
+  auth="$(env_secret "$1" BETTER_AUTH_SECRET)" || {
+    echo "BETTER_AUTH_SECRET in the .env that init wrote is not 48 hex characters"
+    return 1
+  }
+  printf '%s\n%s\n' "$runner" "$auth" >>"$TOKEN_FILE" || return 1
+  read_tokens || {
+    echo "the token file is not valid after the image route's secrets were added"
+    return 1
+  }
+}
+
+# 1. A fresh folder of its own, and Install's command with the image's default tag.
+image_init_step() {
+  local dir="${RUNNER_TEMP:-}/beyondleetcode-dev"
+  [[ "$dir" =~ ^/[A-Za-z0-9_./-]+$ ]] || {
+    echo "the image route's folder is not a plain absolute path: $dir"
+    return 1
+  }
+  mkdir -- "$dir" || return 1
+  IMG_DIR="$dir"
+  ( cd "$IMG_DIR" && docker run --rm -v "$PWD":/out "$IMG_NAME" init --origin "$ORIGIN" --port "$IMG_PORT" ) || return 1
+  [ -s "$IMG_DIR/compose.yaml" ] && [ -s "$IMG_DIR/.env" ] || {
+    echo "init did not write compose.yaml and .env"
+    return 1
+  }
+  adopt_secrets "$IMG_DIR/.env"
+}
+
+# Neither file that `init` wrote names DEV_MODE.
+init_files_no_dev_mode() {
+  local f
+  for f in compose.yaml .env; do
+    grep -q DEV_MODE "$IMG_DIR/$f"
+    case $? in
+    1) ;;
+    0)
+      echo "the $f that init wrote names DEV_MODE"
+      return 1
+      ;;
+    *)
+      echo "cannot read $f"
+      return 1
+      ;;
+    esac
+  done
+}
+
+# 2. BEYONDLEETCODE_IMAGE is the edge tag, and the ports line of compose.yaml itself is the tailnet form.
+image_edit_step() {
+  local tmp
+  ( cd "$IMG_DIR" && set_env BEYONDLEETCODE_IMAGE "$IMG_NAME:edge" ) || return 1
+  tmp="$(mktemp "$WORK/compose.XXXXXX")" || return 1
+  DEVRUN_ADDR="$ADDR" awk '
+    $0 == "      - \"${PORT}:3000\"" { print "      - \"" ENVIRON["DEVRUN_ADDR"] ":${PORT}:3000\""; n++; next }
+    { print }
+    END { if (n != 1) exit 1 }' "$IMG_DIR/compose.yaml" >"$tmp" || {
+    echo "compose.yaml does not hold exactly one ports line of the form \"\${PORT}:3000\""
+    return 1
+  }
+  cat "$tmp" >"$IMG_DIR/compose.yaml" || return 1
+  rm -f "$tmp"
+  STEP_NOTE="BEYONDLEETCODE_IMAGE=$IMG_NAME:edge, ports \"$ADDR:\${PORT}:3000\""
+}
+
+# The merged configuration's project name, web's ports and the data volume's name, by named field only: the
+# configuration holds the secrets, so none of it is printed.
+image_config_step() {
+  local json name vol ports
+  json="$(dc config --format json)" || return 1
+  name="$(printf '%s' "$json" | jq -er '.name')" || return 1
+  vol="$(printf '%s' "$json" | jq -er '.volumes.data.name')" || return 1
+  ports="$(printf '%s' "$json" | jq -ce '.services.web.ports')" || return 1
+  [ "$name" = beyondleetcode-dev ] || {
+    echo "the project name is $name, not beyondleetcode-dev"
+    return 1
+  }
+  [ "$vol" = beyondleetcode-dev_data ] || {
+    echo "the data volume is $vol, not beyondleetcode-dev_data"
+    return 1
+  }
+  printf '%s' "$json" | jq -e --arg a "$ADDR" --arg p "$IMG_PORT" '.services.web.ports | length == 1 and .[0].host_ip == $a and (.[0].published | tostring) == $p and .[0].target == 3000' >/dev/null || {
+    echo "web's ports are $ports, not $ADDR:$IMG_PORT to 3000"
+    return 1
+  }
+  STEP_NOTE="project $name; web ports $ports; data volume $vol"
+}
+
+# 3. docker compose pull && docker compose up -d.
+image_pull_up_step() {
+  dc pull || return 1
+  dc up -d
+}
+
+# The Runner's /health, asked from inside runner as smoke.sh does, lists the three Languages.
+runner_ready_js='
+const r = await fetch("http://127.0.0.1:8787/health", { headers: { Authorization: `Bearer ${process.env.RUNNER_TOKEN}` } });
+if (r.status !== 200) process.exit(1);
+const { languages = [] } = await r.json();
+process.exit(["python", "typescript", "go"].every((l) => languages.includes(l)) ? 0 : 1);
+'
+
+image_runner_ready() {
+  local limit=$((SECONDS + 600))
+  while [ "$SECONDS" -lt "$limit" ]; do
+    if dc exec -T runner bun -e "$runner_ready_js" </dev/null >/dev/null 2>&1; then
+      echo "Runner ready"
+      return 0
+    fi
+    sleep 5
+  done
+  dc ps --all 2>&1 | tail -n 6
+  dc logs --no-color --no-log-prefix --tail 10 runner 2>&1
+  echo "the Runner's /health did not list python, typescript and go within 600 s"
+  return 1
+}
+
+# ADR 0002: web has no Docker socket and runner has one, as smoke.sh checks.
+image_sockets() {
+  if dc exec -T web test -e /var/run/docker.sock </dev/null; then
+    echo "the web container has the Docker socket"
+    return 1
+  fi
+  dc exec -T runner test -S /var/run/docker.sock </dev/null || {
+    echo "the runner container has no Docker socket"
+    return 1
+  }
+}
+
+# The image `edge` that was pulled, by its digest.
+image_digest() {
+  local d
+  d="$(docker image inspect --format '{{index .RepoDigests 0}}' "$IMG_NAME:edge")" || return 1
+  [[ "$d" =~ ^ghcr\.io/gauranshmathur/beyondleetcode@sha256:[0-9a-f]{64}$ ]] || {
+    echo "the digest of the edge image is not a digest: $d"
+    return 1
+  }
+  STEP_NOTE="$d"
+}
+
+# 4. compose.override.yaml, exactly the guide's block, with the checkout's content/ folder.
+image_override_step() {
+  local content="$PWD/content"
+  [[ "$content" =~ ^/[A-Za-z0-9_./-]+$ ]] || {
+    echo "the checkout's content/ path is not a plain absolute path"
+    return 1
+  }
+  printf '%s\n' 'services:' '  web:' '    environment:' '      DEV_MODE: "1"' '    volumes:' "      - $content:/app/content:ro" >"$IMG_DIR/compose.override.yaml" || return 1
+  STEP_NOTE="DEV_MODE=1 for web, the checkout's content/ over /app/content, read only"
+}
+
+# The merged configuration carries DEV_MODE=1 for web and the read-only mount of the checkout's content/.
+image_dev_config_step() {
+  local json
+  json="$(dc config --format json)" || return 1
+  printf '%s' "$json" | jq -e --arg c "$PWD/content" '.services.web.environment.DEV_MODE == "1" and (.services.web.volumes | map(select(.target == "/app/content" and .source == $c and .read_only == true)) | length == 1)' >/dev/null || {
+    echo "the merged configuration does not hold DEV_MODE=1 and the read-only mount of content/"
+    return 1
+  }
+  STEP_NOTE="web: DEV_MODE=1 and $PWD/content on /app/content read only"
+}
+
+# 5. docker compose up -d, until the path answers 200.
+image_up_wait() {
+  dc up -d || return 1
+  wait_for_200 "$ORIGIN$1" 180
+}
+
+# The web log of the dev-mode container, kept before the next recreate deletes it, then the same check as the
+# clone route's.
+image_web_log_check() {
+  dc logs --no-color --no-log-prefix web >"$WORK/image-web-dev.log" || return 1
+  WEB_LOG="$WORK/image-web-dev.log" web_log_check
+}
+
+# 6. Delete compose.override.yaml, docker compose up -d, until / answers 200.
+image_off_up_wait() {
+  rm -f "$IMG_DIR/compose.override.yaml" || return 1
+  [ ! -e "$IMG_DIR/compose.override.yaml" ] || return 1
+  image_up_wait /
+}
+
+# No DEV_MODE in the merged configuration, and none in what init wrote.
+image_off_checks() {
+  local json
+  json="$(dc config --format json)" || return 1
+  printf '%s' "$json" | jq -e '[.services[] | (.environment // {}) | has("DEV_MODE")] | any | not' >/dev/null || {
+    echo "the merged configuration names DEV_MODE"
+    return 1
+  }
+  init_files_no_dev_mode
+}
+
+# On every exit: the web and Runner logs of the image route are kept for the record, and the stack goes with its
+# volume, bounded in time. The logs are copied into the record, and cleaned of the secrets, by finalize_record.
+image_teardown() {
+  timeout 60 docker compose --project-directory "$IMG_DIR" logs --no-color --no-log-prefix web >"$WORK/image-web.log" 2>&1
+  timeout 60 docker compose --project-directory "$IMG_DIR" logs --no-color --no-log-prefix runner >"$WORK/image-runner.log" 2>&1
+  timeout 180 docker compose --project-directory "$IMG_DIR" down -v >"$WORK/image-down.log" 2>&1 || {
+    last_error_line "$WORK/image-down.log"
+    return 1
+  }
+}
+
+image_route() {
+  ROUTE="In the published image"
+  BASE_PHASE=ibase
+  PORT="$IMG_PORT"
+  ORIGIN="http://$ADDR:$PORT"
+  RUNNER_FAILED=0
+  WALK_OUT="$OUT/image"
+  mkdir -p "$WALK_OUT" || die "cannot make $WALK_OUT"
+
+  step -a ibase "Between the routes: stop the clone route's processes, remove its Sandbox containers and the three Sandbox images" between_routes
+  step ibase "1. A fresh folder beyondleetcode-dev; docker run --rm -v \"\$PWD\":/out $IMG_NAME init --origin $ORIGIN --port $PORT" image_init_step
+  if [ "$STEP_RESULT" = passed ]; then
+    local secret
+    for secret in "${TOKENS[@]}"; do echo "::add-mask::$secret"; done
+  fi
+  step -s ibase "1. The compose.yaml and .env that init wrote name no DEV_MODE" init_files_no_dev_mode
+  step ibase "2. BEYONDLEETCODE_IMAGE in .env is the edge tag; the ports line of compose.yaml is \"$ADDR:\${PORT}:3000\"" image_edit_step
+  step -s ibase "2. docker compose config: the project name, web's ports and the data volume" image_config_step
+  step ibase "3. docker compose pull && docker compose up -d" image_pull_up_step
+  step -s ibase "3. Until the Runner's /health lists python, typescript and go (asked from inside runner)" image_runner_ready
+  if [ "$STEP_RESULT" != passed ]; then RUNNER_FAILED=1; fi
+  step -s ibase "3. web has no Docker socket and runner has one" image_sockets
+  step ibase "3. Until /setup answers 200" wait_for_200 "$ORIGIN/setup" 180
+  group ibase "3. Open ORIGIN and choose Local at Setup" @setup setup
+  step -s ibase "3. The digest of the edge image" image_digest
+
+  step idev "4. Write compose.override.yaml as the guide's block, with this checkout's content/" image_override_step
+  step -s idev "4. docker compose config: DEV_MODE for web and the read-only mount" image_dev_config_step
+  step idev "5. docker compose up -d, until / answers 200" image_up_wait /
+  step -s idev "5. http://127.0.0.1:$PORT/ does not connect (the port is published on the address only)" loopback_refused
+  group idev "5. Dev mode on" @dev-on dev-on -s
+  if broken_file_test_ran; then
+    step -s idev "What it does: web's log holds the [500] ContentError line and no path" image_web_log_check
+  else
+    record "$ROUTE" "What it does: web's log holds the [500] ContentError line and no path" "not reached" "the walk's test 6 did not run, so no broken file was served"
+  fi
+
+  step ioff "6. Delete compose.override.yaml; docker compose up -d, until / answers 200" image_off_up_wait
+  step -s ioff "6. docker compose config names no DEV_MODE, and init's files never did" image_off_checks
+  group ioff "6. Dev mode off" @dev-off dev-off -s
+}
+
 write_head() {
   local mem
   mem="$(awk '/MemTotal/ { printf "%.1f GB", $2 / 1048576 }' /proc/meminfo)" || mem=unknown
-  emit "# dev-run: dev mode, followed from \"From a clone\" (docs/self-hosting.md)"
+  emit "# dev-run: dev mode, followed from \"From a clone\" and \"In the published image\" (docs/self-hosting.md)"
   emit ""
-  emit "- The runner's own address, $ADDR, stands in for the tailnet address (\"Over the tailnet\")."
+  emit "- The runner's own address, $ADDR, stands in for the tailnet address (\"Over the tailnet\"): port 3000 for the clone, port $IMG_PORT for the image."
   emit "- Host: $(nproc) CPUs, $mem memory, kernel $(uname -r), $(docker --version), ${ImageOS:-unknown} ${ImageVersion:-unknown}"
   emit "- Bun $(bun --version), commit $(git rev-parse HEAD), $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   emit "- Files in content/: $(find content -type f | wc -l) (the guide says 3,428)"
@@ -616,33 +961,37 @@ write_tail() {
   emit ""
   emit "## Timings (the guide: about 0.35 to 0.45 s per read on the full content/ folder)"
   emit ""
-  local file name
-  for file in "$OUT"/timings-*.json; do
-    [ -f "$file" ] || continue
-    name="${file##*/timings-}"
-    name="${name%.json}"
-    emit "- $name, reads of a Problem: $(stats "$file" reads || echo unreadable)"
-    if jq -e 'has("autosaves")' "$file" >/dev/null 2>&1; then
-      emit "- $name, autosaves: $(stats "$file" autosaves || echo unreadable)"
-    fi
+  local file name dir label
+  for dir in "$OUT" "$OUT/image"; do
+    label="clone"
+    if [ "$dir" != "$OUT" ]; then label="image"; fi
+    for file in "$dir"/timings-*.json; do
+      [ -f "$file" ] || continue
+      name="${file##*/timings-}"
+      name="${name%.json}"
+      emit "- $label $name, reads of a Problem: $(stats "$file" reads || echo unreadable)"
+      if jq -e 'has("autosaves")' "$file" >/dev/null 2>&1; then
+        emit "- $label $name, autosaves: $(stats "$file" autosaves || echo unreadable)"
+      fi
+    done
   done
   emit ""
   emit "## Screenshots"
   emit ""
   local shot count=0
-  for shot in "$OUT"/*.png; do
+  for shot in "$OUT"/*.png "$OUT"/image/*.png; do
     [ -f "$shot" ] || continue
-    emit "- ${shot##*/}"
+    emit "- ${shot#"$OUT"/}"
     count=$((count + 1))
   done
   emit ""
-  emit "$count screenshots (twelve expected)."
+  emit "$count screenshots (twelve expected for each route)."
 }
 
 # On every exit: stops the processes, checks that the walk left content/ as it was and only then puts it back,
 # removes the Sandbox containers, writes the end of the summary and sets the exit status.
 cleanup() {
-  local status=$? dirty gst
+  local status=$? dirty gst note
   trap '' INT TERM HUP
   trap - EXIT
   set +e
@@ -658,6 +1007,14 @@ cleanup() {
       record "$ROUTE" "clean-up: content/ is as the walk found it" passed
     fi
     git checkout -- content/
+    if [ -n "$IMG_DIR" ] && [ -f "$IMG_DIR/compose.yaml" ]; then
+      ROUTE="In the published image"
+      if note="$(image_teardown)"; then
+        record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" passed
+      else
+        record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" failed "$note"
+      fi
+    fi
     docker ps -aq --filter label=beyondleetcode.runner | xargs -r docker rm -f >/dev/null 2>&1
     rm -f .env
     write_tail
@@ -707,7 +1064,7 @@ main() {
   [ -f .env.example ] && [ -f content/content.json ] || die "run it from the repo root"
   [ -n "${PLAYWRIGHT_IMAGE:-}" ] || die "PLAYWRIGHT_IMAGE is not set"
   local tool
-  for tool in bun docker curl jq openssl setsid ip sudo; do
+  for tool in bun docker curl jq openssl setsid ip sudo timeout; do
     command -v "$tool" >/dev/null || die "$tool is not installed"
   done
   mkdir -p "$1/steps" || die "cannot make $1"
@@ -716,6 +1073,7 @@ main() {
   DBDIR="${RUNNER_TEMP:-$WORK}/dev-run-db"
   [[ "$DBDIR" == /* ]] || die "the database folder is not an absolute path"
   mkdir -p "$DBDIR" || die "cannot make $DBDIR"
+  WALK_OUT="$OUT"
   SUMMARY="$OUT/summary.md"
   : >"$SUMMARY" || die "cannot write $SUMMARY"
   trap cleanup EXIT
@@ -729,7 +1087,7 @@ main() {
   # The token is kept in files of mode 600 outside the out-dir, so no command line holds it.
   (
     umask 077
-    printf '%s' "$TOKEN" >"$WORK/token" && printf 'Authorization: Bearer %s\n' "$TOKEN" >"$WORK/auth.hdr"
+    printf '%s\n' "$TOKEN" >"$WORK/token" && printf 'Authorization: Bearer %s\n' "$TOKEN" >"$WORK/auth.hdr"
   ) || die "cannot write the token files"
   TOKEN_FILE="$WORK/token"
   AUTH_FILE="$WORK/auth.hdr"
@@ -761,6 +1119,8 @@ main() {
   step off "The switch: restart without DEV_MODE, until / answers 200" start_web 0 /
   group off "The switch: dev mode off" @dev-off dev-off -s
   step -a off "Stop the web process and the Runner" stop_all
+
+  image_route
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

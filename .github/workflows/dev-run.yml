@@ -1,6 +1,7 @@
 # An on-demand run of dev mode against the real Runner and the real content/ folder, following the self-hosting
-# guide's "From a clone" on a GitHub-hosted runner and driving the screens with a Playwright walk. It records
-# every step (passed, failed or not reached), the timings and twelve screenshots in the `dev-run` artifact.
+# guide's "From a clone" and then "In the published image" (the image pulled with no login) on a GitHub-hosted
+# runner and driving the screens with a Playwright walk. It records every step (passed, failed or not reached),
+# the timings and twelve screenshots of each route in the `dev-run` artifact.
 #
 # It is not part of `ci` or its `tests` job, and it is not a required check: a red run is a finding about dev mode
 # or the guide, not a reason to hold a merge.
@@ -60,10 +61,11 @@ jobs:
             echo "::error::PLAYWRIGHT_IMAGE in .github/workflows/dev-run.yml ($PLAYWRIGHT_IMAGE) differs from the one in .github/workflows/ci.yml (${ci_refs[*]:-none}). Copy ci.yml's line, tag and digest, here."
             exit 1
           fi
-      - name: Follow "From a clone"
+      - name: Follow "From a clone" and "In the published image"
         id: dev-run
         run: .github/dev-run.sh "$RUNNER_TEMP/dev-run"
-      # Only a record the script has cleaned of the Runner token: it writes record=clean after the last check, so a
+      # Only a record the script has cleaned of the secrets it knows (the clone's Runner token, and the Runner token and
+# auth secret that init writes): it writes record=clean after the last check, so a
       # failed walk still uploads its record, and every other path uploads nothing.
       - name: Upload the record
         if: always() && steps.dev-run.outputs.record == 'clean'
