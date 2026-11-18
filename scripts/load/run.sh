@@ -24,6 +24,8 @@ set -euo pipefail
 # The k6 image, by the multi-arch index digest, never by tag alone.
 # To bump: `docker buildx imagetools inspect grafana/k6:<version>`, copy its top-level "Digest:"
 # (the index, not a per-platform manifest), and change the tag and digest here together.
+# runner.k6.js reads k6's legacy summary shape (data.metrics.<name>.values) and throws if it
+# changes; check the new version's handleSummary data before bumping.
 K6_IMAGE=grafana/k6:2.4.0@sha256:d41bb79cd8de5a7ad619b53570e3712633e8bff0937010a5c6c57a4747e7a276
 
 if [ "$#" -ne 1 ]; then
@@ -47,6 +49,8 @@ LOAD_NETWORK="${LOAD_NETWORK:-host}"
 LOAD_OUT="${LOAD_OUT:-$(mktemp -d)}"
 CONTENT_DIR="${CONTENT_DIR:-content}"
 mkdir -p "$LOAD_OUT"
+# docker reads a -v source without a leading / as a named volume, so the folder must be absolute.
+LOAD_OUT="$(cd "$LOAD_OUT" && pwd)"
 
 (cd "$repo" && bun scripts/load/submissions.ts "$CONTENT_DIR") >"$LOAD_OUT/submissions.json"
 

@@ -137,7 +137,6 @@ function submit(scenario) {
 	const results = [];
 	for (let i = 0; i < entry.calls.length; i++) {
 		const call = entry.calls[i];
-		const sent = Date.now();
 		const res = http.post(`${RUNNER_URL}/execute`, JSON.stringify(call), {
 			headers: { Authorization: `Bearer ${RUNNER_TOKEN}`, 'Content-Type': 'application/json' },
 			timeout: '120s',
@@ -156,7 +155,7 @@ function submit(scenario) {
 		}
 		if (out.kind === 'busy') {
 			c.busy.add(1);
-			t.busyWait.add(answered - sent);
+			t.busyWait.add(answered - submissionStart);
 			break;
 		}
 		callTime[entry.language].add(res.timings.duration);
@@ -209,6 +208,17 @@ function stats(data, name) {
 const ms = (x) => (x === undefined ? '-' : `${Math.round(x)} ms`);
 const statCells = (s) => (s ? `${ms(s.p50)} | ${ms(s.p95)} | ${ms(s.max)}` : '- | - | -');
 
+// The pick depends only on the iteration number, which k6 counts from 0 within each scenario, so
+// what a scenario sent is the picks for 0 up to its started count.
+function sentProblems(data) {
+	const sent = new Set();
+	for (const s of SCENARIOS) {
+		const started = count(data, `load_${s}_started`);
+		for (let n = 0; n < started; n++) sent.add(pickSubmission(submissions, n).problemId);
+	}
+	return sent.size;
+}
+
 function markdown(data) {
 	const lines = ['# Load test summary', ''];
 	lines.push(
@@ -249,7 +259,7 @@ function markdown(data) {
 		'',
 		'## Wait until a busy refusal',
 		'',
-		'The refused call’s own time from send to answer.',
+		'From a Submission’s first call to the answer that refused it.',
 		'',
 		'| Scenario | Refusals | p50 | p95 | max |',
 		'| --- | --- | --- | --- | --- |'
@@ -282,7 +292,8 @@ function markdown(data) {
 		`- Queue: up to ${facts.maxQueued} waiting, each for up to ${facts.queueWaitMs} ms`,
 		`- Class size: ${CLASS_SIZE}`,
 		`- Submissions in the file: ${facts.count}`,
-		`- Distinct Problems sent: ${facts.problems}`,
+		`- Distinct Problems sent: ${sentProblems(data)}`,
+		`- Distinct Problems in the file: ${facts.problems}`,
 		`- Failed answers in the run: ${count(data, 'load_failed')}`,
 		''
 	);
@@ -290,6 +301,9 @@ function markdown(data) {
 }
 
 export function handleSummary(data) {
+	// Counts are read from k6's legacy summary shape: if a later k6 changes it, fail instead of
+	// reporting zeros.
+	if (!data.metrics.load_failed) throw new Error('The k6 summary has no load_failed metric');
 	const text = markdown(data);
 	return {
 		'/out/summary.json': JSON.stringify(data, null, 2),
