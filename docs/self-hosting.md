@@ -99,19 +99,21 @@ These numbers come from one run of the load test, on one machine. They are what 
 
 In the class of 20, the 12 that finished are the 4 slots and 8 queue places. The 8 refused were answered "busy" after 7 ms at most. No Submission failed in the run.
 
-A Run held its container for p50 0.853 s, p95 3.189 s and at most 3.527 s (create to destroy, 556 containers, none left behind).
+Each Sandbox lived for p50 0.853 s, p95 3.189 s and at most 3.527 s, create to destroy (556 Sandboxes, one per answered Runner call, none left behind).
 
 This was measured at the Runner's port, so the web's save and record and the browser's network come on top.
 
 #### Run the load test on your own Instance
 
-From a clone with Bun and Docker:
+From a clone with Bun and Docker, after `bun install`:
 
 ```
 RUNNER_TOKEN=<token> LOAD_SLOTS=<RUNNER_MAX_CONCURRENT, or the CPU count when it is empty> scripts/load/run.sh <runner URL>
 ```
 
 To reach an Instance's Runner, set `LOAD_NETWORK=<compose project>_internal` and use `http://runner:8787`.
+
+`LOAD_OUT` names the output folder for `summary.md` and `summary.json`. It also gets `submissions.json`, which holds Reference Code: do not share it.
 
 It fills every slot, so run it only against an Instance no Learner is using. The nightly `load` job runs it in CI.
 
