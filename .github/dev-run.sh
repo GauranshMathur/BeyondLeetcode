@@ -20,6 +20,9 @@ WEB_PID=""
 RUNNER_PID=""
 LAUNCHED_PID=""
 TOKEN=""
+TOKEN_FILE=""
+AUTH_FILE=""
+RUNNER_FAILED=0
 ADDR=""
 DBDIR=""
 ORIGIN=""
@@ -54,8 +57,14 @@ one_line() {
 
 # record <route> <step> <passed|failed|not reached> [detail]: one row of the summary.
 record() {
-  local detail=""
-  if [ -n "${4:-}" ]; then detail=" ($(one_line "$4"))"; fi
+  local detail="" text
+  if [ -n "${4:-}" ]; then
+    text="$(printf '%s' "$4" | redact)" || {
+      RECORD_BROKEN=1
+      text="(the detail could not be redacted)"
+    }
+    detail=" ($(one_line "$text"))"
+  fi
   printf '| %s | %s | %s%s |\n' "$1" "$(one_line "$2")" "$3" "$detail" >>"$SUMMARY" || {
     RECORD_BROKEN=1
     echo "dev-run: cannot write $SUMMARY" >&2
@@ -69,9 +78,35 @@ last_error_line() {
   grep -v '^[[:space:]]*$' "$1" | tail -n 1 | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | cut -c1-300
 }
 
-# The log of a step, with the Runner token blanked. The token is hex, so it is safe in a sed pattern.
+# Blanks the Runner token in what it reads. The token is read from its file by awk itself, so it is on no command
+# line; with no token file yet there is nothing to blank, and a token file that cannot be read fails closed.
 redact() {
-  if [ -n "$TOKEN" ]; then sed "s/$TOKEN/***/g"; else cat; fi
+  if [ -z "$TOKEN_FILE" ]; then
+    cat
+    return
+  fi
+  [ -s "$TOKEN_FILE" ] || return 1
+  DEVRUN_TOKEN_FILE="$TOKEN_FILE" awk '
+    BEGIN { f = ENVIRON["DEVRUN_TOKEN_FILE"]; getline t < f; close(f) }
+    {
+      line = $0
+      out = ""
+      if (t != "") {
+        while ((i = index(line, t)) > 0) { out = out substr(line, 1, i - 1) "***"; line = substr(line, i + length(t)) }
+      }
+      print out line
+    }'
+}
+
+# Every text file of the out-dir, redacted in place, after the processes that wrote them have stopped.
+redact_out_dir() {
+  local file tmp="$WORK/redact.tmp"
+  while IFS= read -r -d '' file; do
+    redact <"$file" >"$tmp" && cat "$tmp" >"$file" || {
+      RECORD_BROKEN=1
+      echo "dev-run: cannot redact $file" >&2
+    }
+  done < <(find "$OUT" -type f ! -name '*.png' -print0)
 }
 
 # step [-s] [-a] <phase> <label> <command...>: runs one step and records it.
@@ -114,7 +149,7 @@ step() {
   fi
   STEP_RESULT=failed
   record "$ROUTE" "$label" failed "$(last_error_line "$log")"
-  tail -n 40 "$log"
+  tail -n 40 "$log" | redact
   if [ "$soft" -eq 0 ]; then BROKEN[$phase]="$label"; fi
   return 1
 }
@@ -135,7 +170,8 @@ set_env() {
   [[ "$key" =~ ^[A-Z_]+$ ]] || return 1
   [[ "$value" =~ ^[A-Za-z0-9_./:@=-]+$ ]] || return 1
   tmp="$(mktemp "$WORK/env.XXXXXX")" || return 1
-  awk -v k="$key" -v v="$value" '
+  DEVRUN_KEY="$key" DEVRUN_VALUE="$value" awk '
+    BEGIN { k = ENVIRON["DEVRUN_KEY"]; v = ENVIRON["DEVRUN_VALUE"] }
     index($0, k "=") == 1 { print k "=\"" v "\""; seen = 1; next }
     { print }
     END { if (!seen) print k "=\"" v "\"" }' .env >"$tmp" || return 1
@@ -162,16 +198,36 @@ launch() {
   LAUNCHED_PID=$!
 }
 
-# stop_proc <pid>: stops the process and everything it started, and waits for it.
-stop_proc() {
-  local pid="$1" i
-  [ -n "$pid" ] || return 0
-  kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
-  for i in $(seq 1 20); do
-    kill -0 "$pid" 2>/dev/null || break
+# group_alive <pgid>: some process of the group is still running (a zombie is not).
+group_alive() {
+  awk -v g="$1" '
+    { sub(/^[0-9]+ \(.*\) /, ""); if ($1 != "Z" && $3 == g) n++ }
+    END { exit n ? 0 : 1 }' /proc/[0-9]*/stat 2>/dev/null
+}
+
+# wait_group_gone <pgid> <seconds>
+wait_group_gone() {
+  local i
+  for i in $(seq 1 "$2"); do
+    group_alive "$1" || return 0
     sleep 1
   done
-  if kill -0 "$pid" 2>/dev/null; then kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null; fi
+  ! group_alive "$1"
+}
+
+# stop_proc <pid>: stops the process and everything in its group, and waits for the whole group. The step fails
+# when part of the group is still running after the KILL.
+stop_proc() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  kill -TERM -- "-$pid" 2>/dev/null
+  if ! wait_group_gone "$pid" 20; then
+    kill -KILL -- "-$pid" 2>/dev/null
+    wait_group_gone "$pid" 5 || {
+      echo "the process group $pid is still running after KILL"
+      return 1
+    }
+  fi
   wait "$pid" 2>/dev/null
   return 0
 }
@@ -200,7 +256,7 @@ wait_for_runner() {
       echo "the Runner exited"
       return 1
     }
-    if body="$(curl -s --max-time 10 -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$RUNNER_PORT/health")" &&
+    if body="$(curl -s --max-time 10 -H "@$AUTH_FILE" "http://127.0.0.1:$RUNNER_PORT/health")" &&
       printf '%s' "$body" | jq -e '(.languages // []) as $l | ($l | index("python")) != null and ($l | index("typescript")) != null and ($l | index("go")) != null' >/dev/null; then
       echo "Runner ready: $body"
       return 0
@@ -253,14 +309,18 @@ start_web() {
 }
 
 stop_web() {
-  stop_proc "$WEB_PID"
+  local code=0
+  stop_proc "$WEB_PID" || code=1
   WEB_PID=""
+  return "$code"
 }
 
 stop_all() {
-  stop_web
-  stop_proc "$RUNNER_PID"
+  local code=0
+  stop_web || code=1
+  stop_proc "$RUNNER_PID" || code=1
   RUNNER_PID=""
+  return "$code"
 }
 
 # "Over the tailnet": the server listens on HOST only, so loopback must refuse the connection (curl status 7).
@@ -276,13 +336,14 @@ loopback_refused() {
 
 # "What it does": the log holds the one 500 line for the route and no line with the broken file's path.
 web_log_check() {
-  local path
+  local path route
   path="$(jq -er .problemJson "$OUT/chosen.json")" || {
     echo "the walk wrote no chosen.json"
     return 1
   }
-  grep -Eq '\[500\] GET /problems/\[problemId\] ContentError' "$OUT/clone-web.log" || {
-    echo "no [500] GET /problems/[problemId] ContentError line in the web log"
+  route="$(jq -er .routeId "$OUT/chosen.json")" || return 1
+  grep -Fq -- "[500] GET $route ContentError" "$OUT/clone-web.log" || {
+    echo "no [500] GET $route ContentError line in the web log"
     return 1
   }
   if grep -Fq -- "$path" "$OUT/clone-web.log"; then
@@ -291,24 +352,46 @@ web_log_check() {
   fi
 }
 
-# run_walk <tag> <report name>: one group of the walk, in the Playwright image as ci runs its e2e step.
+# The JSON report shows a test that failed.
+report_has_failed_test() {
+  jq -e '[.. | objects | select(has("specs")) | .specs[] | select((.tests[0].status // "skipped") | . != "expected" and . != "skipped")] | length > 0' "$1" >/dev/null 2>&1
+}
+
+# The first line of the first error the JSON report holds outside any test (a file that did not load).
+report_first_error() {
+  jq -r '((.errors // [])[0].message // "") | split("\n") | map(select(length > 0)) | (.[0] // "")' "$1" 2>/dev/null | sed 's/\x1b\[[0-9;]*[A-Za-z]//g'
+}
+
+# run_walk <tag> <report name>: one group of the walk, in the Playwright image as ci runs its e2e step. When it
+# fails, the last line says which way: a failing test, an error before the tests ran, or the command's own.
 run_walk() {
-  local bun_bin
+  local bun_bin report="$OUT/report-$2.json" out="$WORK/walk-$2.out" code first
+  local env_flags=()
   bun_bin="$(readlink -f "$(command -v bun)")" || return 1
+  if [ "$RUNNER_FAILED" -ne 0 ]; then env_flags=(-e DEV_RUN_NO_RUNNER=1); fi
+  rm -f "$report"
   docker run --rm --init --ipc=host --network host -e CI \
     -v "$PWD:$PWD" -w "$PWD" -v "$OUT:$OUT" \
     -v "$bun_bin:/usr/local/bin/bun:ro" -v "$bun_bin:/usr/local/bin/bunx:ro" \
     -e DEV_RUN_BASE_URL="$ORIGIN" -e DEV_RUN_OUT="$OUT" -e "DEV_RUN_CONTENT=$PWD/content" \
-    -e "DEV_RUN_REPORT=$OUT/report-$2.json" \
-    "$PLAYWRIGHT_IMAGE" bunx playwright test -c playwright.dev-run.config.ts --grep "$1" || {
+    -e "DEV_RUN_REPORT=$report" "${env_flags[@]}" \
+    "$PLAYWRIGHT_IMAGE" bunx playwright test -c playwright.dev-run.config.ts --grep "$1" >"$out" 2>&1
+  code=$?
+  cat "$out"
+  [ "$code" -ne 0 ] || return 0
+  if [ -s "$report" ] && report_has_failed_test "$report"; then
     echo "the walk's $1 group had a failing test"
-    return 1
-  }
+  elif [ -s "$report" ] && first="$(report_first_error "$report")" && [ -n "$first" ]; then
+    echo "the walk reported an error before its tests ran: $first"
+  else
+    echo "docker run exited with status $code: $(last_error_line "$out")"
+  fi
+  return 1
 }
 
 # record_walk <label> <report name>: one summary row for each test of the group, from the JSON report.
 record_walk() {
-  local label="$1" report="$OUT/report-$2.json" rows status duration title error result
+  local label="$1" report="$OUT/report-$2.json" rows errors status duration title error result
   if [ ! -s "$report" ]; then
     record "$ROUTE · walk $label" "(no report)" "not reached" "no JSON report was written"
     return 0
@@ -324,13 +407,30 @@ record_walk() {
     [ -n "$title" ] || continue
     case "$status" in
     expected) result=passed ;;
-    skipped) result="not reached" ;;
+    skipped)
+      result="not reached"
+      if [ "$RUNNER_FAILED" -ne 0 ]; then error="the Runner was not ready"; fi
+      ;;
     *) result=failed ;;
     esac
     error="$(printf '%s' "$error" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g')"
     if [ "$result" = passed ]; then error="$((duration / 1000)) s"; fi
     record "$ROUTE · walk $label" "$title" "$result" "$error"
   done <<<"$rows"
+  # An error outside any test (the walk did not load) has no row of its own in the specs.
+  errors="$(jq -r '(.errors // [])[] | ((.message // "") | split("\n") | map(select(length > 0)) | (.[0] // "unknown error"))' "$report")" || {
+    record "$ROUTE · walk $label" "(report)" failed "cannot read the errors of $report"
+    return 0
+  }
+  while IFS= read -r error; do
+    [ -n "$error" ] || continue
+    record "$ROUTE · walk $label" "(the walk could not run its tests)" failed "$(printf '%s' "$error" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g')"
+  done <<<"$errors"
+}
+
+# The walk's test 6 ran, so a broken file was served and the web log can be checked for it.
+broken_file_test_ran() {
+  jq -e '[.. | objects | select(has("specs")) | .specs[] | select(.title | startswith("6. ")) | (.tests[0].status // "skipped")] | any(. != "skipped")' "$OUT/report-dev-on.json" >/dev/null 2>&1
 }
 
 # group <phase> <label> <tag> <report name> [-s]: runs one group of the walk, then lists its tests.
@@ -403,7 +503,7 @@ cleanup() {
   trap - EXIT
   set +e
   if [ -n "$SUMMARY" ]; then
-    stop_all
+    stop_all || record "$ROUTE" "clean-up: the web process and the Runner are stopped" failed "a process group is still running"
     dirty="$(git status --porcelain -- content/)"
     gst=$?
     if [ "$gst" -ne 0 ]; then
@@ -417,6 +517,7 @@ cleanup() {
     docker ps -aq --filter label=beyondleetcode.runner | xargs -r docker rm -f >/dev/null 2>&1
     rm -f .env
     write_tail
+    redact_out_dir
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       cat "$SUMMARY" >>"$GITHUB_STEP_SUMMARY" || RECORD_BROKEN=1
     fi
@@ -427,7 +528,30 @@ cleanup() {
   exit 0
 }
 
+# It overwrites .env, resets content/ and removes Sandbox containers, so it stops before touching anything unless
+# it runs on a GitHub-hosted runner, with no .env and no change in content/.
+preflight() {
+  if [ "${GITHUB_ACTIONS:-}" != true ] || [ "${RUNNER_ENVIRONMENT:-}" != github-hosted ]; then
+    echo "dev-run: this runs only on a GitHub-hosted runner (the dev-run workflow). It overwrites .env, resets content/ and removes Sandbox containers, so it never runs anywhere else." >&2
+    return 1
+  fi
+  if [ -e .env ]; then
+    echo "dev-run: .env already exists; this run would overwrite it" >&2
+    return 1
+  fi
+  local dirty
+  dirty="$(git status --porcelain -- content/)" || {
+    echo "dev-run: git status failed" >&2
+    return 1
+  }
+  if [ -n "$dirty" ]; then
+    echo "dev-run: content/ is already changed; this run would reset it" >&2
+    return 1
+  fi
+}
+
 main() {
+  preflight || exit 1
   [ "$#" -eq 1 ] && [ -n "$1" ] || die "usage: .github/dev-run.sh <out-dir>"
   [ -f .env.example ] && [ -f content/content.json ] || die "run it from the repo root"
   [ -n "${PLAYWRIGHT_IMAGE:-}" ] || die "PLAYWRIGHT_IMAGE is not set"
@@ -437,7 +561,7 @@ main() {
   done
   mkdir -p "$1/steps" || die "cannot make $1"
   OUT="$(cd "$1" && pwd)" || die "cannot enter $1"
-  WORK="$(mktemp -d)" || die "cannot make a scratch folder"
+  WORK="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/dev-run-work.XXXXXX")" || die "cannot make a scratch folder"
   DBDIR="${RUNNER_TEMP:-$WORK}/dev-run-db"
   [[ "$DBDIR" == /* ]] || die "the database folder is not an absolute path"
   mkdir -p "$DBDIR" || die "cannot make $DBDIR"
@@ -449,7 +573,14 @@ main() {
   ORIGIN="http://$ADDR:$PORT"
   TOKEN="$(openssl rand -hex 24)" || die "openssl rand failed"
   [[ "$TOKEN" =~ ^[0-9a-f]{48}$ ]] || die "the Runner token is not 48 hex characters"
-  if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::add-mask::$TOKEN"; fi
+  # The token is kept in files of mode 600 outside the out-dir, so no command line holds it.
+  (
+    umask 077
+    printf '%s' "$TOKEN" >"$WORK/token" && printf 'Authorization: Bearer %s\n' "$TOKEN" >"$WORK/auth.hdr"
+  ) || die "cannot write the token files"
+  TOKEN_FILE="$WORK/token"
+  AUTH_FILE="$WORK/auth.hdr"
+  echo "::add-mask::$TOKEN"
   write_head
 
   step base "1. bun install (the workflow ran it): Bun's version" bun_version_step
@@ -459,6 +590,7 @@ main() {
   # A Runner that never gets ready fails its step but leaves the rest to run: the walk then shows what each
   # screen does without it.
   step -s base "4. bun run runner, until /health lists python, typescript and go" runner_step
+  if [ "$STEP_RESULT" != passed ]; then RUNNER_FAILED=1; fi
   step base "5. bun ./src/lib/server/web-entry.ts, until /setup answers 200" start_web 0 /setup
   group base "5. Open ORIGIN and choose Local at Setup" @setup setup
   step -a base "5. Stop the web process" stop_web
@@ -466,7 +598,11 @@ main() {
   step dev "6. DEV_MODE=1 bun ./src/lib/server/web-entry.ts, until / answers 200" start_web 1 /
   step -s dev "6. http://127.0.0.1:$PORT/ does not connect (HOST is the address only)" loopback_refused
   group dev "6. Dev mode on" @dev-on dev-on -s
-  step -s dev "What it does: the web log holds the [500] ContentError line and no path" web_log_check
+  if broken_file_test_ran; then
+    step -s dev "What it does: the web log holds the [500] ContentError line and no path" web_log_check
+  else
+    record "$ROUTE" "What it does: the web log holds the [500] ContentError line and no path" "not reached" "the walk's test 6 did not run, so no broken file was served"
+  fi
   step -a dev "6. Stop the web process" stop_web
 
   step off "The switch: restart without DEV_MODE, until / answers 200" start_web 0 /

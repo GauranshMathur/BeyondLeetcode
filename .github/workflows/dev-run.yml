@@ -54,6 +54,12 @@ jobs:
               echo "::error::@playwright/test is $version (bun.lock) but PLAYWRIGHT_IMAGE in .github/workflows/dev-run.yml is $PLAYWRIGHT_IMAGE. Set it to mcr.microsoft.com/playwright:v$version-noble@sha256:<index digest from 'docker buildx imagetools inspect mcr.microsoft.com/playwright:v$version-noble'>, as ci.yml has it."
               exit 1 ;;
           esac
+          # The whole reference, tag and digest, equals ci.yml's: a different digest under the same version fails.
+          mapfile -t ci_refs < <(sed -n 's/^  PLAYWRIGHT_IMAGE: //p' .github/workflows/ci.yml)
+          if [ "${#ci_refs[@]}" -ne 1 ] || [ "${ci_refs[0]}" != "$PLAYWRIGHT_IMAGE" ]; then
+            echo "::error::PLAYWRIGHT_IMAGE in .github/workflows/dev-run.yml ($PLAYWRIGHT_IMAGE) differs from the one in .github/workflows/ci.yml (${ci_refs[*]:-none}). Copy ci.yml's line, tag and digest, here."
+            exit 1
+          fi
       - name: Follow "From a clone"
         run: .github/dev-run.sh "$RUNNER_TEMP/dev-run"
       - name: Upload the record

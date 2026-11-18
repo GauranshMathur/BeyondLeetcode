@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { type Browser, expect, type Locator, type Page, test } from '@playwright/test';
 import { phone, workspaceTab } from '../lib/e2e-phone.ts';
 import { LANGUAGES } from '../lib/languages.ts';
-import { gotoHydrated } from '../lib/test/hydrated.ts';
+import { gotoHydrated, reloadHydrated } from '../lib/test/hydrated.ts';
 
 // The walk .github/dev-run.sh runs against a real Local Instance: the built server, the real Runner and the real
 // content folder, started as docs/self-hosting.md says ("From a clone"). It sets no test cookie: it acts as the
@@ -19,6 +19,11 @@ const out = process.env.DEV_RUN_OUT ?? 'dev-run-out';
 const contentDir = process.env.DEV_RUN_CONTENT ?? 'content';
 
 const slow = { timeout: 180_000 };
+
+// Set by the script when the Runner never got ready: the tests that need it are skipped, so the record says
+// "not reached" for them instead of reading as findings about dev mode.
+const noRunner = process.env.DEV_RUN_NO_RUNNER === '1';
+const needsRunner = () => test.skip(noRunner, 'the Runner was not ready');
 
 type Json = Record<string, unknown>;
 const readJson = (...parts: string[]) =>
@@ -223,6 +228,7 @@ test.describe('dev mode on @dev-on', () => {
 	test('2. Run reference solution passes in Python, TypeScript and Go, one row per Test', async ({
 		page
 	}) => {
+		needsRunner();
 		await openDev(page, `/problems/${chosen.problem}`);
 		for (const language of LANGUAGES) {
 			await runReference(page, language);
@@ -238,11 +244,14 @@ test.describe('dev mode on @dev-on', () => {
 
 	test('3. a Chapter edit shows on the next reload', async ({ page }) => {
 		const marker = unique('chapter');
+		// Opened first, so the edit is seen by a reload of a page already open.
+		expect((await gotoHydrated(page, `/chapters/${chosen.chapter}`))?.status()).toBe(200);
+		await expect(page.locator('main')).not.toContainText(marker);
 		await withEdit(
 			join(contentDir, 'topics', chosen.topic, 'chapters', chosen.chapter, 'chapter.md'),
 			(text) => `${text}\n\n${marker}\n`,
 			async () => {
-				expect((await gotoHydrated(page, `/chapters/${chosen.chapter}`))?.status()).toBe(200);
+				expect((await reloadHydrated(page))?.status()).toBe(200);
 				await expect(page.locator('main')).toContainText(marker);
 			}
 		);
@@ -251,6 +260,7 @@ test.describe('dev mode on @dev-on', () => {
 	test('4. a Test edit makes the reference fail, and putting it back makes it pass', async ({
 		page
 	}) => {
+		needsRunner();
 		const name = chosenTests.hidden[0] as string;
 		const python = LANGUAGES[0];
 		await withEdit(
@@ -327,6 +337,7 @@ test.describe('dev mode on @dev-on', () => {
 	test('7. screenshots of the Map and the Dev view, in both themes and both sizes', async ({
 		browser
 	}) => {
+		needsRunner();
 		for (const theme of themes) {
 			for (const size of sizes) {
 				await inContext(browser, size, theme, async (page) => {
