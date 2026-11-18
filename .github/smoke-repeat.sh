@@ -84,16 +84,21 @@ classify_dir() {
   fi
 }
 
-# log_safe: a filter for everything the script echoes to the job log. It replaces the generated secrets and keeps a
-# line that starts `::` or `##[` from being read as a workflow command.
+# log_safe: a filter for every line that came from the image, compose, the flow or a stress and is echoed to the job
+# log. It replaces the generated secrets and keeps a line from being read as a workflow command.
 log_safe() {
   local line value
   while IFS= read -r line || [ -n "$line" ]; do
     for value in ${SECRETS[@]+"${SECRETS[@]}"}; do
       if [ -n "$value" ]; then line="${line//"$value"/[redacted]}"; fi
     done
-    case "$line" in
-      ::* | '##['*) line=" $line" ;;
+    # The runner trims leading whitespace before it looks for `::`, finds `##[` anywhere in a line, and starts a new
+    # line at a lone CR: so a CR becomes a space, `##[` is broken wherever it is, and a line that begins `::` after
+    # its whitespace is prefixed.
+    line="${line//$'\r'/ }"
+    line="${line//'##['/'#.#['}"
+    case "${line#"${line%%[![:space:]]*}"}" in
+      ::*) line="| $line" ;;
     esac
     printf '%s\n' "$line"
   done
@@ -102,7 +107,8 @@ log_safe() {
 # fence_safe: a filter for text inside a fenced block: a line that opens with three or more backticks or tildes is
 # indented past what a closing fence may have, so output from the image cannot end the block.
 fence_safe() {
-  sed -E 's/^([[:space:]]*)(```|~~~)/    \1\2/'
+  # A lone CR ends a line for a Markdown reader, so it is made a line break first.
+  tr '\r' '\n' | sed -E 's/^([[:space:]]*)(```|~~~)/    \1\2/'
 }
 
 # first_match <pattern> <file>...: the first line of the first file that has the pattern, cut to 300 characters.
@@ -250,6 +256,16 @@ emit_record() {
     echo '~~~~'
     echo
   fi
+  if [ -f "$out/startup/class.txt" ]; then
+    echo "## First start-up of web"
+    echo
+    echo "The first web never answered /setup. Its log was classified as:"
+    echo
+    echo '~~~~'
+    fence_safe <"$out/startup/class.txt"
+    echo '~~~~'
+    echo
+  fi
   echo "## Browser-flow runs"
   echo
   echo "| Run | Class | Query-engine lines or other reason | web answered GET / afterwards |"
@@ -274,11 +290,8 @@ emit_record() {
 # stress did, and 2 when it could not show the record clean, in which case it writes none.
 write_summary() {
   local out="$1" image="$2" content env_file value
-  local values=() has_runs=0 have_token=0 have_auth=0
+  local values=() have_token=0 have_auth=0
   rm -f "$out/summary.md"
-  if [ -d "$out/runs" ] && [ -n "$(find "$out/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n 1)" ]; then
-    has_runs=1
-  fi
   while IFS= read -r -d '' env_file; do
     while IFS= read -r value; do values+=("$value"); done < <(secret_values "$env_file")
     if [ -n "$(env_value "$env_file" RUNNER_TOKEN)" ]; then have_token=1; fi
@@ -289,8 +302,8 @@ write_summary() {
   done
   if [ -n "${RUNNER_TOKEN_VALUE:-}" ]; then have_token=1; fi
   if [ -n "${AUTH_SECRET_VALUE:-}" ]; then have_auth=1; fi
-  # Both values an Instance generates must be known before any record is written.
-  if { [ "$has_runs" = 1 ] || [ "${#values[@]}" -gt 0 ]; } && { [ "$have_token" = 0 ] || [ "$have_auth" = 0 ]; }; then
+  # Both values an Instance generates must be known before any record is written, whatever else the record holds.
+  if [ "$have_token" = 0 ] || [ "$have_auth" = 0 ]; then
     echo "smoke-repeat: the Runner token and the auth secret are not both known, so the record cannot be shown clean; none is written" >&2
     return 2
   fi
@@ -313,6 +326,7 @@ write_summary() {
 # verdict <out-dir>: 1 when a run or a stress saw a query-engine error (or a stress failed), else 0.
 verdict() {
   local out="$1" dir class status
+  if [ "$(head -n 1 "$out/startup/class.txt" 2>/dev/null)" = query-engine ]; then return 1; fi
   while IFS= read -r dir; do
     class="$(head -n 1 "$dir/class.txt" 2>/dev/null || true)"
     if [ "$class" = query-engine ]; then return 1; fi
@@ -422,6 +436,16 @@ wait_for_runner() {
   return 1
 }
 
+# startup_failed <out-dir>: the first web never answered; its log is classified like a run's and kept for the record.
+startup_failed() {
+  local dir="$1/startup"
+  mkdir -p "$dir"
+  : >"$dir/flow.log"
+  compose logs --no-color --no-log-prefix web >"$dir/web.log" 2>"$dir/web-logs.err" || : >"$dir/web.log"
+  compose logs --no-color --no-log-prefix runner >"$dir/runner.log" 2>/dev/null || true
+  classify_dir "$dir" 1 "the first web never answered /setup"
+}
+
 # compose_up <out-dir> <image>: one Instance as `init` writes it, its Runner ready, the sockets as ADR 0002 has them.
 compose_up() {
   local out="$1" image="$2" notes="$1/instance-notes.txt" env_file value
@@ -443,13 +467,17 @@ compose_up() {
     return 1
   fi
   compose up -d >/dev/null 2>&1 || { echo "docker compose up failed" >>"$notes"; return 1; }
-  wait_for_200 "$ORIGIN_URL/setup" 180 || { echo "/setup never answered" >>"$notes"; return 1; }
+  if ! wait_for_200 "$ORIGIN_URL/setup" 180; then
+    echo "/setup never answered" >>"$notes"
+    startup_failed "$out"
+    return 1
+  fi
   wait_for_runner 900 || { echo "the Runner's /health never answered" >>"$notes"; return 1; }
-  if compose exec -T web test -e /var/run/docker.sock; then
+  if compose exec -T web test -e /var/run/docker.sock >/dev/null 2>&1; then
     echo "web has the Docker socket" >>"$notes"
     return 1
   fi
-  compose exec -T runner test -S /var/run/docker.sock || { echo "runner has no Docker socket" >>"$notes"; return 1; }
+  compose exec -T runner test -S /var/run/docker.sock >/dev/null 2>&1 || { echo "runner has no Docker socket" >>"$notes"; return 1; }
   echo "web has no Docker socket and runner has one" >>"$notes"
   return 0
 }
@@ -476,8 +504,8 @@ one_run() {
     flow=1
   fi
   # Even a web that never came up has its log read: a query-engine error there still counts.
-  compose logs --no-color --no-log-prefix web >"$dir/web.log" 2>&1 || : >"$dir/web.log"
-  compose logs --no-color --no-log-prefix --since "$since" runner >"$dir/runner.log" 2>&1 || true
+  compose logs --no-color --no-log-prefix web >"$dir/web.log" 2>"$dir/web-logs.err" || : >"$dir/web.log"
+  compose logs --no-color --no-log-prefix --since "$since" runner >"$dir/runner.log" 2>/dev/null || true
   if [ "$started" = 1 ]; then
     classify_dir "$dir" "$flow"
   else
@@ -496,15 +524,20 @@ one_run() {
   return 0
 }
 
+# cleanup runs on every exit path, and on INT and TERM through `exit`. It ignores a second signal while it runs, so
+# it cannot be aborted half way. A signal that arrives while a long child (the stress, the browser flow) is running
+# is handled when that child ends: bash runs a trap only between commands, so clean-up waits for the running child.
 cleanup() {
   local status=$?
   set +e
-  trap - EXIT INT TERM
+  trap - EXIT
+  trap '' INT TERM
   if [ -n "$INSTANCE" ] && [ -f "$INSTANCE/compose.yaml" ]; then
-    if ! (cd "$INSTANCE" && timeout "$CLEANUP_DEADLINE" docker compose down -v >/dev/null 2>&1); then
-      echo "smoke-repeat: docker compose down -v failed or timed out" >&2
+    # --kill-after: a `down` that ignores TERM is killed 10 s after the deadline.
+    if ! (cd "$INSTANCE" && timeout --kill-after=10 "$CLEANUP_DEADLINE" docker compose down -v >/dev/null 2>&1); then
+      echo "smoke-repeat: docker compose down -v failed or did not finish" >&2
       if [ -n "$OUT_DIR" ] && [ -f "$OUT_DIR/summary.md" ]; then
-        printf '\nClean-up failed: docker compose down -v did not finish within %s s, so the Instance may still be running.\n' "$CLEANUP_DEADLINE" >>"$OUT_DIR/summary.md"
+        printf '\nClean-up failed: docker compose down -v failed or did not finish within %s s, so the Instance may still be running.\n' "$CLEANUP_DEADLINE" >>"$OUT_DIR/summary.md"
       fi
       if [ "$status" = 0 ]; then status=1; fi
     fi
@@ -537,7 +570,6 @@ main() {
   prisma_commands "$out" "$image"
   echo "== the stress, inside the image ($rounds rounds)"
   stress_in_image "$out" "$image" "$rounds" "$stress_file" "$wire_file"
-  tail -n 3 "$out/stress-image.txt" | grep -E '^prisma-stress ' | log_safe || true
 
   echo "== the composed Instance"
   if compose_up "$out" "$image"; then
@@ -548,6 +580,10 @@ main() {
   else
     echo "the Instance did not come up: see the record"
   fi
+
+  # Printed only now: the generated values are known and masked by this point (compose_up masks them as soon as init
+  # has written them), and nothing from the image reached the job log before that, only this script's own headings.
+  { tail -n 3 "$out/stress-image.txt" 2>/dev/null | grep -E '^prisma-stress ' | log_safe; } || true
 
   write_summary "$out" "$image"
   status=$?
