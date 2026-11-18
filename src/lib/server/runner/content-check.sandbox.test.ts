@@ -98,14 +98,15 @@ function causeText(cause: unknown): string {
 /**
  * Text that is safe inside a `::warning::` workflow command, and on any log line: one line, at most
  * DETAIL_LIMIT characters counted by code point (so no surrogate pair is split), with nothing the
- * runner would read as a command or decode. Control characters become spaces; every run of `::`
- * and every `%` (the start of the `%0A`, `%0D` and `%25` escapes) are dropped. The text can quote
+ * runner would read as a command or decode. Control characters and every `#` become spaces (the legacy `##[error]` form of a command is read
+ * anywhere on a line, and a removal below can join `#` and `[` into it, so none is kept); every run
+ * of `::` and every `%` (the start of the `%0A`, `%0D` and `%25` escapes) are dropped. The text can quote
  * part of a Docker daemon reply; it goes only into this repo's own CI log.
  */
 function annotationDetail(text: string): string {
 	const clean = text
 		// biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to strip them
-		.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ')
+		.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029#]/g, ' ')
 		.replace(/%/g, '')
 		.replace(/:{2,}/g, '')
 		.replace(/\s+/g, ' ')
@@ -435,17 +436,23 @@ describe('content check: the retry lines about a Runner failure', () => {
 		expect(annotation.slice(head.length)).not.toContain('::');
 	});
 
-	it.each(['first\n::error::injected', 'first%0A::error::injected'])(
-		'prints every line on one line, with no escape and no command, for %j',
-		(message) => {
-			const { warning, annotation, hidden } = linesFor(new Error(message));
-			for (const line of [warning, annotation, hidden]) {
-				expect(line).not.toMatch(/[\r\n]/);
-				expect(line).not.toContain('%');
-				expect(line.replace(head, '')).not.toContain('::');
-			}
+	it.each([
+		'first\n::error::injected',
+		'first%0A::error::injected',
+		'##[error]x',
+		'##[stop-commands]tok',
+		'#%#[error]x',
+		'#::#[error]x',
+		'###[#[error]x'
+	])('prints every line on one line, with no escape and no command, for %j', (message) => {
+		const { warning, annotation, hidden } = linesFor(new Error(message));
+		for (const line of [warning, annotation, hidden]) {
+			expect(line).not.toMatch(/[\r\n]/);
+			expect(line).not.toContain('%');
+			expect(line).not.toContain('##[');
+			expect(line.replace(head, '')).not.toContain('::');
 		}
-	);
+	});
 
 	it('never throws, whatever the cause holds', () => {
 		const getterThrows = new Error('x');
@@ -473,7 +480,7 @@ describe('content check: the retry lines about a Runner failure', () => {
 		const detail = annotationDetail(`${'x'.repeat(99)}\u{1F600}tail`);
 		expect(detail.isWellFormed()).toBe(true);
 		expect(Array.from(detail).length).toBeLessThanOrEqual(DETAIL_LIMIT);
-		const tail = linesFor(new Error(`${'x'.repeat(93)}\u{1F600}tail`)).annotation.slice(
+		const tail = linesFor(new Error(`${'x'.repeat(92)}\u{1F600}tail`)).annotation.slice(
 			head.length
 		);
 		expect(tail.isWellFormed()).toBe(true);
