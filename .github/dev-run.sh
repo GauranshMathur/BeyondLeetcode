@@ -378,6 +378,12 @@ run_walk() {
     "$PLAYWRIGHT_IMAGE" bunx playwright test -c playwright.dev-run.config.ts --grep "$1" >"$out" 2>&1
   code=$?
   cat "$out"
+  # The container ran as root, so what it wrote into the out-dir is root's: hand it back to this user, who
+  # redacts it and uploads it. (The hosted runner allows sudo without a password; the guard makes sure this is one.)
+  sudo -n chown -R "$(id -u):$(id -g)" "$OUT" || {
+    echo "cannot hand $OUT back to the runner's user"
+    return 1
+  }
   [ "$code" -ne 0 ] || return 0
   if [ -s "$report" ] && report_has_failed_test "$report"; then
     echo "the walk's $1 group had a failing test"
@@ -556,7 +562,7 @@ main() {
   [ -f .env.example ] && [ -f content/content.json ] || die "run it from the repo root"
   [ -n "${PLAYWRIGHT_IMAGE:-}" ] || die "PLAYWRIGHT_IMAGE is not set"
   local tool
-  for tool in bun docker curl jq openssl setsid ip; do
+  for tool in bun docker curl jq openssl setsid ip sudo; do
     command -v "$tool" >/dev/null || die "$tool is not installed"
   done
   mkdir -p "$1/steps" || die "cannot make $1"
