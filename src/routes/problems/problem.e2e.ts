@@ -878,7 +878,10 @@ test.describe('the Problem on a short phone', () => {
 				const response = await route.fetch();
 				const text = await response.text();
 				rewritten = text.includes(JSON.stringify(correct));
-				await route.fulfill({ response, body: text.replaceAll(JSON.stringify(correct), JSON.stringify(short)) });
+				await route.fulfill({
+					response,
+					body: text.replaceAll(JSON.stringify(correct), JSON.stringify(short))
+				});
 			}
 		);
 
@@ -889,7 +892,8 @@ test.describe('the Problem on a short phone', () => {
 
 		expect(rewritten).toBe(true);
 		await expect(page.locator('.cm-content:visible .cm-line')).toHaveCount(2);
-		const height = async () => (await page.locator('.cm-editor:visible').boundingBox())?.height ?? 0;
+		const height = async () =>
+			(await page.locator('.cm-editor:visible').boundingBox())?.height ?? 0;
 		await expect.poll(height).toBeGreaterThanOrEqual(132);
 		await expect.poll(height).toBeLessThanOrEqual(133);
 		await expectNoSidewaysScroll(page);
