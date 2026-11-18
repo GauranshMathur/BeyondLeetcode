@@ -128,63 +128,6 @@ The order is binding: the orchestrator takes issues from the top and passes over
 
 The maintainer's own, which no agent starts and which are not questions: #24 (the MVP1 spec, kept open), #113 (the human source review of Dynamic arrays, skipped at merge on 2026-10-11) and #252 to #268 (the human review of each of the other 17 Topics, open since 2026-10-26, each best done on the text its rewrite leaves). #570 waits behind #535 and asks him nothing of its own. #737 is ready, but wherever the screen and the board differ in a way he would see, he chooses which gives way. #698's second point, whether the stage keeps a tab stop before the script runs, is behaviour a keyboard user sees: if the card-reviewer cannot settle it from what is written, it goes to him. #745 is ready, but an engine that needs a change in the Runner, or under which a Sandbox limit does not hold, is a security rule and goes to him with the options, as does dropping an engine from `mvp1.md`'s line. #744 measures and changes no limit: a limit its numbers call into question is a new issue, and his if a Learner would notice it.
 
-## Sprint 24 · Proof and operator checks
-
-**Goal:** dev mode works on its first start and is proven by one real run; the Runner is measured under load and the operator hardening the spec promises is checked; three leftover findings are closed.
-
-Release `R v1.21.1: Sprint 24 · Proof and operator checks`, version 1.21.1 (a patch: no card is `feat`). Milestone `Sprint 24 · Proof and operator checks`.
-
-**Constructed on 2026-11-18 by the orchestrator, from the top of the Backlog.** It runs before Sprint 23, which cannot start until the maintainer answers #661. On 2026-11-16 the ready Backlog held no product issue, so no sprint was started and the maintainer was told; on 2026-11-18 the principal read `docs/product/mvp1.md` against the code and filed the two pieces of it that nobody had built or filed (#744, #745). Both are product issues by the written rule; neither is something a Learner sees, and the maintainer can stop the sprint with one line.
-
-- **Issues: 7, all Tier 2,** in the Backlog's order: #735 (a finding, and a bug: `DEV_MODE=1` on an Instance not yet set up does nothing and says nothing), #744 (product: the k6 load test of the Runner), #745 (product: rootless Docker, Podman and gVisor for operators), #734 (a finding: dev mode has not been run once for real), #698 (a finding: the statement region's tab stop on a short phone), #705 (a finding: the Runner's other log sites), #709 (a finding: the content check's retry).
-- **Passed over:** #737 (the Dev view is short of its P13 board) follows #734's run-through, and where screen and board differ the maintainer chooses. Everything that waits on him stays in the Backlog (the ranking, above).
-- **Already Done in it:** C439 (#711, Tier 0 from 2026-11-16: the fork-bomb escape test bounds the hard stop's kill and the remove), merged before the sprint was constructed and released with it.
-- **Cards** are cut by the card-writer, one run per issue, in the new format; each issue's `Cards:` comment lists them. The exit card is filed by the orchestrator when the others are cut.
-- **Where an issue can stop at the maintainer:** #735, if he wants a note on the Setup screen as well as the start-up log line; #744, on how k6 is installed if that adds anything beyond k6 itself (the load never runs on his host, only on a hosted runner, on demand and nightly, never on a pull request); #745, if an engine needs a Runner change or a Sandbox limit does not hold under it (a security rule), and nothing is installed on his host; #734, on whether the Problem screen is usable with the per-request content read; #698's second point, if nothing written settles it.
-- **Reviews:** a card-reviewer on every card. `sandbox-security-reviewer` on Runner cards (#705, #709, and #745 if it touches the Runner). The two-reader review on anything in `.github/` (#744's workflow) and on identity code.
-
-**Exit:**
-- Every Sprint 24 card is Done, and `ci` is green on `main`. The sprint's Status has the exit-check numbers (`docs/agents/board.md`, Sprint exit check).
-- A start with `DEV_MODE=1` on an Instance not yet set up says so in the server's log (`app.test.ts`).
-- The load test runs on demand on a hosted runner and reports what the Runner carried; no pull request waits on it.
-- `docs/self-hosting.md` says, for each of rootless Docker, Podman and gVisor, what was tried and what an operator must do, or that it was not tried and why.
-- #734 holds the record of one real dev-mode run: what was started, what was seen on each screen, and an issue for each thing that failed.
-- Each of #698, #705 and #709 is closed by its last card, or says what part waits on the maintainer.
-- The orchestrator cuts 1.21.1 from the release PR and records the cut.
-
-**Status (2026-11-18):** exit met, with three issues open on the maintainer.
-- **Cards:** all 19 Sprint 24 cards are Done: C439, C440, C445 to C448, C450 to C454, C457, C458, C460, C461, C465, C466, C468 and this one.
-- **Tier mix (cards):** Tier 0: 1 (C439). Tier 2: 17. The last card has no tier. Tier 1 and 3: none.
-- **Issues:** 5 closed: #711 (Tier 0, by C439), and #705, #709, #744 and #745 (Tier 2), each by its last card. 3 stay open, each saying what waits on the maintainer: #735 (C440 added the start-up log line; whether the Setup screen should say so too is his), #734 (the record of the run is on the issue; his checklist of screenshots, timings and the tailnet is left), #698 (two points are done; whether the box that scrolls keeps a tab stop before the script runs is asked on the issue).
-- **CI:** `ci` is green on `main` at f9703d8, the last other card's merge.
-- **Checks:**
-  - `app.test.ts`: "is off when the instance is not set up yet, even with the switch on" expects the log line "DEV_MODE=1 on an Instance that is not set up yet: dev mode is off. …".
-  - The `load` workflow ran on demand on a GitHub-hosted runner (run 44277166272, green on its first run): 556 Sandboxes created and destroyed, no broken answer, none left; one Submission alone waited 2.3 s at the median, a class of 20 had 12 finish and 8 refused as busy, and with every slot and queue place busy 67 Submissions finished a minute. It runs nightly and by hand, on no pull request, and is not a required check. The numbers and the one command are in `docs/self-hosting.md`.
-  - `docs/self-hosting.md` (Other engines for the Sandboxes) says what was tried for rootless Docker, rootless Podman and gVisor and points to `docs/sandbox-hardening.md` for each engine's steps, override and checks. Found, in four runs of the `sandbox-engines` workflow with the same result test for test: rootless Docker ran the Instance with all 145 Sandbox checks passing (one first attempt in five left 76 unrun after an engine call timed out); rootless Podman did not run it correctly (Podman refused to create the Sandbox container); gVisor did not run it correctly, and 6 of the 145 checks that pass under the default Docker failed, among them an extra writable `/tmp` and a hidden Test input reaching a later Test of the same request. What `mvp1.md`'s line then promises is the maintainer's decision, held in #770.
-  - #734 holds the record of the dev-mode run: both routes of the guide ("From a clone", "In the published image") followed on GitHub-hosted runners by the `dev-run` workflow, with the real Runner and `content/`; every step passed in every run, so no step has an issue of its own. One finding was filed (#774: the guide's per-read cost names no host).
-- **Exit-check numbers** (`docs/agents/board.md`, Sprint exit check):
-  - Cards that needed a second fix: 8 (C446, C447, C451, C452, C453, C454, C460, C461). Seven of them failed two review rounds and were Blocked by that rule (all but C452); each was settled at rung a because a reader had stated the fix. C445 was Blocked once on a builder's question, also settled at rung a.
-  - Review rounds failed: 38. Card-reviewer: 18 (C446 twice, C451 three times, C447 twice, C460 four times, C453 twice, C454 twice, and C448, C452 and C461 once each). Security reviews that did not pass first time: 20 (the two-reader review: C451 three rounds, C447 three, C460 six, C461 two, C452 one; `sandbox-security-reviewer`: C453 twice, C454 twice, C468 once). C460 took seven rounds, C451 and C447 four each.
-  - Questions answered at each rung: rung a, 13 (`docs/decisions.md`); rung b, 1, by the principal (the guide's heading for the engines subsection); rung c, none answered, and 4 asked and still open (#698's second point; #770; whether the dev-mode run may join the tailnet, on #734; #735).
-  - Issues filed by the principal against issues closed: 2 against 5 (#744 and #745, filed from `mvp1.md` before the sprint was constructed, and both closed in it). The orchestrator filed 9 more from what the reviews found: #754, #759, #761, #764, #767, #768, #773, #774, and #770 for the maintainer's decision.
-  - Product cards against other cards: 9 (C445 to C448 for #744, C450 to C454 for #745) against 9.
-  - Lanes that had to wait for a builder slot: all 6 (`load`, `engines`, `problem-short`, `runner-logs`, `content-check-retry`, `dev-run`), most of them for a fix round while both builders were on other lanes.
-- **Release:** this card's merge carries `Release-As: 1.21.1`. The orchestrator then cuts 1.21.1 from the release PR and records the cut in `docs/releasing.md`.
-- **What the reviews caught:**
-  - **The three workflow scripts (C447, C451, C460) each passed CI and a first reading, and failed when a reader drove them against stubs**: an image list split across lines and run as commands (C451); a pipeline's status read twice, which would have stopped every leg after its tests (C451); a container-lifetime figure taken from Docker's last 256 events (C447); a stop check that reported a live process group as gone 146 times in 200 (C460); a record that could be published uncleaned (C460). Most later rounds were on code the round before had added. None of the scripts has a test in the repository; the stub harnesses lived in scratch folders.
-  - **C446:** the summary could outlast k6's limit on a fast-failing run and be lost; found by reading k6's source.
-  - **C468:** the retry lines were safe against `::command::` but not against the older `##[command]` form.
-  - **C452 and C453, in the product, not the cards:** the harness's wipe of IPC objects before each Test does nothing when it cannot see them (#767); the Runner starts a Sandbox even when the engine's reply warns that a limit was dropped (#768); one log name covers a failed seccomp install, a surviving process and a compiler crash (#759).
-  - **C461:** reading a CI failure on its pull request found the published image's `web` answering a Submit with a Prisma query-engine panic (#773); the same kind of error on 2026-11-16.
-  - **C453 and C454:** the findings page and its three summaries were corrected sentence by sentence against the run's artifacts and the engines' documentation; two of gVisor's six failures are shown by the tests' own output, not open questions.
-  - **Wrong in a brief or a fix list, and caught by a builder or a later reader:** the range of dev-mode read times (the orchestrator's); which runs were on which host (a builder's; read again from the artifacts before the merge); how gVisor's host-socket setting applies (a reviewer's, passed on by the orchestrator); that Podman's Docker-compatible info reports CPU limits (a reviewer's, passed on by the orchestrator, which cost C451 a round).
-  - A reviewer's stub reset `PATH` once and the real `docker compose` ran on the VPS against an empty scratch project; it failed at validation and touched nothing. Readers' briefs now make them assert that their stubs resolve first.
-
-**Not in the sprint:**
-- **The starting Language (#661) and the guide's first-run offer (C402b):** Sprint 23, below.
-- **#737,** and the questions on #728, #736, #738, #742, #719, #667, #702, #647, #535 and #529: the maintainer's.
-- **The Tier 3 refactors:** in the Backlog.
-
 ## Sprint 23 · The starting Language
 
 **Goal:** each Learner chooses a starting Language before the first Problem and can change it in Settings, and the first-run choice offers the guide.
