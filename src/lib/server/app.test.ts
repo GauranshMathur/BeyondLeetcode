@@ -414,6 +414,59 @@ describe('dev mode', () => {
 		expect(app.devMode).toBe(false);
 	}, 30_000);
 
+	const notice =
+		'DEV_MODE=1 on an Instance that is not set up yet: dev mode is off. Choose Local at Setup, then restart the web process with DEV_MODE=1 to turn it on.';
+	const noticeCalls = (warn: { mock: { calls: unknown[][] } }) =>
+		warn.mock.calls.filter((call) => call[0] === notice).length;
+	const spyOnWarn = () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		onTestFinished(() => warn.mockRestore());
+		return warn;
+	};
+
+	it('says in the log, once, that dev mode is off on an Instance not set up yet', async () => {
+		const warn = spyOnWarn();
+		const { url } = await migratedDatabase();
+		const app = await boot(url, { DEV_MODE: '1' });
+		expect(noticeCalls(warn)).toBe(1);
+		expect(app.devMode).toBe(false);
+
+		await app.instance.chooseLocal();
+		expect(app.devMode).toBe(false);
+		expect(noticeCalls(warn)).toBe(1);
+
+		const next = await boot(url, { DEV_MODE: '1' });
+		expect(next.devMode).toBe(true);
+		expect(noticeCalls(warn)).toBe(1);
+	}, 60_000);
+
+	it('prints no such line unless the switch is exactly 1 on an Instance not set up yet', async () => {
+		const warn = spyOnWarn();
+		for (const extra of [{}, { DEV_MODE: '0' }, { DEV_MODE: 'true' }]) {
+			const { url } = await migratedDatabase();
+			await boot(url, extra);
+		}
+		expect(noticeCalls(warn)).toBe(0);
+	}, 60_000);
+
+	it('prints no such line on a Local Instance, or a Multi-user one that refuses', async () => {
+		const warn = spyOnWarn();
+		const local = await migratedDatabase();
+		await local.db.instance.create({ data: { mode: 'local' } });
+		expect((await boot(local.url, { DEV_MODE: '1' })).devMode).toBe(true);
+
+		const multi = await migratedDatabase();
+		await multi.db.instance.create({ data: { mode: 'multi' } });
+		await expect(
+			boot(multi.url, {
+				BETTER_AUTH_SECRET: secret,
+				ORIGIN: 'http://localhost:4174',
+				DEV_MODE: '1'
+			})
+		).rejects.toThrow(/DEV_MODE=1 on a multi-user Instance/);
+		expect(noticeCalls(warn)).toBe(0);
+	}, 60_000);
+
 	it('cannot be assigned after start', async () => {
 		const { url, db } = await migratedDatabase();
 		await db.instance.create({ data: { mode: 'local' } });

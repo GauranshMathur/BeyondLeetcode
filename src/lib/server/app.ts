@@ -54,7 +54,7 @@ export async function createApp(env: {
 	IDENTITY_TEST_LEARNER?: string;
 	/** 'scripted' swaps the Docker-backed Runner for a scripted one; never set outside the e2e web server. */
 	RUNNER_ADAPTER?: string;
-	/** '1' turns dev mode on, on a Local Mode Instance only; any other value is off. */
+	/** '1' turns dev mode on, on a Local Mode Instance only; any other value is off. On an Instance not set up yet the switch only makes start-up print a line saying dev mode is off. */
 	DEV_MODE?: string;
 	/** Read only to refuse the test switches in production. */
 	NODE_ENV?: string;
@@ -121,6 +121,11 @@ export async function createApp(env: {
 	if (instance.mode() === 'local') await local.ensureLocalLearner();
 	// On only on a Local Mode Instance, and fixed here: the Instance refuses Multi-user while it is on.
 	const devMode = devModeRequested && instance.mode() === 'local';
+	if (devModeRequested && instance.mode() === null) {
+		console.warn(
+			'DEV_MODE=1 on an Instance that is not set up yet: dev mode is off. Choose Local at Setup, then restart the web process with DEV_MODE=1 to turn it on.'
+		);
+	}
 	const app: Omit<App, 'devMode'> = {
 		instance: {
 			...instance,
