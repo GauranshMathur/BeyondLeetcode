@@ -99,17 +99,6 @@ redact() {
     }'
 }
 
-# is_text <file>: 0 for text (an empty file included), 1 for a binary file, 2 when it cannot be read.
-is_text() {
-  [ -s "$1" ] || return 0
-  LC_ALL=C grep -Iq . "$1"
-  case $? in
-  0) return 0 ;;
-  1) return 1 ;;
-  *) return 2 ;;
-  esac
-}
-
 # out_dir_ok <dir>: the folder is strictly beneath the runner's temporary folder, is neither the workspace nor
 # inside it, and is not a link. Checked in preflight and again before anything runs over the whole folder.
 out_dir_ok() {
@@ -140,13 +129,13 @@ is_text() {
 }
 
 # The one place the record is made publishable. The server logs, which were written outside the out-dir, are copied
-# in; then every file is cleaned of the Runner token: text is redacted in place, a verified screenshot is left, any
+# in; then every file is cleaned of the Runner token: text is redacted in place, a verified screenshot is searched and left, any
 # other file is scanned byte for byte and left only if the token is not in it (and named in the summary). Anything
 # that is not a regular file or a directory, or anything that cannot be cleaned or read, fails. Only when all of it
 # held does the step output `record=clean` get written, and the workflow uploads only then; every other path
 # publishes nothing. The reason of a failure goes to the job log only, redacted.
 finalize_record() {
-  local file name reason="" shots=0 others="" list="$WORK/files" odd
+  local file name reason="" shots=0 others="" list="$WORK/files" odd expected=0 handled=0
   out_dir_ok "$OUT" || reason="the out-dir is not a folder beneath RUNNER_TEMP"
   for name in clone-web.log clone-runner.log; do
     if [ -z "$reason" ] && [ -e "$WORK/$name" ]; then cp -- "$WORK/$name" "$OUT/$name" || reason="cannot copy $name"; fi
@@ -161,34 +150,48 @@ finalize_record() {
   if [ -z "$reason" ]; then
     find "$OUT" -type f -print0 >"$list" || reason="the out-dir could not be listed"
   fi
+  # Completion is counted: the entries of the list (each ends in a NUL byte) against the entries handled.
+  if [ -z "$reason" ]; then
+    expected="$(tr -cd '\0' <"$list" | wc -c)" || reason="the list of files could not be read"
+  fi
   if [ -z "$reason" ]; then
     while IFS= read -r -d '' file; do
+      handled=$((handled + 1))
       name="${file#"$OUT"/}"
       if is_screenshot "$name" "$file"; then
-        shots=$((shots + 1))
-        continue
-      fi
-      is_text "$file"
-      case $? in
-      0) redact <"$file" >"$WORK/redact.tmp" && cat "$WORK/redact.tmp" >"$file" || reason="cannot redact $name" ;;
-      1)
         LC_ALL=C grep -aqF -f "$TOKEN_FILE" "$file"
         case $? in
-        1) others="$others $name" ;;
-        0) reason="the token is in a file that is not text: $name" ;;
+        1) shots=$((shots + 1)) ;;
+        0) reason="the token is in a screenshot: $name" ;;
         *) reason="cannot scan $name" ;;
         esac
-        ;;
-      *) reason="cannot read $name" ;;
-      esac
+      else
+        is_text "$file"
+        case $? in
+        0) redact <"$file" >"$WORK/redact.tmp" && cat "$WORK/redact.tmp" >"$file" || reason="cannot redact $name" ;;
+        1)
+          LC_ALL=C grep -aqF -f "$TOKEN_FILE" "$file"
+          case $? in
+          1) others="$others $name" ;;
+          0) reason="the token is in a file that is not text: $name" ;;
+          *) reason="cannot scan $name" ;;
+          esac
+          ;;
+        *) reason="cannot read $name" ;;
+        esac
+      fi
       [ -z "$reason" ] || break
     done <"$list"
+    if [ -z "$reason" ] && [ "$handled" -ne "$expected" ]; then reason="the loop handled $handled of $expected files"; fi
   fi
   if [ -n "$reason" ]; then
     echo "dev-run: the record is not published: $(printf '%s' "$reason" | redact || echo '(reason hidden: the redactor cannot run)')" >&2
     return 1
   fi
-  emit "$(printf '(Left as they are: %s screenshots, PNG by name and signature; not text, with no token in them:%s)' "$shots" "${others:- none}" | redact)"
+  emit "$(printf '(Left as they are, no token in them: %s screenshots, PNG by name and signature; other files that are not text:%s)' "$shots" "${others:- none}" | redact)"
+  # A failed write of the summary (emit sets the flag) or of any record before it keeps the marker back; a failed
+  # walk is not part of this, it is a finding in a record that is clean.
+  [ "$RECORD_BROKEN" -eq 0 ] || return 1
   if [ -n "${GITHUB_OUTPUT:-}" ]; then printf 'record=clean\n' >>"$GITHUB_OUTPUT" || return 1; fi
 }
 
