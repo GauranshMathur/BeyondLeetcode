@@ -534,6 +534,41 @@ describe('Sandbox escapes: resource exhaustion', { timeout: 60_000 }, () => {
 		await healthy();
 	});
 
+	it('holds three busy processes to one CPU between them, and serves the next request', async () => {
+		const busy = [
+			'import os, time',
+			'started = time.monotonic()',
+			'for _ in range(3):',
+			'    if os.fork() == 0:',
+			'        begin = time.monotonic()',
+			'        while time.monotonic() - begin < 1.0:',
+			'            pass',
+			'        os._exit(0)',
+			'for _ in range(3):',
+			'    os.wait()',
+			'wall = time.monotonic() - started',
+			'spent = os.times()',
+			'print("cpu", round((spent.children_user + spent.children_system) / wall, 2))',
+			''
+		].join('\n');
+
+		const result = await run(busy);
+
+		expect(result.results[0].status).toBe('ok');
+		const [label, value] = result.results[0].stdout.trim().split(' ');
+		const ratio = Number(value);
+		console.log(`three busy processes used ${ratio} CPU in all`);
+		expect(label).toBe('cpu');
+		expect(Number.isFinite(ratio)).toBe(true);
+		const limitCpus = sandboxConfig.nanoCpus / 1e9;
+		// The three share the limit, so they stay near it; unlimited they would reach 2 CPUs on a
+		// 2-CPU runner, or 3 on a larger one. A busy host only lowers the ratio.
+		expect(ratio).toBeLessThanOrEqual(limitCpus * 1.5);
+		// The children ran and their CPU time was counted, so a program that did nothing fails.
+		expect(ratio).toBeGreaterThanOrEqual(0.25);
+		await healthy();
+	});
+
 	it('ends a bomb that forks without bound within the design bound, as a verdict or a refusal', async () => {
 		const bomb = 'import os\nwhile True:\n    os.fork()\n';
 		// What the code allows: the hard stop plus two of `removeContainer`'s three attempts, each
