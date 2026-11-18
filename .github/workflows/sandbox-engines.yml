@@ -45,6 +45,11 @@ jobs:
       - name: Check the Playwright image
         run: |
           version="$(bun -e 'console.log(JSON.parse(require("fs").readFileSync("node_modules/@playwright/test/package.json", "utf8")).version)')"
+          ci_image="$(sed -n 's/^  PLAYWRIGHT_IMAGE: //p' .github/workflows/ci.yml)"
+          if [ "$ci_image" != "$PLAYWRIGHT_IMAGE" ]; then
+            echo "::error::PLAYWRIGHT_IMAGE in .github/workflows/sandbox-engines.yml is $PLAYWRIGHT_IMAGE but ci.yml has $ci_image. Make them the same line."
+            exit 1
+          fi
           case "$PLAYWRIGHT_IMAGE" in
             *":v$version-"*) echo "Playwright $version matches $PLAYWRIGHT_IMAGE" ;;
             *)
