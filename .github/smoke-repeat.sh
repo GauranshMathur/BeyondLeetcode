@@ -92,14 +92,13 @@ log_safe() {
     for value in ${SECRETS[@]+"${SECRETS[@]}"}; do
       if [ -n "$value" ]; then line="${line//"$value"/[redacted]}"; fi
     done
-    # The runner trims leading whitespace before it looks for `::`, finds `##[` anywhere in a line, and starts a new
-    # line at a lone CR: so a CR becomes a space, `##[` is broken wherever it is, and a line that begins `::` after
-    # its whitespace is prefixed.
+    # The runner finds `##[` anywhere in a line and starts a new line at a lone CR: a CR becomes a space and `##[` is
+    # broken wherever it is.
     line="${line//$'\r'/ }"
     line="${line//'##['/'#.#['}"
-    case "${line#"${line%%[![:space:]]*}"}" in
-      ::*) line="| $line" ;;
-    esac
+    # The runner's TrimStart() trims Unicode whitespace that bash and sed do not know, so no whitespace is matched:
+    # every line is prefixed, and none can begin a command.
+    line="| $line"
     printf '%s\n' "$line"
   done
 }
@@ -319,6 +318,8 @@ write_summary() {
         ;;
     esac
   done
+  # A lone CR ends a line for a reader, wherever it came from.
+  content="${content//$'\r'/ }"
   printf '%s\n' "$content" >"$out/summary.md" || return 2
   verdict "$out"
 }

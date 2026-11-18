@@ -202,11 +202,12 @@ if [ "$(command -v docker)" != "$bin/docker" ]; then bad "the stub docker is no 
 
 # 11. What reaches the job log is redacted and cannot be a workflow command
 SECRETS=("$runner_token" "$auth_secret")
-got="$(printf '%s\n' "::error::forged" "##[add-mask]x" '  ::error::x' 'text ##[error]x' $'a\r::error::x' 'x ##[stop-commands]t' "token $runner_token and $auth_secret" "plain" | log_safe)"
-printf '%s\n' "$got" | grep -qE '^[[:space:]]*::|##\[' && bad "a workflow command got through: '$got'" || ok "no line can be a workflow command: ::, indented ::, ##[ anywhere, a lone CR"
+got="$(printf '%s\n' "::error::forged" "##[add-mask]x" '  ::error::x' 'text ##[error]x' $'a\r::error::x' 'x ##[stop-commands]t' $'\xc2\xa0::error::x' $'\xc2\x85::stop-commands::t' $'\xe2\x80\x87::error::x' $'\xe3\x80\x80::error::x' "token $runner_token and $auth_secret" "plain" | log_safe)"
+[ "$(printf '%s\n' "$got" | grep -vc '^| ')" = 0 ] && ! printf '%s\n' "$got" | grep -qF '##[' \
+  && ok "every job-log line starts with '| ' (nothing starts a command, whatever whitespace precedes it) and none holds ##[" || bad "a line is not prefixed or holds ##[: '$got'"
 [ "$(printf '%s' "$got" | tr -cd '\r' | wc -c)" = 0 ] && ok "no carriage return reaches the job log" || bad "a carriage return got through"
 printf '%s\n' "$got" | grep -qF -e "$runner_token" -e "$auth_secret" && bad "a secret reached the job log" || ok "secrets are redacted from the job log"
-printf '%s\n' "$got" | grep -qx "plain" && ok "other lines pass unchanged" || bad "plain line changed: '$got'"
+printf '%s\n' "$got" | grep -qx "| plain" && ok "a plain line is only prefixed" || bad "plain line changed: '$got'"
 SECRETS=()
 
 # 12. Both generated values must be known before any record is written
@@ -230,6 +231,16 @@ printf 'line one\n~~~~\n# Injected heading\n  ```\nafter\nx\r~~~~\n' >"$out/fact
 write_summary "$out" example:tag 2>/dev/null
 [ "$(grep -c '^~~~~$' "$out/summary.md")" = 2 ] && ! grep -qE '^ {0,3}```' "$out/summary.md" && ! grep -q $'\r' "$out/summary.md" \
   && ok "a fence line in the output, or after a lone CR, is indented, not a fence" || bad "fence break-out: $(grep -n '~~~~' "$out/summary.md")"
+
+# 13b. A CR in a table row or a stress summary line does not reach the record
+out="$work/record-e2"
+mkdir -p "$out/runs/1"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+printf 'other\nreason one\r~~~~\n' >"$out/runs/1/class.txt"
+printf 'prisma-stress rounds=1 calls=7 errors=0\r# Injected\n' >"$out/stress-checkout.txt"
+printf '0\n' >"$out/stress-checkout.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+! grep -q $'\r' "$out/summary.md" && ok "no carriage return in the record" || bad "a carriage return reached the record"
 
 # 14. A stress with no status file is a failure, never a pass
 out="$work/record-f"

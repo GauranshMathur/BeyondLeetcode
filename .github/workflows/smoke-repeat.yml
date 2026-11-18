@@ -165,8 +165,9 @@ jobs:
           status=0
           (bunx prisma migrate deploy && bun src/lib/server/prisma-stress.bun-check.ts) > "$out/stress-checkout.txt" 2>&1 || status=$?
           echo "$status" > "$out/stress-checkout.status"
-          # The runner trims leading whitespace before it looks for ::, finds ##[ anywhere and starts a new line at a CR.
-          tail -n 3 "$out/stress-checkout.txt" | tr '\r' ' ' | sed -E 's/##\[/#.#[/g; s/^([[:space:]]*::)/| \1/'
+          # The runner trims Unicode whitespace before it looks for ::, finds ##[ anywhere and starts a new line at a CR: so
+          # every line is prefixed, ##[ is broken and a CR is a space.
+          tail -n 3 "$out/stress-checkout.txt" | tr '\r' ' ' | sed 's/##\[/#.#[/g; s/^/| /'
           exit 0
       - name: Build the image of this ref
         if: needs.plan.outputs.image == ''
