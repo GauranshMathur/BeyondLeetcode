@@ -32,6 +32,7 @@ IMG_DIR=""
 IMG_NAME=ghcr.io/gauranshmathur/beyondleetcode
 IMG_PORT=3001
 IMG_ADOPTED=0
+IMG_DOWN_FAILED=0
 # How long clean-up lets the image route's log collection and `docker compose down -v` run, in seconds, before
 # the process is stopped and, ten seconds later, killed.
 IMG_LOG_BOUND=10
@@ -260,6 +261,12 @@ finalize_record() {
   if [ -n "${GITHUB_OUTPUT:-}" ]; then printf 'record=clean\n' >>"$GITHUB_OUTPUT" || return 1; fi
 }
 
+# unsafe_secrets: 0 when the image route's .env exists but its secrets were not adopted. Nothing knows them then, so
+# nothing Compose printed may be echoed or recorded.
+unsafe_secrets() {
+  [ -n "$IMG_DIR" ] && [ -e "$IMG_DIR/.env" ] && [ "$IMG_ADOPTED" -ne 1 ]
+}
+
 # step [-s] [-a] <phase> <label> <command...>: runs one step and records it.
 #   phase   base, dev or off (ibase, idev and ioff for the image route). A step is not reached when its phase, or
 #           the route's base phase, already had a failing step.
@@ -291,6 +298,16 @@ step() {
   local log="$WORK/step-$name.log" started=$SECONDS code
   "$@" >"$log" 2>&1
   code=$?
+  if unsafe_secrets; then
+    # The step's output may hold what init wrote: it goes nowhere, the record is not published, and the row says
+    # only that.
+    RECORD_BROKEN=1
+    printf '(output withheld: the secrets init wrote were not adopted)\n' >"$OUT/steps/$name.log" || RECORD_BROKEN=1
+    if [ "$code" -eq 0 ]; then STEP_RESULT=passed; else STEP_RESULT=failed; fi
+    record "$ROUTE" "$label" "$STEP_RESULT" "output withheld: the secrets init wrote were not adopted"
+    if [ "$code" -ne 0 ] && [ "$soft" -eq 0 ]; then BROKEN[$phase]="$label"; fi
+    return "$code"
+  fi
   if [ -n "$OUT" ]; then
     redact <"$log" >"$OUT/steps/$name.log" || RECORD_BROKEN=1
   fi
@@ -961,27 +978,36 @@ image_cleanup() {
     if bounded "$IMG_DOWN_BOUND" docker compose --project-directory "$IMG_DIR" down -v >"$WORK/image-down.log" 2>&1; then
       record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" passed
     else
-      record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" failed "$(last_error_line "$WORK/image-down.log")"
+      IMG_DOWN_FAILED=1
+      if unsafe_secrets; then
+        record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" failed "output withheld: the secrets init wrote were not adopted"
+      else
+        record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" failed "$(last_error_line "$WORK/image-down.log")"
+      fi
     fi
   fi
+  local note=""
+  if [ "$IMG_DOWN_FAILED" -ne 0 ]; then note="docker compose down -v did not succeed, so the stack may still be up; the hosted runner is discarded"; fi
   if out="$(remove_image_dir 2>&1)"; then
-    record "$ROUTE" "clean-up: the image route's folder and its .env are removed" passed
+    record "$ROUTE" "clean-up: the image route's folder and its .env are removed" passed "$note"
   else
-    record "$ROUTE" "clean-up: the image route's folder and its .env are removed" failed "$out"
+    if unsafe_secrets; then out="output withheld: the secrets init wrote were not adopted"; fi
+    record "$ROUTE" "clean-up: the image route's folder and its .env are removed" failed "$out${note:+; $note}"
   fi
 }
 
 # Removes the image route's folder, which holds the secrets init wrote. Its path is checked as the output folder's
 # is: resolved, strictly beneath the runner's temporary folder, not a link.
 remove_image_dir() {
-  local real tmp
+  local real tmp expected
   [ -n "${RUNNER_TEMP:-}" ] && [ ! -L "$IMG_DIR" ] || {
     echo "the image route's folder is a link or RUNNER_TEMP is unset"
     return 1
   }
   tmp="$(realpath -e -- "$RUNNER_TEMP")" || return 1
   real="$(realpath -e -- "$IMG_DIR")" || return 1
-  [[ "$real" == "$tmp"/* && "$(basename "$real")" == beyondleetcode-dev ]] || {
+  expected="$tmp/beyondleetcode-dev"
+  [ "$real" = "$expected" ] || {
     echo "the image route's folder is not RUNNER_TEMP/beyondleetcode-dev"
     return 1
   }
