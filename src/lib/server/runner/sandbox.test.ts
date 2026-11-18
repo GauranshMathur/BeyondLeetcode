@@ -131,6 +131,39 @@ describe('Sandbox runner: a harness line the Runner cannot trust', () => {
 	});
 });
 
+describe('Sandbox runner: what the request log line names', () => {
+	const post = async (engine: Engine) => {
+		const handle = createRunnerHandler({
+			token: 't',
+			runner: createSandboxRunner(engine, 'test-instance'),
+			maxConcurrent: 1,
+			readyLanguages: () => ['python']
+		});
+		return handle(
+			new Request('http://runner/execute', {
+				method: 'POST',
+				headers: { Authorization: 'Bearer t' },
+				body: JSON.stringify(request)
+			})
+		);
+	};
+
+	it.each([
+		['a harness that exits 1', { output: okLine, exitCode: 1 }, 'HarnessExitError'],
+		['a harness that prints a line that is not JSON', { output: 'not json' }, 'HarnessLineError']
+	])('names %s by its class', async (_name, options, kind) => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const response = await post(fakeEngine(options).engine);
+
+			expect(response.status).toBe(500);
+			expect(logged.mock.calls).toEqual([[`runner RunnerFailed ${kind}`]]);
+		} finally {
+			logged.mockRestore();
+		}
+	});
+});
+
 describe('Sandbox runner: Language', () => {
 	it('starts TypeScript and Go in their own images with RUNNER_LANGUAGE set, and Python in the stock one', async () => {
 		for (const [language, image] of [

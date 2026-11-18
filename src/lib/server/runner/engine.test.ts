@@ -3,8 +3,10 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { DeadlineError } from './deadline';
 import {
 	createEngine,
+	DockerReplyError,
 	engineCallTimeoutMs,
 	ImageMissingError,
 	NameConflictError,
@@ -29,7 +31,10 @@ describe('Engine attach', () => {
 		});
 		await new Promise((resolve) => server.once('listening', resolve));
 
-		await expect(createEngine(socketPath).attach('c1', () => {}, 100)).rejects.toThrow(/timed out/);
+		const attach = createEngine(socketPath).attach('c1', () => {}, 100);
+
+		await expect(attach).rejects.toThrow(/timed out/);
+		await expect(attach).rejects.toBeInstanceOf(DeadlineError);
 	});
 
 	it('gives up waiting for the exit status when the daemon never answers the wait request', async () => {
@@ -103,7 +108,9 @@ describe('Engine attach', () => {
 		await new Promise((resolve) => server.once('listening', resolve));
 
 		const started = Date.now();
-		await expect(createEngine(socketPath, 200).create('img', {})).rejects.toThrow(/timed out/);
+		const create = createEngine(socketPath, 200).create('img', {});
+		await expect(create).rejects.toThrow(/timed out/);
+		await expect(create).rejects.toBeInstanceOf(DeadlineError);
 		expect(Date.now() - started).toBeLessThan(300);
 	});
 
@@ -301,6 +308,58 @@ describe('Engine attach', () => {
 		expect(() => parseImageRef(image)).toThrow(/image reference/i);
 	});
 
+	it('rejects a create the daemon answers 500 with a DockerReplyError that keeps its message', async () => {
+		const socketPath = await daemon((socket) => {
+			socket.end('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\n\r\nboom');
+		});
+
+		const create = createEngine(socketPath).create('img:1', {});
+
+		await expect(create).rejects.toBeInstanceOf(DockerReplyError);
+		await expect(create).rejects.toThrow('Docker create failed (500): boom');
+		await expect(create).rejects.toMatchObject({ name: 'DockerReplyError' });
+	});
+
+	it('rejects a wait answered 404 with a DockerReplyError', async () => {
+		const socketPath = await daemon((socket) => {
+			socket.end('HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}');
+		});
+
+		await expect(createEngine(socketPath).wait('c1')).rejects.toBeInstanceOf(DockerReplyError);
+	});
+
+	it('rejects an attach answered 404 with a DockerReplyError', async () => {
+		const socketPath = await daemon((socket) => {
+			socket.write('HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n');
+		});
+
+		const attach = createEngine(socketPath).attach('c1', () => {}, 1_000);
+
+		await expect(attach).rejects.toBeInstanceOf(DockerReplyError);
+		await expect(attach).rejects.toThrow('Docker attach failed: HTTP/1.1 404 Not Found');
+	});
+
+	it('rejects a pull answered 500 with a DockerReplyError', async () => {
+		const socketPath = await daemon((socket) => {
+			socket.end('HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\n\r\nboom');
+		});
+
+		await expect(createEngine(socketPath).pull('img:1')).rejects.toBeInstanceOf(DockerReplyError);
+	});
+
+	it('rejects a pull whose stream reports an error with a DockerReplyError', async () => {
+		const socketPath = await daemon((socket) => {
+			const bad = '{"error":"denied"}\n';
+			socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n');
+			socket.write(`${bad.length.toString(16)}\r\n${bad}\r\n`);
+		});
+
+		const pull = createEngine(socketPath, 1_000).pull('img:1');
+
+		await expect(pull).rejects.toBeInstanceOf(DockerReplyError);
+		await expect(pull).rejects.toThrow('Docker pull img:1 failed');
+	});
+
 	it('throws a NameConflictError when the container name is taken (409)', async () => {
 		const socketPath = await daemon((socket) => {
 			socket.end('HTTP/1.1 409 Conflict\r\nContent-Length: 2\r\n\r\n{}');
@@ -395,7 +454,9 @@ describe('Engine attach', () => {
 		});
 		const started = Date.now();
 
-		await expect(createEngine(socketPath, 400).remove('x')).rejects.toThrow(/still in progress/);
+		const removal = createEngine(socketPath, 400).remove('x');
+		await expect(removal).rejects.toThrow(/still in progress/);
+		await expect(removal).rejects.toBeInstanceOf(DeadlineError);
 
 		expect(Date.now() - started).toBeLessThan(1_500);
 		const seen = requests;
