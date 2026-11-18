@@ -34,16 +34,16 @@ const paneLabel = { problem: 'Problem statement', hints: 'Hints', solution: 'Sol
 
 {#key `${problem.id}:${problem.build.language}`}
 	<ProblemWorkspace {problem} {view} onview={(next) => (pane = next.pane)} {claimEditorFocus} onswitched={(id, language) => (editorFocusFor = id && language ? `${id}:${language}` : undefined)} solution={view.section === 'solution' ? data.solution : undefined}>
-		{#snippet statement()}
+		{#snippet statement(regionIsTabStop)}
 			<div class="left">
 				<nav class="tabs mono" aria-label="Problem sections">
 					<a href="/problems/{problem.id}" data-sveltekit-reset="false" aria-current={view.section === 'problem' ? 'page' : undefined}>Problem</a>
 					<a href="/problems/{problem.id}?tab=hints" data-sveltekit-reset="false" aria-current={view.section === 'hints' ? 'page' : undefined}>Hints</a>
 					<a href="/problems/{problem.id}?tab=solution" data-sveltekit-reset="false" data-sveltekit-preload-data="off" aria-current={view.section === 'solution' ? 'page' : undefined}>Solution</a>
 				</nav>
-				<!-- The pane scrolls on its own; tabindex lets the keyboard reach it. -->
+				<!-- The pane scrolls on its own and this stop lets the keyboard reach it, except at a short phone, where the workspace's stage scrolls and holds the stop. -->
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-				<div class="scroll" role="region" aria-label={paneLabel[view.section]} tabindex="0">
+				<div class="scroll" role="region" aria-label={paneLabel[view.section]} tabindex={regionIsTabStop ? 0 : -1}>
 				{#if view.section === 'hints' && data.hints}
 					<HintsTab {problem} hints={data.hints} />
 				{:else if view.section === 'solution' && data.solution}
