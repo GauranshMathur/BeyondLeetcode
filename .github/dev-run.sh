@@ -135,8 +135,12 @@ is_text() {
 # held does the step output `record=clean` get written, and the workflow uploads only then; every other path
 # publishes nothing. The reason of a failure goes to the job log only, redacted.
 finalize_record() {
-  local file name reason="" shots=0 others="" list="$WORK/files" odd expected=0 handled=0 hits
+  local file name reason="" shots=0 others="" list="$WORK/files" odd expected=0 handled=0 hits tok="" st
   out_dir_ok "$OUT" || reason="the out-dir is not a folder beneath RUNNER_TEMP"
+  # The token is read once, here, and both final searches get this value (never from the file again, never on a
+  # command line).
+  IFS= read -r tok <"$TOKEN_FILE" || [ -n "$tok" ]
+  [[ "$tok" =~ ^[0-9a-f]{48}$ ]] || reason="${reason:-the Runner token could not be read, or is not a token}"
   for name in clone-web.log clone-runner.log; do
     if [ -z "$reason" ] && [ -e "$WORK/$name" ]; then cp -- "$WORK/$name" "$OUT/$name" || reason="cannot copy $name"; fi
   done
@@ -202,7 +206,7 @@ finalize_record() {
   fi
   # The last word does not rest on the list or the loop: the whole folder is searched for the token, and only
   # "no file holds it" (grep status 1) lets the marker be written.
-  hits="$(LC_ALL=C grep -rlaF -f "$TOKEN_FILE" -- "$OUT")"
+  hits="$(LC_ALL=C grep -rlaF -f <(printf '%s\n' "$tok") -- "$OUT")"
   case $? in
   1) ;;
   0)
@@ -214,6 +218,13 @@ finalize_record() {
     return 1
     ;;
   esac
+  # The names count too: no path under the out-dir may hold the token (a hit, or an error of find or grep, fails).
+  find "$OUT" -print0 | LC_ALL=C grep -zaF -f <(printf '%s\n' "$tok") >/dev/null
+  st=("${PIPESTATUS[@]}")
+  if [ "${st[0]}" -ne 0 ] || [ "${st[1]}" -ne 1 ]; then
+    echo "dev-run: the record is not published: a path in the out-dir holds the token, or the search of the names failed" >&2
+    return 1
+  fi
   if [ -n "${GITHUB_OUTPUT:-}" ]; then printf 'record=clean\n' >>"$GITHUB_OUTPUT" || return 1; fi
 }
 
