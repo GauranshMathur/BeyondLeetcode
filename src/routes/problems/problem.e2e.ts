@@ -848,6 +848,23 @@ test.describe('the Problem on a short phone', () => {
 		await expect.poll(() => stage(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 	});
 
+	test("the tab stop for scrolling follows the phone's height: the box that scrolls at 480px or less, the statement region above it", async ({
+		page
+	}) => {
+		await gotoHydrated(page, '/problems/stacks-push');
+		const region = page.getByRole('region', { name: 'Problem statement' });
+		await expect(stage(page)).toHaveAttribute('tabindex', '0');
+		await expect(region).toHaveAttribute('tabindex', '-1');
+
+		await page.setViewportSize({ width: 320, height: 568 });
+		await expect(stage(page)).not.toHaveAttribute('tabindex', /.*/);
+		await expect(region).toHaveAttribute('tabindex', '0');
+
+		await page.setViewportSize({ width: 320, height: 256 });
+		await expect(stage(page)).toHaveAttribute('tabindex', '0');
+		await expect(region).toHaveAttribute('tabindex', '-1');
+	});
+
 	test('with the Solution open, the Reference Code editor shows at least six lines', async ({
 		page
 	}) => {
