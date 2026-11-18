@@ -164,6 +164,48 @@ describe('Engine attach', () => {
 		expect(requests).toEqual(['/containers/create?name=bl-i-1']);
 	});
 
+	describe('create reply', () => {
+		async function createdWith(reply: string) {
+			const dir = mkdtempSync(join(tmpdir(), 'engine-'));
+			const socketPath = join(dir, 'docker.sock');
+			const server = createServer((socket) => {
+				socket.on('data', () => {
+					socket.write(
+						`HTTP/1.1 201 Created\r\nContent-Length: ${reply.length}\r\n\r\n${reply}`
+					);
+				});
+			}).listen(socketPath);
+			cleanup.push(() => {
+				server.close();
+				rmSync(dir, { recursive: true, force: true });
+			});
+			await new Promise((resolve) => server.once('listening', resolve));
+			return createEngine(socketPath).create('img:1', {});
+		}
+
+		it('gives the caller the id and the warnings', async () => {
+			expect(await createdWith('{"Id":"abc","Warnings":["w"]}')).toEqual({
+				id: 'abc',
+				warnings: ['w']
+			});
+		});
+
+		it.each([
+			['an empty array', '{"Id":"abc","Warnings":[]}'],
+			['null', '{"Id":"abc","Warnings":null}'],
+			['no Warnings key', '{"Id":"abc"}']
+		])('reads %s as no warnings', async (_name, reply) => {
+			expect(await createdWith(reply)).toEqual({ id: 'abc', warnings: [] });
+		});
+
+		it.each([
+			['a string', '{"Id":"abc","Warnings":"w"}'],
+			['an array of numbers', '{"Id":"abc","Warnings":[1]}']
+		])('rejects Warnings that is %s', async (_name, reply) => {
+			await expect(createdWith(reply)).rejects.toBeInstanceOf(DockerReplyError);
+		});
+	});
+
 	it('fails a lifecycle call after 15 s by default', () => {
 		expect(engineCallTimeoutMs).toBe(15_000);
 	});

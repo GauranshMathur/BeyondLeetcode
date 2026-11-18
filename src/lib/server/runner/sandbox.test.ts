@@ -29,6 +29,7 @@ function fakeEngine(options: {
 	removeFails?: boolean;
 	killFails?: boolean;
 	neverEnds?: boolean;
+	warnings?: string[];
 }) {
 	const calls: string[] = [];
 	let end: () => void = () => {};
@@ -36,7 +37,7 @@ function fakeEngine(options: {
 		end = resolve;
 	});
 	const engine = {
-		create: async () => 'c1',
+		create: async () => ({ id: 'c1', warnings: options.warnings ?? [] }),
 		wait: async () => ({ status: Promise.resolve(options.exitCode ?? 0) }),
 		attach: options.attach
 			? options.attach
@@ -158,6 +159,39 @@ describe('Sandbox runner: what the request log line names', () => {
 
 			expect(response.status).toBe(500);
 			expect(logged.mock.calls).toEqual([[`runner RunnerFailed ${kind}`]]);
+		} finally {
+			logged.mockRestore();
+		}
+	});
+});
+
+describe('Sandbox runner: a create reply that says the engine dropped a limit', () => {
+	it('answers 500 and logs only the class', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const { engine } = fakeEngine({
+				output: okLine,
+				warnings: [
+					'Your kernel does not support memory limit capabilities or the cgroup is not mounted. Limitation discarded.'
+				]
+			});
+			const handle = createRunnerHandler({
+				token: 't',
+				runner: createSandboxRunner(engine, 'test-instance'),
+				maxConcurrent: 1,
+				readyLanguages: () => ['python']
+			});
+
+			const response = await handle(
+				new Request('http://runner/execute', {
+					method: 'POST',
+					headers: { Authorization: 'Bearer t' },
+					body: JSON.stringify(request)
+				})
+			);
+
+			expect(response.status).toBe(500);
+			expect(logged.mock.calls).toEqual([['runner RunnerFailed SandboxLimitDroppedError']]);
 		} finally {
 			logged.mockRestore();
 		}
@@ -556,7 +590,7 @@ describe('Sandbox runner: an image that vanished after its Language went ready',
 			pull: pullEngine.pull,
 			create: async (image: string) => {
 				if (!present.has(image)) throw new ImageMissingError(image);
-				return 'c1';
+				return { id: 'c1', warnings: [] };
 			}
 		} as unknown as Engine;
 		const ready = new Set<string>();
