@@ -294,8 +294,15 @@ export function createEngine(
 		 * a pull has no upper bound, so it never runs inside a Run. The image loop pulls it.
 		 * With `name` the container is named on our side, so a Run whose create call times out
 		 * can still remove it by that name even though the reply never reached it.
+		 * Resolves with the container's id and the daemon's `Warnings` (none when the reply has
+		 * `null`, as an older daemon sent, or no such key). A `Warnings` that is not an array of
+		 * strings is a `DockerReplyError`; its text is never put in the message.
 		 */
-		async create(image: string, spec: ContainerSpec, name?: string): Promise<string> {
+		async create(
+			image: string,
+			spec: ContainerSpec,
+			name?: string
+		): Promise<{ id: string; warnings: string[] }> {
 			const query = name ? `?name=${encodeURIComponent(name)}` : '';
 			const reply = await call('POST', `/containers/create${query}`, {
 				Image: image,
@@ -304,7 +311,13 @@ export function createEngine(
 			if (reply.status === 404) throw new ImageMissingError(image);
 			if (reply.status === 409) throw new NameConflictError(name);
 			await assertStatus(reply, 'create', 201);
-			return (JSON.parse(reply.body) as { Id: string }).Id;
+			const { Id, Warnings } = JSON.parse(reply.body) as { Id: string; Warnings?: unknown };
+			if (Warnings === null || Warnings === undefined) return { id: Id, warnings: [] };
+			if (!Array.isArray(Warnings) || !Warnings.every((w) => typeof w === 'string'))
+				throw new DockerReplyError(
+					'Docker create reply has Warnings that is not a list of strings'
+				);
+			return { id: Id, warnings: Warnings };
 		},
 
 		/** Opens the hijacked stdin/stdout/stderr stream. Call before `start` so no output is missed. */

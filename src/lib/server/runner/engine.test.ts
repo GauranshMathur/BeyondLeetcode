@@ -170,9 +170,7 @@ describe('Engine attach', () => {
 			const socketPath = join(dir, 'docker.sock');
 			const server = createServer((socket) => {
 				socket.on('data', () => {
-					socket.write(
-						`HTTP/1.1 201 Created\r\nContent-Length: ${reply.length}\r\n\r\n${reply}`
-					);
+					socket.write(`HTTP/1.1 201 Created\r\nContent-Length: ${reply.length}\r\n\r\n${reply}`);
 				});
 			}).listen(socketPath);
 			cleanup.push(() => {

@@ -4,7 +4,7 @@ import { type ContractSubject, type ProgramKind, runnerContract } from './contra
 import { createEngine } from './engine';
 import { createHarnessDecoder, harnessInput } from './harness';
 import { createHttpRunner } from './http-adapter';
-import type { ExecuteRequest, RunnerPort } from './port';
+import type { ExecuteRequest, Language, RunnerPort } from './port';
 import { containerSpec } from './sandbox';
 import {
 	containersOwnedBy,
@@ -1030,8 +1030,27 @@ describe('Runner: the harness cannot be hijacked by learner code', { timeout: 60
 });
 
 describe('Runner: container configuration', { timeout: 60_000 }, () => {
+	it.each(Object.entries(sandboxConfig.images) as [Language, string][])(
+		'creates the %s image with no engine warning and its memory, swap, pids and CPU limits set',
+		async (language, image) => {
+			const spec = containerSpec(language, 'test-instance', 1, 2000, 256);
+
+			const { id, warnings } = await engine.create(image, spec);
+			const { HostConfig } = await engine.inspect(id);
+			await engine.remove(id);
+
+			expect(warnings).toEqual([]);
+			expect(HostConfig).toMatchObject({
+				Memory: spec.HostConfig.Memory,
+				MemorySwap: spec.HostConfig.MemorySwap,
+				PidsLimit: spec.HostConfig.PidsLimit,
+				NanoCpus: spec.HostConfig.NanoCpus
+			});
+		}
+	);
+
 	it('is created with AutoRemove, no IPC, no log driver and the label', async () => {
-		const id = await engine.create(
+		const { id } = await engine.create(
 			sandboxConfig.pythonImage,
 			containerSpec('python', 'test-instance', 1, 2000, 256)
 		);

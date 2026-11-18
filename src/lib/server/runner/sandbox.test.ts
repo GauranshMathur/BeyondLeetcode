@@ -316,8 +316,8 @@ describe('Sandbox runner: start-up sweep', () => {
 			const engine = {
 				...base,
 				create: () =>
-					new Promise<string>((resolve) =>
-						setTimeout(() => resolve('live'), engineCallTimeoutMs - 1)
+					new Promise<{ id: string; warnings: string[] }>((resolve) =>
+						setTimeout(() => resolve({ id: 'live', warnings: [] }), engineCallTimeoutMs - 1)
 					),
 				kill: async () => {
 					killedAtMs = Date.now();

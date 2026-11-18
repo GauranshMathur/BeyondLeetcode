@@ -407,13 +407,16 @@ describe('Container: a create reply that says the engine dropped a limit', () =>
 	it.each([
 		['memory', memoryWarning],
 		['pids', pidsWarning]
-	])('removes the unstarted container and fails the Run when the %s limit was discarded', async (_name, warning) => {
-		const { engine, calls } = fakeEngine({ output: 'x', warnings: [warning] });
+	])(
+		'removes the unstarted container and fails the Run when the %s limit was discarded',
+		async (_name, warning) => {
+			const { engine, calls } = fakeEngine({ output: 'x', warnings: [warning] });
 
-		await expect(run(engine)).rejects.toBeInstanceOf(SandboxLimitDroppedError);
+			await expect(run(engine)).rejects.toBeInstanceOf(SandboxLimitDroppedError);
 
-		expect(calls).toEqual(['remove c1']);
-	});
+			expect(calls).toEqual(['remove c1']);
+		}
+	);
 
 	it('runs a container whose reply carries only the swap warning', async () => {
 		const { engine } = fakeEngine({ output: 'x', warnings: [swapWarning] });

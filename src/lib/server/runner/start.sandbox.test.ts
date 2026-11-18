@@ -72,7 +72,7 @@ describe('Runner start: sweep', { timeout: 60_000 }, () => {
 	async function sleeper(label: string | undefined): Promise<string> {
 		const spec = containerSpec('python', 'x', 1, 2000, 256);
 		const labels = label === undefined ? {} : { [containerLabel]: label };
-		const id = await engine.create(image, {
+		const { id } = await engine.create(image, {
 			...spec,
 			Labels: labels,
 			Cmd: ['sleep', '60']
