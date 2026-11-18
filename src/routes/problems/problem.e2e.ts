@@ -865,13 +865,46 @@ test.describe('the Problem on a short phone', () => {
 		await expect(region).toHaveAttribute('tabindex', '-1');
 	});
 
-	test('with the Solution open, the Reference Code editor shows at least six lines', async ({
+	test('a Reference Code shorter than the floor still gets a 132px editor in the Solution', async ({
+		page
+	}) => {
+		const short = ['x = 1', `y = "${'a'.repeat(70)}"`].join('\n');
+		let rewritten = false;
+		await page.route(
+			(url) =>
+				url.pathname === '/problems/stacks-push/__data.json' &&
+				url.searchParams.get('tab') === 'solution',
+			async (route) => {
+				const response = await route.fetch();
+				const text = await response.text();
+				rewritten = text.includes(JSON.stringify(correct));
+				await route.fulfill({
+					response,
+					body: text.replaceAll(JSON.stringify(correct), JSON.stringify(short))
+				});
+			}
+		);
+
+		await gotoHydrated(page, '/problems/stacks-push');
+		await page.getByRole('link', { name: 'Solution' }).click();
+		await expect(page).toHaveURL('/problems/stacks-push?tab=solution');
+		await workspaceTab(page, 'Code').click();
+
+		expect(rewritten).toBe(true);
+		await expect(page.locator('.cm-content:visible .cm-line')).toHaveCount(2);
+		const height = async () =>
+			(await page.locator('.cm-editor:visible').boundingBox())?.height ?? 0;
+		await expect.poll(height).toBeGreaterThanOrEqual(132);
+		await expect.poll(height).toBeLessThanOrEqual(133);
+		await expectNoSidewaysScroll(page);
+	});
+
+	test('with the Solution open, the Reference Code editor is as tall as its code and the page does not scroll sideways', async ({
 		page
 	}) => {
 		await gotoHydrated(page, '/problems/stacks-push?tab=solution');
 		await workspaceTab(page, 'Code').click();
 		const editor = await page.locator('.cm-editor:visible').boundingBox();
-		expect(editor?.height).toBeGreaterThanOrEqual(132);
 		// As tall as its code, so the stage scrolls it rather than the editor clipping it.
 		const content = await page.locator('.cm-content:visible').boundingBox();
 		expect(editor?.height).toBeGreaterThanOrEqual(content?.height ?? Infinity);
