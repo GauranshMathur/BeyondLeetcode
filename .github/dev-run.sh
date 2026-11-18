@@ -31,6 +31,11 @@ WEB_LOG=""
 IMG_DIR=""
 IMG_NAME=ghcr.io/gauranshmathur/beyondleetcode
 IMG_PORT=3001
+IMG_ADOPTED=0
+# How long clean-up lets the image route's log collection and `docker compose down -v` run, in seconds, before
+# the process is stopped and, ten seconds later, killed.
+IMG_LOG_BOUND=10
+IMG_DOWN_BOUND=120
 RUNNER_FAILED=0
 ADDR=""
 DBDIR=""
@@ -87,6 +92,8 @@ last_error_line() {
   grep -v '^[[:space:]]*$' "$1" | tail -n 1 | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | redact | cut -c1-300
 }
 
+# Every call re-reads the file: the list is not read once. A secret added to the file later (the image route's)
+# therefore reaches the next call, and a file that has become invalid fails closed at the next call.
 # read_tokens: fills TOKENS from the token file, one secret per line (the clone route's Runner token, then the
 # Runner token and the auth secret `init` wrote for the image route). One to three lines, each exactly 48 lower
 # case hex characters; an empty line would match everything in a search, so anything else fails.
@@ -707,6 +714,7 @@ adopt_secrets() {
     echo "the token file is not valid after the image route's secrets were added"
     return 1
   }
+  IMG_ADOPTED=1
 }
 
 # 1. A fresh folder of its own, and Install's command with the image's default tag.
@@ -824,6 +832,37 @@ image_sockets() {
     echo "the runner container has no Docker socket"
     return 1
   }
+  image_socket_mounts
+}
+
+# The merged configuration: no mount of any .sock on web, and exactly one on runner, the engine's at
+# /var/run/docker.sock (as .github/sandbox-engines.sh checks).
+image_socket_mounts() {
+  local json
+  json="$(dc config --format json)" || return 1
+  printf '%s' "$json" | jq -e '
+    def sock: ((.source // "") | endswith(".sock")) or ((.target // "") | endswith(".sock"));
+    ([.services.web.volumes // [] | .[] | select(sock)] | length) == 0
+    and ([.services.runner.volumes // [] | .[] | select(sock)] | length) == 1
+    and ([.services.runner.volumes // [] | .[] | select(.target == "/var/run/docker.sock" and .source == "/var/run/docker.sock")] | length) == 1' >/dev/null || {
+    echo "the merged configuration does not give runner exactly one socket, the engine's, and web none"
+    return 1
+  }
+}
+
+# The checkout's content/ is as it was checked out: a leftover is a failed step and is put back, so the next route
+# does not run on it.
+content_clean_step() {
+  local dirty
+  dirty="$(git status --porcelain -- content/)" || {
+    echo "git status failed"
+    return 1
+  }
+  if [ -n "$dirty" ]; then
+    git checkout -- content/
+    echo "content/ was left changed: $(printf '%s' "$dirty" | head -n 3 | tr '\n' ' ')"
+    return 1
+  fi
 }
 
 # The image `edge` that was pulled, by its digest.
@@ -890,13 +929,65 @@ image_off_checks() {
   init_files_no_dev_mode
 }
 
-# On every exit: the web and Runner logs of the image route are kept for the record, and the stack goes with its
-# volume, bounded in time. The logs are copied into the record, and cleaned of the secrets, by finalize_record.
-image_teardown() {
-  timeout 60 docker compose --project-directory "$IMG_DIR" logs --no-color --no-log-prefix web >"$WORK/image-web.log" 2>&1
-  timeout 60 docker compose --project-directory "$IMG_DIR" logs --no-color --no-log-prefix runner >"$WORK/image-runner.log" 2>&1
-  timeout 180 docker compose --project-directory "$IMG_DIR" down -v >"$WORK/image-down.log" 2>&1 || {
-    last_error_line "$WORK/image-down.log"
+# One bounded command: stopped at its bound, killed ten seconds after that.
+bounded() {
+  local bound="$1"
+  shift
+  timeout -k 10 "$bound" "$@" </dev/null
+}
+
+# On every exit, for the image route: the web and Runner logs are kept for the record (bounded tightly, and a
+# failure is a failed step), `down -v` runs whatever that returned, and the folder with its .env is removed.
+# finalize_record copies the logs into the record and cleans them of the secrets.
+image_cleanup() {
+  local logs=1 out
+  [ -n "$IMG_DIR" ] || return 0
+  # An .env is there but its secrets were not adopted: nothing knows them, so nothing may be published, and no
+  # log is copied into the record.
+  if [ -e "$IMG_DIR/.env" ] && [ "$IMG_ADOPTED" -ne 1 ]; then
+    RECORD_BROKEN=1
+    logs=0
+    echo "dev-run: the record is not published: the .env that init wrote has secrets that were not adopted" >&2
+  fi
+  if [ -f "$IMG_DIR/compose.yaml" ]; then
+    if [ "$logs" -eq 1 ]; then
+      if bounded "$IMG_LOG_BOUND" docker compose --project-directory "$IMG_DIR" logs --no-color --no-log-prefix web >"$WORK/image-web.log" 2>&1 &&
+        bounded "$IMG_LOG_BOUND" docker compose --project-directory "$IMG_DIR" logs --no-color --no-log-prefix runner >"$WORK/image-runner.log" 2>&1; then
+        record "$ROUTE" "clean-up: web's and runner's logs are collected" passed
+      else
+        record "$ROUTE" "clean-up: web's and runner's logs are collected" failed "a log collection failed or ran past its bound"
+      fi
+    fi
+    if bounded "$IMG_DOWN_BOUND" docker compose --project-directory "$IMG_DIR" down -v >"$WORK/image-down.log" 2>&1; then
+      record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" passed
+    else
+      record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" failed "$(last_error_line "$WORK/image-down.log")"
+    fi
+  fi
+  if out="$(remove_image_dir 2>&1)"; then
+    record "$ROUTE" "clean-up: the image route's folder and its .env are removed" passed
+  else
+    record "$ROUTE" "clean-up: the image route's folder and its .env are removed" failed "$out"
+  fi
+}
+
+# Removes the image route's folder, which holds the secrets init wrote. Its path is checked as the output folder's
+# is: resolved, strictly beneath the runner's temporary folder, not a link.
+remove_image_dir() {
+  local real tmp
+  [ -n "${RUNNER_TEMP:-}" ] && [ ! -L "$IMG_DIR" ] || {
+    echo "the image route's folder is a link or RUNNER_TEMP is unset"
+    return 1
+  }
+  tmp="$(realpath -e -- "$RUNNER_TEMP")" || return 1
+  real="$(realpath -e -- "$IMG_DIR")" || return 1
+  [[ "$real" == "$tmp"/* && "$(basename "$real")" == beyondleetcode-dev ]] || {
+    echo "the image route's folder is not RUNNER_TEMP/beyondleetcode-dev"
+    return 1
+  }
+  rm -rf -- "$real" || return 1
+  [ ! -e "$real" ] || {
+    echo "the image route's folder is still there"
     return 1
   }
 }
@@ -991,7 +1082,7 @@ write_tail() {
 # On every exit: stops the processes, checks that the walk left content/ as it was and only then puts it back,
 # removes the Sandbox containers, writes the end of the summary and sets the exit status.
 cleanup() {
-  local status=$? dirty gst note
+  local status=$? dirty gst
   trap '' INT TERM HUP
   trap - EXIT
   set +e
@@ -1007,14 +1098,8 @@ cleanup() {
       record "$ROUTE" "clean-up: content/ is as the walk found it" passed
     fi
     git checkout -- content/
-    if [ -n "$IMG_DIR" ] && [ -f "$IMG_DIR/compose.yaml" ]; then
-      ROUTE="In the published image"
-      if note="$(image_teardown)"; then
-        record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" passed
-      else
-        record "$ROUTE" "clean-up: docker compose down -v in the image route's folder" failed "$note"
-      fi
-    fi
+    ROUTE="In the published image"
+    image_cleanup
     docker ps -aq --filter label=beyondleetcode.runner | xargs -r docker rm -f >/dev/null 2>&1
     rm -f .env
     write_tail
@@ -1119,6 +1204,8 @@ main() {
   step off "The switch: restart without DEV_MODE, until / answers 200" start_web 0 /
   group off "The switch: dev mode off" @dev-off dev-off -s
   step -a off "Stop the web process and the Runner" stop_all
+
+  step -a -s base "Between the routes: content/ is as checked out" content_clean_step
 
   image_route
 }
