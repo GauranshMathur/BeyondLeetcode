@@ -59,7 +59,7 @@ Settled with the maintainer on 2026-09-27. Treat each line as decided: build to 
 | Auth | Better Auth |
 | Editor | CodeMirror 6 |
 | Lint + format | Biome |
-| Tests | Vitest (unit), Playwright (e2e), k6 (load: not built yet) |
+| Tests | Vitest (unit), Playwright (e2e), k6 (load: nightly and on demand, `.github/workflows/load.yml`) |
 
 ## Code runner
 
