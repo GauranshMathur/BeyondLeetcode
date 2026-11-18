@@ -117,7 +117,7 @@ To reach an Instance's Runner, set `LOAD_NETWORK=<compose project>_internal` and
 
 It fills every slot, so run it only against an Instance no Learner is using. The nightly `load` job runs it in CI.
 
-### Hardening the Sandboxes
+### Other engines for the Sandboxes
 
 By default every Sandbox runs under the host's rootful Docker, with the flags in [ADR 0002](adr/0002-sandbox-per-run-containers.md). Rootless Docker, rootless Podman and gVisor were each tried in one run, in two attempts, on 2026-11-18, on GitHub-hosted runners:
 
@@ -125,7 +125,7 @@ By default every Sandbox runs under the host's rootful Docker, with the flags in
 - Rootless Podman: the Instance did not run correctly; Podman 4.9.3 refused to create the Sandbox container (the owner option on its tmpfs mounts); it is not a Compose matter, and a Runner change for it is the maintainer's decision.
 - gVisor: the Instance did not run correctly, and 6 of 145 Sandbox checks failed, among them an extra writable `/tmp` and a hidden Test input reaching a later Test of the same request.
 
-[Sandbox hardening](sandbox-hardening.md) has the steps, the `compose.override.yaml` and the checks. It recommends no engine and promises nothing for another host.
+[What was found running the Sandboxes under rootless Docker, rootless Podman and gVisor](sandbox-hardening.md) has the steps, the `compose.override.yaml` and the checks. It recommends no engine and promises nothing for another host.
 
 ### Runner troubleshooting
 
@@ -142,7 +142,7 @@ When a Run or Submit fails because the Runner could not be used, the Learner see
 
 #### Reading a failed pull
 
-Pull the image named in the `Could not pull Sandbox image` line against the engine the Runner uses: `docker pull <image>` for the host's Docker; for rootless Docker, as the engine's user, with its `rootless` CLI context or `DOCKER_HOST=unix:///run/user/<uid>/docker.sock`; `podman pull <image>` as that user for Podman. A CLI that is logged in can succeed where the Runner's pull, which sends no credentials, fails; once the image is there the Runner finds it. A plain `Error` there, with `Could not clean up leftover Sandbox containers` failing too, means the Runner could not use the engine at all: look at its socket mount, not the registry.
+Pull the image named in the `Could not pull Sandbox image` line against the engine the Runner uses: `docker pull <image>` for the host's Docker; for rootless Docker, as the engine's user, with its `rootless` CLI context or `DOCKER_HOST=unix:///run/user/<uid>/docker.sock`; `podman pull <image>` as that user for Podman. A CLI that is logged in can succeed where the Runner's pull, which sends no credentials, fails; once the image is there the Runner finds it. A plain `Error` there, with `Could not clean up leftover Sandbox containers` failing too, can mean the Runner could not use the engine at all: check its socket mount before the registry.
 
 The Runner's request handler logs nothing for a 200, a 404, a 405, a 503 (busy or not ready), a caller that leaves while its request waits for a slot, or a caller that leaves mid-body. Container handling logs its own lines: a Run stopped at the time limit adds `Kill of container <id> answered after N ms` (or `Could not kill container <id>` if the kill failed), and a container that could not be removed logs `Could not remove container ...`.
 
