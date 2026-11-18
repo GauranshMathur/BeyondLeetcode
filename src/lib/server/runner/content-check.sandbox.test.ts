@@ -46,19 +46,25 @@ interface Outcome {
  *
  * A whole-case retry would hide an earlier batch's wrong answer behind a lucky second attempt, so
  * when `earlierFailure` names a non-Accepted outcome the first attempt saw before the Runner
- * failed (with or without a cause), that outcome is the case's result and nothing is retried.
+ * failed (with or without a cause), that outcome is the case's result and nothing is retried. When
+ * the error has a cause, `onHiddenFailure` gets it first, so the Runner failure the earlier wrong
+ * answer hides is still printed.
  */
 async function withOneRetryOnRunnerUnavailable<T, E = never>(
 	attempt: () => Promise<T>,
 	onRetry: (cause: unknown) => void,
-	earlierFailure: () => E | undefined = () => undefined
+	earlierFailure: () => E | undefined = () => undefined,
+	onHiddenFailure: (cause: unknown) => void = () => {}
 ): Promise<T | E> {
 	try {
 		return await attempt();
 	} catch (error) {
 		if (!(error instanceof LearningError) || error.code !== 'RunnerUnavailable') throw error;
 		const earlier = earlierFailure();
-		if (earlier !== undefined) return earlier;
+		if (earlier !== undefined) {
+			if (error.cause !== undefined) onHiddenFailure(error.cause);
+			return earlier;
+		}
 		if (error.cause === undefined) throw error;
 		onRetry(error.cause);
 		return await attempt();
@@ -66,27 +72,55 @@ async function withOneRetryOnRunnerUnavailable<T, E = never>(
 }
 
 const DETAIL_LIMIT = 100;
+const UNREADABLE = 'unreadable';
 
 /**
- * Part of a Runner failure's message that is safe inside a `::warning::` workflow command: one
- * line, at most DETAIL_LIMIT characters, with nothing the runner would read as a command or
- * decode. Control characters become spaces; `::` and every `%` (the start of the `%0A`, `%0D`
- * and `%25` escapes) are dropped. The message can quote part of a Docker daemon reply; it goes
- * only into this repo's own CI log.
+ * The text of a Runner failure, built without ever throwing: `<name>: <message>` for an Error,
+ * `<typeof>: <value as text>` for anything else. A part that is not a string goes through
+ * `String()`; a part that cannot be read or turned into text becomes UNREADABLE.
  */
-function annotationDetail(cause: unknown): string {
-	const message = cause instanceof Error ? cause.message : String(cause);
-	return (
-		message
-			// biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to strip them
-			.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ')
-			.replace(/%/g, '')
-			.replace(/:{2,}/g, '')
-			.replace(/\s+/g, ' ')
-			.trim()
-			.slice(0, DETAIL_LIMIT)
-			.trim()
-	);
+function causeText(cause: unknown): string {
+	const part = (read: () => unknown): string => {
+		try {
+			return String(read());
+		} catch {
+			return UNREADABLE;
+		}
+	};
+	try {
+		if (cause instanceof Error) return `${part(() => cause.name)}: ${part(() => cause.message)}`;
+		return `${typeof cause}: ${part(() => cause)}`;
+	} catch {
+		return UNREADABLE;
+	}
+}
+
+/**
+ * Text that is safe inside a `::warning::` workflow command, and on any log line: one line, at most
+ * DETAIL_LIMIT characters counted by code point (so no surrogate pair is split), with nothing the
+ * runner would read as a command or decode. Control characters become spaces; every run of `::`
+ * and every `%` (the start of the `%0A`, `%0D` and `%25` escapes) are dropped. The text can quote
+ * part of a Docker daemon reply; it goes only into this repo's own CI log.
+ */
+function annotationDetail(text: string): string {
+	const clean = text
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to strip them
+		.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ')
+		.replace(/%/g, '')
+		.replace(/:{2,}/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+	return Array.from(clean).slice(0, DETAIL_LIMIT).join('').trim();
+}
+
+/** Every line the case prints about a Runner failure, each built from one sanitised tail. */
+function runnerFailureLines(problemId: string, language: string, cause: unknown) {
+	const tail = annotationDetail(causeText(cause));
+	return {
+		warning: `Runner unavailable for ${problemId} (${language}), running the case once more: ${tail}`,
+		annotation: `::warning::Content check retried ${problemId} (${language}) after RunnerUnavailable: ${tail}`,
+		hidden: `Runner also failed for ${problemId} (${language}) after an earlier batch failed, not retried: ${tail}`
+	};
 }
 
 /**
@@ -177,16 +211,13 @@ function cases(ids: string[]) {
 							runner: attempts++ === 0 ? firstAttempt.runner : runner
 						}),
 					(cause) => {
-						console.warn(
-							`Runner unavailable for ${problemId} (${language}), running the case once more: ${cause}`
-						);
+						const lines = runnerFailureLines(problemId, language, cause);
+						console.warn(lines.warning);
 						// A workflow annotation, so a retry shows on the run summary of a green job.
-						const name = cause instanceof Error ? cause.name : typeof cause;
-						console.log(
-							`::warning::Content check retried ${problemId} (${language}) after RunnerUnavailable: ${annotationDetail(name)}: ${annotationDetail(cause)}`
-						);
+						console.log(lines.annotation);
 					},
-					firstAttempt.firstFailure
+					firstAttempt.firstFailure,
+					(cause) => console.warn(runnerFailureLines(problemId, language, cause).hidden)
 				);
 				expect(
 					verdict,
@@ -404,17 +435,17 @@ describe('content check: the retry lines about a Runner failure', () => {
 		expect(annotation.slice(head.length)).not.toContain('::');
 	});
 
-	it.each([
-		'first\n::error::injected',
-		'first%0A::error::injected'
-	])('prints every line on one line, with no escape and no command, for %j', (message) => {
-		const { warning, annotation, hidden } = linesFor(new Error(message));
-		for (const line of [warning, annotation, hidden]) {
-			expect(line).not.toMatch(/[\r\n]/);
-			expect(line).not.toContain('%');
-			expect(line.replace(head, '')).not.toContain('::');
+	it.each(['first\n::error::injected', 'first%0A::error::injected'])(
+		'prints every line on one line, with no escape and no command, for %j',
+		(message) => {
+			const { warning, annotation, hidden } = linesFor(new Error(message));
+			for (const line of [warning, annotation, hidden]) {
+				expect(line).not.toMatch(/[\r\n]/);
+				expect(line).not.toContain('%');
+				expect(line.replace(head, '')).not.toContain('::');
+			}
 		}
-	});
+	);
 
 	it('never throws, whatever the cause holds', () => {
 		const getterThrows = new Error('x');
@@ -442,7 +473,9 @@ describe('content check: the retry lines about a Runner failure', () => {
 		const detail = annotationDetail(`${'x'.repeat(99)}\u{1F600}tail`);
 		expect(detail.isWellFormed()).toBe(true);
 		expect(Array.from(detail).length).toBeLessThanOrEqual(DETAIL_LIMIT);
-		const tail = linesFor(new Error(`${'x'.repeat(93)}\u{1F600}tail`)).annotation.slice(head.length);
+		const tail = linesFor(new Error(`${'x'.repeat(93)}\u{1F600}tail`)).annotation.slice(
+			head.length
+		);
 		expect(tail.isWellFormed()).toBe(true);
 		expect(Array.from(tail).length).toBeLessThanOrEqual(DETAIL_LIMIT);
 	});
