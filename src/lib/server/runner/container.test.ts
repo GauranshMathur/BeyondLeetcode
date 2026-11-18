@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sandboxConfig } from './config';
-import { runContainer } from './container';
+import { runContainer, SandboxLimitDroppedError } from './container';
 import { DeadlineError, deadline } from './deadline';
 import { DockerReplyError, type Engine, ImageMissingError, NameConflictError } from './engine';
 
@@ -23,6 +23,8 @@ function fakeEngine(options: {
 	removeFails?: boolean;
 	killFails?: boolean;
 	neverEnds?: boolean;
+	/** What the daemon's create reply says. */
+	warnings?: string[];
 	exitNever?: boolean;
 	/** How long the daemon takes to answer the wait request. */
 	waitMs?: number;
@@ -33,7 +35,7 @@ function fakeEngine(options: {
 		end = resolve;
 	});
 	const engine = {
-		create: async () => 'c1',
+		create: async () => ({ id: 'c1', warnings: options.warnings ?? [] }),
 		wait: async (id: string) => {
 			calls.push(`wait ${id}`);
 			if (options.waitMs) await new Promise((resolve) => setTimeout(resolve, options.waitMs));
@@ -394,6 +396,45 @@ describe('Container: leaks and stalls', () => {
 	});
 });
 
+const memoryWarning =
+	'Your kernel does not support memory limit capabilities or the cgroup is not mounted. Limitation discarded.';
+const pidsWarning =
+	'Your kernel does not support PIDs limit capabilities or the cgroup is not mounted. PIDs limit discarded.';
+const swapWarning =
+	'Your kernel does not support swap limit capabilities or the cgroup is not mounted. Memory limited without swap.';
+
+describe('Container: a create reply that says the engine dropped a limit', () => {
+	it.each([
+		['memory', memoryWarning],
+		['pids', pidsWarning]
+	])(
+		'removes the unstarted container and fails the Run when the %s limit was discarded',
+		async (_name, warning) => {
+			const { engine, calls } = fakeEngine({ output: 'x', warnings: [warning] });
+
+			await expect(run(engine)).rejects.toBeInstanceOf(SandboxLimitDroppedError);
+
+			expect(calls).toEqual(['remove c1']);
+		}
+	);
+
+	it('runs a container whose reply carries only the swap warning', async () => {
+		const { engine } = fakeEngine({ output: 'x', warnings: [swapWarning] });
+
+		expect(await run(engine)).toEqual({ kind: 'exited', code: 0 });
+	});
+
+	it('puts none of the warning in the error message', async () => {
+		const { engine } = fakeEngine({ warnings: [memoryWarning, 'other text'] });
+
+		const error = await run(engine).catch((e: Error) => e);
+
+		expect(error).toBeInstanceOf(SandboxLimitDroppedError);
+		for (const word of ['kernel', 'cgroup', 'mounted', 'discarded', 'other text'])
+			expect((error as Error).message).not.toContain(word);
+	});
+});
+
 describe('Container: a create that fails or times out', () => {
 	/** A daemon that holds containers by name, and an Engine whose create can time out on our side. */
 	function daemon(createError: Error | null, lateStatus = 201) {
@@ -404,7 +445,7 @@ describe('Container: a create that fails or times out', () => {
 				// The daemon completes the create (name -> container) whatever our side saw.
 				if (lateStatus === 201 && name) containers.set(name, 'late-id');
 				if (createError) throw createError;
-				return 'c1';
+				return { id: 'c1', warnings: [] };
 			},
 			remove: async (idOrName: string) => {
 				removeCalls.push(idOrName);

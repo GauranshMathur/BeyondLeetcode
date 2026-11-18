@@ -114,7 +114,7 @@ export async function startTestRunner(
 		for (const image of images) {
 			await engine
 				.create(image, { Labels: { [containerLabel]: started.instanceId } })
-				.then((id) => engine.remove(id));
+				.then(({ id }) => engine.remove(id));
 		}
 	} catch (error) {
 		started.process.kill();

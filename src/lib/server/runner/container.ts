@@ -104,6 +104,27 @@ async function removeCreatedByName(engine: Engine, name: string): Promise<void> 
 	late.unref?.();
 }
 
+/**
+ * The engine said, in its create reply, that it dropped a Sandbox limit the Runner asked for. The
+ * message is fixed: the warning's own text never reaches an error or a log line.
+ */
+export class SandboxLimitDroppedError extends Error {
+	constructor() {
+		super('The engine dropped a Sandbox memory or pids limit, so the Sandbox was not started');
+		this.name = 'SandboxLimitDroppedError';
+	}
+}
+
+/**
+ * The create warnings that refuse a Sandbox: Docker's texts for a discarded memory limit and a
+ * discarded pids limit, copied from `daemon/daemon_unix.go` (`verifyPlatformContainerResources`)
+ * at moby v28.0.4. Any other warning, the swap one included, lets the Sandbox run.
+ */
+const refusedCreateWarnings: ReadonlySet<string> = new Set([
+	'Your kernel does not support memory limit capabilities or the cgroup is not mounted. Limitation discarded.',
+	'Your kernel does not support PIDs limit capabilities or the cgroup is not mounted. PIDs limit discarded.'
+]);
+
 export type ContainerRun = {
 	/** Labels the container's name, so a Run's name clashes with no other instance's. */
 	instanceId: string;
@@ -136,8 +157,9 @@ export async function runContainer(engine: Engine, run: ContainerRun): Promise<C
 	// clashes with no other Run's.
 	const name = `bl-${run.instanceId}-${randomBytes(8).toString('hex')}`;
 	let id: string;
+	let warnings: string[];
 	try {
-		id = await engine.create(run.image, spec, name);
+		({ id, warnings } = await engine.create(run.image, spec, name));
 	} catch (error) {
 		if (error instanceof ImageMissingError) {
 			// The image vanished after its Language went ready. A 404 made no container.
@@ -150,6 +172,11 @@ export async function runContainer(engine: Engine, run: ContainerRun): Promise<C
 			await removeCreatedByName(engine, name);
 		}
 		throw error;
+	}
+	if (warnings.some((warning) => refusedCreateWarnings.has(warning))) {
+		// It never started, so AutoRemove will not remove it.
+		await removeContainer(engine, id);
+		throw new SandboxLimitDroppedError();
 	}
 	let overflow = false;
 	let hardStopped = false;
