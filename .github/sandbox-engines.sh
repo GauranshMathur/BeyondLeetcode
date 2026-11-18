@@ -58,9 +58,9 @@ pkgs_present=()
 
 # >>> helpers (the stub test in the scratch folder sources everything between these markers)
 
-# Output shown, logged and put in the summary is cut to 64 KiB and stripped of anything that is not text, so a
-# step can never put an image stream into the job log or an uploaded file.
-# A long file keeps its head and its tail, because the last lines are where a step's error is.
+# Output shown, logged and put in the summary is stripped of anything that is not text, so a step can never put an
+# image stream into the job log or an uploaded file. Over 64 KiB it is a head, a marker saying how much was cut, and
+# a tail, because the last lines are where a step's error is.
 printable() {
   local size
   size="$(wc -c <"$1")"
@@ -73,8 +73,10 @@ printable() {
 
 # A record the leg could not write makes the leg red.
 write_failed() {
-  echo "::error::could not write $1"
-  case " ${problems[*]:-} " in *"could not write $1"*) ;; *) problems+=("could not write $1") ;; esac
+  case " ${problems[*]:-} " in
+    *"could not write $1"*) ;;
+    *) echo "::error::could not write $1"; problems+=("could not write $1") ;;
+  esac
 }
 
 summary_add() { printf '%s\n' "$1" >>"$out/summary.md" || write_failed summary.md; }
@@ -218,9 +220,32 @@ show_user_cgroup() {
   echo "cgroup.subtree_control: $(cat "$(user_cgroup_dir)/cgroup.subtree_control")"
 }
 
+# Podman asked through the socket the tests use, so it describes the service and not this job step's own cgroup.
+podman_remote() { podman --remote --url "unix://$socket" "$@"; }
+
+# Podman's own report of the controllers it can use; the Docker-compatible info of 4.9.3 cannot show this
+# (it reads CPUCfsQuota from a cgroup v1 file). An error from the command is an engine error, not a delegation failure.
+assert_podman_controllers() {
+  local o k
+  o="$(podman_remote info --format '{{json .Host.CgroupControllers}}' 2>&1)" || { echo "podman info failed (an engine error, not a delegation result): $o"; return 1; }
+  for k in cpu memory pids; do
+    case "$o" in
+      *"\"$k\""*) ;;
+      *) echo "delegation did not take effect by the documented steps: Podman reports the controllers: $o"; return 1 ;;
+    esac
+  done
+}
+
+show_podman_service_unit() { systemctl --user cat podman.service; }
+
+podman_docker_info_note() {
+  echo "Podman 4.9.3's Docker-compatible info reports CPUCfsQuota false on cgroup v2 whatever the delegation; this is a record only."
+  docker_info_text
+}
+
 podman_mode_fields() {
   local o
-  o="$(podman info)" || return 1
+  o="$(podman_remote info)" || return 1
   grep -E -i 'rootless|cgroupVersion|cgroupManager|apparmor|seccomp|selinux|ociRuntime|^ +name: (crun|runc)' <<<"$o"
   grep -A12 -i 'cgroupControllers' <<<"$o"
 }
@@ -364,9 +389,10 @@ case "$engine" in
     run_step "the socket reports rootless" assert_docker_rootless
     record "podman version" podman version
     record "podman info (mode fields and cgroup controllers)" podman_mode_fields
-    record "the socket's docker info" docker_info_text
+    record "the socket's docker info (a record only)" podman_docker_info_note
+    record "podman.service unit (whether it has Delegate=true)" show_podman_service_unit
     record_rootless_facts
-    run_step "the engine reports cpu, memory and pids limits available" assert_engine_limits
+    run_step "Podman reports the cpu, memory and pids controllers" assert_podman_controllers
     run_step "copy the Sandbox images into Podman" copy_images_into podman load
     ;;
 
