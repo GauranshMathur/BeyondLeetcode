@@ -30,6 +30,7 @@ The board's `Release` field (id `PVTSSF_lAHOAm0pms4Bk1LBzhniiDY`) has one option
 | `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates` (renamed 2026-11-14 at the sprint's start; was `R v1.20.1: Sprint 22 · Leftover bugs and CI gates`) | `30fe09ec` |
 | `R v1.21.0: Sprint 22 · Dev mode` (renamed 2026-11-16 when the starting Language moved to Sprint 23; was `R v1.21.0: Sprint 22 · Dev mode and the starting Language`) | `647d8bbc` |
 | `R v1.22.0: Sprint 23 · The starting Language` (renamed 2026-11-16; was `R v1.21.1: Sprint 23 · Unplanned`) | `59e6d8b2` |
+| `R v1.21.1: Sprint 24 · Proof and operator checks` (added 2026-11-18) | `cb16e1c5` |
 
 The two options for Sprints 21 and 22 swapped numbers on 2026-11-14: the sprint that waits on nobody runs first, and each option kept its cards.
 
@@ -52,6 +53,7 @@ The orchestrator adds a row for each sprint it constructs.
 | 21 · The guide, leftover bugs and CI gates | `R v1.20.0: Sprint 21 · The guide, leftover bugs and CI gates` | 1.20.0 | cut 2026-11-16 |
 | 22 · Dev mode | `R v1.21.0: Sprint 22 · Dev mode` | 1.21.0 | cut 2026-11-16 |
 | 23 · The starting Language | `R v1.22.0: Sprint 23 · The starting Language` | 1.22.0 | planned 2026-11-16 (minor: its cards are `feat`); starts when the maintainer has answered #661 |
+| 24 · Proof and operator checks | `R v1.21.1: Sprint 24 · Proof and operator checks` | 1.21.1 | started 2026-11-18 (a patch: no card is `feat`); it runs before Sprint 23, which waits on #661 |
 
 ## The last card
 
