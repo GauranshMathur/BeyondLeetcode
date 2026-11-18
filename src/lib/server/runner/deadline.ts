@@ -3,6 +3,14 @@
  * neither may import the other for it.
  */
 
+/** A deadline ran out before the call it bounded settled. */
+export class DeadlineError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'DeadlineError';
+	}
+}
+
 /**
  * A point in time fixed when it is made. It runs on the monotonic clock, so a host clock that
  * steps back cannot stretch it.
@@ -16,7 +24,7 @@ export function deadline(totalMs: number) {
 		bound<T>(promise: Promise<T>, message: string, capMs = Number.POSITIVE_INFINITY): Promise<T> {
 			return new Promise((resolve, reject) => {
 				const timer = setTimeout(
-					() => reject(new Error(message)),
+					() => reject(new DeadlineError(message)),
 					Math.min(capMs, Math.max(0, end - performance.now()))
 				);
 				promise.then(

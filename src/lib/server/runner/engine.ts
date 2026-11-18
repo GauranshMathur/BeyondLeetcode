@@ -5,7 +5,7 @@
 import { type ClientRequest, request } from 'node:http';
 import { connect } from 'node:net';
 import { engineCallTimeoutMs } from './config';
-import { deadline } from './deadline';
+import { DeadlineError, deadline } from './deadline';
 
 export type ContainerSpec = Record<string, unknown>;
 
@@ -27,6 +27,14 @@ export const pullIdleTimeoutMs = 60_000;
 
 /** Longest one pull attempt may take in all, however much progress it keeps sending. */
 export const pullMaxMs = 30 * 60_000;
+
+/** A daemon reply the Runner does not accept. */
+export class DockerReplyError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'DockerReplyError';
+	}
+}
 
 /** The daemon refused a create because the container name is taken: not our container to remove. */
 export class NameConflictError extends Error {
@@ -198,7 +206,9 @@ export function createEngine(
 
 	async function assertStatus(reply: Reply, what: string, ...ok: number[]): Promise<Reply> {
 		if (!ok.includes(reply.status)) {
-			throw new Error(`Docker ${what} failed (${reply.status}): ${reply.body.slice(0, 500)}`);
+			throw new DockerReplyError(
+				`Docker ${what} failed (${reply.status}): ${reply.body.slice(0, 500)}`
+			);
 		}
 		return reply;
 	}
@@ -239,14 +249,17 @@ export function createEngine(
 						return;
 					}
 					const seen = tail + text;
-					if (/"error"\s*:/.test(seen)) return finish(new Error(`Docker pull ${image} failed`));
+					if (/"error"\s*:/.test(seen))
+						return finish(new DockerReplyError(`Docker pull ${image} failed`));
 					tail = seen.slice(-pullScanTail);
 				});
 				res.on('end', () =>
 					finish(
 						ok
 							? undefined
-							: new Error(`Docker pull ${image} failed (${res.statusCode}): ${errorBody}`)
+							: new DockerReplyError(
+									`Docker pull ${image} failed (${res.statusCode}): ${errorBody}`
+								)
 					)
 				);
 				res.on('error', finish);
@@ -306,7 +319,7 @@ export function createEngine(
 					if (settled) return;
 					settled = true;
 					socket.destroy();
-					reject(new Error('Docker attach timed out'));
+					reject(new DeadlineError('Docker attach timed out'));
 				}, timeoutMs);
 				const closed = new Promise<void>((done) => socket.once('close', () => done()));
 
@@ -332,7 +345,7 @@ export function createEngine(
 					clearTimeout(handshake);
 					if (!settled) {
 						settled = true;
-						reject(new Error('Docker attach closed before the stream started'));
+						reject(new DockerReplyError('Docker attach closed before the stream started'));
 					}
 				});
 				socket.on('connect', () => {
@@ -352,7 +365,7 @@ export function createEngine(
 						if (!/^HTTP\/1\.1 (101|200) /.test(head)) {
 							settled = true;
 							socket.destroy();
-							reject(new Error(`Docker attach failed: ${head.split('\r\n')[0]}`));
+							reject(new DockerReplyError(`Docker attach failed: ${head.split('\r\n')[0]}`));
 							return;
 						}
 						upgraded = true;
@@ -395,7 +408,7 @@ export function createEngine(
 							res.on('end', () => {
 								const body = Buffer.concat(chunks).toString('utf8');
 								if (res.statusCode !== 200)
-									fail(new Error(`Docker wait failed (${res.statusCode}): ${body}`));
+									fail(new DockerReplyError(`Docker wait failed (${res.statusCode}): ${body}`));
 								else {
 									try {
 										done((JSON.parse(body) as { StatusCode: number }).StatusCode);
@@ -461,7 +474,7 @@ export function createEngine(
 					}
 					await new Promise((resolve) => setTimeout(resolve, Math.min(100, left)));
 				}
-				throw new Error(`Docker remove of ${id} is still in progress`);
+				throw new DeadlineError(`Docker remove of ${id} is still in progress`);
 			}
 			await assertStatus(reply, 'remove', 204, 404);
 			return reply.status === 204;

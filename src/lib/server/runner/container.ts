@@ -7,7 +7,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { sandboxConfig } from './config';
-import { deadline } from './deadline';
+import { DeadlineError, deadline } from './deadline';
 import {
 	type AttachedContainer,
 	type ContainerSpec,
@@ -185,7 +185,7 @@ export async function runContainer(engine: Engine, run: ContainerRun): Promise<C
 			},
 			sandboxConfig.attachTimeoutMs
 		);
-		if (hardStopped) throw new Error('Sandbox start-up exceeded the time limit');
+		if (hardStopped) throw new DeadlineError('Sandbox start-up exceeded the time limit');
 		await engine.start(id);
 		attached.sendInput(run.input);
 		await attached.closed;

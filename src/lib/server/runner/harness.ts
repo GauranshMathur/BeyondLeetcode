@@ -5,6 +5,38 @@ import type { ExecuteResult, Language, TestResult } from './port';
 import { testStatusSchema } from './port';
 import { createTar } from './tar';
 
+/** The Sandbox printed more output than the Runner allows. */
+export class OutputOverflowError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'OutputOverflowError';
+	}
+}
+
+/** The Sandbox harness exited non-zero. */
+export class HarnessExitError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'HarnessExitError';
+	}
+}
+
+/** The Sandbox harness printed a line the Runner refuses. */
+export class HarnessLineError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'HarnessLineError';
+	}
+}
+
+/** The Sandbox ended without a result for a Test. */
+export class MissingResultError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'MissingResultError';
+	}
+}
+
 /**
  * The fixed script that runs inside the Sandbox container (`python -I -c`: isolated, so nothing
  * learner-written in the working directory is ever imported into this process). It reads `<length>\n` and then
@@ -139,12 +171,12 @@ export function createHarnessDecoder(tests: readonly { readonly id: string }[]):
 		},
 		finish(end) {
 			if (end.kind === 'overflow' || overflowed) {
-				throw new Error('Sandbox produced more output than the Runner allows');
+				throw new OutputOverflowError('Sandbox produced more output than the Runner allows');
 			}
 			// The harness only exits non-zero when something went wrong inside it (or learner code
 			// got to it): whatever it printed cannot be trusted.
 			if (end.kind === 'exited' && end.code !== 0) {
-				throw new Error(`Sandbox harness exited with status ${end.code}: ${stderr}`);
+				throw new HarnessExitError(`Sandbox harness exited with status ${end.code}: ${stderr}`);
 			}
 			const hardStopped = end.kind === 'hardStop';
 			// An incomplete UTF-8 sequence the stream decoder still holds is a trailing byte too.
@@ -152,17 +184,18 @@ export function createHarnessDecoder(tests: readonly { readonly id: string }[]):
 			if (tail !== '') partial += tail;
 			// Every harness line ends in a newline; bytes left over after a normal end are not its.
 			if (refusedLine || (!hardStopped && partial !== '')) {
-				throw new Error(`Sandbox harness printed an unexpected line: ${stderr}`);
+				throw new HarnessLineError(`Sandbox harness printed an unexpected line: ${stderr}`);
 			}
 			const seen = new Set<number>();
 			for (const line of lines) {
 				if (!('i' in line)) continue;
 				if (line.i < 0 || line.i >= tests.length) {
-					throw new Error(
+					throw new HarnessLineError(
 						`Sandbox harness reported Test ${line.i}, outside the Test count of ${tests.length}`
 					);
 				}
-				if (seen.has(line.i)) throw new Error(`Sandbox harness reported Test ${line.i} twice`);
+				if (seen.has(line.i))
+					throw new HarnessLineError(`Sandbox harness reported Test ${line.i} twice`);
 				seen.add(line.i);
 			}
 			for (const line of lines) {
@@ -179,7 +212,7 @@ export function createHarnessDecoder(tests: readonly { readonly id: string }[]):
 					if (hardStopped) {
 						return { id, status: 'timeout', stdout: '', stderr: '', cutOff: true };
 					}
-					throw new Error(`Sandbox ended without a result for Test ${id}: ${stderr}`);
+					throw new MissingResultError(`Sandbox ended without a result for Test ${id}: ${stderr}`);
 				})
 			};
 		}
