@@ -1,0 +1,49 @@
+name: sandbox-engines
+
+# Runs the Sandbox tests under rootless Docker, rootless Podman and gVisor, each on a fresh GitHub-hosted runner.
+#
+# There is no pull_request, push or schedule trigger: the job installs container engines and changes the runner
+# host, so it starts only when someone asks for it. Its red legs are findings about an engine, never a gate, and it
+# is not a required check.
+# It never runs on the maintainer's host; the engines are installed on the runner and gone with it.
+# Start it with: gh workflow run sandbox-engines.yml --ref <branch>
+# Each leg uploads its record (versions, every host change, test results) as the artifact sandbox-engines-<engine>.
+# No ${{ }} appears inside a run: script; the engine reaches the script through env:.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-engines
+  cancel-in-progress: false
+
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [docker, rootless-docker, podman, gvisor]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile
+      - name: Set up the engine and run the Sandbox tests
+        run: .github/sandbox-engines.sh "$ENGINE" "$RUNNER_TEMP/engines"
+        env:
+          ENGINE: ${{ matrix.engine }}
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sandbox-engines-${{ matrix.engine }}
+          path: ${{ runner.temp }}/engines/
+          retention-days: 90
+          if-no-files-found: warn
