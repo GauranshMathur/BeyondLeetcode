@@ -68,7 +68,7 @@ Each run starts a fresh, unprivileged container and removes it when done. Python
 `--network none`, `--read-only` root with a tmpfs work dir, non-root user, `--cap-drop ALL`, `--security-opt no-new-privileges`, memory / CPU / pids limits, a wall-clock timeout, `--rm`.
 
 - A separate **runner** process owns the Docker socket and starts these containers. The **web** process never touches the socket.
-- Optional hardening for operators: rootless Docker or Podman, gVisor (`runsc`). A Kubernetes backend comes later.
+- Optional hardening for operators: rootless Docker (tried: the Instance ran with every Sandbox check passing on the second attempt), rootless Podman (tried: the Instance did not run, as Podman refused to create the Sandbox container), gVisor (`runsc`) (tried: the Instance did not run, and Sandbox checks failed); see `docs/sandbox-hardening.md`. A Kubernetes backend comes later.
 - Rejected: Judge0 and Piston (amd64-only, need privileged mode, old runtimes).
 
 ## Shipping

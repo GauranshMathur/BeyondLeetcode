@@ -9,7 +9,7 @@ Every Run and Submission starts a new container from the official `python`, `nod
 
 ## Consequences
 
-Operators can harden further with rootless Docker/Podman or gVisor without code changes. Container start-up time is paid on every run; a nightly k6 load test measures Runner throughput, and its numbers are in `docs/self-hosting.md` (How many runs at once). A Kubernetes backend can replace the Runner's engine later behind the same seam.
+Each engine was tried once: rootless Docker ran the Instance with every Sandbox check passing on the second attempt, with no code change, only a `compose.override.yaml` that gives the Runner the user's socket; rootless Podman and gVisor did not run the Instance correctly, and a Runner change for either is the maintainer's decision. The steps and checks are in `docs/sandbox-hardening.md`. Container start-up time is paid on every run; a nightly k6 load test measures Runner throughput, and its numbers are in `docs/self-hosting.md` (How many runs at once). A Kubernetes backend can replace the Runner's engine later behind the same seam.
 
 ## Amended 2026-10-04
 
