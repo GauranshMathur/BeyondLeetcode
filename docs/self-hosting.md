@@ -83,6 +83,38 @@ The `runner` service runs Learners' code in Sandbox containers. Its settings are
 
 The `init` command writes `RUNNER_MAX_CONCURRENT: ${RUNNER_MAX_CONCURRENT:-}` under `runner`'s `environment` in `compose.yaml`. If an older `init` wrote yours, `.env` is not enough: the variable reaches the container only if `compose.yaml` lists it. Add that line to `runner`'s `environment`, put `RUNNER_MAX_CONCURRENT=<number>` in `.env`, and run `docker compose up -d`. Do not add it to `web`.
 
+#### What a Runner handled in one load test
+
+These numbers come from one run of the load test, on one machine. They are what that run measured, not a promise for your host.
+
+- **Host:** 4 CPUs (so 4 slots, with 8 queue places), 15.6 GiB of memory, a GitHub-hosted runner image `ubuntu24 20261111.370.1` with Docker 28.0.4. k6 ran on the same host beside the Runner and its Sandboxes, so every time includes that contention.
+- **When:** 2026-11-18, commit `4c825396b0e9945290798323def5798157e04d7e`, [the `load` workflow run](https://github.com/GauranshMathur/BeyondLeetcode/actions/runs/44277166272).
+- **Wait** is from a Submission's first call to its last answer, for finished Submissions only.
+
+| What the test did | Submissions | Wait for a Verdict, p50 | p95 |
+|---|---|---|---|
+| One Submission alone | 6 finished | 2315 ms | 3929 ms |
+| A class of 20 at once | 12 finished, 8 refused as busy | 8146 ms | 10365 ms |
+| Every slot and queue place kept busy for 3 minutes | 212 finished, 0 refused, 67.4 finished per minute | 10311 ms | 16821 ms |
+
+In the class of 20, the 12 that finished are the 4 slots and 8 queue places. The 8 refused were answered "busy" after 7 ms at most. No Submission failed in the run.
+
+A Run held its container for p50 0.853 s, p95 3.189 s and at most 3.527 s (create to destroy, 556 containers, none left behind).
+
+This was measured at the Runner's port, so the web's save and record and the browser's network come on top.
+
+#### Run the load test on your own Instance
+
+From a clone with Bun and Docker:
+
+```
+RUNNER_TOKEN=<token> LOAD_SLOTS=<RUNNER_MAX_CONCURRENT, or the CPU count when it is empty> scripts/load/run.sh <runner URL>
+```
+
+To reach an Instance's Runner, set `LOAD_NETWORK=<compose project>_internal` and use `http://runner:8787`.
+
+It fills every slot, so run it only against an Instance no Learner is using. The nightly `load` job runs it in CI.
+
 ### Runner troubleshooting
 
 When a Run or Submit fails because the Runner could not be used, the Learner sees "The runner is unavailable. Try again." Look in both logs: `docker compose logs web runner`. Each failed call to the Runner makes one line in `web`'s log, `runner <kind>`. The Runner adds its own line for three of the kinds, each a line of fixed words (and, for `RunnerFailed`, the error's class name) with nothing from the request. Neither log holds anything from the request.
