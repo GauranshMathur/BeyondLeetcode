@@ -300,7 +300,10 @@ run_walk() {
     -v "$bun_bin:/usr/local/bin/bun:ro" -v "$bun_bin:/usr/local/bin/bunx:ro" \
     -e DEV_RUN_BASE_URL="$ORIGIN" -e DEV_RUN_OUT="$OUT" -e "DEV_RUN_CONTENT=$PWD/content" \
     -e "DEV_RUN_REPORT=$OUT/report-$2.json" \
-    "$PLAYWRIGHT_IMAGE" bunx playwright test -c playwright.dev-run.config.ts --grep "$1"
+    "$PLAYWRIGHT_IMAGE" bunx playwright test -c playwright.dev-run.config.ts --grep "$1" || {
+    echo "the walk's $1 group had a failing test"
+    return 1
+  }
 }
 
 # record_walk <label> <report name>: one summary row for each test of the group, from the JSON report.
@@ -370,12 +373,14 @@ write_tail() {
   emit ""
   emit "## Timings (the guide: about 0.35 to 0.45 s per read on the full content/ folder)"
   emit ""
-  local file
+  local file name
   for file in "$OUT"/timings-*.json; do
     [ -f "$file" ] || continue
-    emit "- ${file##*/timings-}: reads of a Problem: $(stats "$file" reads || echo unreadable)"
+    name="${file##*/timings-}"
+    name="${name%.json}"
+    emit "- $name, reads of a Problem: $(stats "$file" reads || echo unreadable)"
     if jq -e 'has("autosaves")' "$file" >/dev/null 2>&1; then
-      emit "- ${file##*/timings-}: autosaves: $(stats "$file" autosaves || echo unreadable)"
+      emit "- $name, autosaves: $(stats "$file" autosaves || echo unreadable)"
     fi
   done
   emit ""

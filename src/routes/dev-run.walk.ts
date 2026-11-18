@@ -286,12 +286,11 @@ test.describe('dev mode on @dev-on', () => {
 					.click();
 				// The editor draws only the lines in view, so the last one is scrolled to.
 				await page
-					.locator('.cm-scroller')
-					.first()
+					.locator('.reference-slot .cm-scroller')
 					.evaluate((el) => {
 						el.scrollTop = el.scrollHeight;
 					});
-				await expect(page.locator('.cm-content')).toContainText(marker);
+				await expect(page.locator('.reference-slot .cm-content')).toContainText(marker);
 			}
 		);
 	});
