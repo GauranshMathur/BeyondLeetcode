@@ -34,7 +34,11 @@ let {
 	onswitched
 }: {
 	problem: ProblemView;
-	statement: Snippet;
+	/**
+	 * The problem pane's content. Its argument says whether the statement region is the screen's tab stop for
+	 * scrolling: true everywhere except a short phone, where the stage scrolls and holds that stop instead.
+	 */
+	statement: Snippet<[regionIsTabStop: boolean]>;
 	/** The screen's view state, held by the page so the pane survives the remount a language switch causes. */
 	view: ViewState;
 	onview: (view: ViewState) => void;
@@ -147,15 +151,9 @@ let restartTrigger = $state<HTMLButtonElement>();
 let editorSlot = $state<HTMLDivElement>();
 let tabbar = $state<HTMLElement>();
 
-// At a short phone the stage is the box that scrolls, so it is the one tab stop for scrolling and the statement region,
-// which no longer scrolls there, gives its stop up. Everywhere else the region scrolls and the stage has no box.
+// At a short phone the stage is the box that scrolls, so it is the one tab stop for scrolling, and the workspace tells
+// the statement whether its region is the stop. Everywhere else the region scrolls and the stage has no box.
 const short = new MediaQuery(PROBLEM_SHORT);
-let stageEl = $state<HTMLDivElement>();
-$effect(() => {
-	const region = stageEl?.querySelector<HTMLElement>('[data-pane="problem"] [role="region"]');
-	if (!region) return;
-	region.tabIndex = short.current ? -1 : 0;
-});
 
 // On a phone the editor is hidden while another pane shows, and a hidden element takes no focus. Focus then goes to the
 // Code tab's control, where the editor the Learner asked for lives, so the next Tab key starts from a known element.
@@ -255,11 +253,11 @@ const label: Record<SaveState, string> = {
 	<!-- A short phone scrolls the bar away with the pane, so both sit in one box that does the scrolling there. The box
 	     is a plain div, so the bar stays the page's banner and the grid its one main. -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-	<div class="stage" bind:this={stageEl} tabindex={short.current ? 0 : undefined}>
+	<div class="stage" tabindex={short.current ? 0 : undefined}>
 	<AppHeader header={page.data.header} {crumbs} actions={runAndSubmit} />
 
 	<main class="grid">
-		<div data-pane="problem">{@render statement()}</div>
+		<div data-pane="problem">{@render statement(!short.current)}</div>
 
 		<div class="pane">
 			{#if solution}
