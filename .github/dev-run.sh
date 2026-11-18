@@ -135,7 +135,7 @@ is_text() {
 # held does the step output `record=clean` get written, and the workflow uploads only then; every other path
 # publishes nothing. The reason of a failure goes to the job log only, redacted.
 finalize_record() {
-  local file name reason="" shots=0 others="" list="$WORK/files" odd expected=0 handled=0
+  local file name reason="" shots=0 others="" list="$WORK/files" odd expected=0 handled=0 hits
   out_dir_ok "$OUT" || reason="the out-dir is not a folder beneath RUNNER_TEMP"
   for name in clone-web.log clone-runner.log; do
     if [ -z "$reason" ] && [ -e "$WORK/$name" ]; then cp -- "$WORK/$name" "$OUT/$name" || reason="cannot copy $name"; fi
@@ -182,7 +182,12 @@ finalize_record() {
       fi
       [ -z "$reason" ] || break
     done <"$list"
-    if [ -z "$reason" ] && [ "$handled" -ne "$expected" ]; then reason="the loop handled $handled of $expected files"; fi
+    if [ -z "$reason" ]; then
+      [[ "$expected" =~ ^[0-9]+$ ]] || reason="the count of files is not a number"
+    fi
+    if [ -z "$reason" ]; then
+      [ "$handled" -eq "$expected" ] || reason="the loop handled $handled of $expected files"
+    fi
   fi
   if [ -n "$reason" ]; then
     echo "dev-run: the record is not published: $(printf '%s' "$reason" | redact || echo '(reason hidden: the redactor cannot run)')" >&2
@@ -191,7 +196,24 @@ finalize_record() {
   emit "$(printf '(Left as they are, no token in them: %s screenshots, PNG by name and signature; other files that are not text:%s)' "$shots" "${others:- none}" | redact)"
   # A failed write of the summary (emit sets the flag) or of any record before it keeps the marker back; a failed
   # walk is not part of this, it is a finding in a record that is clean.
-  [ "$RECORD_BROKEN" -eq 0 ] || return 1
+  if [ "$RECORD_BROKEN" -ne 0 ]; then
+    echo "dev-run: the record is not published: a write of the record failed" >&2
+    return 1
+  fi
+  # The last word does not rest on the list or the loop: the whole folder is searched for the token, and only
+  # "no file holds it" (grep status 1) lets the marker be written.
+  hits="$(LC_ALL=C grep -rlaF -f "$TOKEN_FILE" -- "$OUT")"
+  case $? in
+  1) ;;
+  0)
+    echo "dev-run: the record is not published: the token is still in: $(printf '%s' "$hits" | head -n 3 | tr '\n' ' ' | redact || echo '(hidden)')" >&2
+    return 1
+    ;;
+  *)
+    echo "dev-run: the record is not published: the final search of the out-dir failed" >&2
+    return 1
+    ;;
+  esac
   if [ -n "${GITHUB_OUTPUT:-}" ]; then printf 'record=clean\n' >>"$GITHUB_OUTPUT" || return 1; fi
 }
 
