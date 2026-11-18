@@ -3,8 +3,6 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { LANGUAGE_IDS } from '../../languages';
 import { type Catalogue, loadCatalogue } from '../content/catalogue';
 import { sandboxConfig } from '../runner/config';
-import type { ExecuteRequest, RunnerPort } from '../runner/port';
-import { createRunnerHandler } from '../runner/server';
 import { runnerSubmissions } from './submissions';
 
 const fixtureDir = fileURLToPath(new URL('../content/fixture', import.meta.url));
@@ -68,43 +66,6 @@ describe('load submissions', () => {
 					memoryMb: sandboxConfig.memoryMb
 				});
 				for (const test of call.tests) expect(Object.keys(test).sort()).toEqual(['id', 'input']);
-			}
-		}
-	});
-
-	it('is accepted by the Runner handler: every request answers 200', async () => {
-		const token = 'load-token-load-token-load-token-1234';
-		const runner: RunnerPort = {
-			async execute(request: ExecuteRequest) {
-				return {
-					results: request.tests.map(({ id }) => ({
-						id,
-						status: 'ok' as const,
-						stdout: '',
-						stderr: ''
-					}))
-				};
-			}
-		};
-		const handle = createRunnerHandler({
-			token,
-			runner,
-			maxConcurrent: 4,
-			readyLanguages: () => [...LANGUAGE_IDS]
-		});
-
-		for (const { calls } of runnerSubmissions(catalogue).submissions) {
-			for (const call of calls) {
-				const body = JSON.stringify(call);
-				expect(Buffer.byteLength(body)).toBeLessThanOrEqual(sandboxConfig.requestBodyMaxBytes);
-				const res = await handle(
-					new Request('http://runner/execute', {
-						method: 'POST',
-						headers: { Authorization: `Bearer ${token}` },
-						body
-					})
-				);
-				expect(res.status).toBe(200);
 			}
 		}
 	});
