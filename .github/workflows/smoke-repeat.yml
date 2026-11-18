@@ -1,0 +1,228 @@
+# An on-demand instrument for the app image's Prisma path. In each job it records the image's Prisma and OpenSSL files,
+# runs a stress of the image's own Prisma path that prints every error in full (and the same stress from the checkout),
+# and repeats the image's smoke flow on fresh Instances. The record of each job is its job summary and the artifact
+# `smoke-repeat-<job>`. It finds and fixes nothing itself: it goes red when it sees a query-engine error, and the
+# record says what was seen.
+#
+# It is not part of `ci` and not a required check: a red run is a finding about the image, not a reason to hold a merge.
+# It also runs on a pull request that changes one of its own four files (this workflow, its script, the test of the
+# script and the stress), with small defaults that prove each part, and on no other pull request.
+# It never runs on the maintainer's host: the script starts containers, a composed Instance with the real Runner, and a
+# browser.
+#
+# To start it once this file is on main:
+#   gh workflow run smoke-repeat.yml --ref <branch> -f image=<tag> -f jobs=<n> -f runs=<n> -f stress_rounds=<n>
+# `image` empty builds the checked-out ref as ci.yml's docker job does; otherwise it is a tag of
+# ghcr.io/gauranshmathur/beyondleetcode, pulled with no login.
+name: smoke-repeat
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "A tag of ghcr.io/gauranshmathur/beyondleetcode, pulled with no login. Empty builds this ref."
+        required: false
+        default: ""
+        type: string
+      jobs:
+        description: "How many jobs run in parallel"
+        required: false
+        default: "2"
+        type: string
+      runs:
+        description: "Browser-flow runs per job"
+        required: false
+        default: "3"
+        type: string
+      stress_rounds:
+        description: "Rounds of the Prisma stress, in the image and from the checkout"
+        required: false
+        default: "200"
+        type: string
+      bun_version:
+        description: "Bun for the checkout's stress pass (the Dockerfile's production runtime)"
+        required: false
+        default: "1.2.19"
+        type: string
+  pull_request:
+    paths:
+      - .github/workflows/smoke-repeat.yml
+      - .github/smoke-repeat.sh
+      - .github/smoke-repeat.test.sh
+      - src/lib/server/prisma-stress.bun-check.ts
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-repeat-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Playwright image of ci.yml's PLAYWRIGHT_IMAGE: the two move together (version and digest).
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+
+jobs:
+  # Checks the inputs once and turns them into the matrix and the time limit of the jobs.
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      IN_IMAGE: ${{ inputs.image }}
+      IN_JOBS: ${{ inputs.jobs || '2' }}
+      IN_RUNS: ${{ inputs.runs || '3' }}
+      IN_ROUNDS: ${{ inputs.stress_rounds || '200' }}
+      IN_BUN: ${{ inputs.bun_version || '1.2.19' }}
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      image: ${{ steps.plan.outputs.image }}
+      runs: ${{ steps.plan.outputs.runs }}
+      rounds: ${{ steps.plan.outputs.rounds }}
+      bun: ${{ steps.plan.outputs.bun }}
+      minutes: ${{ steps.plan.outputs.minutes }}
+    steps:
+      - id: plan
+        run: |
+          number() { case "$2" in '' | *[!0-9]*) echo "::error::$1 must be a whole number, got '$2'"; exit 1 ;; esac; }
+          number jobs "$IN_JOBS"
+          number runs "$IN_RUNS"
+          number stress_rounds "$IN_ROUNDS"
+          [ "$IN_JOBS" -ge 1 ] && [ "$IN_JOBS" -le 10 ] || { echo "::error::jobs must be 1 to 10"; exit 1; }
+          [ "$IN_RUNS" -ge 1 ] && [ "$IN_RUNS" -le 30 ] || { echo "::error::runs must be 1 to 30"; exit 1; }
+          [ "$IN_ROUNDS" -ge 1 ] && [ "$IN_ROUNDS" -le 20000 ] || { echo "::error::stress_rounds must be 1 to 20000"; exit 1; }
+          case "$IN_BUN" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::bun_version must look like 1.2.19, got '$IN_BUN'"; exit 1 ;;
+          esac
+          case "$IN_BUN" in *[!0-9.]*) echo "::error::bun_version must look like 1.2.19, got '$IN_BUN'"; exit 1 ;; esac
+          image=""
+          if [ -n "$IN_IMAGE" ]; then
+            case "$IN_IMAGE" in
+              *[!A-Za-z0-9._-]*) echo "::error::image must be a tag of ghcr.io/gauranshmathur/beyondleetcode, got '$IN_IMAGE'"; exit 1 ;;
+            esac
+            image="ghcr.io/gauranshmathur/beyondleetcode:$IN_IMAGE"
+          fi
+          matrix="$(seq -s, 1 "$IN_JOBS")"
+          # 40 minutes for the build, the stress passes and the Runner's first pull, 8 for each browser-flow run, and one
+          # for every 100 rounds, up to the 360 minutes a job may have.
+          minutes=$((40 + 8 * IN_RUNS + IN_ROUNDS / 100))
+          [ "$minutes" -le 350 ] || minutes=350
+          {
+            echo "matrix=[$matrix]"
+            echo "image=$image"
+            echo "runs=$IN_RUNS"
+            echo "rounds=$IN_ROUNDS"
+            echo "bun=$IN_BUN"
+            echo "minutes=$minutes"
+          } >> "$GITHUB_OUTPUT"
+
+  repeat:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ fromJSON(needs.plan.outputs.minutes) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      IMAGE_TAG: ${{ needs.plan.outputs.image }}
+      RUNS: ${{ needs.plan.outputs.runs }}
+      STRESS_ROUNDS: ${{ needs.plan.outputs.rounds }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ needs.plan.outputs.bun }}
+      - run: bun install --frozen-lockfile
+      - name: Test the script
+        run: .github/smoke-repeat.test.sh
+      - name: Check the Playwright image
+        run: |
+          version="$(bun -e 'console.log(JSON.parse(require("fs").readFileSync("node_modules/@playwright/test/package.json", "utf8")).version)')"
+          case "$PLAYWRIGHT_IMAGE" in
+            *":v$version-"*) echo "Playwright $version matches $PLAYWRIGHT_IMAGE" ;;
+            *)
+              echo "::error::@playwright/test is $version (bun.lock) but PLAYWRIGHT_IMAGE in .github/workflows/smoke-repeat.yml is $PLAYWRIGHT_IMAGE. Set it to mcr.microsoft.com/playwright:v$version-noble@sha256:<index digest from 'docker buildx imagetools inspect mcr.microsoft.com/playwright:v$version-noble'>, as ci.yml has it."
+              exit 1 ;;
+          esac
+          # The whole reference, tag and digest, equals ci.yml's: a different digest under the same version fails.
+          mapfile -t ci_refs < <(sed -n 's/^  PLAYWRIGHT_IMAGE: //p' .github/workflows/ci.yml)
+          if [ "${#ci_refs[@]}" -ne 1 ] || [ "${ci_refs[0]}" != "$PLAYWRIGHT_IMAGE" ]; then
+            echo "::error::PLAYWRIGHT_IMAGE in .github/workflows/smoke-repeat.yml ($PLAYWRIGHT_IMAGE) differs from the one in .github/workflows/ci.yml (${ci_refs[*]:-none}). Copy ci.yml's line, tag and digest, here."
+            exit 1
+          fi
+      # The stress from the checkout, on a temporary database, with the checkout's own Bun and Prisma. A failing stress
+      # does not end the step: its exit status goes into the record (the step stays green so the record is still
+      # written), and the repeat step turns a non-zero status into the job's result.
+      - name: Stress from the checkout
+        run: |
+          out="$RUNNER_TEMP/smoke-repeat"
+          mkdir -p "$out"
+          export DATABASE_URL="file:$(mktemp -d)/stress.db"
+          export CONTENT_DIR=content
+          status=0
+          (bunx prisma migrate deploy && bun src/lib/server/prisma-stress.bun-check.ts) > "$out/stress-checkout.txt" 2>&1 || status=$?
+          echo "$status" > "$out/stress-checkout.status"
+          # The runner trims Unicode whitespace before it looks for ::, finds ##[ anywhere and starts a new line at a CR: so
+          # every line is prefixed, ##[ is broken and a CR is a space.
+          tail -n 3 "$out/stress-checkout.txt" | tr '\r' ' ' | sed 's/##\[/#.#[/g; s/^/| /'
+          exit 0
+      - name: Build the image of this ref
+        if: needs.plan.outputs.image == ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # As ci.yml's docker job builds it: nothing is pushed, the cache is read and never written.
+      - if: needs.plan.outputs.image == ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: beyondleetcode:smoke-repeat
+          cache-from: type=gha
+      - name: Pull the image
+        if: needs.plan.outputs.image != ''
+        run: docker pull "$IMAGE_TAG"
+      # The shim sends exactly `bun run test:smoke` into the Playwright image (host network, so localhost:3000 is the
+      # composed stack), as ci.yml's docker job does, and passes every other bun call through.
+      - name: Repeat the smoke flow
+        id: repeat
+        run: |
+          image="${IMAGE_TAG:-beyondleetcode:smoke-repeat}"
+          out="$RUNNER_TEMP/smoke-repeat"
+          mkdir -p "$out"
+          shim="$RUNNER_TEMP/bun-shim"
+          mkdir -p "$shim"
+          export REAL_BUN="$(readlink -f "$(command -v bun)")"
+          cat > "$shim/bun" <<'SHIM'
+          #!/usr/bin/env bash
+          if [ "$*" = "run test:smoke" ]; then
+            exec docker run --rm --init --ipc=host --network host -e CI -e SMOKE_BASE_URL \
+              -v "$PWD:$PWD" -w "$PWD" \
+              -v "$REAL_BUN:/usr/local/bin/bun:ro" \
+              "$PLAYWRIGHT_IMAGE" bun run test:smoke
+          fi
+          exec "$REAL_BUN" "$@"
+          SHIM
+          chmod +x "$shim/bun"
+          PATH="$shim:$PATH" .github/smoke-repeat.sh "$image" "$RUNS" "$out"
+      # summary.md exists only when the script showed it clean of the secrets it generated.
+      - name: Job summary
+        if: always()
+        run: |
+          file="$RUNNER_TEMP/smoke-repeat/summary.md"
+          if [ -f "$file" ]; then
+            head -c 900000 "$file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No record was written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload the record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-repeat-${{ matrix.job }}
+          path: ${{ runner.temp }}/smoke-repeat/summary.md
+          retention-days: 90
+          if-no-files-found: warn
