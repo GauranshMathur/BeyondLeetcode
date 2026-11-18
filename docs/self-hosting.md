@@ -140,11 +140,11 @@ When a Run or Submit fails because the Runner could not be used, the Learner see
 | `runner RunnerUnreachable` | No answer: the connection failed, or the Runner took longer than 30 s to answer in full. | `docker compose ps`: is `runner` running, not restarting? `docker compose logs runner` shows why it stopped; it refuses to start on a missing, placeholder or too-short `RUNNER_TOKEN` (32 characters at least) or a bad `RUNNER_MAX_CONCURRENT`. |
 | `runner RunnerFailed` | Any other answer: a 500 (the Runner logs `runner RunnerFailed <ClassName>`: the class name of the error that was thrown, never its message), a redirect, or a reply that is not a valid result. | `docker compose logs runner`. Check that nothing else is answering at the Runner's address. |
 
+The Runner's request handler logs nothing for a 200, a 404, a 405, a 503 (busy or not ready), a caller that leaves while its request waits for a slot, or a caller that leaves mid-body. Container handling logs its own lines: a Run stopped at the time limit adds `Kill of container <id> answered after N ms` (or `Could not kill container <id>` if the kill failed), and a container that could not be removed logs `Could not remove container ...`.
+
 #### Reading a failed pull
 
 Pull the image named in the `Could not pull Sandbox image` line against the engine the Runner uses: `docker pull <image>` for the host's Docker; for rootless Docker, as the engine's user, with its `rootless` CLI context or `DOCKER_HOST=unix:///run/user/<uid>/docker.sock`; `podman pull <image>` as that user for Podman. A CLI that is logged in can succeed where the Runner's pull, which sends no credentials, fails; once the image is there the Runner finds it. A plain `Error` there, with `Could not clean up leftover Sandbox containers` failing too, can mean the Runner could not use the engine at all: check its socket mount before the registry.
-
-The Runner's request handler logs nothing for a 200, a 404, a 405, a 503 (busy or not ready), a caller that leaves while its request waits for a slot, or a caller that leaves mid-body. Container handling logs its own lines: a Run stopped at the time limit adds `Kill of container <id> answered after N ms` (or `Could not kill container <id>` if the kill failed), and a container that could not be removed logs `Could not remove container ...`.
 
 #### Log rotation
 
