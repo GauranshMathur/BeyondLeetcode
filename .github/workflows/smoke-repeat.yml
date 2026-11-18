@@ -153,18 +153,20 @@ jobs:
             echo "::error::PLAYWRIGHT_IMAGE in .github/workflows/smoke-repeat.yml ($PLAYWRIGHT_IMAGE) differs from the one in .github/workflows/ci.yml (${ci_refs[*]:-none}). Copy ci.yml's line, tag and digest, here."
             exit 1
           fi
-      # The stress from the checkout, on a temporary database, with the checkout's own Bun and Prisma. It always ends
-      # the step green: its exit status goes into the record, and the repeat step turns it into the job's result.
+      # The stress from the checkout, on a temporary database, with the checkout's own Bun and Prisma. A failing stress
+      # does not end the step: its exit status goes into the record (the step stays green so the record is still
+      # written), and the repeat step turns a non-zero status into the job's result.
       - name: Stress from the checkout
         run: |
           out="$RUNNER_TEMP/smoke-repeat"
           mkdir -p "$out"
           export DATABASE_URL="file:$(mktemp -d)/stress.db"
           export CONTENT_DIR=content
-          (bunx prisma migrate deploy && bun src/lib/server/prisma-stress.bun-check.ts) > "$out/stress-checkout.txt" 2>&1
-          status=$?
+          status=0
+          (bunx prisma migrate deploy && bun src/lib/server/prisma-stress.bun-check.ts) > "$out/stress-checkout.txt" 2>&1 || status=$?
           echo "$status" > "$out/stress-checkout.status"
-          tail -n 3 "$out/stress-checkout.txt"
+          # A line that starts with :: or ##[ would be a workflow command in the job log.
+          tail -n 3 "$out/stress-checkout.txt" | sed -E 's/^(::|##\[)/ \1/'
           exit 0
       - name: Build the image of this ref
         if: needs.plan.outputs.image == ''

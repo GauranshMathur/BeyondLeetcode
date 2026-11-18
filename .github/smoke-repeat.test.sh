@@ -117,11 +117,90 @@ mkdir -p "$out/runs/1" "$out/runs/2" "$out/runs/3"
 printf 'passed\n' >"$out/runs/1/class.txt"
 printf 'query-engine\n%s\n' "$query_engine_get" >"$out/runs/2/class.txt"
 printf 'other\ntoomanyrequests\n' >"$out/runs/3/class.txt"
-printf 'RUNNER_TOKEN=%s\n' "$runner_token" >"$out/.env"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
 write_summary "$out" example:tag
 status=$?
 grep -qF 'runs=3 passed=1 query-engine=1 other=1' "$out/summary.md" \
   && ok "the totals count the classes" || bad "the totals: $(grep -i total "$out/summary.md")"
 [ "$status" = 1 ] && ok "a query-engine run makes the exit 1" || bad "exit $status, wanted 1"
+
+# 8. A route-less 500 is still a query-engine error
+run_case eight "$(printf '%s\n%s' "$listening" '[500] GET (no route) PrismaClientRustPanicError')" "" 0 ""
+[ "$(first_line)" = query-engine ] && ok "a (no route) PrismaClient 500 is query-engine" || bad "(no route): got '$got'"
+
+# 9. A web log that is empty or missing is never passed
+: >"$work/web.log"
+: >"$work/runner.log"
+got="$(classify_run "$work/web.log" "$work/runner.log" 0 "")"
+[ "$(first_line)" = other ] && printf '%s\n' "$got" | grep -q "web log unreadable" \
+  && ok "an empty web log is other, web log unreadable" || bad "empty web log: got '$got'"
+got="$(classify_run "$work/missing.log" "$work/runner.log" 0 "")"
+[ "$(first_line)" = other ] && ok "a missing web log is other" || bad "missing web log: got '$got'"
+
+# 10. A web that never came up still has its log classified
+dir="$work/run-setup"
+mkdir -p "$dir"
+printf '%s\n' "$query_engine_get" >"$dir/web.log"
+: >"$dir/runner.log"
+classify_dir "$dir" 1 "web did not answer /setup" >/dev/null
+[ "$(head -n 1 "$dir/class.txt")" = query-engine ] && ok "a failed start-up with a PrismaClient line is query-engine" || bad "start-up failure: $(cat "$dir/class.txt")"
+printf '%s\n' "$listening" >"$dir/web.log"
+classify_dir "$dir" 1 "web did not answer /setup" >/dev/null
+[ "$(head -n 1 "$dir/class.txt")" = other ] && grep -q "web did not answer /setup" "$dir/class.txt" \
+  && ok "a failed start-up without one is other, with its reason" || bad "start-up failure: $(cat "$dir/class.txt")"
+
+# 11. What reaches the job log is redacted and cannot be a workflow command
+SECRETS=("$runner_token" "$auth_secret")
+got="$(printf '%s\n' "::error::forged" "##[add-mask]x" "token $runner_token and $auth_secret" "plain" | log_safe)"
+printf '%s\n' "$got" | grep -qE '^(::|##\[)' && bad "a workflow command got through: '$got'" || ok "a leading :: or ##[ is neutralised"
+printf '%s\n' "$got" | grep -qF -e "$runner_token" -e "$auth_secret" && bad "a secret reached the job log" || ok "secrets are redacted from the job log"
+printf '%s\n' "$got" | grep -qx "plain" && ok "other lines pass unchanged" || bad "plain line changed: '$got'"
+SECRETS=()
+
+# 12. Both generated values must be known before any record is written
+out="$work/record-d"
+mkdir -p "$out/runs/1"
+printf 'passed\n' >"$out/runs/1/class.txt"
+printf 'RUNNER_TOKEN=%s\n' "$runner_token" >"$out/.env"
+write_summary "$out" example:tag 2>/dev/null
+status=$?
+[ "$status" = 2 ] && [ ! -e "$out/summary.md" ] && ok "one known secret is not enough: no record" || bad "one secret: exit $status"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=\n' "$runner_token" >"$out/.env"
+write_summary "$out" example:tag 2>/dev/null
+status=$?
+[ "$status" = 2 ] && [ ! -e "$out/summary.md" ] && ok "an empty auth secret is not known: no record" || bad "empty auth secret: exit $status"
+
+# 13. Output from the image cannot close the record's fence
+out="$work/record-e"
+mkdir -p "$out"
+printf 'line one\n~~~~\n# Injected heading\n  ```\nafter\n' >"$out/facts.txt"
+write_summary "$out" example:tag 2>/dev/null
+[ "$(grep -c '^~~~~$' "$out/summary.md")" = 2 ] && ! grep -qE '^ {0,3}```' "$out/summary.md" \
+  && ok "a fence line in the output is indented, not a fence" || bad "fence break-out: $(grep -n '~~~~' "$out/summary.md")"
+
+# 14. A stress with no status file is a failure, never a pass
+out="$work/record-f"
+mkdir -p "$out"
+printf 'prisma-stress rounds=1 calls=7 errors=0\n' >"$out/stress-checkout.txt"
+verdict "$out"
+[ "$?" = 1 ] && ok "a stress output without a status is a failure" || bad "missing stress status passed"
+
+# 15. Clean-up: a compose down that fails is said in the record's last line and fails the job
+out="$work/record-g"
+mkdir -p "$out" "$work/inst"
+printf '# record\n' >"$out/summary.md"
+: >"$work/inst/compose.yaml"
+OUT_DIR="$out"
+INSTANCE="$work/inst"
+WORK_DIR=""
+( cleanup ) 2>/dev/null
+status=$?
+[ "$status" != 0 ] && [ "$(tail -n 1 "$out/summary.md")" != "# record" ] && tail -n 1 "$out/summary.md" | grep -qi "clean-up" \
+  && ok "a failed compose down is in the record and fails the job" || bad "failed clean-up: exit $status, last line '$(tail -n 1 "$out/summary.md")'"
+printf '# record\n' >"$out/summary.md"
+printf '#!/bin/sh\nexit 0\n' >"$bin/timeout"
+( cleanup ) 2>/dev/null
+status=$?
+[ "$status" = 0 ] && [ "$(tail -n 1 "$out/summary.md")" = "# record" ] && ok "a clean clean-up changes nothing" || bad "clean clean-up: exit $status"
 
 exit "$fail"

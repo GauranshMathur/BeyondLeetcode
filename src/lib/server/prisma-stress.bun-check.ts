@@ -96,8 +96,9 @@ async function attempt<T>(
 }
 
 for (let round = 1; round <= rounds; round++) {
-	const { id } = await db.learner.create({ data: {} });
-	const learner = core.forLearner(id);
+	const created = await attempt(round, 'learner.create', () => db.learner.create({ data: {} }));
+	if (!created) continue;
+	const learner = core.forLearner(created.id);
 
 	// A hover preload and the navigation can both load the Problem page.
 	const [first, second] = await Promise.all([
