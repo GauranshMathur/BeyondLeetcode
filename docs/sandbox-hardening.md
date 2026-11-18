@@ -1,8 +1,8 @@
-# Hardening the Sandboxes: rootless Docker, rootless Podman and gVisor
+# What was found running the Sandboxes under rootless Docker, rootless Podman and gVisor
 
 ## What this is
 
-By default every Sandbox runs under rootful Docker, with the flags in [ADR 0002](adr/0002-sandbox-per-run-containers.md). Each of the three engines below was tried once, on a GitHub-hosted runner, with the Sandbox tests and the composed Instance, and not on any other host. Rootful Podman was not tried, because its socket is root on the host, as rootful Docker's is. A Kubernetes backend is not covered: `docs/product/mvp1.md` says it comes later.
+By default every Sandbox runs under rootful Docker, with the flags in [ADR 0002](adr/0002-sandbox-per-run-containers.md). Each of the three engines below was tried in one run, in two attempts on GitHub-hosted runners, with the Sandbox tests and the composed Instance, and not on any other host. Rootful Podman was not tried, because its socket is root on the host, as rootful Docker's is. A Kubernetes backend is not covered: `docs/product/mvp1.md` says it comes later.
 
 This page reports what one run found. It recommends no engine over another, and no result here is a promise for another host. It proposes no change to a Sandbox limit, flag, mount or image: a Runner change for an engine, or a Sandbox limit that does not hold under one, is the maintainer's decision.
 
@@ -18,28 +18,29 @@ This page reports what one run found. It recommends no engine over another, and 
   - gVisor: first and second attempt `ubuntu24 20261111.127.1`, `7.0.0-1014-aws`.
 - Baseline leg (the runner image's own rootful Docker, docker-ce 28.0.4, no change): 145 Sandbox checks, 145 passed, 0 failed; the composed Instance came up in 5 s and the browser flow passed.
 
-The failed legs were re-run once, as the card allows, and both attempts are written here:
+The legs that failed in the first attempt were re-run once, and both attempts are written here:
 
-- Rootless Docker, first attempt: red. The suite `http-adapter.sandbox.test.ts` failed to start with `DeadlineError: Docker POST /containers/create timed out`, so its 76 checks were skipped (146 reported, 69 passed, 1 failed suite, 76 skipped). The composed Instance and the browser flow passed. Second attempt: green, below. The run does not show why the first attempt timed out.
-- Podman and gVisor: the same totals in both attempts (34 of 145 and 139 of 145 passed).
+- Rootless Docker, first attempt: red. One suite, `http-adapter.sandbox.test.ts`, failed in its shared set-up with `DeadlineError: Docker POST /containers/create timed out`, so 76 of the 145 checks did not run (the leg reported 146: 69 passed, 1 failed suite, 76 skipped). The first attempt's log shows only this: a `POST /containers/create` got no reply in time, in that suite's set-up and before any of its tests; the Runner's engine-call limit is 15 s (from `src/lib/server/runner/config.ts`, a reading of the Runner's code, not something the run printed). The other 69 checks, the composed Instance and the browser flow passed. The run has no engine-side log for that moment and does not show why. Second attempt: green, below.
+- Podman and gVisor: the same tests failed in both attempts (34 of 145 and 139 of 145 passed).
 
 The tables and totals below are from the second attempt. One caveat applies to every leg: the escape test that probes the Docker host gateway reads the bridge network's gateway and falls back to `172.17.0.1` when it cannot. The summaries do not record which address it used, so on the rootless legs its pass is not proven to be a probe of the host's address.
 
 ## Rootless Docker
 
-**Outcome.** The Instance ran under rootless Docker with all 145 Sandbox checks passing and the composed Instance's browser flow passing, on the second attempt. The first attempt failed at the start of one suite (see above); that is not explained by the run.
+**Outcome.** On the second attempt the Instance ran under rootless Docker with all 145 Sandbox checks passing and the browser flow passing. The first attempt was red: one suite's shared start timed out and 76 of the 145 checks did not run (details under "The run"); the run does not show why. What the trial host shows is that the Instance works under rootless Docker. It does not show a host where rootless lowers what an escape reaches: the runner user had `sudo`, and the runner's rootful daemon kept running (which is why `--force` was needed in step 6). Docker's rootless documentation ([Rootless mode](https://docs.docker.com/engine/security/rootless/)) gives the conditions under which the engine and its containers run without root on the host; that is from the documentation, not from this run.
 
 **Version tried.** Docker Engine 28.0.4 (rootlesskit 2.3.4, slirp4netns 1.2.1), the same version as the runner image's own docker-ce.
 
 **What to install or set on the host.** These are the steps the leg took, in order, as the runner user:
 
-1. Install `uidmap`, `dbus-user-session` and `slirp4netns` from the Ubuntu 24.04 archive if missing (the runner already had them). Docs: [Rootless mode, prerequisites](https://docs.docker.com/engine/security/rootless/).
+1. Packages: the leg needed `uidmap`, `dbus-user-session` and `slirp4netns` and found them already installed, so it installed nothing and the host-change list has no line for them. Docs: [Rootless mode, prerequisites](https://docs.docker.com/engine/security/rootless/).
 2. Give the user subordinate ids: `sudo usermod --add-subuids 231072-296607 --add-subgids 231072-296607 <user>`, when `/etc/subuid` and `/etc/subgid` have no line for the user. Docs: the same page.
 3. Delegate the cgroup controllers to user sessions, so the Sandbox's CPU, memory and pids limits can be set. Write `/etc/systemd/system/user@.service.d/delegate.conf` with `[Service]` and `Delegate=cpu cpuset io memory pids`, then run `sudo systemctl daemon-reload`. Docs: [Limiting resources](https://docs.docker.com/engine/security/rootless/tips/).
 4. Enable linger for the user, so the user's engine outlives the login: `sudo loginctl enable-linger <user>`. Steps 2 to 4 concern the user that runs the engine.
 5. Install `docker-ce-rootless-extras` at the same version as Docker (here `docker-ce-rootless-extras_28.0.4-1~ubuntu.24.04~noble_amd64.deb`, from Docker's `noble` stable pool, checked against its sha256 `2abb177d60561ac77b50a42b60500ab194b70f40f4b225d837c1fdccaaab7a28`), with `sudo dpkg -i`. Docs: [Rootless mode](https://docs.docker.com/engine/security/rootless/).
-6. As the user, run `dockerd-rootless-setuptool.sh install --force`. The `--force` was used because the runner's rootful daemon stayed running; a host without one would not need it. Docs: the same page.
-7. Put the images in the engine. The rootless engine has its own image store, so the leg copied the Sandbox images and the app image into it with `docker load`; an operator's host would pull them instead (the run did not test that).
+6. As the user, run `dockerd-rootless-setuptool.sh install --force`. `--force` was used because the runner's rootful daemon stayed running. Docs: the same page.
+
+Not a host change: the rootless engine has its own image store, so the trial copied the Sandbox images and the app image into it with `docker load`. The run did not test pulling them in.
 
 Ubuntu 24.04 only: it restricts unprivileged user namespaces (`kernel.apparmor_restrict_unprivileged_userns = 1` on every leg, baseline included). The leg did not change that setting. Its setup checked that the `rootlesskit` AppArmor profile file was present, which Docker's rootless troubleshooting page ([Troubleshoot](https://docs.docker.com/engine/security/rootless/troubleshoot/)) says comes with the Ubuntu `apparmor` package, and it went on.
 
@@ -56,8 +57,9 @@ services:
 
 **How to check it took effect.**
 
-- `docker info` with `DOCKER_HOST` set to the user's socket. Worked when `SecurityOptions` includes `name=rootless`: `SecurityOptions=["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]`, with `CgroupVersion=2` and `DefaultRuntime=runc`.
-- The user's systemd manager lists the controllers, which worked when `cgroup.controllers` includes `cpu memory pids` (it printed `cpuset cpu io memory pids`).
+- `docker info` with `DOCKER_HOST` set to the user's socket. It printed `SecurityOptions=["name=seccomp,profile=builtin","name=rootless","name=cgroupns"]`, `CgroupVersion=2` and `DefaultRuntime=runc`. Compared with the baseline's `SecurityOptions`, `name=apparmor` is absent here.
+- The check that delegation took effect, which the leg used as its gate: `docker info --format '{{.CPUCfsQuota}} {{.MemoryLimit}} {{.PidsLimit}}'` must print `true true true`. It matters because the Runner reads only the container's id from the engine's create reply, so a limit the engine could not apply would not be reported by the Runner (a reading of the Runner's code, not something the run showed).
+- A record, not a check: the user's systemd manager's `cgroup.controllers` printed `cpuset cpu io memory pids` and `cgroup.subtree_control` printed `cpu memory pids`.
 - The Runner's `/health`, asked from inside its container with the Runner token, answers 200 and lists `python`, `typescript` and `go`. It did within 3 s of `docker compose up -d`.
 - A Run in each Language: the browser flow (one smoke test, Map to Topic to Chapter to Problem, then Run and Submit in Python, TypeScript and Go in turn) passed.
 
@@ -65,7 +67,7 @@ services:
 
 | Check | Baseline (rootful Docker) | Rootless Docker |
 |---|---|---|
-| No network | pass | pass |
+| No network, the internet, host-gateway and DNS probes in one test (see the gateway caveat above) | pass | pass |
 | Read-only root | pass | pass |
 | Not root, no capabilities, no new privileges | pass | pass |
 | No engine socket inside | pass | pass |
@@ -79,17 +81,17 @@ services:
 | No container left behind (the leg's leftover checks, after the tests and after the composed Instance) | pass | pass |
 | A Problem solved in Python, TypeScript and Go: the composed Instance's browser flow | pass | pass |
 
-Totals: 145 Sandbox checks, 145 passed, 0 failed. No failed test.
+Totals: 145 Sandbox checks, 145 passed, 0 failed. No failed test. In the first attempt, the rows whose tests had no verdict were "Infinite loop ended, and the wall-clock kill" and "No container left behind (the test)" (their tests are in the suite that did not start); the other rows' tests passed.
 
 ## Rootless Podman
 
-**Outcome.** The Instance did not run correctly under rootless Podman. 111 of 145 Sandbox checks failed, and the composed Instance came up (the Runner answered `/health` in 6 s) but the browser flow failed. The Runner logged `runner RunnerFailed DockerReplyError`, and the direct Sandbox tests show the engine's reply: Podman refused to create the Sandbox container with `unknown mount option "uid=65534"` (the owner option on the Sandbox's `/work` and `/exec` tmpfs mounts). It is not a Compose matter. This is not fixed here: a Runner change for Podman is the maintainer's decision.
+**Outcome.** The Instance did not run correctly under rootless Podman. 111 of 145 Sandbox checks failed, and the composed Instance came up (the Runner answered `/health` in 6 s) but the browser flow failed. The Runner logged `runner RunnerFailed DockerReplyError`, and the direct Sandbox tests show the engine's reply: Podman refused to create the Sandbox container with `unknown mount option "uid=65534"` (the owner option on the Sandbox's `/work` and `/exec` tmpfs mounts). It is not a Compose matter. This is not fixed here: a Runner change for Podman is the maintainer's decision, and this page proposes no change to the Sandbox's mounts, user or mode.
 
 **Version tried.** Podman 4.9.3 (the runner image's own), crun as the OCI runtime, rootless: true, seccomp on, cgroup v2 with the systemd manager.
 
 **What to install or set on the host.** The leg's steps, as the runner user:
 
-1. Install `uidmap` and `dbus-user-session` from the Ubuntu 24.04 archive if missing (the runner already had them). Docs: [rootless tutorial](https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md).
+1. Packages: the leg needed `uidmap` and `dbus-user-session` and found them already installed, so it installed nothing and the host-change list has no line for them. Docs: [rootless tutorial](https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md).
 2. Give the user subordinate ids, as in step 2 of rootless Docker. Docs: the rootless tutorial, "/etc/subuid and /etc/subgid configuration".
 3. Delegate the cgroup controllers (`Delegate=cpu cpuset io memory pids` in `/etc/systemd/system/user@.service.d/delegate.conf`) and run `sudo systemctl daemon-reload`. The script cites Docker's page for this step: [Limiting resources](https://docs.docker.com/engine/security/rootless/tips/).
 4. Enable linger for the user: `sudo loginctl enable-linger <user>`.
@@ -111,7 +113,9 @@ The merged configuration had exactly one socket mount, from `/run/user/1001/podm
 **How to check it took effect.**
 
 - `podman info`: it printed `rootless: true`, `ociRuntime: name: crun`, `cgroupVersion: v2`, `cgroupControllers` listing `cpu`, `memory` and `pids`.
-- The Docker-compatible `docker info` through the socket printed `SecurityOptions=["name=apparmor","name=seccomp,profile=default","name=rootless"]`, `DefaultRuntime=crun` (a record only; it also reported CPUCfsQuota false, whatever the delegation).
+- The check that delegation took effect, which the leg used as its gate: `podman --remote --url unix://<socket> info --format '{{json .Host.CgroupControllers}}'` must hold `cpu`, `memory` and `pids`.
+- A record only: the Docker-compatible `docker info` through the socket printed `SecurityOptions=["name=apparmor","name=seccomp,profile=default","name=rootless"]` and `DefaultRuntime=crun`. The leg's script notes that Podman 4.9.3's Docker-compatible info reports `CPUCfsQuota` false on cgroup v2; this run did not print that field.
+- A record, not a check: the user's systemd manager's `cgroup.controllers` printed `cpuset cpu io memory pids`.
 - The Runner's `/health` answered 200 listing all three Languages. It did, 6 s after `docker compose up -d`.
 - A Run in each Language: the browser flow failed. It is one smoke test that runs Python, TypeScript and Go in turn and stops at its first failure; its output names no Language. It failed at its first Run (inferred from its duration of 3.0 min), waiting 180 s for `Example Test 01` to show a pass.
 
@@ -119,7 +123,7 @@ The merged configuration had exactly one socket mount, from `/run/user/1001/podm
 
 | Check | Baseline (rootful Docker) | Rootless Podman |
 |---|---|---|
-| No network | pass | fail (1 of 1) |
+| No network, the internet, host-gateway and DNS probes in one test (see the gateway caveat above) | pass | fail (1 of 1) |
 | Read-only root | pass | fail (2 of 2) |
 | Not root, no capabilities, no new privileges | pass | fail (1 of 1) |
 | No engine socket inside | pass | fail (1 of 1) |
@@ -129,7 +133,7 @@ The merged configuration had exactly one socket mount, from `/run/user/1001/podm
 | Infinite loop ended, and the wall-clock kill | pass | fail (2 of 2) |
 | Core limit and the seccomp filter | pass | fail (6 of 6) |
 | No container left behind (the test) | pass | fail (1 of 1) |
-| A Problem solved in Python, TypeScript and Go: the content check on the fixture | pass | fail (15 of 43) |
+| A Problem solved in Python, TypeScript and Go: the content check on the fixture | pass | fail (all 15 fixture cases) |
 | No container left behind (the leg's leftover checks, after the tests and after the composed Instance) | pass | pass |
 | A Problem solved in Python, TypeScript and Go: the composed Instance's browser flow | pass | fail |
 
@@ -251,7 +255,11 @@ Totals: 145 Sandbox checks, 34 passed, 111 failed. The failed tests, word for wo
 
 ## gVisor
 
-**Outcome.** The Instance did not run correctly under gVisor. 6 of 145 Sandbox checks failed, and the composed Instance came up only on the second try (the Runner's own container on `runc`), after which the browser flow failed. None of this is fixed here: a Runner change for gVisor, or a Sandbox limit that does not hold under it, is the maintainer's decision. The run cannot tell, for each of the six failed Sandbox checks, whether it is a weaker Sandbox or a test that assumes `runc`'s behaviour. The first two (writing outside `/work`; a hidden Test input carried to a later Test through System V IPC, shared memory or POSIX queues) are isolation checks.
+**Outcome.** The Instance did not run correctly under gVisor. 6 of 145 Sandbox checks failed, and the composed Instance came up only on the second try (the Runner's own container on `runc`); after that the browser flow failed. None of this is fixed here: a Runner change for gVisor, or a Sandbox limit that does not hold under it, is the maintainer's decision. What the failed tests' output shows:
+
+- Writing outside `/work`: every write to `/`, `/usr`, `/etc`, `/usr/local`, `/proc` and `/sys` was denied. The output also shows an extra writable `/tmp` that the Sandbox does not ask for: `wrote /tmp/escape` and `made /tmp/escape-dir`. The run did not test whether that `/tmp` survives from one Test to the next, how large it is, or whether files in it can be executed.
+- Hidden Test input: under gVisor a hidden Test input reached a later Test of the same request through System V IPC. The later Test's output held `queue 32 b'SECRET-ipc'`, `shm data b'SECRET-shm'` and `sem 1 7777`. Two bounds, each a reading of the Runner as shipped rather than something the run printed: a request uses one container, and visible and hidden Tests run in separate containers.
+- Memory hog, asking for more memory than the Runner allows, the fork bomb at the pids limit, and learner code signalling PID 1: each failed with `RunnerFailed: Runner responded 500`. The Runner refused the Run with an error and kept serving the next request (the later tests on the leg passed). The run does not show the cause, because the Runner logs only the error's class. It does not show that a limit was exceeded, only that the Run ended in an error. The run cannot tell, for these four, whether each is a weaker Sandbox or a test that assumes `runc`'s behaviour.
 
 **Version tried.** gVisor release-20261116.0 (`runsc version release-20261116.0`, spec 1.2.1), under Docker Engine 28.0.4, with `runsc` as Docker's default runtime.
 
@@ -267,8 +275,8 @@ The script cites gVisor's installation guide ("Install latest release") and the 
 
 **What to change in `compose.yaml` or `.env`.** Two tries were made.
 
-- Try 1, no override. The Runner's own container ran under `runsc` and listened, but every engine call it made failed: its start-up sweep logged `Could not clean up leftover Sandbox containers: Error`, its image check logged `Could not pull Sandbox image ...: Error` for all three images, and no "Pulling Sandbox image" line appears. It was not ready in 5 minutes. The run does not say why the calls failed.
-- Try 2, `runtime: runc` on the `runner` service only, so the Runner's own container runs on `runc` and every Sandbox runs on `runsc`. The Runner was ready in 5 s. This is the try that came up:
+- Try 1, no override. The Runner's own container ran under `runsc` and listened, but every engine call it made failed: its start-up sweep logged `Could not clean up leftover Sandbox containers: Error`, its image check logged `Could not pull Sandbox image ...: Error` for all three images, and no "Pulling Sandbox image" line appears. It was not ready in 5 minutes. The leg's own record shows runsc's `host-uds` setting as `none`. gVisor's documentation ([observability](https://gvisor.dev/docs/user_guide/observability/), the page the script cites) gives a flag, `--host-uds=all`, to allow host sockets; it is set for the whole runtime, so it would apply to every Sandbox as well. The trial did not set it, so the run does not show that this is the cause.
+- Try 2, `runtime: runc` on the `runner` service only, so the Runner's own container runs on `runc` and every Sandbox runs on `runsc`. The Runner was ready in 5 s. This is the try that came up. It leaves the Runner's own container exactly where the stock engine has it: gVisor then stands between Sandboxes and the host, never between the Runner (which holds the engine socket) and the host. No Sandbox ran in the composed Instance under gVisor, since `web` got no answer from the Runner.
 
 ```yaml
 services:
@@ -281,20 +289,22 @@ The merged configuration had one socket mount, `/var/run/docker.sock`, on `runne
 **How to check it took effect.**
 
 - `runsc --version` printed `runsc version release-20261116.0`.
-- `docker info` with `DefaultRuntime=runsc` printed, and the Docker version output lists `runsc: Version: release-20261116.0`.
+- `docker info` printed `DefaultRuntime=runsc`, and `docker version` lists `runsc: Version: release-20261116.0`.
+- `docker run --rm --network none --memory 256m --memory-swap 256m <a Sandbox image> dmesg`, the leg's own check: its output names gVisor (the leg's check passed).
+- A record of runsc's flags as Docker reports them, for the default runtime: `oci-seccomp` `false`, `platform` `systrap`, `overlay2` `root:self`, `network` `sandbox`, `file-access` `exclusive`, `host-uds` `none`; and the runtime's features list AppArmor as not enabled. Reading these: Docker's default seccomp profile is not applied to Sandboxes under gVisor. The harness's own seccomp filter is: the tracing and core-dump tests passed.
 - The Runner's `/health` answered 200 listing all three Languages, in try 2 only.
-- A Run in each Language: the browser flow failed, at its first Run (inferred from its duration of 3.0 min, waiting 180 s for `Example Test 01` to show a pass). It is one smoke test and its output names no Language.
+- A Run in each Language: the browser flow failed, at its first Run (inferred from its duration of 3.0 min, waiting 180 s for `Example Test 01` to show a pass). It is one smoke test and its output names no Language. It failed on the second try only, since the first try never had a ready Runner.
 
 **What held and what did not.**
 
 | Check | Baseline (rootful Docker) | gVisor |
 |---|---|---|
-| No network | pass | pass |
-| Read-only root | pass | fail (1 of 2) |
+| No network, the internet, host-gateway and DNS probes in one test (see the gateway caveat above) | pass | pass |
+| Read-only root | pass | 1 of 2 failed: every write outside `/work` was denied except `/tmp`, which was writable |
 | Not root, no capabilities, no new privileges | pass | pass |
 | No engine socket inside | pass | pass |
-| Memory limit | pass | fail (2 of 2) |
-| Pids limit | pass | fail (1 of 1) |
+| Memory limit | pass | 2 of 2 failed: the Runner answered 500 (the run does not show that the limit was exceeded) |
+| Pids limit | pass | 1 of 1 failed: the Runner answered 500 (the run does not show that the limit was exceeded) |
 | CPU limit | pass | pass |
 | Infinite loop ended, and the wall-clock kill | pass | pass |
 | Core limit and the seccomp filter | pass | pass |
@@ -303,7 +313,7 @@ The merged configuration had one socket mount, `/var/run/docker.sock`, on `runne
 | No container left behind (the leg's leftover checks, after the tests and after the composed Instance) | pass | pass |
 | A Problem solved in Python, TypeScript and Go: the composed Instance's browser flow | pass | fail |
 
-Two failed tests belong to no row above: the hidden Test input carried through IPC (an isolation check), and `is not aborted by learner code signalling PID 1`. The CPU limit held: `three busy processes used 0.71 CPU in all`.
+Two failed tests belong to no row above: the hidden Test input carried through IPC (an isolation check, described in the outcome), and `is not aborted by learner code signalling PID 1`. The CPU limit held: `three busy processes used 0.71 CPU in all`.
 
 Totals: 145 Sandbox checks, 139 passed, 6 failed. The failed tests, word for word:
 
@@ -316,4 +326,4 @@ Totals: 145 Sandbox checks, 139 passed, 6 failed. The failed tests, word for wor
 
 ## What this page does not say
 
-It recommends no engine over another. No result here is a promise for another host: each engine was tried once, on GitHub-hosted runners, and rootless Docker's first attempt failed where its second did not. The page proposes no change to a Sandbox limit, flag, mount or image.
+It recommends no engine over another. No result here is a promise for another host: each engine was tried in one run, in two attempts, on GitHub-hosted runners, and rootless Docker's first attempt failed where its second did not. The page proposes no change to a Sandbox limit, flag, mount or image.
