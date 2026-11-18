@@ -6,6 +6,7 @@ import { containerLabel, legacyContainerLabelValue, sandboxConfig, sweepMinAgeMs
 import { removeContainer, runContainer } from './container';
 import { type Engine, parseImageRef } from './engine';
 import { createHarnessDecoder, harnessEnv, harnessInput, harnessScript } from './harness';
+import { errorKind, logLine } from './log';
 import type { ExecuteRequest, ExecuteResult, Language, RunnerPort } from './port';
 
 const nobody = '65534:65534';
@@ -125,7 +126,7 @@ export async function removeStaleContainers(
 			if (legacy || now - created * 1000 > sweepMinAgeMs) await removeContainer(engine, id);
 		}
 	} catch (error) {
-		console.error('Could not clean up leftover Sandbox containers', error);
+		logLine(`Could not clean up leftover Sandbox containers: ${errorKind(error)}`);
 	}
 }
 
@@ -150,7 +151,7 @@ export async function scheduleDelayedSweep(
 		await sleep(secondSweepDelayMs);
 		await removeStaleContainers(engine, instanceId, now());
 	} catch (error) {
-		console.error('Delayed Sandbox container sweep failed', error);
+		logLine(`Delayed Sandbox container sweep failed: ${errorKind(error)}`);
 	}
 }
 
@@ -212,7 +213,9 @@ export function createImageKeeper(
 					onReady?.(language);
 					return;
 				} catch (error) {
-					console.error(`Could not pull Sandbox image ${image}, retrying in ${pause} ms`, error);
+					logLine(
+						`Could not pull Sandbox image ${image}, retrying in ${pause} ms: ${errorKind(error)}`
+					);
 					await sleep(pause);
 				}
 			}

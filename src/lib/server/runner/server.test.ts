@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { sandboxConfig } from './config';
 import { createScriptedRunner } from './fake';
-import { MAX_BUILD_FILES } from './port';
+import { MAX_BUILD_FILES, type RunnerPort } from './port';
 import { createRunnerHandler } from './server';
 
 const token = 'secret';
@@ -165,6 +165,43 @@ describe('Runner HTTP handler', () => {
 
 			expect(res.status).toBe(400);
 			expect(lines).toEqual(['runner RunnerRefused']);
+		});
+
+		describe('when console.error throws', () => {
+			const withThrowingConsole = async (
+				req: Request,
+				runner: RunnerPort = createScriptedRunner({})
+			) => {
+				const spy = vi.spyOn(console, 'error').mockImplementation(() => {
+					throw new Error('console is gone');
+				});
+				try {
+					const handle = createRunnerHandler({
+						token,
+						runner,
+						maxConcurrent: 4,
+						readyLanguages: () => ['python']
+					});
+					return await handle(req);
+				} finally {
+					spy.mockRestore();
+				}
+			};
+
+			it('still answers 401 to a request without the token', async () => {
+				expect((await withThrowingConsole(post(valid, null))).status).toBe(401);
+			});
+
+			it('still answers 400 to a body that is not JSON', async () => {
+				expect((await withThrowingConsole(post('{not json'))).status).toBe(400);
+			});
+
+			it('still answers 500 when the runner throws', async () => {
+				const res = await withThrowingConsole(post(withContent), {
+					execute: () => Promise.reject(new Error('boom'))
+				});
+				expect(res.status).toBe(500);
+			});
 		});
 
 		describe('for a body that is cut off', () => {

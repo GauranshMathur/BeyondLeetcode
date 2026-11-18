@@ -111,7 +111,7 @@ describe('Sandbox runner: harness exit status', () => {
 				{ id: 'a', status: 'timeout', stdout: '', stderr: '', cutOff: true }
 			]);
 			expect(calls).toContain('remove c1');
-			expect(logged).toHaveBeenCalledWith('Could not kill container c1', expect.any(Error));
+			expect(logged.mock.calls).toEqual([['Could not kill container c1: Error']]);
 		} finally {
 			logged.mockRestore();
 			vi.useRealTimers();
@@ -193,6 +193,20 @@ describe('Sandbox runner: start-up sweep', () => {
 		await removeStaleContainers(engine, 'me', nowMs);
 		return removed;
 	}
+
+	it('logs a failed listing with its class name and nothing of the reply', async () => {
+		const engine = {
+			listContainers: async () => {
+				throw new Error('Docker list failed (500): MESSAGE_MARKER\nsecond line');
+			}
+		} as unknown as Engine;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await removeStaleContainers(engine, 'me', nowMs);
+
+		expect(logged.mock.calls).toEqual([['Could not clean up leftover Sandbox containers: Error']]);
+		logged.mockRestore();
+	});
 
 	it('keeps another instance’s young container and its own', async () => {
 		const removed = await sweep([
@@ -311,6 +325,25 @@ describe('Sandbox runner: ensureImages', () => {
 		expect(pulled).toEqual(['a:1']);
 		expect(pauses).toEqual([1000, 2000, 4000]);
 		vi.restoreAllMocks();
+	});
+
+	it('logs a failed pull with its class name and nothing of the reply', async () => {
+		const present = new Set<string>();
+		const engine = {
+			hasImage: async (image: string) => present.has(image),
+			pull: vi
+				.fn()
+				.mockRejectedValueOnce(new Error('registry said MESSAGE_MARKER\nsecond line'))
+				.mockImplementation(async (image: string) => void present.add(image))
+		} as unknown as Engine;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await ensureImages(engine, { a: 'a:1' }, { sleep: async () => {} });
+
+		expect(logged.mock.calls).toEqual([
+			['Could not pull Sandbox image a:1, retrying in 1000 ms: Error']
+		]);
+		logged.mockRestore();
 	});
 
 	it('logs the start and finish of each pull', async () => {
@@ -601,6 +634,20 @@ describe('Sandbox runner: delayed second sweep', () => {
 		expect(waits).toEqual([secondSweepDelayMs]);
 		expect(secondSweepDelayMs).toBeGreaterThan(sweepMinAgeMs);
 		expect(removed).toEqual(['young']);
+	});
+
+	it('logs a failed delayed sweep with its class name and nothing of the reply', async () => {
+		const engine = {} as unknown as Engine;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await scheduleDelayedSweep(engine, 'me', {
+			sleep: async () => {
+				throw new Error('timer failed: MESSAGE_MARKER\nsecond line');
+			}
+		});
+
+		expect(logged.mock.calls).toEqual([['Delayed Sandbox container sweep failed: Error']]);
+		logged.mockRestore();
 	});
 
 	it('leaves a foreign container that is still young at the second sweep', async () => {

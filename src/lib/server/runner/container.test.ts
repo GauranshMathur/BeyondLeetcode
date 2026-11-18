@@ -169,7 +169,7 @@ describe('Container: how it ends', () => {
 
 			expect(await pending).toEqual({ kind: 'hardStop' });
 			expect(calls).toContain('remove c1');
-			expect(logged).toHaveBeenCalledWith('Could not kill container c1', expect.any(Error));
+			expect(logged.mock.calls).toEqual([['Could not kill container c1: Error']]);
 		} finally {
 			logged.mockRestore();
 			vi.useRealTimers();
@@ -302,6 +302,42 @@ describe('Container: leaks and stalls', () => {
 		expect(engine.remove).toHaveBeenCalledTimes(3);
 	});
 
+	it('logs each failed remove with its class name and nothing of the daemon reply', async () => {
+		const { engine } = fakeEngine({
+			attach: async () => Promise.reject(new Error('attach failed'))
+		});
+		engine.remove = vi.fn(async () => {
+			throw new Error('Docker remove failed (500): MESSAGE_MARKER\nsecond line');
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		// earlier tests leave this spy installed with its calls
+		logged.mockClear();
+
+		await expect(run(engine)).rejects.toThrow(/attach failed/);
+
+		expect(logged.mock.calls).toEqual([
+			['Could not remove container c1 (attempt 1/3): Error'],
+			['Could not remove container c1 (attempt 2/3): Error'],
+			['Could not remove container c1 (attempt 3/3): Error']
+		]);
+		logged.mockRestore();
+	});
+
+	it('still rejects with the attach error and tries the remove three times when console.error throws', async () => {
+		const { engine } = fakeEngine({
+			attach: async () => Promise.reject(new Error('attach failed')),
+			removeFails: true
+		});
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {
+			throw new Error('console is gone');
+		});
+
+		await expect(run(engine)).rejects.toThrow(/attach failed/);
+
+		expect(engine.remove).toHaveBeenCalledTimes(3);
+		logged.mockRestore();
+	});
+
 	it('gives up on cleanup after about 30 s even if the daemon never answers a remove', async () => {
 		vi.useFakeTimers();
 		try {
@@ -382,6 +418,28 @@ describe('Container: a create that fails or times out', () => {
 
 		expect([...containers.keys()]).toEqual([]);
 		vi.restoreAllMocks();
+	});
+
+	it('logs a failed remove by name with its class name and nothing of the daemon reply', async () => {
+		const engine = {
+			create: async () => {
+				throw new Error('create failed: MESSAGE_MARKER');
+			},
+			remove: async () => {
+				throw new Error('remove failed: MESSAGE_MARKER\nsecond line');
+			}
+		} as unknown as Engine;
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await expect(run(engine)).rejects.toThrow(/create failed/);
+
+		const lines = logged.mock.calls.map((call) => call);
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toHaveLength(1);
+		expect(lines[0][0]).toMatch(
+			/^Could not remove container bl-inst-1-[0-9a-f]{16} after a failed create: Error$/
+		);
+		logged.mockRestore();
 	});
 
 	it('names the container bl-<instanceId>-<random> and removes only that name', async () => {

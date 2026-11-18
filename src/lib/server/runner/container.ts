@@ -15,6 +15,7 @@ import {
 	ImageMissingError,
 	NameConflictError
 } from './engine';
+import { errorKind, logLine } from './log';
 
 /** How a container ended: it exited, the Runner's clock stopped it, or it printed more than the sink accepts. */
 export type ContainerEnd =
@@ -38,9 +39,8 @@ export async function removeContainer(engine: Engine, id: string): Promise<void>
 			);
 			return;
 		} catch (error) {
-			console.error(
-				`Could not remove container ${id} (attempt ${attempt}/${removeAttempts})`,
-				error
+			logLine(
+				`Could not remove container ${id} (attempt ${attempt}/${removeAttempts}): ${errorKind(error)}`
 			);
 			if (attempt < removeAttempts) await sleep(200 * attempt);
 		}
@@ -83,7 +83,7 @@ async function removeCreatedByName(engine: Engine, name: string): Promise<void> 
 		} catch (error) {
 			// A stalled or failing daemon (likely why the create timed out) will not answer a retry
 			// either: stop at once. The background try below and the sweep are what is left.
-			console.error(`Could not remove container ${name} after a failed create`, error);
+			logLine(`Could not remove container ${name} after a failed create: ${errorKind(error)}`);
 			break;
 		}
 	}
@@ -167,7 +167,7 @@ export async function runContainer(engine: Engine, run: ContainerRun): Promise<C
 					console.warn(
 						`Kill of container ${id} answered after ${Math.round(performance.now() - killStarted)} ms`
 					),
-				(error) => console.error(`Could not kill container ${id}`, error)
+				(error) => logLine(`Could not kill container ${id}: ${errorKind(error)}`)
 			)
 			.catch(() => {});
 		attached?.destroy();

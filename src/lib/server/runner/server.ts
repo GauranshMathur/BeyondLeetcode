@@ -2,6 +2,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { sandboxConfig } from './config';
+import { errorKind, logLine } from './log';
 import { buildPathsIssue, executeRequestSchema, type RunnerPort } from './port';
 
 // port.ts's schema plus the Runner's own limits. Unknown keys are still stripped, so an expected
@@ -29,33 +30,15 @@ function digest(value: string): Buffer {
  * from the request (token, header, body, path, query) can reach it, so a caller cannot write text into the log.
  */
 function logRefusal(kind: 'RunnerUnauthorized' | 'RunnerRefused'): void {
-	console.error(`runner ${kind}`);
+	logLine(`runner ${kind}`);
 }
 
 /**
  * One log line for a request that threw while it ran: `runner RunnerFailed` and the error's class name, and
  * nothing else. The message, the stack and the cause are left out because a Docker daemon's reply can reach them.
- * The name comes from the constructor, which no request can set; a name that is not a plain identifier, or a
- * thrown value that is not an Error, is logged as a fixed word.
  */
 function logFailure(error: unknown): void {
-	let kind = 'NonError';
-	// The whole read sits in the try: a Proxy's trap can throw from `instanceof` as well as from the property reads.
-	try {
-		if (error instanceof Error) {
-			kind = 'Error';
-			// Read once and require a string: an object with a changing toString could otherwise leak text.
-			const name: unknown = error.constructor?.name;
-			if (typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) kind = name;
-		}
-	} catch {
-		// a trap or getter that throws leaves the fixed word
-	}
-	try {
-		console.error(`runner RunnerFailed ${kind}`);
-	} catch {
-		// a failing log must not turn into an unhandled error that replaces the 500 the caller gets
-	}
+	logLine(`runner RunnerFailed ${errorKind(error)}`);
 }
 
 function json(status: number, body: unknown): Response {
