@@ -282,6 +282,7 @@ composed_ran=""
 composed_up=""
 composed_ready_seconds=""
 composed_up_clock=0
+composed_try=0
 composed_origin=http://localhost:3000
 
 engine_docker() { DOCKER_HOST="unix://$socket" "$@"; }
@@ -445,13 +446,20 @@ browser_flow() {
     "$PLAYWRIGHT_IMAGE" bun run test:smoke --reporter=list
 }
 
+# A step of the composed part that is not a command: a failed record write stops the rest of the part like any step.
+composed_fail() {
+  composed_failed="$1"
+  summary_add "- $1: FAILED"
+}
+
 # From the init step to the Runner being ready. <runner runtime, or empty>
 composed_attempt() {
   local runtime="$1"
+  composed_try=$((composed_try + 1))
   composed_step "write the override" write_override "$runtime" || return 1
-  cp "$work/comp.out" "$work/override.txt" || return 1
+  cp "$work/comp.out" "$work/override-$composed_try.txt" || { composed_fail "keep the override record"; return 1; }
   composed_step "the merged configuration has one socket mount, from the engine" check_merged_config || return 1
-  cp "$work/comp.out" "$work/merged.txt" || return 1
+  cp "$work/comp.out" "$work/merged-$composed_try.txt" || { composed_fail "keep the merged configuration record"; return 1; }
   composed_up=1
   composed_up_clock="$SECONDS"
   composed_step "docker compose up -d" composed up -d --pull never || return 1
@@ -462,12 +470,17 @@ composed_attempt() {
 
 # docker compose down -v, with the last lines of the runner and web logs first if asked.
 composed_down() { # <log heading, or empty>
-  local rc
+  local rc svc dropped
   [ -n "$composed_up" ] || return 0
   if [ -n "$1" ]; then
-    local svc
     for svc in runner web; do
-      composed logs --tail 80 "$svc" >"$work/svc.log" 2>&1 || echo "(docker compose logs $svc exited $?)" >>"$work/svc.log"
+      composed logs --tail 80 "$svc" >"$work/svc.raw" 2>&1
+      rc=$?
+      # A line holding a 48-hex string could be one of init's secrets: it never reaches the summary.
+      dropped="$(grep -Ec '[0-9a-fA-F]{48}' "$work/svc.raw")"
+      grep -Ev '[0-9a-fA-F]{48}' "$work/svc.raw" >"$work/svc.log"
+      [ "${dropped:-0}" -eq 0 ] || echo "(${dropped} lines holding a 48-hex string were dropped)" >>"$work/svc.log"
+      [ "$rc" -eq 0 ] || echo "(docker compose logs $svc exited $rc)" >>"$work/svc.log"
       summary_block "The $svc log $1" "$work/svc.log"
     done
   fi
@@ -511,15 +524,18 @@ composed_part() {
     # runtime to reach a host socket. The second try gives only the Runner's own container runc; every Sandbox it
     # starts still gets the default runtime, runsc.
     summary_add "First try, no override: the Runner was not ready. This is recorded; the second try follows."
-    problems+=("gvisor: the Runner's own container could not run under runsc (first try: the Runner was not ready in 5 minutes); the second try with runtime runc on the runner service is recorded separately")
-    echo "::error::the Runner's own container could not run under runsc on the first try"
+    problems+=("gvisor: the Runner's own container, running under runsc, was not ready in 5 minutes on the first try (its log is in the summary); the second try with runtime runc on the runner service is recorded separately")
+    echo "::error::the Runner's own container, running under runsc, was not ready in 5 minutes on the first try"
     composed_down "after the first try:"
     composed_failed=""
     composed_attempt runc || true
   fi
   summary_add ""
-  [ ! -s "$work/override.txt" ] || summary_block "The override used:" "$work/override.txt"
-  [ ! -s "$work/merged.txt" ] || summary_block "The merged configuration of the runner service:" "$work/merged.txt"
+  local t
+  for t in 1 2; do
+    [ ! -s "$work/override-$t.txt" ] || summary_block "The override used, try $t:" "$work/override-$t.txt"
+    [ ! -s "$work/merged-$t.txt" ] || summary_block "The merged configuration of the runner service, try $t:" "$work/merged-$t.txt"
+  done
   if [ -n "$composed_ready_seconds" ]; then
     summary_add "Time from docker compose up until the Runner was ready: ${composed_ready_seconds} s."
   else
@@ -581,7 +597,28 @@ leftover_check() { # <heading>
   fi
   summary_add ""
 }
+# The exit trap: a composed stack still up (an unexpected exit after `up`) is taken down, with its volume, before the
+# temporary folder goes; the exit status is kept, and a teardown that fails is recorded. Further signals are ignored
+# once clean-up has begun.
+cleanup_exit() {
+  local status=$?
+  trap '' INT TERM HUP
+  if [ -n "${composed_up:-}" ]; then
+    composed_up=""
+    if ! ( cd "$composed_dir" && DOCKER_HOST="unix://$socket" timeout 180 docker compose down -v ) >"$work/exit-down.out" 2>&1; then
+      echo "::error::docker compose down -v failed at exit under $engine"
+      printf '%s\n' "- docker compose down -v at exit: FAILED" >>"$out/summary.md"
+      [ "$status" -ne 0 ] || status=1
+    fi
+  fi
+  rm -rf "$work"
+  exit "$status"
+}
 # <<< helpers
+trap cleanup_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 # What the engine sees after the documented steps, per rootless leg.
 record_rootless_facts() {
