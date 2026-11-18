@@ -1,0 +1,45 @@
+name: load
+
+# Plays Learners submitting at once against a fresh Runner on a GitHub-hosted runner, nightly and by hand,
+# and uploads the summary. There is deliberately no pull_request or push trigger: the load takes about
+# fifteen minutes and fills every Runner slot, so it must never slow or block a PR, and it is not a
+# required check. A failed night shows as a red run on the Actions page, plus GitHub's own message about a
+# failed scheduled run, sent to the account that last changed the cron line below.
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile
+      - run: docker build -t beyondleetcode:load .
+      - run: .github/build-sandbox-images.sh
+      # exec makes the script the step's own process, so a cancel's INT and TERM reach it and its clean-up,
+      # and not only the shell that wraps the step.
+      - run: exec .github/load.sh beyondleetcode:load "$RUNNER_TEMP/load"
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: load-summary
+          path: |
+            ${{ runner.temp }}/load/summary.md
+            ${{ runner.temp }}/load/summary.json
+          retention-days: 90
+          if-no-files-found: warn
