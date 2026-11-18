@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.21.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.21.0...v1.21.1) (2026-11-18)
+
+### Highlights
+
+A release for operators. The self-hosting guide now gives measured numbers for how many Submissions a Runner handles at once, and a new page says what was found running the Sandboxes under rootless Docker, rootless Podman and gVisor. The Runner's log names what made a request fail and no longer prints a Docker daemon's reply.
+
+### Added
+
+Nothing new to use in this release.
+
+### Fixed
+
+- A web process started with `DEV_MODE=1` on an Instance that is not set up yet now says in its log that dev mode is off until Local is chosen and the process is restarted. (C440, #747)
+
+### Changed
+
+- The self-hosting guide gives measured numbers for how many Submissions a Runner handles at once, from a load test on a 4-CPU hosted runner. (C448, #765)
+- Operators can read what was found running the Sandboxes under rootless Docker, rootless Podman and gVisor, and the steps for each, in `docs/sandbox-hardening.md`. Rootless Docker ran the Instance with every Sandbox check passing; rootless Podman and gVisor did not run it correctly. (C453, #766)
+- The Runner's log now names what made a request fail (for example the Sandbox harness exiting badly, too much output, or a Docker call past its deadline) instead of a plain `Error`. (C466, #757)
+
+### Content
+
+No content changes in this release.
+
+### Security
+
+- The Runner's log no longer prints a Docker daemon's reply when it cannot remove or kill a container, sweep old ones or pull an image; each such line names the kind of error instead. (C465, #753)
+
+### Upgrade notes
+
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.21.1` (or `latest`), then run `docker compose pull && docker compose up -d`. Nothing else changes: no new setting, and no change to the database.
+
 ## [1.21.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.20.0...v1.21.0) (2026-11-16)
 
 ### Highlights
