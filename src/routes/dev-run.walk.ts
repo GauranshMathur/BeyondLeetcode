@@ -285,11 +285,9 @@ test.describe('dev mode on @dev-on', () => {
 					.getByRole('button', { name: 'Python' })
 					.click();
 				// The editor draws only the lines in view, so the last one is scrolled to.
-				await page
-					.locator('.reference-slot .cm-scroller')
-					.evaluate((el) => {
-						el.scrollTop = el.scrollHeight;
-					});
+				await page.locator('.reference-slot .cm-scroller').evaluate((el) => {
+					el.scrollTop = el.scrollHeight;
+				});
 				await expect(page.locator('.reference-slot .cm-content')).toContainText(marker);
 			}
 		);
