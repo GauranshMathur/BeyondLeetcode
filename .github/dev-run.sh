@@ -110,17 +110,50 @@ is_text() {
   esac
 }
 
-# Publishes nothing that is not cleaned. Every text file of the out-dir is redacted in place after the processes
-# that wrote them have stopped. Anything that is not a regular file or a directory (a link is followed by the
-# upload) is removed, and so counts as a failure, and so does a failed listing, an unreadable file, a file that
-# cannot be rewritten or a redactor that cannot read the token. On a failure the whole out-dir is emptied and one
-# plain line says the record was withheld. Binary files (the screenshots) are left as they are.
+# out_dir_ok <dir>: the folder is strictly beneath the runner's temporary folder, is neither the workspace nor
+# inside it, and is not a link. Checked in preflight and again before anything runs over the whole folder.
+out_dir_ok() {
+  local dir="$1" real tmp ws
+  [ -n "${RUNNER_TEMP:-}" ] && [ -n "$dir" ] && [ ! -L "$dir" ] || return 1
+  tmp="$(realpath -e -- "$RUNNER_TEMP")" || return 1
+  ws="$(realpath -e -- "$PWD")" || return 1
+  real="$(realpath -m -- "$dir")" || return 1
+  [[ "$real" == "$tmp"/* ]] || return 1
+  [[ "$real" != "$ws" && "$real" != "$ws"/* ]] || return 1
+}
+
+# is_screenshot <name> <file>: a screenshot of the walk by its name, and a PNG by its signature.
+is_screenshot() {
+  [[ "$1" =~ ^(map|problem-dev|invalid-content)-(light|dark)-(desktop|phone)\.png$ ]] &&
+    [ "$(head -c 8 "$2" | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ]
+}
+
+# is_text <file>: 0 for text (an empty file included), 1 for a binary file, 2 when it cannot be read.
+is_text() {
+  [ -s "$1" ] || return 0
+  LC_ALL=C grep -Iq . "$1"
+  case $? in
+  0) return 0 ;;
+  1) return 1 ;;
+  *) return 2 ;;
+  esac
+}
+
+# The one place the record is made publishable. The server logs, which were written outside the out-dir, are copied
+# in; then every file is cleaned of the Runner token: text is redacted in place, a verified screenshot is left, any
+# other file is scanned byte for byte and left only if the token is not in it (and named in the summary). Anything
+# that is not a regular file or a directory, or anything that cannot be cleaned or read, fails. Only when all of it
+# held does the step output `record=clean` get written, and the workflow uploads only then; every other path
+# publishes nothing. The reason of a failure goes to the job log only, redacted.
 finalize_record() {
-  local file reason="" skipped=0 list="$WORK/files" odd
-  odd="$(find "$OUT" ! -type f ! -type d -print)" || reason="the out-dir could not be listed"
-  if [ -n "$odd" ]; then
-    reason="the out-dir held something that is not a regular file or a directory: $(printf '%s' "$odd" | head -n 3 | tr '\n' ' ')"
-    find "$OUT" ! -type f ! -type d -delete || reason="$reason (and it could not be removed)"
+  local file name reason="" shots=0 others="" list="$WORK/files" odd
+  out_dir_ok "$OUT" || reason="the out-dir is not a folder beneath RUNNER_TEMP"
+  for name in clone-web.log clone-runner.log; do
+    if [ -z "$reason" ] && [ -e "$WORK/$name" ]; then cp -- "$WORK/$name" "$OUT/$name" || reason="cannot copy $name"; fi
+  done
+  if [ -z "$reason" ]; then
+    odd="$(find "$OUT" ! -type f ! -type d -print)" || reason="the out-dir could not be listed"
+    if [ -n "$odd" ]; then reason="not a regular file or a directory: $(printf '%s' "$odd" | head -n 3 | tr '\n' ' ')"; fi
   fi
   if [ -z "$reason" ]; then
     printf x | redact >/dev/null || reason="the redactor cannot read the Runner token"
@@ -130,25 +163,33 @@ finalize_record() {
   fi
   if [ -z "$reason" ]; then
     while IFS= read -r -d '' file; do
+      name="${file#"$OUT"/}"
+      if is_screenshot "$name" "$file"; then
+        shots=$((shots + 1))
+        continue
+      fi
       is_text "$file"
       case $? in
-      0) redact <"$file" >"$WORK/redact.tmp" && cat "$WORK/redact.tmp" >"$file" || reason="cannot redact $file" ;;
-      1) skipped=$((skipped + 1)) ;;
-      *) reason="cannot read $file" ;;
+      0) redact <"$file" >"$WORK/redact.tmp" && cat "$WORK/redact.tmp" >"$file" || reason="cannot redact $name" ;;
+      1)
+        LC_ALL=C grep -aqF -f "$TOKEN_FILE" "$file"
+        case $? in
+        1) others="$others $name" ;;
+        0) reason="the token is in a file that is not text: $name" ;;
+        *) reason="cannot scan $name" ;;
+        esac
+        ;;
+      *) reason="cannot read $name" ;;
       esac
       [ -z "$reason" ] || break
     done <"$list"
   fi
   if [ -n "$reason" ]; then
-    echo "dev-run: the record is withheld: $reason" >&2
-    # An out-dir that cannot be emptied is moved away whole (into the scratch folder, which is removed at the end).
-    if ! find "$OUT" -mindepth 1 -delete; then
-      mv "$OUT" "$WORK/withheld" && mkdir -p "$OUT" || echo "dev-run: the out-dir could not be emptied or moved" >&2
-    fi
-    printf 'The record was withheld: %s. Nothing of it was published, because it could not all be cleaned of the Runner token.\n' "$reason" >"$OUT/WITHHELD.txt" || true
+    echo "dev-run: the record is not published: $(printf '%s' "$reason" | redact || echo '(reason hidden: the redactor cannot run)')" >&2
     return 1
   fi
-  emit "(Left as they are, not text: $skipped files, the screenshots.)"
+  emit "$(printf '(Left as they are: %s screenshots, PNG by name and signature; not text, with no token in them:%s)' "$shots" "${others:- none}" | redact)"
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then printf 'record=clean\n' >>"$GITHUB_OUTPUT" || return 1; fi
 }
 
 # step [-s] [-a] <phase> <label> <command...>: runs one step and records it.
@@ -241,13 +282,25 @@ launch() {
 }
 
 # group_alive <pgid>: 0 when some process of the group is running (a zombie is not), 1 when it is confirmed that
-# none is, 2 when the processes could not be inspected. A process that exits while /proc is read must not look
-# like an error, so the stat files are read by cat (a vanished one is skipped) and awk only counts; awk must also
-# see this script's own process, or the inspection did not work.
+# none is, 2 when the processes could not be inspected. A /proc entry that has vanished (its folder is gone) is a
+# process that exited, and is skipped; a stat file that cannot be read while its folder is still there, or a scan
+# that does not see this script's own process, is "could not inspect".
 group_alive() {
-  { cat /proc/[0-9]*/stat 2>/dev/null || true; } | awk -v g="$1" -v me="$$" '
-    { pid = $1; sub(/^[0-9]+ \(.*\) /, ""); if (pid == me) seen = 1; if ($1 != "Z" && $3 == g) n++ }
-    END { if (!seen) exit 2; exit n ? 0 : 1 }'
+  local f line rest state pid seen=0 found=0 pgrp _ proc="${PROC_ROOT:-/proc}"
+  for f in "$proc"/[0-9]*/stat; do
+    { line="$(<"$f")"; } 2>/dev/null || {
+      [ -d "${f%/stat}" ] && return 2
+      continue
+    }
+    pid="${line%% *}"
+    rest="${line##*) }"
+    read -r state _ pgrp _ <<<"$rest"
+    [ "$pid" = "$$" ] && seen=1
+    if [ "$state" != Z ] && [ "$pgrp" = "$1" ]; then found=1; fi
+  done
+  [ "$seen" -eq 1 ] || return 2
+  [ "$found" -eq 1 ] && return 0
+  return 1
 }
 
 # wait_group_gone <pgid> <seconds>: 0 only once it is confirmed that no process of the group is left.
@@ -343,14 +396,14 @@ build_step() {
 }
 
 runner_step() {
-  launch "$OUT/clone-runner.log" 0 bun run runner
+  launch "$WORK/clone-runner.log" 0 bun run runner
   RUNNER_PID="$LAUNCHED_PID"
   wait_for_runner
 }
 
 # start_web <dev: 0|1> <wait for>: starts the built server on the address only, waits for a 200 on that path.
 start_web() {
-  launch "$OUT/clone-web.log" "$1" bun ./src/lib/server/web-entry.ts
+  launch "$WORK/clone-web.log" "$1" bun ./src/lib/server/web-entry.ts
   WEB_PID="$LAUNCHED_PID"
   wait_for_200 "$ORIGIN$2" 120 "$WEB_PID"
 }
@@ -389,11 +442,11 @@ web_log_check() {
     return 1
   }
   route="$(jq -er .routeId "$OUT/chosen.json")" || return 1
-  grep -Fq -- "[500] GET $route ContentError" "$OUT/clone-web.log" || {
+  grep -Fq -- "[500] GET $route ContentError" "$WORK/clone-web.log" || {
     echo "no [500] GET $route ContentError line in the web log"
     return 1
   }
-  if grep -Fq -- "$path" "$OUT/clone-web.log"; then
+  if grep -Fq -- "$path" "$WORK/clone-web.log"; then
     echo "a line of the web log holds the broken file's path: $path"
     return 1
   fi
@@ -427,6 +480,7 @@ run_walk() {
   cat "$out"
   # The container ran as root, so what it wrote into the out-dir is root's: hand it back to this user, who
   # redacts it and uploads it. (The hosted runner allows sudo without a password; the guard makes sure this is one.)
+  out_dir_ok "$OUT" || return 1
   # -h: a link is changed itself and never followed, so a link in the out-dir cannot reach outside it.
   sudo -n chown -hR "$(id -u):$(id -g)" "$OUT" || {
     echo "cannot hand $OUT back to the runner's user"
@@ -553,6 +607,7 @@ write_tail() {
 # removes the Sandbox containers, writes the end of the summary and sets the exit status.
 cleanup() {
   local status=$? dirty gst
+  trap '' INT TERM HUP
   trap - EXIT
   set +e
   if [ -n "$SUMMARY" ]; then
@@ -591,6 +646,10 @@ preflight() {
     echo "dev-run: this runs only on a GitHub-hosted runner (the dev-run workflow). It overwrites .env, resets content/ and removes Sandbox containers, so it never runs anywhere else." >&2
     return 1
   fi
+  if ! out_dir_ok "$1"; then
+    echo "dev-run: the out-dir must be a folder beneath RUNNER_TEMP, outside the workspace, and not a link" >&2
+    return 1
+  fi
   if [ -e .env ] || [ -L .env ]; then
     echo "dev-run: .env already exists; this run would overwrite it" >&2
     return 1
@@ -607,7 +666,7 @@ preflight() {
 }
 
 main() {
-  preflight || exit 1
+  preflight "${1:-}" || exit 1
   [ "$#" -eq 1 ] && [ -n "$1" ] || die "usage: .github/dev-run.sh <out-dir>"
   [ -f .env.example ] && [ -f content/content.json ] || die "run it from the repo root"
   [ -n "${PLAYWRIGHT_IMAGE:-}" ] || die "PLAYWRIGHT_IMAGE is not set"

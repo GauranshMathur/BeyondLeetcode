@@ -61,9 +61,12 @@ jobs:
             exit 1
           fi
       - name: Follow "From a clone"
+        id: dev-run
         run: .github/dev-run.sh "$RUNNER_TEMP/dev-run"
+      # Only a record the script has cleaned of the Runner token: it writes record=clean after the last check, so a
+      # failed walk still uploads its record, and every other path uploads nothing.
       - name: Upload the record
-        if: always()
+        if: always() && steps.dev-run.outputs.record == 'clean'
         uses: actions/upload-artifact@v7
         with:
           name: dev-run
