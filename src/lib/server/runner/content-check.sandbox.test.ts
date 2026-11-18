@@ -307,6 +307,37 @@ describe('content check: the retry rule', () => {
 		expect(result).toBe(wrong);
 	});
 
+	it('hands the Runner failure an earlier wrong answer hides to the callback, once, and retries nothing', async () => {
+		let calls = 0;
+		const hidden: unknown[] = [];
+		const cause = new Error('start timed out');
+		const wrong = { verdict: 'Wrong Answer', failure: { test: 'hidden-3' } };
+		const result = await withOneRetryOnRunnerUnavailable(
+			async () => {
+				calls += 1;
+				throw new LearningError('RunnerUnavailable', undefined, cause);
+			},
+			() => expect.unreachable('no retry expected'),
+			() => wrong,
+			(c) => hidden.push(c)
+		);
+		expect(result).toBe(wrong);
+		expect(calls).toBe(1);
+		expect(hidden).toEqual([cause]);
+	});
+
+	it('does not call the callback for an earlier wrong answer when the error has no cause', async () => {
+		const result = await withOneRetryOnRunnerUnavailable(
+			async () => {
+				throw new LearningError('RunnerUnavailable');
+			},
+			() => expect.unreachable('no retry expected'),
+			() => 'earlier',
+			() => expect.unreachable('no cause to name')
+		);
+		expect(result).toBe('earlier');
+	});
+
 	it('still retries once when the first attempt saw nothing wrong before the Runner failed', async () => {
 		let calls = 0;
 		const result = await withOneRetryOnRunnerUnavailable(
@@ -325,7 +356,7 @@ describe('content check: the retry rule', () => {
 
 describe('content check: the retry annotation detail', () => {
 	it('keeps a plain message', () => {
-		expect(annotationDetail(new Error('Sandbox start-up exceeded the time limit'))).toBe(
+		expect(annotationDetail('Sandbox start-up exceeded the time limit')).toBe(
 			'Sandbox start-up exceeded the time limit'
 		);
 	});
@@ -338,26 +369,82 @@ describe('content check: the retry annotation detail', () => {
 			'first%0d::error::injected',
 			'a%250Ab'
 		]) {
-			const detail = annotationDetail(new Error(message));
+			const detail = annotationDetail(message);
 			expect(detail).not.toMatch(/[\r\n]/);
 			expect(detail).not.toContain('::');
 			expect(detail).not.toContain('%');
 		}
-		expect(annotationDetail(new Error('a\n::error::b'))).toBe('a errorb');
+		expect(annotationDetail('a\n::error::b')).toBe('a errorb');
 	});
 
 	it('cuts a very long message to a fixed length on one line', () => {
-		const detail = annotationDetail(new Error(`${'x'.repeat(500)}\nmore`));
+		const detail = annotationDetail(`${'x'.repeat(500)}\nmore`);
 		expect(detail).toBe('x'.repeat(DETAIL_LIMIT));
 	});
 
 	it('gives an empty string for an empty message and reads a non-Error cause', () => {
-		expect(annotationDetail(new Error(''))).toBe('');
+		expect(annotationDetail('')).toBe('');
 		expect(annotationDetail('plain text cause')).toBe('plain text cause');
 	});
 
 	it('removes a run of colons whole, so none can be rejoined into a pair', () => {
-		expect(annotationDetail(new Error('a:::b::::c: :d'))).not.toContain('::');
+		expect(annotationDetail('a:::b::::c: :d')).not.toContain('::');
+	});
+});
+
+describe('content check: the retry lines about a Runner failure', () => {
+	const linesFor = (cause: unknown) => runnerFailureLines('p1', 'python', cause);
+	const head = '::warning::Content check retried p1 (python) after RunnerUnavailable: ';
+	const named = (name: string, message: unknown) =>
+		Object.assign(new Error('x'), { name, message });
+
+	it('keeps a colon at the end of a name from making a pair mid-line', () => {
+		const { annotation } = linesFor(named('Foo:', 'msg'));
+		expect(annotation.startsWith(head)).toBe(true);
+		expect(annotation.slice(head.length)).not.toContain('::');
+	});
+
+	it.each([
+		'first\n::error::injected',
+		'first%0A::error::injected'
+	])('prints every line on one line, with no escape and no command, for %j', (message) => {
+		const { warning, annotation, hidden } = linesFor(new Error(message));
+		for (const line of [warning, annotation, hidden]) {
+			expect(line).not.toMatch(/[\r\n]/);
+			expect(line).not.toContain('%');
+			expect(line.replace(head, '')).not.toContain('::');
+		}
+	});
+
+	it('never throws, whatever the cause holds', () => {
+		const getterThrows = new Error('x');
+		Object.defineProperty(getterThrows, 'message', {
+			get() {
+				throw new Error('no message');
+			}
+		});
+		const toStringThrows = {
+			toString() {
+				throw new Error('no text');
+			}
+		};
+		for (const cause of [named('Error', 42), getterThrows, toStringThrows]) {
+			const { warning, annotation, hidden } = linesFor(cause);
+			for (const line of [warning, annotation, hidden]) {
+				expect(line.replace(head, '')).not.toContain('::');
+			}
+			expect(annotation.startsWith(head)).toBe(true);
+		}
+		expect(linesFor(named('Error', 42)).warning).toContain('Error: 42');
+	});
+
+	it('cuts by code point, so no surrogate pair is split', () => {
+		const detail = annotationDetail(`${'x'.repeat(99)}\u{1F600}tail`);
+		expect(detail.isWellFormed()).toBe(true);
+		expect(Array.from(detail).length).toBeLessThanOrEqual(DETAIL_LIMIT);
+		const tail = linesFor(new Error(`${'x'.repeat(93)}\u{1F600}tail`)).annotation.slice(head.length);
+		expect(tail.isWellFormed()).toBe(true);
+		expect(Array.from(tail).length).toBeLessThanOrEqual(DETAIL_LIMIT);
 	});
 });
 
