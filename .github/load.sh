@@ -17,13 +17,14 @@ languages=(python typescript go)
 health_wait=300
 settle_wait=120
 poll_every=2
+pair_wait=30
 cleanup_wait=60
 cleanup_kill=5
 # Clean-up waits for a stopped process in steps of 0.1 s, this many of them, before it sends KILL.
 stop_wait_ticks=50
 
 failed=0
-runner_started=0
+runner_owned=0
 k6_ran=0
 k6_pid=
 k6_cmd=()
@@ -40,69 +41,86 @@ last_health_code=none
 fail() { echo "::error::$*" >&2; failed=1; }
 
 # Waits for a process that was sent TERM to be gone, then reaps it; one that ignores TERM gets KILL after
-# stop_wait_ticks. Sets reap_status to its exit status.
+# stop_wait_ticks. Sets reap_killed to 1 when it needed KILL.
 reap() {
   local pid="$1" i=0
+  reap_killed=0
   while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$stop_wait_ticks" ]; do
     sleep 0.1
     i=$((i + 1))
   done
-  if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null; fi
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -KILL "$pid" 2>/dev/null
+    reap_killed=1
+  fi
   wait "$pid" 2>/dev/null
-  reap_status=$?
 }
 
-# Stops the event capture. Succeeds only when the capture was alive and ended on our own TERM (status 143);
-# any other end, an early exit with an error included, is a failed capture.
+# Stops the event capture. The Docker client may answer TERM with any exit status, so the status says
+# nothing: the capture is good when it was alive for the TERM and went away without KILL. One that had
+# already died, or that needed KILL, is a failed capture.
 stop_capture() {
   local st=0
   [ -n "$events_pid" ] || return 0
   kill -TERM "$events_pid" 2>/dev/null || st=1
   reap "$events_pid"
-  [ "$reap_status" -eq 143 ] || st=1
+  [ "$reap_killed" -eq 0 ] || st=1
   events_pid=
   return "$st"
 }
 
-# Ends the load command and everything it started: it runs in its own process group (setsid), so one signal
-# reaches every descendant, run.sh's `docker run` included. KILL follows after a bound.
+# Ends the load command and everything it started. It runs in its own process group (setsid), so one signal
+# reaches every descendant, run.sh's `docker run` included; but a signal can arrive before setsid has made
+# the group, so the PID and the group are both signalled and both watched, and both get KILL after the bound.
 stop_k6() {
   local i=0
   [ -n "$k6_pid" ] || return 0
+  kill -TERM "$k6_pid" 2>/dev/null
   kill -TERM -- "-$k6_pid" 2>/dev/null
-  while kill -0 -- "-$k6_pid" 2>/dev/null && [ "$i" -lt "$stop_wait_ticks" ]; do
+  while { kill -0 "$k6_pid" 2>/dev/null || kill -0 -- "-$k6_pid" 2>/dev/null; } && [ "$i" -lt "$stop_wait_ticks" ]; do
     sleep 0.1
     i=$((i + 1))
   done
-  if kill -0 -- "-$k6_pid" 2>/dev/null; then kill -KILL -- "-$k6_pid" 2>/dev/null; fi
+  kill -KILL "$k6_pid" 2>/dev/null
+  kill -KILL -- "-$k6_pid" 2>/dev/null
   wait "$k6_pid" 2>/dev/null
   k6_pid=
 }
 
 # Runs on every exit, including a cancelled job's INT and TERM. EXIT is cleared so it cannot run twice, and
-# further INT and TERM are ignored (GitHub sends a second TERM seconds after the first), so clean-up always
-# finishes; every wait in it is bounded. Any failure here is kept as the run's failure.
+# further INT and TERM are ignored (GitHub sends a second TERM seconds after the first); every wait in it is
+# bounded. On a cancel GitHub ends the process tree after about ten seconds, which is shorter than these
+# bounds, so there clean-up does what it can first and the hosted runner is discarded afterwards. Any
+# failure here is kept as the run's failure.
 cleanup() {
   status=$?
   trap - EXIT
   trap '' INT TERM
   set +e
-  local bad=0 ids line id img runner_removed=no labelled_left=0 k6_found=0 k6_left=0
+  local bad=0 ids line id img runner_removed="not present" labelled_left=0 k6_found="not looked for" k6_left="not looked for" runner_ids
   local k6_ids=()
   stop_k6
   stop_capture
   [ -n "$events_file" ] && rm -f "$events_file"
   [ -n "$health_body" ] && rm -f "$health_body"
-  # The Runner's lines hold nothing from a request, so they are printed only when the script fails.
-  if [ "$status" -ne 0 ] || [ "$failed" -ne 0 ]; then
-    if [ "$runner_started" -eq 1 ]; then timeout -k "$cleanup_kill" "$cleanup_wait" docker logs "$runner_name" 2>&1; fi
-  fi
-  if [ "$runner_started" -eq 1 ]; then
-    if timeout -k "$cleanup_kill" "$cleanup_wait" docker rm -f "$runner_name" >/dev/null 2>&1; then
-      runner_removed=yes
+  # The Runner container carries no Sandbox label, so it is found by the name this run owns, whether or not
+  # its start succeeded. Its lines hold nothing from a request, so they are printed only when the script fails.
+  if [ "$runner_owned" -eq 1 ]; then
+    if runner_ids="$(timeout -k "$cleanup_kill" "$cleanup_wait" docker ps -aq --filter "name=^/${runner_name}\$" 2>/dev/null)"; then
+      if [ -n "$runner_ids" ]; then
+        if [ "$status" -ne 0 ] || [ "$failed" -ne 0 ]; then timeout -k "$cleanup_kill" "$cleanup_wait" docker logs "$runner_name" 2>&1; fi
+        if timeout -k "$cleanup_kill" "$cleanup_wait" docker rm -f "$runner_name" >/dev/null 2>&1; then
+          runner_removed=yes
+        else
+          echo "::error::Removing the Runner container failed" >&2
+          bad=1
+          runner_removed=no
+        fi
+      fi
     else
-      echo "::error::Removing the Runner container failed" >&2
+      echo "::error::Looking for the Runner container in clean-up failed" >&2
       bad=1
+      runner_removed=unknown
     fi
   fi
   # Last of all, and only after the leak check has looked: whatever is still labelled goes.
@@ -137,7 +155,10 @@ cleanup() {
       esac
     done <<<"$listing"
   }
-  if list_k6; then
+  # Only when this run started the load: any other grafana/k6 container is not ours to touch.
+  if [ "$k6_ran" -eq 0 ]; then
+    :
+  elif list_k6; then
     k6_found="${#k6_ids[@]}"
     if [ "$k6_found" -gt 0 ]; then
       timeout -k "$cleanup_kill" "$cleanup_wait" docker rm -f "${k6_ids[@]}" >/dev/null 2>&1 || { echo "::error::Removing the k6 container failed" >&2; bad=1; }
@@ -210,9 +231,10 @@ wait_ready() {
 }
 
 start_runner() {
+  # From here this run owns the container name, even when the start fails half way.
+  runner_owned=1
   docker run -d --name "$runner_name" -p 127.0.0.1:8787:8787 -e RUNNER_TOKEN \
     -v /var/run/docker.sock:/var/run/docker.sock "$1" runner >/dev/null || { fail "The Runner container did not start"; return 1; }
-  runner_started=1
 }
 
 # Sets k6_cmd, the load command (run.sh reads LOAD_SLOTS and LOAD_OUT from the environment), and exports them.
@@ -258,10 +280,22 @@ leak_check() {
   return 1
 }
 
-# Ends the capture: the liveness check and the stop come one straight after the other, with the settling
-# pause before them, and a capture that did not end by our own TERM fails the run.
+# Waits, within pair_wait, until the captured stream holds a destroy for every create: Docker drops a
+# container from its list before it publishes the destroy event, so an empty list does not mean the
+# events have all arrived. Returns 1 when the deadline passes or the capture is gone.
+wait_pairs() {
+  local deadline=$((SECONDS + pair_wait)) out
+  while :; do
+    if [ -s "$events_file" ] && out="$(container_lifetimes "$events_file")" && [ "${out##* }" = 0 ]; then return 0; fi
+    [ "$SECONDS" -ge "$deadline" ] && return 1
+    kill -0 "$events_pid" 2>/dev/null || return 1
+    sleep "$poll_every"
+  done
+}
+
+# Ends the capture: the liveness check and the stop come one straight after the other, and a capture that
+# had died, or needed KILL, fails the run.
 finish_capture() {
-  sleep "$poll_every"
   if [ -n "$events_pid" ] && ! kill -0 "$events_pid" 2>/dev/null; then
     capture_partial=1
     fail "The container event capture stopped before the load ended"
@@ -351,6 +385,12 @@ main() {
     return 2
   fi
   local image="$1" out="$2" repo commit since unpaired k6_status=0 lifetimes="0 - - - 0"
+  # Before anything is changed: the load fills every Runner slot and clean-up removes containers by label and
+  # image, which is fine on a GitHub-hosted runner (discarded after the job) and nowhere else.
+  if [ "${GITHUB_ACTIONS:-}" != true ] || [ "${RUNNER_ENVIRONMENT:-}" != github-hosted ]; then
+    echo "::error::load.sh runs only on a GitHub-hosted runner (GITHUB_ACTIONS=true, RUNNER_ENVIRONMENT=github-hosted)" >&2
+    return 2
+  fi
   repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)" || return 1
   mkdir -p "$out" || { fail "Could not make $out"; return 1; }
   out="$(cd "$out" && pwd)" || { fail "Could not enter $out"; return 1; }
@@ -387,13 +427,14 @@ main() {
       check_summaries "$out" || true
     fi
     leak_check && leak_ok=1
+    if [ "$leak_ok" -eq 1 ]; then wait_pairs || true; fi
     finish_capture
     if [ -s "$events_file" ]; then
       if lifetimes_out="$(container_lifetimes "$events_file")" && [ -n "$lifetimes_out" ]; then
         lifetimes="$lifetimes_out"
         unpaired="${lifetimes##* }"
         if [ "$leak_ok" -eq 1 ] && [ "$unpaired" != 0 ]; then
-          fail "$unpaired container(s) have a create without a destroy, or a destroy without a create, though none is left"
+          fail "$unpaired container(s) have a create without a destroy, or a destroy without a create, though none is left, after waiting ${pair_wait}s"
         fi
       else
         fail "Reading the captured container events failed"
