@@ -2,50 +2,35 @@
 
 ## [1.21.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.21.0...v1.21.1) (2026-11-18)
 
+### Highlights
 
-### Fixes
+A release for operators. The self-hosting guide now gives measured numbers for how many Submissions a Runner handles at once, and a new page says what was found running the Sandboxes under rootless Docker, rootless Podman and gVisor. The Runner's log names what made a request fail and no longer prints a Docker daemon's reply.
 
-* **beyondleetcode:** C440 the start-up log says dev mode is off on an Instance not set up yet ([#747](https://github.com/GauranshMathur/BeyondLeetcode/issues/747)) ([c9d5ba6](https://github.com/GauranshMathur/BeyondLeetcode/commit/c9d5ba69e3b2d4ec20d311bec35192e03228e89a))
-* **beyondleetcode:** C465 Runner: the remove, kill, sweep and pull-retry lines name the error's class, never the whole error ([#753](https://github.com/GauranshMathur/BeyondLeetcode/issues/753)) ([f5a6204](https://github.com/GauranshMathur/BeyondLeetcode/commit/f5a62041ab6350115240c4a12b6bdebaab4943cd))
-* **beyondleetcode:** C466 Runner: each way a Run can fail throws its own error class, so the request's log line says what failed ([#757](https://github.com/GauranshMathur/BeyondLeetcode/issues/757)) ([b69fc64](https://github.com/GauranshMathur/BeyondLeetcode/commit/b69fc64e53cbf48c12a207743e3d58832d5b25c4))
+### Added
 
+Nothing new to use in this release.
 
-### Refactoring
+### Fixed
 
-* **beyondleetcode:** C457 Problem screen: the statement region sets its own tab stop, from what the workspace passes down ([#751](https://github.com/GauranshMathur/BeyondLeetcode/issues/751)) ([aa98ba2](https://github.com/GauranshMathur/BeyondLeetcode/commit/aa98ba2df4157aa1005a0445c1b0eb7d5f0b40b6))
+- A web process started with `DEV_MODE=1` on an Instance that is not set up yet now says in its log that dev mode is off until Local is chosen and the process is restarted. (C440, #747)
 
+### Changed
 
-### Documentation
+- The self-hosting guide gives measured numbers for how many Submissions a Runner handles at once, from a load test on a 4-CPU hosted runner. (C448, #765)
+- Operators can read what was found running the Sandboxes under rootless Docker, rootless Podman and gVisor, and the steps for each, in `docs/sandbox-hardening.md`. Rootless Docker ran the Instance with every Sandbox check passing; rootless Podman and gVisor did not run it correctly. (C453, #766)
+- The Runner's log now names what made a request fail (for example the Sandbox harness exiting badly, too much output, or a Docker call past its deadline) instead of a plain `Error`. (C466, #757)
 
-* **beyondleetcode:** ADR 0006 records what dev mode changed, and three decisions are logged ([#743](https://github.com/GauranshMathur/BeyondLeetcode/issues/743)) ([cb8099a](https://github.com/GauranshMathur/BeyondLeetcode/commit/cb8099a790ee05e5eda3d8038e26b40269ca08ac))
-* **beyondleetcode:** C448 the self-hosting guide gives the first measured load numbers and the one command ([#765](https://github.com/GauranshMathur/BeyondLeetcode/issues/765)) ([608701c](https://github.com/GauranshMathur/BeyondLeetcode/commit/608701c328d57f69b5e9ca0108306b83534f0e72))
-* **beyondleetcode:** C453 what the engine trial found under rootless Docker, rootless Podman and gVisor, and the operator's steps ([#766](https://github.com/GauranshMathur/BeyondLeetcode/issues/766)) ([b11ac90](https://github.com/GauranshMathur/BeyondLeetcode/commit/b11ac90a26e98ec45d11fa53d6cd29ecd7997cbf))
-* **beyondleetcode:** C454 the self-hosting guide links the Sandbox findings page, and mvp1.md and ADR 0002 say what was found ([#771](https://github.com/GauranshMathur/BeyondLeetcode/issues/771)) ([f9703d8](https://github.com/GauranshMathur/BeyondLeetcode/commit/f9703d82eeaf2d0aa24a22178202a82921dde3c4))
-* **beyondleetcode:** C469 Sprint 24 exit check and Release-As 1.21.1 ([#775](https://github.com/GauranshMathur/BeyondLeetcode/issues/775)) ([cd996c7](https://github.com/GauranshMathur/BeyondLeetcode/commit/cd996c7744f087a46b0689c21e272ad75df32d7e))
-* **beyondleetcode:** decisions logged in Sprint 24 ([#772](https://github.com/GauranshMathur/BeyondLeetcode/issues/772)) ([66fab23](https://github.com/GauranshMathur/BeyondLeetcode/commit/66fab2362500fd6094c93d053efac601dc7ef38c))
-* **beyondleetcode:** record the 1.21.0 cut, and archive Sprint 22 ([#733](https://github.com/GauranshMathur/BeyondLeetcode/issues/733)) ([5082184](https://github.com/GauranshMathur/BeyondLeetcode/commit/5082184bfb8bf54f25d7a1addb28f46a1bd5e64d))
-* **beyondleetcode:** Sprint 24 is constructed: proof of dev mode, the load test and the operator checks ([#748](https://github.com/GauranshMathur/BeyondLeetcode/issues/748)) ([54de1f1](https://github.com/GauranshMathur/BeyondLeetcode/commit/54de1f193d376dbac229e3a6fb1a5a333d2a7ae4))
-* **beyondleetcode:** the Backlog re-ordered after 1.21.0 ([#740](https://github.com/GauranshMathur/BeyondLeetcode/issues/740)) ([f5bde34](https://github.com/GauranshMathur/BeyondLeetcode/commit/f5bde3416447d26cf1586e9373167040a467be3a))
-* **beyondleetcode:** the Backlog re-ordered with the two product issues from the spec ([#746](https://github.com/GauranshMathur/BeyondLeetcode/issues/746)) ([8c67aed](https://github.com/GauranshMathur/BeyondLeetcode/commit/8c67aed674770010b6bda545393712eb6ad900c2))
+### Content
 
+No content changes in this release.
 
-### Tests
+### Security
 
-* **beyondleetcode:** C439 Runner tests: the fork-bomb test bounds the hard stop's kill and the remove, not the kernel's teardown ([#741](https://github.com/GauranshMathur/BeyondLeetcode/issues/741)) ([830affa](https://github.com/GauranshMathur/BeyondLeetcode/commit/830afface440efce370c30cd4d2444863ea57b3d))
-* **beyondleetcode:** C445 the load test builds the Runner requests a Submission of each Reference Code sends ([#749](https://github.com/GauranshMathur/BeyondLeetcode/issues/749)) ([08b791d](https://github.com/GauranshMathur/BeyondLeetcode/commit/08b791d238b9d90e92bf6b9f97aef70ef8c7f5cb))
-* **beyondleetcode:** C446 the load test's k6 script plays Submissions against a Runner and reports counts and waits ([#752](https://github.com/GauranshMathur/BeyondLeetcode/issues/752)) ([6f92bef](https://github.com/GauranshMathur/BeyondLeetcode/commit/6f92bef9c07a6a1bd651cfe0732d0b9234f75da9))
-* **beyondleetcode:** C450 Runner tests: three busy processes in one Sandbox get one CPU between them ([#750](https://github.com/GauranshMathur/BeyondLeetcode/issues/750)) ([ec2616c](https://github.com/GauranshMathur/BeyondLeetcode/commit/ec2616cb98b4e762e26fbe023254f646cf66f2b0))
-* **beyondleetcode:** C458 Problem tests: the short phone's Solution editor case gets a Reference Code shorter than its floor, so it can fail ([#756](https://github.com/GauranshMathur/BeyondLeetcode/issues/756)) ([61ccbc9](https://github.com/GauranshMathur/BeyondLeetcode/commit/61ccbc9134db00a3a4f61246619f14f1b2c2b1db))
-* **beyondleetcode:** C468 Runner tests: the content check's retry prints one sanitised line, and names the Runner failure an earlier wrong answer hides ([#758](https://github.com/GauranshMathur/BeyondLeetcode/issues/758)) ([d3a6f50](https://github.com/GauranshMathur/BeyondLeetcode/commit/d3a6f50d5cba3f57561876cfbb405f4af20bbef5))
+- The Runner's log no longer prints a Docker daemon's reply when it cannot remove or kill a container, sweep old ones or pull an image; each such line names the kind of error instead. (C465, #753)
 
+### Upgrade notes
 
-### CI
-
-* **beyondleetcode:** C447 a nightly and on-demand workflow runs the load test against a real Runner and uploads its summary ([#762](https://github.com/GauranshMathur/BeyondLeetcode/issues/762)) ([4c82539](https://github.com/GauranshMathur/BeyondLeetcode/commit/4c825396b0e9945290798323def5798157e04d7e))
-* **beyondleetcode:** C451 an on-demand trial runs the Sandbox tests under rootless Docker, rootless Podman and gVisor ([#755](https://github.com/GauranshMathur/BeyondLeetcode/issues/755)) ([152337d](https://github.com/GauranshMathur/BeyondLeetcode/commit/152337dd579bd8146c2f24f12667b7c82b943576))
-* **beyondleetcode:** C452 the engine trial also starts the composed Instance under each engine and solves a Problem in each Language ([#763](https://github.com/GauranshMathur/BeyondLeetcode/issues/763)) ([51cff99](https://github.com/GauranshMathur/BeyondLeetcode/commit/51cff991145d6e2e6dae07614fa1564fb9cbfdf2))
-* **beyondleetcode:** C460 an on-demand dev-mode run follows the guide's From a clone with the real Runner and content, and records every step ([#760](https://github.com/GauranshMathur/BeyondLeetcode/issues/760)) ([7f87cca](https://github.com/GauranshMathur/BeyondLeetcode/commit/7f87ccafe135adeeb75fd622e138c00e902d994c))
-* **beyondleetcode:** C461 the dev-mode run also follows In the published image, and its pull request carries the run's record ([#769](https://github.com/GauranshMathur/BeyondLeetcode/issues/769)) ([971a959](https://github.com/GauranshMathur/BeyondLeetcode/commit/971a9592541d3e852be0bc1a694e2b9b11b7f584))
+Set `BEYONDLEETCODE_IMAGE` in `.env` to `v1.21.1` (or `latest`), then run `docker compose pull && docker compose up -d`. Nothing else changes: no new setting, and no change to the database.
 
 ## [1.21.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.20.0...v1.21.0) (2026-11-16)
 
