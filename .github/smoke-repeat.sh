@@ -312,12 +312,15 @@ prisma_commands() {
   done
 }
 
-# stress_in_image <out-dir> <image> <rounds> <stress-file>
+# stress_in_image <out-dir> <image> <rounds> <stress-file> <wire-file>
+# The image holds the server source but not src/lib/problem-wire.ts (web's bundle has it built in), which the Learning
+# core imports, so that one pure module is mounted from the checkout beside the stress file, both read-only.
 stress_in_image() {
-  local out="$1" image="$2" rounds="$3" file="$4" status
+  local out="$1" image="$2" rounds="$3" file="$4" wire="$5" status
   docker run --rm --user bun --entrypoint sh \
     -e HOME=/home/bun -e DATABASE_URL=file:/tmp/stress.db -e CONTENT_DIR=/app/content -e "STRESS_ROUNDS=$rounds" \
     -v "$file:/app/src/lib/server/prisma-stress.bun-check.ts:ro" \
+    -v "$wire:/app/src/lib/problem-wire.ts:ro" \
     "$image" -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-stress.bun-check.ts' \
     >"$out/stress-image.txt" 2>&1
   status=$?
@@ -426,11 +429,13 @@ main() {
   local image="${1:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
   local runs="${2:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
   local out="${3:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
-  local rounds="${STRESS_ROUNDS:-200}" stress_file n status
+  local rounds="${STRESS_ROUNDS:-200}" stress_file wire_file n status
   case "$runs" in '' | *[!0-9]*) die "runs must be a whole number, got '$runs'" ;; esac
   case "$rounds" in '' | *[!0-9]* | 0) die "STRESS_ROUNDS must be a whole number of at least 1, got '$rounds'" ;; esac
   stress_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/server/prisma-stress.bun-check.ts"
   [ -f "$stress_file" ] || die "$stress_file is missing"
+  wire_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/problem-wire.ts"
+  [ -f "$wire_file" ] || die "$wire_file is missing"
   mkdir -p "$out/runs" || die "cannot make $out"
   WORK_DIR="$(mktemp -d)" || die "cannot make a temporary folder"
   trap cleanup EXIT
@@ -440,7 +445,7 @@ main() {
   echo "== prisma -v and migrate deploy, as the entrypoint runs them"
   prisma_commands "$out" "$image"
   echo "== the stress, inside the image ($rounds rounds)"
-  stress_in_image "$out" "$image" "$rounds" "$stress_file"
+  stress_in_image "$out" "$image" "$rounds" "$stress_file" "$wire_file"
   tail -n 3 "$out/stress-image.txt" | grep -E '^prisma-stress ' || true
 
   echo "== the composed Instance"
