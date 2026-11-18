@@ -75,38 +75,80 @@ record() {
 
 # The last non-empty line of a file, without colour codes. Only a hint for the summary, so no status is checked.
 last_error_line() {
-  grep -v '^[[:space:]]*$' "$1" | tail -n 1 | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | cut -c1-300
+  grep -v '^[[:space:]]*$' "$1" | tail -n 1 | sed 's/\x1b\[[0-9;]*[A-Za-z]//g' | redact | cut -c1-300
 }
 
-# Blanks the Runner token in what it reads. The token is read from its file by awk itself, so it is on no command
-# line; with no token file yet there is nothing to blank, and a token file that cannot be read fails closed.
+# Blanks the Runner token in what it reads. The token is read from its file by this function and handed to awk
+# in awk's environment, so it is on no command line. With no token file yet there is nothing to blank. A token
+# file that cannot be read, or whose content is not a token, fails closed: nothing is passed on.
 redact() {
   if [ -z "$TOKEN_FILE" ]; then
     cat
     return
   fi
-  [ -s "$TOKEN_FILE" ] || return 1
-  DEVRUN_TOKEN_FILE="$TOKEN_FILE" awk '
-    BEGIN { f = ENVIRON["DEVRUN_TOKEN_FILE"]; getline t < f; close(f) }
+  local t=""
+  IFS= read -r t <"$TOKEN_FILE" || [ -n "$t" ] || return 1
+  [[ "$t" =~ ^[0-9a-f]{48}$ ]] || return 1
+  DEVRUN_TOKEN="$t" awk '
+    BEGIN { t = ENVIRON["DEVRUN_TOKEN"] }
     {
       line = $0
       out = ""
-      if (t != "") {
-        while ((i = index(line, t)) > 0) { out = out substr(line, 1, i - 1) "***"; line = substr(line, i + length(t)) }
-      }
+      while ((i = index(line, t)) > 0) { out = out substr(line, 1, i - 1) "***"; line = substr(line, i + length(t)) }
       print out line
     }'
 }
 
-# Every text file of the out-dir, redacted in place, after the processes that wrote them have stopped.
-redact_out_dir() {
-  local file tmp="$WORK/redact.tmp"
-  while IFS= read -r -d '' file; do
-    redact <"$file" >"$tmp" && cat "$tmp" >"$file" || {
-      RECORD_BROKEN=1
-      echo "dev-run: cannot redact $file" >&2
-    }
-  done < <(find "$OUT" -type f ! -name '*.png' -print0)
+# is_text <file>: 0 for text (an empty file included), 1 for a binary file, 2 when it cannot be read.
+is_text() {
+  [ -s "$1" ] || return 0
+  LC_ALL=C grep -Iq . "$1"
+  case $? in
+  0) return 0 ;;
+  1) return 1 ;;
+  *) return 2 ;;
+  esac
+}
+
+# Publishes nothing that is not cleaned. Every text file of the out-dir is redacted in place after the processes
+# that wrote them have stopped. Anything that is not a regular file or a directory (a link is followed by the
+# upload) is removed, and so counts as a failure, and so does a failed listing, an unreadable file, a file that
+# cannot be rewritten or a redactor that cannot read the token. On a failure the whole out-dir is emptied and one
+# plain line says the record was withheld. Binary files (the screenshots) are left as they are.
+finalize_record() {
+  local file reason="" skipped=0 list="$WORK/files" odd
+  odd="$(find "$OUT" ! -type f ! -type d -print)" || reason="the out-dir could not be listed"
+  if [ -n "$odd" ]; then
+    reason="the out-dir held something that is not a regular file or a directory: $(printf '%s' "$odd" | head -n 3 | tr '\n' ' ')"
+    find "$OUT" ! -type f ! -type d -delete || reason="$reason (and it could not be removed)"
+  fi
+  if [ -z "$reason" ]; then
+    printf x | redact >/dev/null || reason="the redactor cannot read the Runner token"
+  fi
+  if [ -z "$reason" ]; then
+    find "$OUT" -type f -print0 >"$list" || reason="the out-dir could not be listed"
+  fi
+  if [ -z "$reason" ]; then
+    while IFS= read -r -d '' file; do
+      is_text "$file"
+      case $? in
+      0) redact <"$file" >"$WORK/redact.tmp" && cat "$WORK/redact.tmp" >"$file" || reason="cannot redact $file" ;;
+      1) skipped=$((skipped + 1)) ;;
+      *) reason="cannot read $file" ;;
+      esac
+      [ -z "$reason" ] || break
+    done <"$list"
+  fi
+  if [ -n "$reason" ]; then
+    echo "dev-run: the record is withheld: $reason" >&2
+    # An out-dir that cannot be emptied is moved away whole (into the scratch folder, which is removed at the end).
+    if ! find "$OUT" -mindepth 1 -delete; then
+      mv "$OUT" "$WORK/withheld" && mkdir -p "$OUT" || echo "dev-run: the out-dir could not be emptied or moved" >&2
+    fi
+    printf 'The record was withheld: %s. Nothing of it was published, because it could not all be cleaned of the Runner token.\n' "$reason" >"$OUT/WITHHELD.txt" || true
+    return 1
+  fi
+  emit "(Left as they are, not text: $skipped files, the screenshots.)"
 }
 
 # step [-s] [-a] <phase> <label> <command...>: runs one step and records it.
@@ -198,21 +240,26 @@ launch() {
   LAUNCHED_PID=$!
 }
 
-# group_alive <pgid>: some process of the group is still running (a zombie is not).
+# group_alive <pgid>: 0 when some process of the group is running (a zombie is not), 1 when it is confirmed that
+# none is, 2 when the processes could not be inspected. A process that exits while /proc is read must not look
+# like an error, so the stat files are read by cat (a vanished one is skipped) and awk only counts; awk must also
+# see this script's own process, or the inspection did not work.
 group_alive() {
-  awk -v g="$1" '
-    { sub(/^[0-9]+ \(.*\) /, ""); if ($1 != "Z" && $3 == g) n++ }
-    END { exit n ? 0 : 1 }' /proc/[0-9]*/stat 2>/dev/null
+  { cat /proc/[0-9]*/stat 2>/dev/null || true; } | awk -v g="$1" -v me="$$" '
+    { pid = $1; sub(/^[0-9]+ \(.*\) /, ""); if (pid == me) seen = 1; if ($1 != "Z" && $3 == g) n++ }
+    END { if (!seen) exit 2; exit n ? 0 : 1 }'
 }
 
-# wait_group_gone <pgid> <seconds>
+# wait_group_gone <pgid> <seconds>: 0 only once it is confirmed that no process of the group is left.
 wait_group_gone() {
   local i
   for i in $(seq 1 "$2"); do
-    group_alive "$1" || return 0
+    group_alive "$1"
+    [ $? -eq 1 ] && return 0
     sleep 1
   done
-  ! group_alive "$1"
+  group_alive "$1"
+  [ $? -eq 1 ]
 }
 
 # stop_proc <pid>: stops the process and everything in its group, and waits for the whole group. The step fails
@@ -380,7 +427,8 @@ run_walk() {
   cat "$out"
   # The container ran as root, so what it wrote into the out-dir is root's: hand it back to this user, who
   # redacts it and uploads it. (The hosted runner allows sudo without a password; the guard makes sure this is one.)
-  sudo -n chown -R "$(id -u):$(id -g)" "$OUT" || {
+  # -h: a link is changed itself and never followed, so a link in the out-dir cannot reach outside it.
+  sudo -n chown -hR "$(id -u):$(id -g)" "$OUT" || {
     echo "cannot hand $OUT back to the runner's user"
     return 1
   }
@@ -404,7 +452,9 @@ record_walk() {
   fi
   rows="$(jq -r '[.. | objects | select(has("specs")) | .specs[]] | .[]
     | [(.tests[0].status // "skipped"), ((.tests[0].results[-1].duration // 0) | floor | tostring), .title,
-       ((.tests[0].results[-1].error.message // "") | split("\n") | map(select(length > 0)) | (.[0] // ""))]
+       (if (.tests[0].status // "skipped") == "skipped"
+        then ((.tests[0].annotations // []) | map(select(.type == "skip") | .description // "") | (.[0] // ""))
+        else ((.tests[0].results[-1].error.message // "") | split("\n") | map(select(length > 0)) | (.[0] // "")) end)]
     | @tsv' "$report")" || {
     record "$ROUTE · walk $label" "(report)" failed "cannot read $report"
     return 0
@@ -413,10 +463,7 @@ record_walk() {
     [ -n "$title" ] || continue
     case "$status" in
     expected) result=passed ;;
-    skipped)
-      result="not reached"
-      if [ "$RUNNER_FAILED" -ne 0 ]; then error="the Runner was not ready"; fi
-      ;;
+    skipped) result="not reached" ;;
     *) result=failed ;;
     esac
     error="$(printf '%s' "$error" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g')"
@@ -523,9 +570,12 @@ cleanup() {
     docker ps -aq --filter label=beyondleetcode.runner | xargs -r docker rm -f >/dev/null 2>&1
     rm -f .env
     write_tail
-    redact_out_dir
-    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-      cat "$SUMMARY" >>"$GITHUB_STEP_SUMMARY" || RECORD_BROKEN=1
+    if finalize_record; then
+      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        cat "$SUMMARY" >>"$GITHUB_STEP_SUMMARY" || RECORD_BROKEN=1
+      fi
+    else
+      RECORD_BROKEN=1
     fi
   fi
   if [ -n "$WORK" ]; then rm -rf "$WORK"; fi
@@ -541,7 +591,7 @@ preflight() {
     echo "dev-run: this runs only on a GitHub-hosted runner (the dev-run workflow). It overwrites .env, resets content/ and removes Sandbox containers, so it never runs anywhere else." >&2
     return 1
   fi
-  if [ -e .env ]; then
+  if [ -e .env ] || [ -L .env ]; then
     echo "dev-run: .env already exists; this run would overwrite it" >&2
     return 1
   fi
@@ -574,6 +624,8 @@ main() {
   SUMMARY="$OUT/summary.md"
   : >"$SUMMARY" || die "cannot write $SUMMARY"
   trap cleanup EXIT
+  trap "exit 143" TERM
+  trap "exit 130" INT HUP
 
   ADDR="$(own_address)" || die "no non-loopback IPv4 address for this runner"
   ORIGIN="http://$ADDR:$PORT"
