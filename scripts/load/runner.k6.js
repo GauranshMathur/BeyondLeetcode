@@ -6,9 +6,16 @@ import { SharedArray } from 'k6/data';
 import exec from 'k6/execution';
 import http from 'k6/http';
 import { Counter, Trend } from 'k6/metrics';
-import { classifyAnswer, finishSubmission, nextStep, pickSubmission } from './outcome.js';
+import {
+	classifyAnswer,
+	entriesPerProblem,
+	finishSubmission,
+	nextStep,
+	pickSubmission
+} from './outcome.js';
 
-const RUNNER_URL = __ENV.RUNNER_URL;
+// One trailing slash is dropped so the path below is not //execute.
+const RUNNER_URL = (__ENV.RUNNER_URL || '').replace(/\/$/, '');
 const RUNNER_TOKEN = __ENV.RUNNER_TOKEN;
 const SLOTS = Number(__ENV.LOAD_SLOTS);
 const CLASS_SIZE = Number(__ENV.LOAD_CLASS_SIZE || '20');
@@ -35,7 +42,8 @@ function load() {
 					queueWaitMs: file.queueWaitMs,
 					count: file.submissions.length,
 					problems: problems.size,
-					languages
+					languages,
+					perProblem: entriesPerProblem(file.submissions)
 				}
 			]
 		};
@@ -131,7 +139,7 @@ function submit(scenario) {
 	const c = counters[scenario];
 	const t = trends[scenario];
 	const scenarioStart = new Date(exec.scenario.startTime).getTime();
-	const entry = pickSubmission(submissions, exec.scenario.iterationInTest);
+	const entry = pickSubmission(submissions, exec.scenario.iterationInTest, facts.perProblem);
 	c.started.add(1);
 	const submissionStart = Date.now();
 	const results = [];
@@ -214,7 +222,11 @@ function sentProblems(data) {
 	const sent = new Set();
 	for (const s of SCENARIOS) {
 		const started = count(data, `load_${s}_started`);
-		for (let n = 0; n < started; n++) sent.add(pickSubmission(submissions, n).problemId);
+		// A run whose calls fail at once starts a huge number of Submissions; the picks reach every
+		// Problem within a few hundred, so stop there to stay inside k6's time for the summary.
+		for (let n = 0; n < started && sent.size < facts.problems; n++) {
+			sent.add(pickSubmission(submissions, n, facts.perProblem).problemId);
+		}
 	}
 	return sent.size;
 }

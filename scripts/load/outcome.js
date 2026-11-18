@@ -103,6 +103,17 @@ export function finishSubmission(results) {
 		: 'clean';
 }
 
+/**
+ * How many entries each Problem has in the list (its Languages): the leading run of one Problem.
+ * @param {ArrayLike<{ problemId: string }>} list
+ * @returns {number}
+ */
+export function entriesPerProblem(list) {
+	let count = 1;
+	while (count < list.length && list[count].problemId === list[0].problemId) count++;
+	return count;
+}
+
 const GOLDEN = 0.6180339887498949;
 
 /**
@@ -114,11 +125,10 @@ const GOLDEN = 0.6180339887498949;
  * @template {{ problemId: string }} T
  * @param {ArrayLike<T>} list
  * @param {number} n
+ * @param {number} [perProblem] the entries per Problem, from `entriesPerProblem`; found when omitted
  * @returns {T}
  */
-export function pickSubmission(list, n) {
-	let perProblem = 1;
-	while (perProblem < list.length && list[perProblem].problemId === list[0].problemId) perProblem++;
+export function pickSubmission(list, n, perProblem = entriesPerProblem(list)) {
 	const problems = Math.floor(list.length / perProblem);
 	const problem = Math.floor(((n * GOLDEN) % 1) * problems);
 	return list[problem * perProblem + (n % perProblem)];

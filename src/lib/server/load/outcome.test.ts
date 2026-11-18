@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	classifyAnswer,
+	entriesPerProblem,
 	finishSubmission,
 	nextStep,
 	pickSubmission
@@ -156,6 +157,16 @@ describe('pickSubmission', () => {
 	it('takes consecutive picks from different Topics', () => {
 		const topic = (n: number) => pickSubmission(list, n).problemId.split('/')[0];
 		for (let n = 0; n < 60; n++) expect(topic(n)).not.toBe(topic(n + 1));
+	});
+
+	it('gives the same entry when the entries per Problem are passed in', () => {
+		expect(entriesPerProblem(list)).toBe(3);
+		for (const n of [0, 5, 99]) expect(pickSubmission(list, n, 3)).toBe(pickSubmission(list, n));
+	});
+
+	it('reaches every Problem within a few hundred picks', () => {
+		const seen = new Set(Array.from({ length: 300 }, (_, n) => pickSubmission(list, n).problemId));
+		expect(seen.size).toBe(40);
 	});
 
 	it('works on a list of one Problem', () => {
