@@ -162,7 +162,6 @@ jobs:
           mkdir -p "$out"
           export DATABASE_URL="file:$(mktemp -d)/stress.db"
           export CONTENT_DIR=content
-          export STRESS_ROUNDS=0
           status=0
           (bunx prisma migrate deploy && bun src/lib/server/prisma-stress.bun-check.ts) > "$out/stress-checkout.txt" 2>&1 || status=$?
           echo "$status" > "$out/stress-checkout.status"
