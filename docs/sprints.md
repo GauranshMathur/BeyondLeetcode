@@ -153,7 +153,7 @@ Release `R v1.21.1: Sprint 24 · Proof and operator checks`, version 1.21.1 (a p
 - The orchestrator cuts 1.21.1 from the release PR and records the cut.
 
 **Status (2026-11-18):** exit met, with three issues open on the maintainer.
-- **Cards:** all 19 Sprint 24 cards are Done: C439, C440, C445 to C448, C450 to C454, C457, C458, C460, C461, C465, C466, C468 and this one. C449, C455, C456, C459, C462 to C464, C467, C469 and C470 were reserved for the card-writers and never cut.
+- **Cards:** all 19 Sprint 24 cards are Done: C439, C440, C445 to C448, C450 to C454, C457, C458, C460, C461, C465, C466, C468 and this one.
 - **Tier mix (cards):** Tier 0: 1 (C439). Tier 2: 17. The last card has no tier. Tier 1 and 3: none.
 - **Issues:** 5 closed: #711 (Tier 0, by C439), and #705, #709, #744 and #745 (Tier 2), each by its last card. 3 stay open, each saying what waits on the maintainer: #735 (C440 added the start-up log line; whether the Setup screen should say so too is his), #734 (the record of the run is on the issue; his checklist of screenshots, timings and the tailnet is left), #698 (two points are done; whether the box that scrolls keeps a tab stop before the script runs is asked on the issue).
 - **CI:** `ci` is green on `main` at f9703d8, the last other card's merge.
