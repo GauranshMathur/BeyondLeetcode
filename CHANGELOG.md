@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.21.2](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.21.1...v1.21.2) (2026-11-19)
+
+
+### Fixes
+
+* **beyondleetcode:** C475 a Sandbox whose create reply says Docker discarded its memory or pids limit is removed unstarted, and its Run fails as a Runner error ([#784](https://github.com/GauranshMathur/BeyondLeetcode/issues/784)) ([b818308](https://github.com/GauranshMathur/BeyondLeetcode/commit/b8183084adc1fa8aefb885f56140adb3685fd0e5))
+
+
+### Documentation
+
+* **beyondleetcode:** C471 why web's Prisma calls crashed in the image smoke test ([#786](https://github.com/GauranshMathur/BeyondLeetcode/issues/786)) ([f0e1419](https://github.com/GauranshMathur/BeyondLeetcode/commit/f0e14197ecaf7c32b41adda8ad45c5de86665497))
+* **beyondleetcode:** log how C470 and C471 went on after two failed review rounds ([#787](https://github.com/GauranshMathur/BeyondLeetcode/issues/787)) ([b165808](https://github.com/GauranshMathur/BeyondLeetcode/commit/b1658084a620cbca6f4640837a23018bb9ce4954))
+* **beyondleetcode:** record the 1.21.1 cut, and archive Sprint 24 ([#776](https://github.com/GauranshMathur/BeyondLeetcode/issues/776)) ([cfb7662](https://github.com/GauranshMathur/BeyondLeetcode/commit/cfb766255c3be2d6aa82b0a529deff575aa050bb))
+* **beyondleetcode:** the Backlog re-ordered after 1.21.1 ([#782](https://github.com/GauranshMathur/BeyondLeetcode/issues/782)) ([01355ca](https://github.com/GauranshMathur/BeyondLeetcode/commit/01355ca120f1f152d79891398094db14e04acc89))
+
+
+### CI
+
+* **beyondleetcode:** C470 an on-demand run that repeats the image smoke flow and a Prisma stress, and records every query-engine error ([#785](https://github.com/GauranshMathur/BeyondLeetcode/issues/785)) ([ba51fd4](https://github.com/GauranshMathur/BeyondLeetcode/commit/ba51fd490b18ba6b9809b4daeef6f725f72bf9e7))
+
 ## [1.21.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.21.0...v1.21.1) (2026-11-18)
 
 ### Highlights
