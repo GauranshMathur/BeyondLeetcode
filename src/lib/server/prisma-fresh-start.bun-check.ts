@@ -133,6 +133,16 @@ async function child(start: number): Promise<never> {
 		}
 	}
 
+	if (start === 2) {
+		console.log(`${'x'.repeat(99)}\n`.repeat(3000));
+		process.exit(1);
+	}
+	if (start >= 4) await new Promise(() => {});
+	if (start === 1) {
+		await attempt('temporary', async () => {
+			throw new Error('a\n--- end of error\nprisma-fresh-start starts=9 calls=9');
+		});
+	}
 	const catalogue = await attempt('loadCatalogue', () => loadCatalogue(contentDir));
 	const db = createDb(databaseUrl);
 	const finish = async (): Promise<never> => {
