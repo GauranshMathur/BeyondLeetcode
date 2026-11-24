@@ -117,14 +117,16 @@ describe('what the action refuses or writes', () => {
 		const db = await createTestDb();
 		const core = createLearningCore({ catalogue, db, runner: createScriptedRunner({ tests: {} }) });
 		await db.learner.createMany({ data: [{ id: 'ann' }, { id: 'bob' }] });
-		const outcome2 = await actions
-			.default({
-				request: { formData: async () => new URLSearchParams({ language: 'go' }) },
-				locals: { identity: {}, learning: core.forLearner('ann') }
-			} as never)
-			.catch((e: unknown) => e);
+		const { thrown } = await outcome(
+			Promise.resolve(
+				actions.default({
+					request: { formData: async () => new URLSearchParams({ language: 'go' }) },
+					locals: { identity: {}, learning: core.forLearner('ann') }
+				} as never)
+			)
+		);
 
-		expect(outcome2).toMatchObject({ status: 303 });
+		expect(thrown).toMatchObject({ status: 303 });
 		const rows = await db.learner.findMany({ orderBy: { id: 'asc' } });
 		expect(rows.map((r) => [r.id, r.startingLanguage])).toEqual([
 			['ann', 'go'],
