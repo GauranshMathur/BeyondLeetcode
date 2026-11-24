@@ -1,17 +1,18 @@
 # An on-demand instrument for the app image's Prisma path. In each job it records the image's Prisma and OpenSSL files,
 # runs a stress of the image's own Prisma path that prints every error in full (and the same stress from the checkout),
-# and repeats the image's smoke flow on fresh Instances. The record of each job is its job summary and the artifact
-# `smoke-repeat-<job>`. It finds and fixes nothing itself: it goes red when it sees a query-engine error, and the
-# record says what was seen.
+# a second stress that starts a new process for every start and makes the calls a fresh web makes (in the image and
+# from the checkout), and repeats the image's smoke flow on fresh Instances. The record of each job is its job summary
+# and the artifact `smoke-repeat-<job>`. It finds and fixes nothing itself: it goes red when it sees a query-engine
+# error, and the record says what was seen.
 #
 # It is not part of `ci` and not a required check: a red run is a finding about the image, not a reason to hold a merge.
-# It also runs on a pull request that changes one of its own four files (this workflow, its script, the test of the
-# script and the stress), with small defaults that prove each part, and on no other pull request.
+# It also runs on a pull request that changes one of its own five files (this workflow, its script, the test of the
+# script and the two stresses), with small defaults that prove each part, and on no other pull request.
 # It never runs on the maintainer's host: the script starts containers, a composed Instance with the real Runner, and a
 # browser.
 #
 # To start it once this file is on main:
-#   gh workflow run smoke-repeat.yml --ref <branch> -f image=<tag> -f jobs=<n> -f runs=<n> -f stress_rounds=<n>
+#   gh workflow run smoke-repeat.yml --ref <branch> -f image=<tag> -f jobs=<n> -f runs=<n> -f stress_rounds=<n> -f fresh_starts=<n>
 # `image` empty builds the checked-out ref as ci.yml's docker job does; otherwise it is a tag of
 # ghcr.io/gauranshmathur/beyondleetcode, pulled with no login.
 name: smoke-repeat
@@ -30,14 +31,19 @@ on:
         default: "2"
         type: string
       runs:
-        description: "Browser-flow runs per job"
+        description: "Browser-flow runs per job (1 to 30). runs, stress_rounds and fresh_starts together must fit in 350 minutes, or the dispatch is refused"
         required: false
         default: "3"
         type: string
       stress_rounds:
-        description: "Rounds of the Prisma stress, in the image and from the checkout"
+        description: "Rounds of the Prisma stress (1 to 20000), in the image and from the checkout"
         required: false
         default: "200"
+        type: string
+      fresh_starts:
+        description: "Starts of the fresh-process stress (1 to 1000), in the image and from the checkout"
+        required: false
+        default: "20"
         type: string
       bun_version:
         description: "Bun for the checkout's stress pass (the Dockerfile's production runtime)"
@@ -50,6 +56,7 @@ on:
       - .github/smoke-repeat.sh
       - .github/smoke-repeat.test.sh
       - src/lib/server/prisma-stress.bun-check.ts
+      - src/lib/server/prisma-fresh-start.bun-check.ts
 
 permissions:
   contents: read
@@ -72,46 +79,61 @@ jobs:
       IN_JOBS: ${{ inputs.jobs || '2' }}
       IN_RUNS: ${{ inputs.runs || '3' }}
       IN_ROUNDS: ${{ inputs.stress_rounds || '200' }}
+      IN_STARTS: ${{ inputs.fresh_starts || '20' }}
       IN_BUN: ${{ inputs.bun_version || '1.2.19' }}
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       image: ${{ steps.plan.outputs.image }}
       runs: ${{ steps.plan.outputs.runs }}
       rounds: ${{ steps.plan.outputs.rounds }}
+      starts: ${{ steps.plan.outputs.starts }}
       bun: ${{ steps.plan.outputs.bun }}
       minutes: ${{ steps.plan.outputs.minutes }}
     steps:
       - id: plan
         run: |
-          number() { case "$2" in '' | *[!0-9]*) echo "::error::$1 must be a whole number, got '$2'"; exit 1 ;; esac; }
+          # A refused value is never echoed: it may hold a newline and so a second line that reads as a command.
+          number() {
+            case "$2" in '' | *[!0-9]*) echo "::error::$1 must be a whole number"; exit 1 ;; esac
+            [ "${#2}" -le 9 ] || { echo "::error::$1 is too long"; exit 1; }
+          }
           number jobs "$IN_JOBS"
           number runs "$IN_RUNS"
           number stress_rounds "$IN_ROUNDS"
+          number fresh_starts "$IN_STARTS"
+          # Read as decimal: a leading zero is not octal.
+          IN_JOBS=$((10#$IN_JOBS)); IN_RUNS=$((10#$IN_RUNS)); IN_ROUNDS=$((10#$IN_ROUNDS)); IN_STARTS=$((10#$IN_STARTS))
           [ "$IN_JOBS" -ge 1 ] && [ "$IN_JOBS" -le 10 ] || { echo "::error::jobs must be 1 to 10"; exit 1; }
           [ "$IN_RUNS" -ge 1 ] && [ "$IN_RUNS" -le 30 ] || { echo "::error::runs must be 1 to 30"; exit 1; }
           [ "$IN_ROUNDS" -ge 1 ] && [ "$IN_ROUNDS" -le 20000 ] || { echo "::error::stress_rounds must be 1 to 20000"; exit 1; }
+          [ "$IN_STARTS" -ge 1 ] && [ "$IN_STARTS" -le 1000 ] || { echo "::error::fresh_starts must be 1 to 1000"; exit 1; }
           case "$IN_BUN" in
             [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::bun_version must look like 1.2.19, got '$IN_BUN'"; exit 1 ;;
+            *) echo "::error::bun_version must look like 1.2.19"; exit 1 ;;
           esac
-          case "$IN_BUN" in *[!0-9.]*) echo "::error::bun_version must look like 1.2.19, got '$IN_BUN'"; exit 1 ;; esac
+          case "$IN_BUN" in *[!0-9.]*) echo "::error::bun_version must look like 1.2.19"; exit 1 ;; esac
           image=""
           if [ -n "$IN_IMAGE" ]; then
             case "$IN_IMAGE" in
-              *[!A-Za-z0-9._-]*) echo "::error::image must be a tag of ghcr.io/gauranshmathur/beyondleetcode, got '$IN_IMAGE'"; exit 1 ;;
+              *[!A-Za-z0-9._-]*) echo "::error::image must be a tag of ghcr.io/gauranshmathur/beyondleetcode"; exit 1 ;;
             esac
             image="ghcr.io/gauranshmathur/beyondleetcode:$IN_IMAGE"
           fi
           matrix="$(seq -s, 1 "$IN_JOBS")"
-          # 40 minutes for the build, the stress passes and the Runner's first pull, 8 for each browser-flow run, and one
-          # for every 100 rounds, up to the 360 minutes a job may have.
-          minutes=$((40 + 8 * IN_RUNS + IN_ROUNDS / 100))
-          [ "$minutes" -le 350 ] || minutes=350
+          # The budget, in minutes: 40 for the build, the stress passes and the Runner's first pull, 8 for each
+          # browser-flow run, one for every 100 rounds (rounded up), and the two fresh-start passes, each at its
+          # deadline: 480 + 3 * starts seconds, 30 more for the kill-after and 60 for removing the container, the sum
+          # of both rounded up to whole minutes. A combination over the 350 a job may have is refused, never capped:
+          # a cap would end the job before the deadlines it was asked for.
+          pass_seconds=$((480 + 3 * IN_STARTS + 30 + 60))
+          minutes=$((40 + 8 * IN_RUNS + (IN_ROUNDS + 99) / 100 + (2 * pass_seconds + 59) / 60))
+          [ "$minutes" -le 350 ] || { echo "::error::these inputs need more than 350 minutes; lower runs, stress_rounds or fresh_starts"; exit 1; }
           {
             echo "matrix=[$matrix]"
             echo "image=$image"
             echo "runs=$IN_RUNS"
             echo "rounds=$IN_ROUNDS"
+            echo "starts=$IN_STARTS"
             echo "bun=$IN_BUN"
             echo "minutes=$minutes"
           } >> "$GITHUB_OUTPUT"
@@ -128,6 +150,9 @@ jobs:
       IMAGE_TAG: ${{ needs.plan.outputs.image }}
       RUNS: ${{ needs.plan.outputs.runs }}
       STRESS_ROUNDS: ${{ needs.plan.outputs.rounds }}
+      FRESH_STARTS: ${{ needs.plan.outputs.starts }}
+      # The name of this job's fresh-start container, so the always() step below can remove it however the job ends.
+      FRESH_CONTAINER_NAME: smoke-repeat-fresh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.job }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -169,6 +194,30 @@ jobs:
           # every line is prefixed, ##[ is broken and a CR is a space.
           tail -n 3 "$out/stress-checkout.txt" | tr '\r' ' ' | sed 's/##\[/#.#[/g; s/^/| /'
           exit 0
+      # The fresh-process stress from the checkout: a new process for every start, each on a copy of one migrated
+      # database, with NODE_ENV=production as the image sets it for web. Kept green like the stress above.
+      - name: Fresh starts from the checkout
+        run: |
+          out="$RUNNER_TEMP/smoke-repeat"
+          mkdir -p "$out"
+          # A fixed folder, so the always() step below can remove it when this one is cancelled.
+          template="$RUNNER_TEMP/fresh-template"
+          mkdir -p "$template"
+          trap 'rm -rf "$template"' EXIT
+          export DATABASE_URL="file:$template/fresh.db"
+          export CONTENT_DIR=content
+          export NODE_ENV=production
+          status=0
+          # The deadline is for a hang, not for the starts' own time; a killed pass leaves no summary line and says so.
+          timeout --kill-after=30 "$((480 + 3 * FRESH_STARTS))" sh -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts' > "$out/fresh-checkout.txt" 2>&1 || status=$?
+          echo "$status" > "$out/fresh-checkout.status"
+          rm -rf "$template"
+          # The same guard as every other line from the image: the script's own filter, on the aggregate line only.
+          bash -c '. .github/smoke-repeat.sh; log_fresh_line "$1"' _ "$out/fresh-checkout.txt"
+          exit 0
+      - name: Remove the fresh-start database
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/fresh-template"
       - name: Build the image of this ref
         if: needs.plan.outputs.image == ''
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -218,6 +267,9 @@ jobs:
           else
             echo "No record was written." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Remove the fresh-start container
+        if: always()
+        run: timeout --kill-after=10 60 docker rm -f "$FRESH_CONTAINER_NAME" >/dev/null 2>&1 || echo "could not remove the fresh-start container"
       - name: Upload the record
         if: always()
         uses: actions/upload-artifact@v7

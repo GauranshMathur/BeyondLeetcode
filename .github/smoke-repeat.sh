@@ -5,6 +5,8 @@
 #
 # Usage: .github/smoke-repeat.sh <image> <runs> <out-dir>   (from the repo root)
 #   STRESS_ROUNDS   rounds of the stress inside the image (default 200)
+#   FRESH_STARTS    starts of the fresh-process stress inside the image (default 20): a new process for each, making
+#                   the database calls a fresh web makes in the image smoke flow
 #   PLAYWRIGHT_IMAGE, and a `bun` that sends `run test:smoke` into it (the shim of ci.yml's docker job), are what the
 #   browser flow needs, as for .github/smoke.sh.
 #
@@ -163,9 +165,10 @@ env_value() {
   done <"$1"
 }
 
-# stress_section <title> <output-file> <status-file>: the summary line and every error block of one stress.
+# stress_section <title> <output-file> <status-file> [summary-prefix]: the summary line and every error block of one
+# stress. The prefix is how its summary line starts (the first stress's by default).
 stress_section() {
-  local title="$1" file="$2" statusfile="$3" status
+  local title="$1" file="$2" statusfile="$3" prefix="${4:-prisma-stress rounds=}" status
   echo "## $title"
   echo
   if [ ! -f "$file" ]; then
@@ -176,12 +179,18 @@ stress_section() {
   status="$(cat "$statusfile" 2>/dev/null || echo unknown)"
   echo "Exit status: $status"
   echo
+  case "$status" in
+    124) echo "The pass's own deadline ended it (exit status 124): that is not a finding about the image."; echo ;;
+    137) echo "The pass was killed (exit status 137), by its deadline's kill or by the kernel's out-of-memory kill; the status alone does not say which."; echo ;;
+  esac
   local summary
-  summary="$(grep -E '^prisma-stress rounds=' "$file" | tail -n 1 || true)"
+  summary="$(grep -F -- "$prefix" "$file" | grep -E "^${prefix}" | tail -n 1 || true)"
   if [ -n "$summary" ]; then
     echo '```'
-    echo "$summary"
-    grep -E '^learning-core refusals' "$file" || true
+    {
+      echo "$summary"
+      grep -E '^learning-core refusals' "$file" || true
+    } | fence_safe
     echo '```'
   else
     echo "No summary line: the stress did not finish. Its last lines:"
@@ -247,6 +256,8 @@ emit_record() {
   echo
   stress_section "Stress in the image" "$out/stress-image.txt" "$out/stress-image.status"
   stress_section "Stress from the checkout" "$out/stress-checkout.txt" "$out/stress-checkout.status"
+  stress_section "Fresh starts in the image" "$out/fresh-image.txt" "$out/fresh-image.status" "prisma-fresh-start starts="
+  stress_section "Fresh starts from the checkout" "$out/fresh-checkout.txt" "$out/fresh-checkout.status" "prisma-fresh-start starts="
   if [ -f "$out/instance-notes.txt" ]; then
     echo "## The composed Instance"
     echo
@@ -318,8 +329,10 @@ write_summary() {
         ;;
     esac
   done
-  # A lone CR ends a line for a reader, wherever it came from.
+  # A lone CR ends a line for a reader, wherever it came from. No line is longer than 2000 characters, whatever the
+  # image printed: cut only now, after every secret has been replaced in the whole text, so none can straddle the cut.
   content="${content//$'\r'/ }"
+  content="$(printf '%s\n' "$content" | cut -c1-2000)"
   printf '%s\n' "$content" >"$out/summary.md" || return 2
   verdict "$out"
 }
@@ -332,7 +345,7 @@ verdict() {
     class="$(head -n 1 "$dir/class.txt" 2>/dev/null || true)"
     if [ "$class" = query-engine ]; then return 1; fi
   done < <(find "$out/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V)
-  for status in "$out/stress-image.status" "$out/stress-checkout.status"; do
+  for status in "$out/stress-image.status" "$out/stress-checkout.status" "$out/fresh-image.status" "$out/fresh-checkout.status"; do
     # A stress that left output but no status is a failure, never a pass.
     if [ ! -f "$status" ]; then
       if [ -f "${status%.status}.txt" ]; then return 1; fi
@@ -410,6 +423,64 @@ stress_in_image() {
     >"$out/stress-image.txt" 2>&1
   status=$?
   echo "$status" >"$out/stress-image.status"
+}
+
+# whole_number <value> <max>: the value as a decimal number from 1 to max, or nothing and status 1. Digits only, so
+# no sign, space, exponent, hex or newline; a leading zero is dropped, never read as octal. It never prints the value.
+whole_number() {
+  local value="$1" max="$2"
+  # In the C locale only the ASCII digits are digits, so a digit of another script cannot pass the check below.
+  local LC_ALL=C
+  case "$value" in '' | *[!0-9]*) return 1 ;; esac
+  [ "${#value}" -le 9 ] || return 1
+  value=$((10#$value))
+  [ "$value" -ge 1 ] && [ "$value" -le "$max" ] || return 1
+  printf '%s\n' "$value"
+}
+
+# fresh_in_image <out-dir> <image> <starts> <fresh-file> <wire-file> <learner-file>
+# A new process for each start, on a copy of a migrated database, in the image as the bun user. Beside the stress file
+# two pure modules the image lacks are mounted from the checkout (problem-wire.ts, which the Learning core imports, and
+# e2e-learner.ts, which identity/index.ts imports), all read-only. No Docker socket and no other mount.
+# It runs under a deadline with a kill-after (the starts' own time and a margin for the migration), and the container is
+# removed on every path, a timed-out one included.
+fresh_in_image() {
+  local out="$1" image="$2" starts="$3" file="$4" wire="$5" learner="$6" status
+  # The workflow names the container, so its always() step can remove it when this script is cut short; the name is
+  # checked, since it ends up as an argument.
+  local name="${FRESH_CONTAINER_NAME:-smoke-repeat-fresh-$$}"
+  case "$name" in '' | *[!A-Za-z0-9_.-]*) name="smoke-repeat-fresh-$$" ;; esac
+  FRESH_CONTAINER="$name"
+  timeout --kill-after=30 "$((480 + 3 * starts))" docker run --rm --name "$name" --user bun --entrypoint sh \
+    -e HOME=/home/bun -e DATABASE_URL=file:/tmp/fresh.db -e CONTENT_DIR=/app/content -e "FRESH_STARTS=$starts" \
+    -v "$file:/app/src/lib/server/prisma-fresh-start.bun-check.ts:ro" \
+    -v "$wire:/app/src/lib/problem-wire.ts:ro" \
+    -v "$learner:/app/src/lib/e2e-learner.ts:ro" \
+    "$image" -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts' \
+    >"$out/fresh-image.txt" 2>&1
+  status=$?
+  remove_fresh_container
+  echo "$status" >"$out/fresh-image.status"
+}
+
+# The fresh-start container's name while one may exist, so the clean-up trap can remove it on a signal.
+FRESH_CONTAINER=""
+
+# remove_fresh_container: removes it under a deadline and says so, in fixed words, when it cannot.
+remove_fresh_container() {
+  [ -n "$FRESH_CONTAINER" ] || return 0
+  if timeout --kill-after=10 60 docker rm -f "$FRESH_CONTAINER" >/dev/null 2>&1; then
+    FRESH_CONTAINER=""
+  else
+    # The name is kept, so the clean-up trap can try again.
+    echo "smoke-repeat: could not remove the fresh-start container" >&2
+  fi
+}
+
+# log_fresh_line <output-file>: the fresh starts' summary line for the job log, through the same filter as every line
+# that came from the image.
+log_fresh_line() {
+  { grep -E '^prisma-fresh-start starts=' "$1" 2>/dev/null | tail -n 1 | log_safe | cut -c1-2002; } || true
 }
 
 compose() { (cd "$INSTANCE" && docker compose "$@"); }
@@ -533,6 +604,7 @@ cleanup() {
   set +e
   trap - EXIT
   trap '' INT TERM
+  remove_fresh_container
   if [ -n "$INSTANCE" ] && [ -f "$INSTANCE/compose.yaml" ]; then
     # --kill-after: a `down` that ignores TERM is killed 10 s after the deadline.
     if ! (cd "$INSTANCE" && timeout --kill-after=10 "$CLEANUP_DEADLINE" docker compose down -v >/dev/null 2>&1); then
@@ -551,13 +623,19 @@ main() {
   local image="${1:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
   local runs="${2:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
   local out="${3:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
-  local rounds="${STRESS_ROUNDS:-200}" stress_file wire_file n status
-  case "$runs" in '' | *[!0-9]*) die "runs must be a whole number, got '$runs'" ;; esac
-  case "$rounds" in '' | *[!0-9]* | 0) die "STRESS_ROUNDS must be a whole number of at least 1, got '$rounds'" ;; esac
+  local rounds="${STRESS_ROUNDS:-200}" starts="${FRESH_STARTS:-20}" stress_file wire_file fresh_file learner_file n status
+  # A refused value is never echoed: it may hold a newline and so a second, command-shaped line.
+  case "$runs" in '' | *[!0-9]*) die "runs must be a whole number" ;; esac
+  rounds="$(whole_number "$rounds" 20000)" || die "STRESS_ROUNDS must be a whole number from 1 to 20000"
+  starts="$(whole_number "$starts" 1000)" || die "FRESH_STARTS must be a whole number from 1 to 1000"
   stress_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/server/prisma-stress.bun-check.ts"
   [ -f "$stress_file" ] || die "$stress_file is missing"
   wire_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/problem-wire.ts"
   [ -f "$wire_file" ] || die "$wire_file is missing"
+  fresh_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/server/prisma-fresh-start.bun-check.ts"
+  [ -f "$fresh_file" ] || die "$fresh_file is missing"
+  learner_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/e2e-learner.ts"
+  [ -f "$learner_file" ] || die "$learner_file is missing"
   mkdir -p "$out/runs" || die "cannot make $out"
   WORK_DIR="$(mktemp -d)" || die "cannot make a temporary folder"
   OUT_DIR="$out"
@@ -571,6 +649,8 @@ main() {
   prisma_commands "$out" "$image"
   echo "== the stress, inside the image ($rounds rounds)"
   stress_in_image "$out" "$image" "$rounds" "$stress_file" "$wire_file"
+  echo "== fresh starts, inside the image ($starts starts)"
+  fresh_in_image "$out" "$image" "$starts" "$fresh_file" "$wire_file" "$learner_file"
 
   echo "== the composed Instance"
   if compose_up "$out" "$image"; then
@@ -585,6 +665,7 @@ main() {
   # Printed only now: the generated values are known and masked by this point (compose_up masks them as soon as init
   # has written them), and nothing from the image reached the job log before that, only this script's own headings.
   { tail -n 3 "$out/stress-image.txt" 2>/dev/null | grep -E '^prisma-stress ' | log_safe; } || true
+  log_fresh_line "$out/fresh-image.txt"
 
   write_summary "$out" "$image"
   status=$?
