@@ -154,10 +154,12 @@ The maintainer's own, which no agent starts and which are not questions: #24 (th
 
 Release `R v1.22.0: Sprint 23 · The starting Language`, version 1.22.0 (the next minor after Sprint 22's 1.21.0, because the cards are `feat`). Milestone `Sprint 23 · The starting Language`.
 
-**It cannot start.** #661 asks for a stored per-Learner value, a schema change, which is the maintainer's to allow (asked on the issue on 2026-11-14; recommended: yes, one nullable `startingLanguage` column on `Learner`, with a migration that sets every existing Learner to `python`). He has said not to take that answer for him.
+**Started 2026-11-24.** #661 asks for a stored per-Learner value, a schema change, which is the maintainer's to allow. He answered on 2026-11-24: yes, the starting Language may be a stored per-Learner value (`docs/decisions.md`). The form is the one the question carried: one nullable `startingLanguage` column on `Learner`, with a migration that sets every existing Learner to `python`. The migration is part of the card that adds the column.
+
+The two Tier 0 issues, #773 and #768, are passed over: each waits on the maintainer (the ranking's waiting table). What is already merged for them (the refused create whose limit Docker discarded, the `smoke-repeat` run, and the note on the image's Prisma crash) ships in this release.
 
 - **Issues: 2, both Tier 1:** #661, and #662, whose last card is here.
-- **Cards, moved from Sprint 22 on 2026-11-16 as they stood:** C397 (the stored value on `Learner`), C398 (a Topic not yet started opens in it), C399 (the first-run choice), C400 (the Settings row), C402b (the first-run choice offers the guide). They are in the old card format: when the sprint starts, the card-writer cuts them again against main, and the orchestrator files the exit card.
+- **Cards, moved from Sprint 22 on 2026-11-16 as they stood:** C397 (the stored value on `Learner`), C398 (a Topic not yet started opens in it), C399 (the first-run choice), C400 (the Settings row), C402b (the first-run choice offers the guide). They were in the old card format, so the card-writer cuts them again against main, and the orchestrator files the exit card.
 - **Shared files to order then:** `learning/core.ts` (C398, after Sprint 22's C391) and the Problem route's `+page.server.ts` (C399, after Sprint 22's C394).
 
 **Exit:**
