@@ -42,6 +42,8 @@ const refused = $derived(form?.message !== undefined);
 				{/if}
 				{#each LANGUAGES as language (language.id)}
 					<label class="choice">
+						<!-- The board marks every radio invalid after a refusal, so a screen reader reads the group's error on each. -->
+						<!-- svelte-ignore a11y_role_supports_aria_props_implicit -->
 						<input
 							type="radio"
 							name="language"
