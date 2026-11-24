@@ -18,8 +18,9 @@
  * It sets no DEBUG variable and no Prisma `log` option.
  *
  * The parent's last line is `prisma-fresh-start starts=<n> calls=<n> errors=<n> failed-starts=<n> not-printed=<n>`
- * (and `not-run=<n>` when it stopped early) and `<class>=<count>` for each class (from each child's last line or, for a child that died before printing it, from the error blocks it printed; such a child's calls are not counted). Exit 1 when any start saw a
- * `PrismaClient*` error or failed, 0 otherwise. A refusal of the Learning core is counted by code and is not an
+ * (and `not-run=<n>` when it stopped early) and `<class>=<count>` for each class (from each child's last line or,
+ * for a child that died before printing it, from the error blocks it printed; such a child's calls are not
+ * counted). Exit 1 when any start saw a `PrismaClient*` error or failed, 0 otherwise. A refusal of the Learning core is counted by code and is not an
  * error. A start fails when its child was killed, timed out, printed no complete last line, caught an error that
  * is neither a Learning-core refusal nor a `PrismaClient*` error (those are counted as errors and fail the run
  * themselves), or made fewer Learning-core calls than the flow has. After three timed-out starts in a row the parent

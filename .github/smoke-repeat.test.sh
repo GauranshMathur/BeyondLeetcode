@@ -516,7 +516,7 @@ printf '%s%s tail\n' "$pad" "$runner_token" >"$out/facts.txt"
 write_summary "$out" example:tag >/dev/null 2>&1
 if grep -qF "${runner_token:0:8}" "$out/summary.md"; then bad "a part of the token survived the cut in the record"; else ok "a token spanning column 2000 leaves no part in the record"; fi
 SECRETS=("$runner_token" "$auth_secret")
-printf 'prisma-fresh-start starts=1 calls=1 errors=0 failed-starts=0 not-printed=0 %s%s\n' "${pad:0:1920}" "$runner_token" >"$out/fresh-image.txt"
+printf 'prisma-fresh-start starts=1 calls=1 errors=0 failed-starts=0 not-printed=0 %s%s\n' "${pad:0:1910}" "$runner_token" >"$out/fresh-image.txt"
 got="$(log_fresh_line "$out/fresh-image.txt")"
 if printf '%s\n' "$got" | grep -qF "${runner_token:0:8}"; then bad "a part of the token survived the cut in the job log"; else ok "a token spanning column 2000 leaves no part in the job log"; fi
 SECRETS=()
