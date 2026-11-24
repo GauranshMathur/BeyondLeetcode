@@ -60,6 +60,7 @@ const refused = $derived(form?.message !== undefined);
 			<span class="note-label">Note 1</span>
 			<span>You can change this later in Settings, and for each Topic.</span>
 		</aside>
+		<p class="offer">New here? <a href="/guide">How to use the site</a></p>
 	</section>
 </main>
 
@@ -171,6 +172,18 @@ const refused = $derived(form?.message !== undefined);
 		font-weight: 500;
 		cursor: pointer;
 	}
+	.offer {
+		grid-column: 1 / span 7;
+		margin: 32px 0 0;
+		font-size: 16px;
+		line-height: 1.5;
+		color: var(--muted);
+	}
+	.offer a {
+		color: var(--ink);
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
 	aside {
 		grid-column: 9 / span 4;
 		align-self: start;
@@ -236,6 +249,14 @@ const refused = $derived(form?.message !== undefined);
 			height: 48px;
 			padding: 0 20px;
 			font-size: 14px;
+		}
+		.offer {
+			margin: 0;
+		}
+		.offer a {
+			display: inline-flex;
+			align-items: center;
+			min-height: 44px;
 		}
 		aside {
 			margin-top: 0;
