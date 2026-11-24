@@ -53,6 +53,19 @@ test("the header's Guide link opens the Guide from the Map", async ({ page }) =>
 	await expect(page.getByRole('heading', { level: 1, name: 'How to use the site' })).toBeVisible();
 });
 
+const CHOICE = '/language?next=%2Fproblems%2Fstacks-push';
+
+test('the first-run choice offers the Guide', async ({ page }) => {
+	await gotoHydrated(page, CHOICE);
+	const offer = page.getByRole('main').getByRole('link', { name: /How to use the site/ });
+	await expect(offer).toHaveAttribute('href', '/guide');
+	await offer.click();
+	await expect(page).toHaveURL('/guide');
+	await expect(page.getByRole('heading', { level: 1, name: 'How to use the site' })).toBeVisible();
+	await page.goBack();
+	await expect(page).toHaveURL(CHOICE);
+});
+
 test.describe('on a phone', () => {
 	test.use(phone);
 
@@ -71,5 +84,14 @@ test.describe('on a phone', () => {
 		await gotoHydrated(page, '/guide');
 		await expectNoSidewaysScroll(page);
 		await expectTargets(page.getByRole('main'), 44);
+	});
+
+	test("the first-run choice's Guide link opens the Guide", async ({ page }) => {
+		await gotoHydrated(page, CHOICE);
+		const offer = page.getByRole('main').getByRole('link', { name: /How to use the site/ });
+		const box = await offer.boundingBox();
+		expect(box?.height).toBeGreaterThanOrEqual(44);
+		await offer.click();
+		await expect(page).toHaveURL('/guide');
 	});
 });
