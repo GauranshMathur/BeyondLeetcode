@@ -51,7 +51,6 @@ const list = (counts: Map<string, number>) => [...counts].map(([k, v]) => `${k}=
 // The child: one fresh process, one start
 
 async function child(start: number): Promise<never> {
-	if (start > 0) process.exit(1);
 	const databaseUrl = process.env.DATABASE_URL;
 	const contentDir = process.env.CONTENT_DIR;
 	if (!databaseUrl) throw new Error('DATABASE_URL is not set');
