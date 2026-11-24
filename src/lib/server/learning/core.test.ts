@@ -2373,8 +2373,9 @@ describe('the starting Language', () => {
 	});
 
 	it('writes only the Learner row', async () => {
-		const { learner, db } = await setup();
-		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'x' });
+		const { learner, db } = await setup({ acceptAll: true });
+		await learner.reachChapterEnd('stacks-undo-log');
+		await learner.submit(ref('stacks-push', 0), { 'main.py': 'print(2)' });
 		await learner.switchLanguage('stacks-push', 'typescript');
 		await learner.revealHint('stacks-push');
 		const counts = async () => [
@@ -2385,6 +2386,7 @@ describe('the starting Language', () => {
 			await db.hintsRevealed.count()
 		];
 		const before = await counts();
+		expect(before.every((n) => n > 0)).toBe(true);
 
 		await learner.setStartingLanguage('go');
 
@@ -2392,12 +2394,13 @@ describe('the starting Language', () => {
 	});
 
 	it('refuses an unknown Language and a Learner with no row', async () => {
-		const { learner } = await setup();
+		const { learner, db: ownDb } = await setup();
 
 		await expect(learner.setStartingLanguage('rust' as Language)).rejects.toMatchObject({
 			code: 'InvalidBuild'
 		});
-		expect(await learner.startingLanguage()).toBeUndefined();
+		const row = await ownDb.learner.findUnique({ where: { id: 'any-learner' } });
+		expect(row?.startingLanguage).toBeNull();
 
 		const { db, runner, catalogue } = await setup();
 		const bare = createCoreOnDb({ catalogue, db, runner }).forLearner('no-row');
