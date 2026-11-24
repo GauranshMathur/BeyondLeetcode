@@ -340,10 +340,13 @@ printf 'prisma-fresh-start starts=1 calls=1 errors=0 failed-starts=0 not-printed
 verdict "$out"
 [ "$?" = 1 ] && ok "a fresh-image output with no status is 1" || bad "fresh-image without status passed"
 
-# 21. The in-image pass mounts only the three files, read-only, passes the number of starts and no socket
+# 21. The in-image pass mounts only the three files, read-only, passes the number of starts and no socket, and runs
+# under a deadline with a kill-after, as the user bun, with the container removed on every path
 out="$work/record-n"
 mkdir -p "$out"
-docker() { printf '%s\n' "$@" >"$work/fresh-docker.args"; echo "docker ran"; return 7; }
+: >"$work/fresh-docker.calls"
+docker() { echo "$1" >>"$work/fresh-docker.calls"; if [ "$1" = run ]; then printf '%s\n' "$@" >"$work/fresh-docker.args"; echo "docker ran"; return 7; fi; return 0; }
+timeout() { echo "$1 $2" >"$work/fresh-timeout.args"; shift 2; "$@"; }
 fresh_in_image "$out" example:tag 5 /checkout/src/lib/server/prisma-fresh-start.bun-check.ts /checkout/src/lib/problem-wire.ts /checkout/src/lib/e2e-learner.ts
 status=$?
 args="$work/fresh-docker.args"
@@ -354,21 +357,106 @@ args="$work/fresh-docker.args"
   && grep -qxF 'FRESH_STARTS=5' "$args" && ! grep -q 'docker.sock' "$args" && ! grep -q -e '--privileged' "$args" \
   && grep -qxF 'bun' "$args" \
   && ok "the in-image pass mounts the three files read-only and passes FRESH_STARTS" || bad "in-image args: $(tr '\n' ' ' <"$args")"
+[ "$(grep -c '^-e$' "$args")" = 4 ] && grep -qxF 'HOME=/home/bun' "$args" && grep -qxF 'DATABASE_URL=file:/tmp/fresh.db' "$args" \
+  && grep -qxF 'CONTENT_DIR=/app/content' "$args" && ! grep -q -e '--network' -e '--env-file' -e '--volumes-from' "$args" \
+  && grep -qxF -e '--rm' "$args" && grep -qxF -e '--user' "$args" && grep -qxF 'bun' "$args" \
+  && [ "$(grep -c '^--user$' "$args")" = 1 ] && [ "$(grep -A1 '^--user$' "$args" | tail -n 1)" = bun ] \
+  && ok "the in-image pass runs --rm as the bun user with exactly four variables, no network flag and no other mount" || bad "in-image flags: $(tr '\n' ' ' <"$args")"
 [ "$(cat "$out/fresh-image.status")" = 7 ] && grep -q "docker ran" "$out/fresh-image.txt" \
   && ok "the status file holds the stub's exit status" || bad "in-image status: $(cat "$out/fresh-image.status" 2>/dev/null)"
-unset -f docker
+grep -q -e '--kill-after=' "$work/fresh-timeout.args" && grep -qE ' [0-9]+$' "$work/fresh-timeout.args" \
+  && grep -qx run "$work/fresh-docker.calls" && grep -qx rm "$work/fresh-docker.calls" \
+  && ok "the container runs under a deadline with a kill-after and is removed afterwards" || bad "deadline or removal: $(cat "$work/fresh-timeout.args" "$work/fresh-docker.calls" | tr '\n' ' ')"
+unset -f docker timeout
 
-# 22. The job-log line of the fresh starts is redacted, prefixed and cannot start a command
+# 22. The job-log line of the fresh starts is redacted, prefixed and cannot start a command; a per-child line and a
+# CR never reach it raw
 SECRETS=("$runner_token" "$auth_secret")
 out="$work/record-o"
 mkdir -p "$out"
-printf 'noise\nprisma-fresh-start starts=2 calls=3 errors=0 failed-starts=0 not-printed=0 ##[error]x %s\n' "$runner_token" >"$out/fresh-image.txt"
+printf 'noise\nprisma-fresh-start-child calls=1 errors=0 ##[error]\nprisma-fresh-start starts=2 calls=3 errors=0 failed-starts=0 not-printed=0 ##[error]x %s\rforged ::error::y\n' "$runner_token" >"$out/fresh-image.txt"
 got="$(log_fresh_line "$out/fresh-image.txt")"
 case "$got" in
-  '| prisma-fresh-start '*) printf '%s\n' "$got" | grep -qF '[redacted]' && ! printf '%s\n' "$got" | grep -qF "$runner_token" && ! printf '%s\n' "$got" | grep -qF '##[' \
-    && ok "the fresh-start job-log line is prefixed, redacted and holds no ##[" || bad "fresh-start log line: '$got'" ;;
+  '| prisma-fresh-start starts='*) printf '%s\n' "$got" | grep -qF '[redacted]' && ! printf '%s\n' "$got" | grep -qF "$runner_token" && ! printf '%s\n' "$got" | grep -qF '##[' \
+    && [ "$(printf '%s\n' "$got" | wc -l)" = 1 ] && ! printf '%s' "$got" | grep -q $'\r' && ! printf '%s\n' "$got" | grep -q 'prisma-fresh-start-child' \
+    && ok "the fresh-start job-log line is one prefixed, redacted line with no per-child line, no CR and no ##[" || bad "fresh-start log line: '$got'" ;;
   *) bad "fresh-start log line: '$got'" ;;
 esac
 SECRETS=()
+
+# 23. A start that caught an error is a failed start: the record carries its process block and the verdict is red
+out="$work/record-p"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+printf -- '--- error: start 1, process\nexit code 2\n    | prisma-fresh-start-child calls=3 core-calls=0 errors=1 other-errors=1 query-engine=0 Error=1\n--- end of error\nprisma-fresh-start starts=1 calls=3 errors=1 failed-starts=1 not-printed=0 Error=1\n' >"$out/fresh-image.txt"
+printf '1\n' >"$out/fresh-image.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+status=$?
+[ "$status" = 1 ] && grep -qF 'failed-starts=1' "$out/summary.md" && grep -qF -- '--- error: start 1, process' "$out/summary.md" \
+  && ok "a failed start's block and line are in the record and the verdict is 1" || bad "failed start record (exit $status)"
+
+# 24. A block nested in a process block stays whole, and a child line that looks like the aggregate line is not taken
+# for it when the parent never finished
+out="$work/record-q"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+printf -- '--- error: start 1, process\nexit code 1\n    | --- error: start 1, call run\n    | --- end of error\n    | prisma-fresh-start starts=9 calls=9 errors=0\n    | tail line\n--- end of error\n  prisma-fresh-start starts=9 calls=9 errors=0 failed-starts=0 not-printed=0\n' >"$out/fresh-image.txt"
+printf '1\n' >"$out/fresh-image.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+grep -qF 'tail line' "$out/summary.md" && grep -qF 'No summary line' "$out/summary.md" \
+  && ! sed -n '/^## Fresh starts in the image/,/^## Fresh starts from/p' "$out/summary.md" | grep -q '^prisma-fresh-start starts=' \
+  && ok "a nested marker does not end the process block, and an indented aggregate look-alike is not the summary" || bad "nested marker: $(sed -n '/^## Fresh starts in the image/,/^## Fresh starts from/p' "$out/summary.md")"
+
+# 25. A line of a fresh-start summary that holds a CR or a fence cannot break the record's fences
+out="$work/record-r"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+printf 'prisma-fresh-start starts=1 calls=1 errors=0 failed-starts=0 not-printed=0\r~~~~\r```\n' >"$out/fresh-checkout.txt"
+printf '0\n' >"$out/fresh-checkout.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+[ "$(grep -c '^~~~~$' "$out/summary.md")" = 0 ] && ! grep -q $'\r' "$out/summary.md" && [ "$(grep -cE '^ {0,3}```' "$out/summary.md")" = 2 ] \
+  && ok "a fence or CR on the summary line stays inside it" || bad "summary line fence: $(sed -n '/^## Fresh starts from the checkout/,$p' "$out/summary.md" | head -12)"
+
+# 26. The final secret check covers the fresh-start sections: a value that survives redaction means no record
+out="$work/record-s"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=[redacted]\nBETTER_AUTH_SECRET=%s\n' "$auth_secret" >"$out/.env"
+printf -- '--- error: start 1, call map\nclass: Error\nmessage:\n    [redacted]\nstack:\n--- end of error\nprisma-fresh-start starts=1 calls=1 errors=1 failed-starts=0 not-printed=0 Error=1\n' >"$out/fresh-image.txt"
+printf '1\n' >"$out/fresh-image.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+status=$?
+[ "$status" = 2 ] && [ ! -e "$out/summary.md" ] && ok "a secret that survives redaction in a fresh-start section: no record" || bad "final secret check (exit $status)"
+
+# 27. The number of starts: digits only, no leading zero is kept, 1 to 2000; a refusal never echoes the value
+[ "$(whole_number 8 2000)" = 8 ] && [ "$(whole_number 08 2000)" = 8 ] && [ "$(whole_number 2000 2000)" = 2000 ] \
+  && ok "a whole number is read as decimal, a leading zero dropped" || bad "whole_number: '$(whole_number 08 2000)'"
+rejected=1
+for v in '' 0 00 2001 1e3 0x10 2.0 -1 ' 1' $'1\n2' 12345678901234567890; do
+  if whole_number "$v" 2000 >/dev/null 2>&1; then rejected=0; echo "accepted: '$v'"; fi
+done
+[ "$rejected" = 1 ] && ok "empty, zero, too large, exponent, hex, decimal point, sign, space and newline are refused" || bad "whole_number accepted a bad value"
+msg="$( (FRESH_STARTS=$'3\n::error::forged' main example:tag 1 "$work/none") 2>&1)"
+case "$msg" in
+  *FRESH_STARTS*) printf '%s\n' "$msg" | grep -q 'forged' && bad "the refusal echoed the value: '$msg'" || ok "the refusal of FRESH_STARTS does not echo the value" ;;
+  *) bad "no refusal: '$msg'" ;;
+esac
+
+# 28. The workflow's plan step: a leading zero is a number, a bad value is refused without being echoed
+plan="$work/plan.sh"
+sed -n '/^      - id: plan$/,/^  repeat:$/p' "$here/workflows/smoke-repeat.yml" | sed -n '/run: |/,/^  repeat:/p' | sed '1d;$d' | sed 's/^          //' >"$plan"
+run_plan() { (cd "$work" && env -i PATH="$PATH" GITHUB_OUTPUT="$work/plan.out" IN_IMAGE= IN_JOBS=2 IN_RUNS=3 IN_ROUNDS=200 IN_STARTS=20 IN_BUN=1.2.19 "$@" bash "$plan" 2>&1); }
+: >"$work/plan.out"
+run_plan IN_STARTS=08 IN_RUNS=08 IN_ROUNDS=0100 >"$work/plan.log"
+status=$?
+grep -qx 'starts=8' "$work/plan.out" && grep -qx 'runs=8' "$work/plan.out" && grep -qx 'rounds=100' "$work/plan.out" && grep -qx 'minutes=105' "$work/plan.out" \
+  && ok "the plan step reads 08 as 8 and works the minutes out" || bad "plan with leading zeros (exit $status): $(cat "$work/plan.out" "$work/plan.log" | tr '\n' ' ')"
+: >"$work/plan.out"
+run_plan IN_STARTS=$'3\n::stop-commands::x' >"$work/plan.log"
+status=$?
+[ "$status" != 0 ] && grep -q 'fresh_starts must be' "$work/plan.log" && ! grep -q 'stop-commands' "$work/plan.log" \
+  && ok "the plan step refuses a bad fresh_starts without echoing it" || bad "plan with a bad value (exit $status): $(cat "$work/plan.log")"
+: >"$work/plan.out"
+run_plan IN_STARTS=2001 >"$work/plan.log"
+[ "$?" != 0 ] && ok "the plan step refuses more than 2000 starts" || bad "2001 starts accepted"
 
 exit "$fail"

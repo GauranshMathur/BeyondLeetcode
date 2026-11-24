@@ -92,31 +92,37 @@ jobs:
     steps:
       - id: plan
         run: |
-          number() { case "$2" in '' | *[!0-9]*) echo "::error::$1 must be a whole number, got '$2'"; exit 1 ;; esac; }
+          # A refused value is never echoed: it may hold a newline and so a second line that reads as a command.
+          number() {
+            case "$2" in '' | *[!0-9]*) echo "::error::$1 must be a whole number"; exit 1 ;; esac
+            [ "${#2}" -le 9 ] || { echo "::error::$1 is too long"; exit 1; }
+          }
           number jobs "$IN_JOBS"
           number runs "$IN_RUNS"
           number stress_rounds "$IN_ROUNDS"
           number fresh_starts "$IN_STARTS"
+          # Read as decimal: a leading zero is not octal.
+          IN_JOBS=$((10#$IN_JOBS)); IN_RUNS=$((10#$IN_RUNS)); IN_ROUNDS=$((10#$IN_ROUNDS)); IN_STARTS=$((10#$IN_STARTS))
           [ "$IN_JOBS" -ge 1 ] && [ "$IN_JOBS" -le 10 ] || { echo "::error::jobs must be 1 to 10"; exit 1; }
           [ "$IN_RUNS" -ge 1 ] && [ "$IN_RUNS" -le 30 ] || { echo "::error::runs must be 1 to 30"; exit 1; }
           [ "$IN_ROUNDS" -ge 1 ] && [ "$IN_ROUNDS" -le 20000 ] || { echo "::error::stress_rounds must be 1 to 20000"; exit 1; }
           [ "$IN_STARTS" -ge 1 ] && [ "$IN_STARTS" -le 2000 ] || { echo "::error::fresh_starts must be 1 to 2000"; exit 1; }
           case "$IN_BUN" in
             [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::bun_version must look like 1.2.19, got '$IN_BUN'"; exit 1 ;;
+            *) echo "::error::bun_version must look like 1.2.19"; exit 1 ;;
           esac
-          case "$IN_BUN" in *[!0-9.]*) echo "::error::bun_version must look like 1.2.19, got '$IN_BUN'"; exit 1 ;; esac
+          case "$IN_BUN" in *[!0-9.]*) echo "::error::bun_version must look like 1.2.19"; exit 1 ;; esac
           image=""
           if [ -n "$IN_IMAGE" ]; then
             case "$IN_IMAGE" in
-              *[!A-Za-z0-9._-]*) echo "::error::image must be a tag of ghcr.io/gauranshmathur/beyondleetcode, got '$IN_IMAGE'"; exit 1 ;;
+              *[!A-Za-z0-9._-]*) echo "::error::image must be a tag of ghcr.io/gauranshmathur/beyondleetcode"; exit 1 ;;
             esac
             image="ghcr.io/gauranshmathur/beyondleetcode:$IN_IMAGE"
           fi
           matrix="$(seq -s, 1 "$IN_JOBS")"
           # 40 minutes for the build, the stress passes and the Runner's first pull, 8 for each browser-flow run, one
-          # for every 100 rounds, and one for every 30 fresh starts (the two passes took about 1 s a start between them on this PR's runs), up to the 360
-          # minutes a job may have.
+          # for every 100 rounds, and one for every 30 fresh starts (the two passes took 1 to 2 s a start between them on this PR's runs), up to
+          # the 360 minutes a job may have.
           minutes=$((40 + 8 * IN_RUNS + IN_ROUNDS / 100 + IN_STARTS / 30))
           [ "$minutes" -le 350 ] || minutes=350
           {
@@ -189,13 +195,17 @@ jobs:
         run: |
           out="$RUNNER_TEMP/smoke-repeat"
           mkdir -p "$out"
-          export DATABASE_URL="file:$(mktemp -d)/fresh.db"
+          template="$(mktemp -d)"
+          export DATABASE_URL="file:$template/fresh.db"
           export CONTENT_DIR=content
           export NODE_ENV=production
           status=0
-          (bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts) > "$out/fresh-checkout.txt" 2>&1 || status=$?
+          # The deadline is for a hang, not for the starts' own time; a killed pass leaves no summary line and says so.
+          timeout --kill-after=30 "$((600 + 5 * FRESH_STARTS))" sh -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts' > "$out/fresh-checkout.txt" 2>&1 || status=$?
           echo "$status" > "$out/fresh-checkout.status"
-          tail -n 3 "$out/fresh-checkout.txt" | tr '\r' ' ' | sed 's/##\[/#.#[/g; s/^/| /'
+          rm -rf "$template"
+          # The same guard as every other line from the image: the script's own filter, on the aggregate line only.
+          bash -c '. .github/smoke-repeat.sh; log_fresh_line "$1"' _ "$out/fresh-checkout.txt"
           exit 0
       - name: Build the image of this ref
         if: needs.plan.outputs.image == ''
