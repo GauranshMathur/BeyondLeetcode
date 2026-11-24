@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.22.0](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.21.1...v1.22.0) (2026-11-24)
+
+
+### Features
+
+* **beyondleetcode:** C397 a Learner's starting Language is stored, and every existing Learner holds Python ([#793](https://github.com/GauranshMathur/BeyondLeetcode/issues/793)) ([4330820](https://github.com/GauranshMathur/BeyondLeetcode/commit/4330820757d83ec596dc9ebda76f7f0d71f6ca9b))
+* **beyondleetcode:** C398 a Topic not yet started opens in the Learner's starting Language ([#794](https://github.com/GauranshMathur/BeyondLeetcode/issues/794)) ([123fbbb](https://github.com/GauranshMathur/BeyondLeetcode/commit/123fbbb724257b36265e586191a4acb53d8c3a98))
+* **beyondleetcode:** C399a the starting-Language choice page at /language ([#796](https://github.com/GauranshMathur/BeyondLeetcode/issues/796)) ([a833454](https://github.com/GauranshMathur/BeyondLeetcode/commit/a833454e3fc6f237709f58f46fc04d6969201385))
+* **beyondleetcode:** C399b a Learner with no starting Language is sent to the choice before a Problem opens ([#797](https://github.com/GauranshMathur/BeyondLeetcode/issues/797)) ([fbc1aaf](https://github.com/GauranshMathur/BeyondLeetcode/commit/fbc1aaf4f00cb2fbf4b3f50f7818e85f9dda975d))
+* **beyondleetcode:** C402b the starting-Language choice offers the guide ([#798](https://github.com/GauranshMathur/BeyondLeetcode/issues/798)) ([8d55bb5](https://github.com/GauranshMathur/BeyondLeetcode/commit/8d55bb54232d3fa56c84ed9bd5c8f3d2a0a65f62))
+
+
+### Fixes
+
+* **beyondleetcode:** C475 a Sandbox whose create reply says Docker discarded its memory or pids limit is removed unstarted, and its Run fails as a Runner error ([#784](https://github.com/GauranshMathur/BeyondLeetcode/issues/784)) ([b818308](https://github.com/GauranshMathur/BeyondLeetcode/commit/b8183084adc1fa8aefb885f56140adb3685fd0e5))
+
+
+### Documentation
+
+* **beyondleetcode:** C471 why web's Prisma calls crashed in the image smoke test ([#786](https://github.com/GauranshMathur/BeyondLeetcode/issues/786)) ([f0e1419](https://github.com/GauranshMathur/BeyondLeetcode/commit/f0e14197ecaf7c32b41adda8ad45c5de86665497))
+* **beyondleetcode:** C473 the fresh-start stress's runs, and what they rule in or out, in the Prisma crash note ([#800](https://github.com/GauranshMathur/BeyondLeetcode/issues/800)) ([fb7e1ce](https://github.com/GauranshMathur/BeyondLeetcode/commit/fb7e1cece169afc55f7300943e50e10d202e7c7d))
+* **beyondleetcode:** C474 the fresh-start stress on three Bun versions from a checkout, in the Prisma crash note ([#801](https://github.com/GauranshMathur/BeyondLeetcode/issues/801)) ([b3dc73a](https://github.com/GauranshMathur/BeyondLeetcode/commit/b3dc73ad25421017db2d5ae5c9a5d852f4f55461))
+* **beyondleetcode:** log how C470 and C471 went on after two failed review rounds ([#787](https://github.com/GauranshMathur/BeyondLeetcode/issues/787)) ([b165808](https://github.com/GauranshMathur/BeyondLeetcode/commit/b1658084a620cbca6f4640837a23018bb9ce4954))
+* **beyondleetcode:** record the 1.21.1 cut, and archive Sprint 24 ([#776](https://github.com/GauranshMathur/BeyondLeetcode/issues/776)) ([cfb7662](https://github.com/GauranshMathur/BeyondLeetcode/commit/cfb766255c3be2d6aa82b0a529deff575aa050bb))
+* **beyondleetcode:** Sprint 23 starts, on the maintainer's yes to a stored starting Language ([#788](https://github.com/GauranshMathur/BeyondLeetcode/issues/788)) ([0370f35](https://github.com/GauranshMathur/BeyondLeetcode/commit/0370f355c8d3be5543319d2be0d805db3a773c9d))
+* **beyondleetcode:** the Backlog re-ordered after 1.21.1 ([#782](https://github.com/GauranshMathur/BeyondLeetcode/issues/782)) ([01355ca](https://github.com/GauranshMathur/BeyondLeetcode/commit/01355ca120f1f152d79891398094db14e04acc89))
+* **beyondleetcode:** the Backlog re-ordered at the start of Sprint 23 ([#792](https://github.com/GauranshMathur/BeyondLeetcode/issues/792)) ([42e1150](https://github.com/GauranshMathur/BeyondLeetcode/commit/42e11504e26899e52d34ddacca696408e3cbdc77))
+
+
+### CI
+
+* **beyondleetcode:** C470 an on-demand run that repeats the image smoke flow and a Prisma stress, and records every query-engine error ([#785](https://github.com/GauranshMathur/BeyondLeetcode/issues/785)) ([ba51fd4](https://github.com/GauranshMathur/BeyondLeetcode/commit/ba51fd490b18ba6b9809b4daeef6f725f72bf9e7))
+* **beyondleetcode:** C472 a stress of a fresh process's first Prisma calls, run by smoke-repeat in the image and from a checkout ([#795](https://github.com/GauranshMathur/BeyondLeetcode/issues/795)) ([5785223](https://github.com/GauranshMathur/BeyondLeetcode/commit/578522301241b0fa8500cc7d712784abb9b67739))
+
 ## [1.21.1](https://github.com/GauranshMathur/BeyondLeetcode/compare/v1.21.0...v1.21.1) (2026-11-18)
 
 ### Highlights
