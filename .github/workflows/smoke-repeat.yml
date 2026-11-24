@@ -115,9 +115,9 @@ jobs:
           fi
           matrix="$(seq -s, 1 "$IN_JOBS")"
           # 40 minutes for the build, the stress passes and the Runner's first pull, 8 for each browser-flow run, one
-          # for every 100 rounds, and one for every 5 fresh starts (two passes of about 15 s a start), up to the 360
+          # for every 100 rounds, and one for every 30 fresh starts (the two passes took about 1 s a start between them on this PR's runs), up to the 360
           # minutes a job may have.
-          minutes=$((40 + 8 * IN_RUNS + IN_ROUNDS / 100 + IN_STARTS / 5))
+          minutes=$((40 + 8 * IN_RUNS + IN_ROUNDS / 100 + IN_STARTS / 30))
           [ "$minutes" -le 350 ] || minutes=350
           {
             echo "matrix=[$matrix]"
