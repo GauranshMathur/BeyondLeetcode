@@ -5,6 +5,8 @@
 #
 # Usage: .github/smoke-repeat.sh <image> <runs> <out-dir>   (from the repo root)
 #   STRESS_ROUNDS   rounds of the stress inside the image (default 200)
+#   FRESH_STARTS    starts of the fresh-process stress inside the image (default 20): a new process for each, making
+#                   the database calls a fresh web makes in the image smoke flow
 #   PLAYWRIGHT_IMAGE, and a `bun` that sends `run test:smoke` into it (the shim of ci.yml's docker job), are what the
 #   browser flow needs, as for .github/smoke.sh.
 #
@@ -163,9 +165,10 @@ env_value() {
   done <"$1"
 }
 
-# stress_section <title> <output-file> <status-file>: the summary line and every error block of one stress.
+# stress_section <title> <output-file> <status-file> [summary-prefix]: the summary line and every error block of one
+# stress. The prefix is how its summary line starts (the first stress's by default).
 stress_section() {
-  local title="$1" file="$2" statusfile="$3" status
+  local title="$1" file="$2" statusfile="$3" prefix="${4:-prisma-stress rounds=}" status
   echo "## $title"
   echo
   if [ ! -f "$file" ]; then
@@ -177,7 +180,7 @@ stress_section() {
   echo "Exit status: $status"
   echo
   local summary
-  summary="$(grep -E '^prisma-stress rounds=' "$file" | tail -n 1 || true)"
+  summary="$(grep -F -- "$prefix" "$file" | grep -E "^${prefix}" | tail -n 1 || true)"
   if [ -n "$summary" ]; then
     echo '```'
     echo "$summary"
@@ -247,6 +250,8 @@ emit_record() {
   echo
   stress_section "Stress in the image" "$out/stress-image.txt" "$out/stress-image.status"
   stress_section "Stress from the checkout" "$out/stress-checkout.txt" "$out/stress-checkout.status"
+  stress_section "Fresh starts in the image" "$out/fresh-image.txt" "$out/fresh-image.status" "prisma-fresh-start starts="
+  stress_section "Fresh starts from the checkout" "$out/fresh-checkout.txt" "$out/fresh-checkout.status" "prisma-fresh-start starts="
   if [ -f "$out/instance-notes.txt" ]; then
     echo "## The composed Instance"
     echo
@@ -332,7 +337,7 @@ verdict() {
     class="$(head -n 1 "$dir/class.txt" 2>/dev/null || true)"
     if [ "$class" = query-engine ]; then return 1; fi
   done < <(find "$out/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V)
-  for status in "$out/stress-image.status" "$out/stress-checkout.status"; do
+  for status in "$out/stress-image.status" "$out/stress-checkout.status" "$out/fresh-image.status" "$out/fresh-checkout.status"; do
     # A stress that left output but no status is a failure, never a pass.
     if [ ! -f "$status" ]; then
       if [ -f "${status%.status}.txt" ]; then return 1; fi
@@ -410,6 +415,29 @@ stress_in_image() {
     >"$out/stress-image.txt" 2>&1
   status=$?
   echo "$status" >"$out/stress-image.status"
+}
+
+# fresh_in_image <out-dir> <image> <starts> <fresh-file> <wire-file> <learner-file>
+# A new process for each start, on a copy of a migrated database, in the image as the bun user. Beside the stress file
+# two pure modules the image lacks are mounted from the checkout (problem-wire.ts, which the Learning core imports, and
+# e2e-learner.ts, which identity/index.ts imports), all read-only. No Docker socket and no other mount.
+fresh_in_image() {
+  local out="$1" image="$2" starts="$3" file="$4" wire="$5" learner="$6" status
+  docker run --rm --user bun --entrypoint sh \
+    -e HOME=/home/bun -e DATABASE_URL=file:/tmp/fresh.db -e CONTENT_DIR=/app/content -e "FRESH_STARTS=$starts" \
+    -v "$file:/app/src/lib/server/prisma-fresh-start.bun-check.ts:ro" \
+    -v "$wire:/app/src/lib/problem-wire.ts:ro" \
+    -v "$learner:/app/src/lib/e2e-learner.ts:ro" \
+    "$image" -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts' \
+    >"$out/fresh-image.txt" 2>&1
+  status=$?
+  echo "$status" >"$out/fresh-image.status"
+}
+
+# log_fresh_line <output-file>: the fresh starts' summary line for the job log, through the same filter as every line
+# that came from the image.
+log_fresh_line() {
+  { tail -n 3 "$1" 2>/dev/null | grep -E '^prisma-fresh-start starts=' | log_safe; } || true
 }
 
 compose() { (cd "$INSTANCE" && docker compose "$@"); }
@@ -551,13 +579,18 @@ main() {
   local image="${1:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
   local runs="${2:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
   local out="${3:?usage: smoke-repeat.sh <image> <runs> <out-dir>}"
-  local rounds="${STRESS_ROUNDS:-200}" stress_file wire_file n status
+  local rounds="${STRESS_ROUNDS:-200}" starts="${FRESH_STARTS:-20}" stress_file wire_file fresh_file learner_file n status
   case "$runs" in '' | *[!0-9]*) die "runs must be a whole number, got '$runs'" ;; esac
   case "$rounds" in '' | *[!0-9]* | 0) die "STRESS_ROUNDS must be a whole number of at least 1, got '$rounds'" ;; esac
+  case "$starts" in '' | *[!0-9]* | 0) die "FRESH_STARTS must be a whole number of at least 1, got '$starts'" ;; esac
   stress_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/server/prisma-stress.bun-check.ts"
   [ -f "$stress_file" ] || die "$stress_file is missing"
   wire_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/problem-wire.ts"
   [ -f "$wire_file" ] || die "$wire_file is missing"
+  fresh_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/server/prisma-fresh-start.bun-check.ts"
+  [ -f "$fresh_file" ] || die "$fresh_file is missing"
+  learner_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/e2e-learner.ts"
+  [ -f "$learner_file" ] || die "$learner_file is missing"
   mkdir -p "$out/runs" || die "cannot make $out"
   WORK_DIR="$(mktemp -d)" || die "cannot make a temporary folder"
   OUT_DIR="$out"
@@ -571,6 +604,8 @@ main() {
   prisma_commands "$out" "$image"
   echo "== the stress, inside the image ($rounds rounds)"
   stress_in_image "$out" "$image" "$rounds" "$stress_file" "$wire_file"
+  echo "== fresh starts, inside the image ($starts starts)"
+  fresh_in_image "$out" "$image" "$starts" "$fresh_file" "$wire_file" "$learner_file"
 
   echo "== the composed Instance"
   if compose_up "$out" "$image"; then
@@ -585,6 +620,7 @@ main() {
   # Printed only now: the generated values are known and masked by this point (compose_up masks them as soon as init
   # has written them), and nothing from the image reached the job log before that, only this script's own headings.
   { tail -n 3 "$out/stress-image.txt" 2>/dev/null | grep -E '^prisma-stress ' | log_safe; } || true
+  log_fresh_line "$out/fresh-image.txt"
 
   write_summary "$out" "$image"
   status=$?

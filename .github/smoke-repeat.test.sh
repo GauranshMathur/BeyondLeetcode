@@ -279,4 +279,96 @@ write_summary "$out" example:tag 2>/dev/null
 status=$?
 [ "$status" = 2 ] && [ ! -e "$out/summary.md" ] && ok "with no runs and no secret known, no record" || bad "no secrets, no runs: exit $status"
 
+# 17. The fresh starts: the record shows the summary line and the error blocks, never the Runner token
+out="$work/record-i"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+{
+  echo '--- error: start 3, call run python'
+  echo 'class: PrismaClientUnknownRequestError'
+  echo "message: the engine said $runner_token"
+  echo 'stack:'
+  echo '    at somewhere (file.ts:1:1)'
+  echo '--- end of error'
+  echo 'prisma-fresh-start starts=4 calls=120 errors=1 failed-starts=0 not-printed=0 PrismaClientUnknownRequestError=1'
+} >"$out/fresh-image.txt"
+printf '1\n' >"$out/fresh-image.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+status=$?
+[ "$status" = 1 ] && grep -qF "## Fresh starts in the image" "$out/summary.md" \
+  && grep -qF "prisma-fresh-start starts=4 calls=120 errors=1 failed-starts=0 not-printed=0" "$out/summary.md" \
+  && grep -qF "PrismaClientUnknownRequestError" "$out/summary.md" && grep -qF "the engine said" "$out/summary.md" \
+  && ! grep -qF "$runner_token" "$out/summary.md" \
+  && ok "the record of the fresh starts shows the line, the class and the message, not the token" \
+  || bad "fresh-start record (exit $status): $(cat "$out/summary.md" 2>/dev/null | head -n 40)"
+
+# 18. A fence line, a three-backtick line and a lone CR in a fresh-start error block cannot close the record's fence
+out="$work/record-j"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+printf -- '--- error: start 1, call map\nclass: Error\nmessage: m\nstack:\n~~~~\n# Injected\n  ```\nafter\nx\r~~~~\n--- end of error\nprisma-fresh-start starts=1 calls=2 errors=1 failed-starts=0 not-printed=0 Error=1\n' >"$out/fresh-checkout.txt"
+printf '0\n' >"$out/fresh-checkout.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+[ "$(grep -c '^~~~~$' "$out/summary.md")" = 2 ] && ! grep -qE '^ {0,3}```.' "$out/summary.md" \
+  && [ "$(grep -cE '^ {0,3}```' "$out/summary.md")" = 2 ] && ! grep -q $'\r' "$out/summary.md" \
+  && ok "fresh-start blocks cannot break out of the fence" || bad "fresh-start fence: $(grep -n -e '~~~~' -e '```' "$out/summary.md")"
+
+# 19. Without a fresh-* file both sections say Not run, and the verdict stays clean
+out="$work/record-k"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+write_summary "$out" example:tag >/dev/null 2>&1
+status=$?
+[ "$status" = 0 ] \
+  && [ "$(sed -n '/^## Fresh starts in the image/,/^## /p' "$out/summary.md" | grep -c '^Not run\.$')" = 1 ] \
+  && [ "$(sed -n '/^## Fresh starts from the checkout/,$p' "$out/summary.md" | grep -c '^Not run\.$')" -ge 1 ] \
+  && ok "no fresh-* file: both sections say Not run and the verdict is 0" || bad "not run (exit $status)"
+
+# 20. The verdict counts the fresh starts' status files
+out="$work/record-l"
+mkdir -p "$out"
+printf '1\n' >"$out/fresh-checkout.status"
+printf 'prisma-fresh-start starts=1 calls=1 errors=0 failed-starts=0 not-printed=0\n' >"$out/fresh-checkout.txt"
+verdict "$out"
+[ "$?" = 1 ] && ok "a fresh-checkout status of 1 is 1" || bad "fresh-checkout status 1 passed"
+printf '0\n' >"$out/fresh-checkout.status"
+verdict "$out"
+[ "$?" = 0 ] && ok "a fresh-checkout status of 0 is 0" || bad "fresh-checkout status 0 failed"
+out="$work/record-m"
+mkdir -p "$out"
+printf 'prisma-fresh-start starts=1 calls=1 errors=0 failed-starts=0 not-printed=0\n' >"$out/fresh-image.txt"
+verdict "$out"
+[ "$?" = 1 ] && ok "a fresh-image output with no status is 1" || bad "fresh-image without status passed"
+
+# 21. The in-image pass mounts only the three files, read-only, passes the number of starts and no socket
+out="$work/record-n"
+mkdir -p "$out"
+docker() { printf '%s\n' "$@" >"$work/fresh-docker.args"; echo "docker ran"; return 7; }
+fresh_in_image "$out" example:tag 5 /checkout/src/lib/server/prisma-fresh-start.bun-check.ts /checkout/src/lib/problem-wire.ts /checkout/src/lib/e2e-learner.ts
+status=$?
+args="$work/fresh-docker.args"
+[ "$(grep -c '^-v$' "$args")" = 3 ] \
+  && grep -qxF '/checkout/src/lib/server/prisma-fresh-start.bun-check.ts:/app/src/lib/server/prisma-fresh-start.bun-check.ts:ro' "$args" \
+  && grep -qxF '/checkout/src/lib/problem-wire.ts:/app/src/lib/problem-wire.ts:ro' "$args" \
+  && grep -qxF '/checkout/src/lib/e2e-learner.ts:/app/src/lib/e2e-learner.ts:ro' "$args" \
+  && grep -qxF 'FRESH_STARTS=5' "$args" && ! grep -q 'docker.sock' "$args" && ! grep -q -e '--privileged' "$args" \
+  && grep -qxF 'bun' "$args" \
+  && ok "the in-image pass mounts the three files read-only and passes FRESH_STARTS" || bad "in-image args: $(tr '\n' ' ' <"$args")"
+[ "$(cat "$out/fresh-image.status")" = 7 ] && grep -q "docker ran" "$out/fresh-image.txt" \
+  && ok "the status file holds the stub's exit status" || bad "in-image status: $(cat "$out/fresh-image.status" 2>/dev/null)"
+unset -f docker
+
+# 22. The job-log line of the fresh starts is redacted, prefixed and cannot start a command
+SECRETS=("$runner_token" "$auth_secret")
+out="$work/record-o"
+mkdir -p "$out"
+printf 'noise\nprisma-fresh-start starts=2 calls=3 errors=0 failed-starts=0 not-printed=0 ##[error]x %s\n' "$runner_token" >"$out/fresh-image.txt"
+got="$(log_fresh_line "$out/fresh-image.txt")"
+case "$got" in
+  '| prisma-fresh-start '*) printf '%s\n' "$got" | grep -qF '[redacted]' && ! printf '%s\n' "$got" | grep -qF "$runner_token" && ! printf '%s\n' "$got" | grep -qF '##[' \
+    && ok "the fresh-start job-log line is prefixed, redacted and holds no ##[" || bad "fresh-start log line: '$got'" ;;
+  *) bad "fresh-start log line: '$got'" ;;
+esac
+SECRETS=()
+
 exit "$fail"
