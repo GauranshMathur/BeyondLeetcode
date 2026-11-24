@@ -76,6 +76,10 @@ The Learner has at least one Accepted Submission for the Problem.
 **Language**:
 One of Python, TypeScript or Go, chosen per Build; switching starts a new copy of the Build from Reference Code and keeps the old one.
 
+**Starting Language**:
+The Language a Learner's Topics open in until they work on them; chosen before the first Problem and changed in Settings; a Topic already worked on keeps its own Language.
+_Avoid_: Default language, preferred language
+
 **Test**:
 One input and expected outcome a Problem is checked against; an Example Test is visible to the Learner, a Hidden Test is not, and a failing Hidden Test reveals nothing about its input or the Learner's output.
 

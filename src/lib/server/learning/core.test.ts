@@ -2308,3 +2308,108 @@ describe('learner.runReference()', () => {
 		await expect(learner.runReference(problemId, 'python')).resolves.toBeDefined();
 	});
 });
+
+describe('the starting Language', () => {
+	it('is undefined until the Learner chooses, and a Topic opens in Python', async () => {
+		const { learner } = await setup();
+
+		expect(await learner.startingLanguage()).toBeUndefined();
+		expect(await learner.problem('stacks-push')).toMatchObject({
+			build: { problemId: 'stacks-push', language: 'python', revision: 0 }
+		});
+	});
+
+	it('opens a Topic not yet started in it, and saves in it', async () => {
+		const { learner } = await setup();
+		await learner.setStartingLanguage('go');
+
+		expect(await learner.startingLanguage()).toBe('go');
+		const view = await learner.problem('stacks-push');
+		expect(view.build).toMatchObject({ language: 'go', revision: 0 });
+		expect(Object.keys(view.files)).toContain('main.go');
+		await expect(
+			learner.saveCode(ref('stacks-push', 0, 'go'), { 'main.go': 'x' })
+		).resolves.toEqual({ revision: 1 });
+	});
+
+	it('refuses a save that names the Python Language while the Topic opens in Go', async () => {
+		const { learner } = await setup();
+		await learner.setStartingLanguage('go');
+
+		await expect(
+			learner.saveCode(ref('stacks-push', 0, 'python'), { 'main.py': 'x' })
+		).rejects.toMatchObject({ code: 'RevisionConflict' });
+	});
+
+	it('keeps Go in a Topic with saved Go code after the setting becomes Python', async () => {
+		const { learner } = await setup();
+		await learner.setStartingLanguage('go');
+		await learner.saveCode(ref('stacks-push', 0, 'go'), { 'main.go': 'mine' });
+		await learner.setStartingLanguage('python');
+
+		expect(await learner.problem('stacks-push')).toMatchObject({
+			build: { language: 'go', revision: 1 },
+			files: { 'main.go': 'mine' }
+		});
+		expect((await learner.problem('stacks-pop')).build.language).toBe('go');
+	});
+
+	it('keeps Python in a Topic saved before any choice, with no Language row', async () => {
+		const { learner } = await setup();
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'old' });
+		await learner.setStartingLanguage('typescript');
+
+		expect((await learner.problem('stacks-push')).build.language).toBe('python');
+		expect((await learner.problem('stacks-pop')).build.language).toBe('python');
+	});
+
+	it('lets a Language chosen for the Topic win over the setting', async () => {
+		const { learner } = await setup();
+		await learner.switchLanguage('stacks-push', 'typescript');
+		await learner.setStartingLanguage('go');
+
+		expect((await learner.problem('stacks-push')).build.language).toBe('typescript');
+		expect((await learner.problem('stacks-pop')).build.language).toBe('typescript');
+	});
+
+	it('writes only the Learner row', async () => {
+		const { learner, db } = await setup();
+		await learner.saveCode(ref('stacks-push', 0), { 'main.py': 'x' });
+		await learner.switchLanguage('stacks-push', 'typescript');
+		await learner.revealHint('stacks-push');
+		const counts = async () => [
+			await db.buildStep.count(),
+			await db.submission.count(),
+			await db.topicLanguage.count(),
+			await db.chapterRead.count(),
+			await db.hintsRevealed.count()
+		];
+		const before = await counts();
+
+		await learner.setStartingLanguage('go');
+
+		expect(await counts()).toEqual(before);
+	});
+
+	it('refuses an unknown Language and a Learner with no row', async () => {
+		const { learner } = await setup();
+
+		await expect(learner.setStartingLanguage('rust' as Language)).rejects.toMatchObject({
+			code: 'InvalidBuild'
+		});
+		expect(await learner.startingLanguage()).toBeUndefined();
+
+		const { db, runner, catalogue } = await setup();
+		const bare = createCoreOnDb({ catalogue, db, runner }).forLearner('no-row');
+		await expect(bare.setStartingLanguage('go')).rejects.toMatchObject({ code: 'NotFound' });
+	});
+
+	it('survives Reset progress', async () => {
+		const { learner } = await setup();
+		await learner.setStartingLanguage('go');
+		await learner.resetProgress();
+
+		expect(await learner.startingLanguage()).toBe('go');
+		expect((await learner.problem('stacks-push')).build.language).toBe('go');
+	});
+});

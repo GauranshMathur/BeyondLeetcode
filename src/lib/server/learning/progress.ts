@@ -175,6 +175,42 @@ export async function topicLanguage(
 	return LANGUAGE_IDS.find((l) => l === row?.language);
 }
 
+/** The Language the Learner starts Topics in, or undefined while they have none (or the stored one is no longer offered). */
+export async function startingLanguage(db: Db, learnerId: string): Promise<Language | undefined> {
+	const row = await db.learner.findUnique({
+		where: { id: learnerId },
+		select: { startingLanguage: true }
+	});
+	return LANGUAGE_IDS.find((l) => l === row?.startingLanguage);
+}
+
+/** Stores the Learner's starting Language. Throws NotFound for a Learner with no row. */
+export async function setStartingLanguage(
+	db: Db,
+	learnerId: string,
+	language: Language
+): Promise<void> {
+	const { count } = await db.learner.updateMany({
+		where: { id: learnerId },
+		data: { startingLanguage: language }
+	});
+	if (count === 0) throw new LearningError('NotFound');
+}
+
+/** The Language of the Learner's most recently saved Build step in a Topic, or undefined with none. */
+export async function savedCodeLanguage(
+	db: Db,
+	learnerId: string,
+	topicId: string
+): Promise<Language | undefined> {
+	const row = await db.buildStep.findFirst({
+		where: { learnerId, topicId },
+		orderBy: { updatedAt: 'desc' },
+		select: { language: true }
+	});
+	return LANGUAGE_IDS.find((l) => l === row?.language);
+}
+
 /** Stores the Language the Learner builds a Topic in from now on. */
 export async function setTopicLanguage(
 	db: Db,
