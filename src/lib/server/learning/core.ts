@@ -15,7 +15,10 @@ import {
 	resetProgress,
 	revealedHints,
 	revealNextHint,
+	savedCodeLanguage,
+	setStartingLanguage,
 	setTopicLanguage,
+	startingLanguage,
 	storeBuildStep,
 	topicLanguage
 } from './progress.ts';
@@ -168,6 +171,17 @@ export interface Learner {
 	 */
 	switchLanguage(problemId: string, language: Language): Promise<void>;
 	/**
+	 * The Language Topics the Learner has not worked on open in, or undefined while they have none.
+	 * A screen read: never writes.
+	 */
+	startingLanguage(): Promise<Language | undefined>;
+	/**
+	 * Sets the Language Topics not yet started open in. Writes only the Learner row: a Topic already
+	 * worked on keeps its Language, and no Build, Submission or Topic Language changes. Throws
+	 * InvalidBuild for an unknown Language, before any write, and NotFound for a Learner with no row.
+	 */
+	setStartingLanguage(language: Language): Promise<void>;
+	/**
 	 * The Problem's Hints the Learner has revealed (text), how many there are, and the Chapter they
 	 * link back to. Unrevealed Hints are never included. Throws NotFound or TopicLocked. Never writes.
 	 */
@@ -187,12 +201,13 @@ export interface Learner {
 	/**
 	 * Deletes everything this Learner has: read Chapters, saved code, Submissions, the Language
 	 * chosen per Topic and revealed Hints, in one transaction. Other Learners and the Learner
-	 * itself are untouched; afterwards the Map shows a new Learner. Never fails for lack of progress.
+	 * itself are untouched, and so is its starting Language; afterwards the Map shows a new Learner.
+	 * Never fails for lack of progress.
 	 */
 	resetProgress(): Promise<void>;
 }
 
-/** A Topic is built in Python until the Learner switches it. */
+/** The Language of a Topic for a Learner who has no starting Language. */
 const DEFAULT_LANGUAGE: Language = LANGUAGE_IDS[0];
 
 export interface LearningCore {
@@ -276,6 +291,15 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 					throw e;
 				}
 			};
+			/**
+			 * A Topic's Language: the one chosen for it, else that of the code last saved in it, else the
+			 * Learner's starting Language, else Python. Read and save use this one answer.
+			 */
+			const currentLanguage = async (topicId: string): Promise<Language> =>
+				(await topicLanguage(deps.db, learnerId, topicId)) ??
+				(await savedCodeLanguage(deps.db, learnerId, topicId)) ??
+				(await startingLanguage(deps.db, learnerId)) ??
+				DEFAULT_LANGUAGE;
 			const learner: Learner = {
 				map: async () =>
 					mapView(deps.catalogue, await loadProgress(deps.catalogue, deps.db, learnerId), devMode),
@@ -299,7 +323,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				problem: async (problemId) => {
 					const sourceId = seedSourceOf(deps.catalogue, problemId);
 					const topicId = deps.catalogue.problem(problemId)?.topicId ?? '';
-					const language = (await topicLanguage(deps.db, learnerId, topicId)) ?? DEFAULT_LANGUAGE;
+					const language = await currentLanguage(topicId);
 					return problemView(
 						deps.catalogue,
 						await loadProgress(deps.catalogue, deps.db, learnerId),
@@ -325,7 +349,7 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 				) => {
 					// The screen read's checks (NotFound, TopicLocked) and the stored step, no Markdown.
 					const topicId = await openStep(problemId);
-					const current = (await topicLanguage(deps.db, learnerId, topicId)) ?? DEFAULT_LANGUAGE;
+					const current = await currentLanguage(topicId);
 					const stored = await buildStep(deps.db, {
 						learnerId,
 						topicId,
@@ -383,6 +407,11 @@ export function createLearningCore(deps: LearningCoreDeps): LearningCore {
 							hiddenBatchTests: deps.hiddenBatchTests
 						})
 					}));
+				},
+				startingLanguage: () => startingLanguage(deps.db, learnerId),
+				setStartingLanguage: async (language) => {
+					if (!LANGUAGE_IDS.includes(language)) throw new LearningError('InvalidBuild');
+					await setStartingLanguage(deps.db, learnerId, language);
 				},
 				switchLanguage: async (problemId, language) => {
 					const topicId = await openStep(problemId); // NotFound / TopicLocked
