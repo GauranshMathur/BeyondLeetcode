@@ -18,7 +18,8 @@ describe('policyOf', () => {
 		['/api/auth/x/y', publicMulti],
 		['/users', { audience: 'admin', multiOnly: true, noStore: true, bare: false }],
 		['/users/[id]', { audience: 'admin', multiOnly: true, noStore: true, bare: false }],
-		['/account/password', { audience: 'signedIn', multiOnly: true, noStore: false, bare: false }]
+		['/account/password', { audience: 'signedIn', multiOnly: true, noStore: false, bare: false }],
+		['/language', { audience: 'signedIn', multiOnly: false, noStore: false, bare: true }]
 	])('%s', (id, expected) => {
 		expect(policyOf(id)).toEqual(expected);
 	});
@@ -45,7 +46,7 @@ describe('policyOf', () => {
 		expect('referrer' in policyOf('/')).toBe(false);
 	});
 
-	it('makes exactly /setup, /signin, /signup and /invite/[token] bare, of every route under src/routes', () => {
+	it('makes exactly /setup, /signin, /signup, /language and /invite/[token] bare, of every route under src/routes', () => {
 		const root = fileURLToPath(new URL('../../../routes', import.meta.url));
 		const ids = [
 			...new Set(
@@ -57,6 +58,7 @@ describe('policyOf', () => {
 		expect(ids).toContain('/invite/[token]');
 		expect(ids.filter((id) => policyOf(id).bare)).toEqual([
 			'/invite/[token]',
+			'/language',
 			'/setup',
 			'/signin',
 			'/signup'

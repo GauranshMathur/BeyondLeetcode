@@ -132,7 +132,7 @@ describe('headerFor', () => {
 	});
 
 	// Today's layout listed exactly these four; the route-policy table must give the same answers.
-	it.each(['/setup', '/signin', '/signup', '/invite/[token]'])(
+	it.each(['/setup', '/signin', '/signup', '/invite/[token]', '/language'])(
 		'%s is bare: the wordmark alone',
 		(routeId) => {
 			for (const [identity, mode] of [
@@ -165,7 +165,7 @@ describe('headerFor', () => {
 		};
 		walk(root);
 		expect(ids.length).toBeGreaterThan(8);
-		const TODAY = new Set(['/setup', '/signin', '/signup', '/invite/[token]']);
+		const TODAY = new Set(['/setup', '/signin', '/signup', '/invite/[token]', '/language']);
 		for (const routeId of ids) {
 			const bare = headerFor({ identity: learner, mode: 'multi', routeId, pathname: '/' }).bare;
 			expect([routeId, bare]).toEqual([routeId, TODAY.has(routeId)]);
