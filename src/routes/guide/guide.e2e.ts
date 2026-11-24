@@ -59,6 +59,12 @@ test('the first-run choice offers the Guide', async ({ page }) => {
 	await gotoHydrated(page, CHOICE);
 	const offer = page.getByRole('main').getByRole('link', { name: /How to use the site/ });
 	await expect(offer).toHaveAttribute('href', '/guide');
+	await expect(
+		page
+			.getByRole('main')
+			.getByRole('complementary')
+			.getByRole('link', { name: /How to use the site/ })
+	).toHaveAttribute('href', '/guide');
 	await offer.click();
 	await expect(page).toHaveURL('/guide');
 	await expect(page.getByRole('heading', { level: 1, name: 'How to use the site' })).toBeVisible();
