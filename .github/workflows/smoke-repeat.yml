@@ -41,7 +41,7 @@ on:
         default: "200"
         type: string
       fresh_starts:
-        description: "Starts of the fresh-process stress, in the image and from the checkout"
+        description: "Starts of the fresh-process stress (1 to 1000), in the image and from the checkout"
         required: false
         default: "20"
         type: string
@@ -106,7 +106,7 @@ jobs:
           [ "$IN_JOBS" -ge 1 ] && [ "$IN_JOBS" -le 10 ] || { echo "::error::jobs must be 1 to 10"; exit 1; }
           [ "$IN_RUNS" -ge 1 ] && [ "$IN_RUNS" -le 30 ] || { echo "::error::runs must be 1 to 30"; exit 1; }
           [ "$IN_ROUNDS" -ge 1 ] && [ "$IN_ROUNDS" -le 20000 ] || { echo "::error::stress_rounds must be 1 to 20000"; exit 1; }
-          [ "$IN_STARTS" -ge 1 ] && [ "$IN_STARTS" -le 2000 ] || { echo "::error::fresh_starts must be 1 to 2000"; exit 1; }
+          [ "$IN_STARTS" -ge 1 ] && [ "$IN_STARTS" -le 1000 ] || { echo "::error::fresh_starts must be 1 to 1000"; exit 1; }
           case "$IN_BUN" in
             [0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "::error::bun_version must look like 1.2.19"; exit 1 ;;
@@ -120,10 +120,11 @@ jobs:
             image="ghcr.io/gauranshmathur/beyondleetcode:$IN_IMAGE"
           fi
           matrix="$(seq -s, 1 "$IN_JOBS")"
-          # 40 minutes for the build, the stress passes and the Runner's first pull, 8 for each browser-flow run, one
-          # for every 100 rounds, and one for every 30 fresh starts (the two passes took 1 to 2 s a start between them on this PR's runs), up to
-          # the 360 minutes a job may have.
-          minutes=$((40 + 8 * IN_RUNS + IN_ROUNDS / 100 + IN_STARTS / 30))
+          # 40 minutes for the build, the stress passes and the Runner's first pull, 8 for each browser-flow run, one for
+          # every 100 rounds, and the deadlines of the two fresh-start passes: each is 300 + 3 * starts seconds (the
+          # starts took 1 to 2 s each on this PR's runs), so at most 300 + 3 * 1000 = 3300 s, 55 minutes, a pass. Both
+          # together are 110 minutes at the most, which fits under the 350 cap with the other terms at their defaults.
+          minutes=$((40 + 8 * IN_RUNS + IN_ROUNDS / 100 + 2 * (300 + 3 * IN_STARTS) / 60))
           [ "$minutes" -le 350 ] || minutes=350
           {
             echo "matrix=[$matrix]"
@@ -195,18 +196,24 @@ jobs:
         run: |
           out="$RUNNER_TEMP/smoke-repeat"
           mkdir -p "$out"
-          template="$(mktemp -d)"
+          # A fixed folder, so the always() step below can remove it when this one is cancelled.
+          template="$RUNNER_TEMP/fresh-template"
+          mkdir -p "$template"
+          trap 'rm -rf "$template"' EXIT
           export DATABASE_URL="file:$template/fresh.db"
           export CONTENT_DIR=content
           export NODE_ENV=production
           status=0
           # The deadline is for a hang, not for the starts' own time; a killed pass leaves no summary line and says so.
-          timeout --kill-after=30 "$((600 + 5 * FRESH_STARTS))" sh -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts' > "$out/fresh-checkout.txt" 2>&1 || status=$?
+          timeout --kill-after=30 "$((300 + 3 * FRESH_STARTS))" sh -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts' > "$out/fresh-checkout.txt" 2>&1 || status=$?
           echo "$status" > "$out/fresh-checkout.status"
           rm -rf "$template"
           # The same guard as every other line from the image: the script's own filter, on the aggregate line only.
           bash -c '. .github/smoke-repeat.sh; log_fresh_line "$1"' _ "$out/fresh-checkout.txt"
           exit 0
+      - name: Remove the fresh-start database
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/fresh-template"
       - name: Build the image of this ref
         if: needs.plan.outputs.image == ''
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1

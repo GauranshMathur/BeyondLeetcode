@@ -20,8 +20,9 @@
  * The parent's last line is `prisma-fresh-start starts=<n> calls=<n> errors=<n> failed-starts=<n> not-printed=<n>`
  * (and `not-run=<n>` when it stopped early) and `<class>=<count>` for each class. Exit 1 when any start saw a
  * `PrismaClient*` error or failed, 0 otherwise. A refusal of the Learning core is counted by code and is not an
- * error. A start fails when its child was killed, timed out, printed no complete last line, caught any error that
- * is not a Learning-core refusal, or made no Learning-core call. After three timed-out starts in a row the parent
+ * error. A start fails when its child was killed, timed out, printed no complete last line, caught an error that
+ * is neither a Learning-core refusal nor a `PrismaClient*` error (those are counted as errors and fail the run
+ * themselves), or made fewer Learning-core calls than the flow has. After three timed-out starts in a row the parent
  * stops and says so. A child's output is kept only up to a fixed size, and the blocks of at most 50 starts are
  * printed in full.
  */
@@ -43,9 +44,11 @@ const DEADLINE_MS = 120_000;
 const PRINTED_STARTS = 50;
 /** Timed-out starts in a row after which the parent stops. */
 const MAX_TIMEOUTS_IN_A_ROW = 3;
+/** The most starts one run may ask for. */
+const MAX_STARTS = 1000;
 /** Bytes of one child's output kept: its first and its last part. */
-const KEEP_HEAD = 32 * 1024;
-const KEEP_TAIL = 32 * 1024;
+export const KEEP_HEAD = 32 * 1024;
+export const KEEP_TAIL = 32 * 1024;
 /** How long after a child's `exit` the parent waits for its pipes before it takes what it has. */
 const GRACE_MS = 2_000;
 const CHILD_LAST_LINE = 'prisma-fresh-start-child ';
@@ -54,6 +57,10 @@ const REFUSALS_LINE = 'learning-core refusals (not errors) ';
 /** A refusal's code on a child's last line, so it is not read as an error class. */
 const REFUSED = 'refused-';
 /** The variables a child gets: what Bun needs to run and the stress's own settings, nothing else. */
+/**
+ * What the child inherits: Bun's own needs and the stress's settings. It limits what the child receives; Bun may still
+ * read a `.env` in its working directory, and neither the checkout nor the image has one.
+ */
 const CHILD_ENV = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ', 'NODE_ENV', 'CONTENT_DIR'];
 
 const bump = (counts: Map<string, number>, key: string, by = 1) =>
@@ -67,6 +74,9 @@ const indent = (text: string, by = '    ') =>
 		.split('\n')
 		.map((line) => `${by}${line}`)
 		.join('\n');
+
+/** The Learning-core calls the smoke flow makes: six requests, the three calls per Language, a switch and a Problem load per Language after the first, and the last Topic. */
+const EXPECTED_CORE_CALLS = 6 + LANGUAGES.length * 3 + (LANGUAGES.length - 1) * 2 + 1;
 
 // ---------------------------------------------------------------------------------------------------------------
 // The child: one fresh process, one start
@@ -92,7 +102,7 @@ async function child(start: number): Promise<never> {
 			: error.name && error.name !== 'Error'
 				? error.name
 				: error.constructor?.name || 'Error';
-		return raw.replace(/[^A-Za-z0-9_$.]/g, '_');
+		return raw.replace(/[^A-Za-z0-9_$.]/g, '_').slice(0, 80);
 	};
 
 	/** Makes one call and catches whatever it throws; the answer is undefined when it threw. */
@@ -110,32 +120,44 @@ async function child(start: number): Promise<never> {
 				bump(refusals, error.code);
 				return undefined;
 			}
-			errors++;
-			const name = className(error);
-			bump(classes, name);
-			if (name.startsWith('PrismaClient')) queryEngine++;
-			else otherErrors++;
-			const message = error instanceof Error ? error.message : String(error);
-			const stack = error instanceof Error ? (error.stack ?? '(no stack)') : '(not an Error)';
-			// The message and the stack are indented, so no line of them can equal this block's own markers.
-			console.log(
-				[
-					`--- error: start ${start}, call ${call}`,
-					`class: ${name}`,
-					'message:',
-					indent(message),
-					'stack:',
-					indent(stack),
-					'--- end of error'
-				].join('\n')
-			);
+			record(call, error);
 			return undefined;
 		}
+	}
+
+	/** Counts and prints one error. */
+	function record(call: string, error: unknown) {
+		errors++;
+		const name = className(error);
+		bump(classes, name);
+		if (name.startsWith('PrismaClient')) queryEngine++;
+		else otherErrors++;
+		const message = error instanceof Error ? error.message : String(error);
+		const stack = error instanceof Error ? (error.stack ?? '(no stack)') : '(not an Error)';
+		// The message and the stack are indented, so no line of them can equal this block's own markers.
+		console.log(
+			[
+				`--- error: start ${start}, call ${call}`,
+				`class: ${name}`,
+				'message:',
+				indent(message),
+				'stack:',
+				indent(stack),
+				'--- end of error'
+			].join('\n')
+		);
 	}
 
 	const catalogue = await attempt('loadCatalogue', () => loadCatalogue(contentDir));
 	const db = createDb(databaseUrl);
 	const finish = async (): Promise<never> => {
+		// A start that made fewer calls than the flow has did not do the flow, whatever it did not say.
+		if (coreCalls < EXPECTED_CORE_CALLS && otherErrors === 0 && queryEngine === 0) {
+			record(
+				'flow',
+				new Error(`the flow made ${coreCalls} Learning-core calls, not ${EXPECTED_CORE_CALLS}`)
+			);
+		}
 		await db.$disconnect();
 		console.log(
 			[
@@ -192,7 +214,11 @@ async function child(start: number): Promise<never> {
 	/** One request as `handle.ts` makes it: who is it, then one Learning-core call for that Learner. */
 	async function request<T>(call: string, make: (learner: Learner) => Promise<T>) {
 		const answer = await resolve(`identity.resolve (${call})`);
-		if (answer?.kind !== 'resolved' || !answer.who) return undefined;
+		if (answer?.kind !== 'resolved' || !answer.who) {
+			// An Identity that answers nobody after Setup is a finding, never a skipped request.
+			if (answer) record(call, new Error('Identity answered nobody after Setup'));
+			return undefined;
+		}
 		const learner = core.forLearner(answer.who.learnerId);
 		return attempt(call, () => make(learner), true);
 	}
@@ -222,6 +248,8 @@ async function child(start: number): Promise<never> {
 			);
 		}
 		const files = reference?.[language.id];
+		if (!files)
+			record(`${language.id} Reference Code`, new Error(`no Reference Code in ${language.id}`));
 		if (!view || !files) continue;
 		const build = view.build;
 		const saved = await request(`saveCode ${language.id}`, (l) => l.saveCode(build, { ...files }));
@@ -247,6 +275,10 @@ interface Outcome {
 	signal: string | null;
 	timedOut: boolean;
 	output: string;
+	/** The last line of stdout alone: a late stderr line cannot stand in for the child's summary. */
+	lastStdoutLine: string;
+	/** Bytes of output left out between the kept head and tail. */
+	dropped: number;
 }
 
 /** What the parent must clean up if it is stopped: the live child and the current database copy. */
@@ -265,7 +297,7 @@ function cleanUp() {
 }
 
 /** The first and the last part of a child's output; the middle is drained and counted, never kept. */
-class Capture {
+export class Capture {
 	private head = Buffer.alloc(0);
 	private tail = Buffer.alloc(0);
 	private total = 0;
@@ -279,8 +311,11 @@ class Capture {
 		}
 		if (rest.length > 0) this.tail = Buffer.concat([this.tail, rest]).subarray(-KEEP_TAIL);
 	}
+	dropped(): number {
+		return this.total - this.head.length - this.tail.length;
+	}
 	text(): string {
-		const dropped = this.total - this.head.length - this.tail.length;
+		const dropped = this.dropped();
 		const note =
 			dropped > 0 ? `\n${TRUNCATED}${dropped} bytes of the child's output left out]\n` : '';
 		return this.head.toString('utf8') + note + this.tail.toString('utf8');
@@ -290,17 +325,13 @@ const TRUNCATED = '[output truncated: ';
 
 function runChild(start: number, databaseUrl: string): Promise<Outcome> {
 	return new Promise((resolveOutcome) => {
-		const env: Record<string, string> = { DATABASE_URL: databaseUrl };
-		for (const name of CHILD_ENV) {
-			const value = process.env[name];
-			if (value !== undefined) env[name] = value;
-		}
 		const proc = spawn(process.execPath, [process.argv[1] as string, CHILD_FLAG, String(start)], {
-			env,
+			env: childEnv(process.env, databaseUrl),
 			stdio: ['ignore', 'pipe', 'pipe']
 		});
 		liveChild = proc;
 		const capture = new Capture();
+		const stdoutOnly = new Capture();
 		let timedOut = false;
 		let settled = false;
 		const settle = (exitCode: number | null, signal: string | null) => {
@@ -308,13 +339,26 @@ function runChild(start: number, databaseUrl: string): Promise<Outcome> {
 			settled = true;
 			clearTimeout(timer);
 			liveChild = null;
-			resolveOutcome({ exitCode, signal, timedOut, output: capture.text() });
+			const stdoutLines = stdoutOnly.text().split('\n');
+			while (stdoutLines.length > 0 && stdoutLines[stdoutLines.length - 1]?.trim() === '')
+				stdoutLines.pop();
+			resolveOutcome({
+				exitCode,
+				signal,
+				timedOut,
+				output: capture.text(),
+				lastStdoutLine: stdoutLines.at(-1) ?? '',
+				dropped: capture.dropped()
+			});
 		};
 		const timer = setTimeout(() => {
 			timedOut = true;
 			proc.kill('SIGKILL');
 		}, DEADLINE_MS);
-		proc.stdout.on('data', (chunk: Buffer) => capture.push(chunk));
+		proc.stdout.on('data', (chunk: Buffer) => {
+			capture.push(chunk);
+			stdoutOnly.push(chunk);
+		});
 		proc.stderr.on('data', (chunk: Buffer) => capture.push(chunk));
 		proc.on('error', () => settle(null, 'spawn-error'));
 		// A grandchild may hold a pipe open after the child is gone, so `close` alone could wait for ever.
@@ -329,7 +373,7 @@ function runChild(start: number, databaseUrl: string): Promise<Outcome> {
 const REQUIRED = ['calls', 'core-calls', 'errors', 'other-errors', 'query-engine'] as const;
 
 /** The child's last line as numbers, or null when a number the parent needs is missing or not a count. */
-function parseSummary(last: string): Map<string, number> | null {
+export function parseSummary(last: string): Map<string, number> | null {
 	if (!last.startsWith(CHILD_LAST_LINE)) return null;
 	const found = new Map<string, number>();
 	for (const token of last.slice(CHILD_LAST_LINE.length).split(' ')) {
@@ -345,7 +389,7 @@ function parseSummary(last: string): Map<string, number> | null {
  * A child's lines as they are printed: a block cut by the omitted middle is closed before the note, and a line that
  * starts the parent's own summary is indented, so nothing a child printed can stand in for it.
  */
-function printable(lines: string[]): string[] {
+export function printable(lines: string[]): string[] {
 	const out: string[] = [];
 	let inBlock = false;
 	for (const line of lines) {
@@ -355,17 +399,51 @@ function printable(lines: string[]): string[] {
 		}
 		if (line.startsWith('--- error:')) inBlock = true;
 		if (line.startsWith('--- end of error')) inBlock = false;
-		out.push(line.startsWith(AGGREGATE_PREFIX) ? `  ${line}` : line);
+		out.push(
+			line.startsWith(AGGREGATE_PREFIX) || line.startsWith(REFUSALS_LINE) ? `  ${line}` : line
+		);
 	}
 	if (inBlock) out.push('--- end of error');
 	return out;
 }
 
 /** The one place the number of starts is read: digits only, no leading zero, 1 to 2000, or null. */
-function parseStarts(raw: string | undefined): number | null {
+export function parseStarts(raw: string | undefined): number | null {
 	if (raw === undefined || !/^[1-9][0-9]{0,3}$/.test(raw)) return null;
 	const value = Number(raw);
-	return value <= 2000 ? value : null;
+	return value <= MAX_STARTS ? value : null;
+}
+
+/** The environment of a child: the allowlist, and the copy of the database. */
+export function childEnv(
+	parentEnv: Record<string, string | undefined>,
+	databaseUrl: string
+): Record<string, string> {
+	const env: Record<string, string> = { DATABASE_URL: databaseUrl };
+	for (const name of CHILD_ENV) {
+		const value = parentEnv[name];
+		if (value !== undefined) env[name] = value;
+	}
+	return env;
+}
+
+/** Whether a start failed, as a function of how its child ended and what its summary line said. */
+export function isFailedStart(
+	outcome: { timedOut: boolean; signal: string | null; exitCode: number | null },
+	summary: Map<string, number> | null
+): boolean {
+	if (outcome.timedOut || outcome.signal !== null || summary === null) return true;
+	const engine = summary.get('query-engine') ?? 0;
+	return (
+		(summary.get('other-errors') ?? 0) > 0 ||
+		(summary.get('core-calls') ?? 0) < EXPECTED_CORE_CALLS ||
+		(outcome.exitCode !== 0 && engine === 0)
+	);
+}
+
+/** Three timed-out starts in a row mean the rest would hang too. */
+export function shouldStop(timeoutsInARow: number): boolean {
+	return timeoutsInARow >= MAX_TIMEOUTS_IN_A_ROW;
 }
 
 async function runParent(): Promise<void> {
@@ -377,11 +455,12 @@ async function runParent(): Promise<void> {
 	const starts = parseStarts(process.env.FRESH_STARTS);
 	if (starts === null) {
 		throw new Error(
-			'FRESH_STARTS must be a whole number from 1 to 2000, written without a leading zero'
+			`FRESH_STARTS must be a whole number from 1 to ${MAX_STARTS}, written without a leading zero`
 		);
 	}
 	const template = databaseUrl.slice('file:'.length);
 
+	process.on('exit', cleanUp);
 	for (const [signal, code] of [
 		['SIGINT', 130],
 		['SIGTERM', 143]
@@ -417,7 +496,7 @@ async function runParent(): Promise<void> {
 
 		const lines = outcome.output.split('\n');
 		while (lines.length > 0 && lines[lines.length - 1]?.trim() === '') lines.pop();
-		const summary = parseSummary(lines.at(-1) ?? '');
+		const summary = parseSummary(outcome.lastStdoutLine);
 		const engine = summary?.get('query-engine') ?? 0;
 		if (summary) {
 			calls += summary.get('calls') ?? 0;
@@ -430,17 +509,7 @@ async function runParent(): Promise<void> {
 		}
 		if (engine > 0) queryEngineSeen = true;
 
-		const clean = outcome.timedOut || outcome.signal !== null ? null : outcome.exitCode;
-		// A start fails when it was cut short, its summary is incomplete, or it caught an error that is not a
-		// refusal and not a query-engine error (those are counted as errors and fail the run themselves), or it
-		// asked the Learning core nothing.
-		const failedStart =
-			outcome.timedOut ||
-			outcome.signal !== null ||
-			summary === null ||
-			(summary.get('other-errors') ?? 0) > 0 ||
-			(summary.get('core-calls') ?? 0) === 0 ||
-			(clean !== 0 && engine === 0);
+		const failedStart = isFailedStart(outcome, summary);
 		const hasBlocks = lines.some((line) => line.startsWith('--- error:'));
 		if (failedStart) failed++;
 		if (hasBlocks || failedStart) blockStarts++;
@@ -461,13 +530,22 @@ async function runParent(): Promise<void> {
 					[`--- error: start ${start}, process`, how, ...lastLines, '--- end of error'].join('\n')
 				);
 			}
+			if (outcome.dropped > 0) {
+				console.log(
+					[
+						`--- error: start ${start}, output truncated`,
+						`${outcome.dropped} bytes of the child's output left out; its first ${KEEP_HEAD} and last ${KEEP_TAIL} bytes are kept`,
+						'--- end of error'
+					].join('\n')
+				);
+			}
 		} else {
 			notPrinted++;
 			console.log(shown.slice(-1).join('\n'));
 		}
 
 		timeoutsInARow = outcome.timedOut ? timeoutsInARow + 1 : 0;
-		if (timeoutsInARow >= MAX_TIMEOUTS_IN_A_ROW && start < starts) {
+		if (shouldStop(timeoutsInARow) && start < starts) {
 			notRun = starts - start;
 			console.log(
 				[
@@ -496,5 +574,8 @@ async function runParent(): Promise<void> {
 	process.exit(queryEngineSeen || failed > 0 ? 1 : 0);
 }
 
-if (process.argv[2] === CHILD_FLAG) await child(Number(process.argv[3]));
-else await runParent();
+// Only when this file is the program: a test imports its pieces without running it.
+if (import.meta.main) {
+	if (process.argv[2] === CHILD_FLAG) await child(Number(process.argv[3]));
+	else await runParent();
+}

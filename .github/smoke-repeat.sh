@@ -109,7 +109,8 @@ log_safe() {
 # indented past what a closing fence may have, so output from the image cannot end the block.
 fence_safe() {
   # A lone CR ends a line for a Markdown reader, so it is made a line break first.
-  tr '\r' '\n' | sed -E 's/^([[:space:]]*)(```|~~~)/    \1\2/'
+  # No line is longer than 2000 characters, whatever the image printed.
+  tr '\r' '\n' | cut -c1-2000 | sed -E 's/^([[:space:]]*)(```|~~~)/    \1\2/'
 }
 
 # first_match <pattern> <file>...: the first line of the first file that has the pattern, cut to 300 characters.
@@ -179,6 +180,9 @@ stress_section() {
   status="$(cat "$statusfile" 2>/dev/null || echo unknown)"
   echo "Exit status: $status"
   echo
+  case "$status" in
+    124 | 137) echo "The pass's own deadline ended it, or it was killed (exit status $status): that is not a finding about the image." ; echo ;;
+  esac
   local summary
   summary="$(grep -F -- "$prefix" "$file" | grep -E "^${prefix}" | tail -n 1 || true)"
   if [ -n "$summary" ]; then
@@ -423,6 +427,8 @@ stress_in_image() {
 # no sign, space, exponent, hex or newline; a leading zero is dropped, never read as octal. It never prints the value.
 whole_number() {
   local value="$1" max="$2"
+  # In the C locale only the ASCII digits are digits, so a digit of another script cannot pass the check below.
+  local LC_ALL=C
   case "$value" in '' | *[!0-9]*) return 1 ;; esac
   [ "${#value}" -le 9 ] || return 1
   value=$((10#$value))
@@ -438,7 +444,8 @@ whole_number() {
 # removed on every path, a timed-out one included.
 fresh_in_image() {
   local out="$1" image="$2" starts="$3" file="$4" wire="$5" learner="$6" status name="smoke-repeat-fresh-$$"
-  timeout --kill-after=30 "$((600 + 5 * starts))" docker run --rm --name "$name" --user bun --entrypoint sh \
+ FRESH_CONTAINER="$name"
+  timeout --kill-after=30 "$((300 + 3 * starts))" docker run --rm --name "$name" --user bun --entrypoint sh \
     -e HOME=/home/bun -e DATABASE_URL=file:/tmp/fresh.db -e CONTENT_DIR=/app/content -e "FRESH_STARTS=$starts" \
     -v "$file:/app/src/lib/server/prisma-fresh-start.bun-check.ts:ro" \
     -v "$wire:/app/src/lib/problem-wire.ts:ro" \
@@ -446,14 +453,26 @@ fresh_in_image() {
     "$image" -c 'bunx prisma migrate deploy && bun src/lib/server/prisma-fresh-start.bun-check.ts' \
     >"$out/fresh-image.txt" 2>&1
   status=$?
-  docker rm -f "$name" >/dev/null 2>&1 || true
+  remove_fresh_container
   echo "$status" >"$out/fresh-image.status"
+}
+
+# The fresh-start container's name while one may exist, so the clean-up trap can remove it on a signal.
+FRESH_CONTAINER=""
+
+# remove_fresh_container: removes it under a deadline and says so, in fixed words, when it cannot.
+remove_fresh_container() {
+  [ -n "$FRESH_CONTAINER" ] || return 0
+  if ! timeout 60 docker rm -f "$FRESH_CONTAINER" >/dev/null 2>&1; then
+    echo "smoke-repeat: could not remove the fresh-start container" >&2
+  fi
+  FRESH_CONTAINER=""
 }
 
 # log_fresh_line <output-file>: the fresh starts' summary line for the job log, through the same filter as every line
 # that came from the image.
 log_fresh_line() {
-  { grep -E '^prisma-fresh-start starts=' "$1" 2>/dev/null | tail -n 1 | log_safe; } || true
+  { grep -E '^prisma-fresh-start starts=' "$1" 2>/dev/null | tail -n 1 | cut -c1-2000 | log_safe; } || true
 }
 
 compose() { (cd "$INSTANCE" && docker compose "$@"); }
@@ -577,6 +596,7 @@ cleanup() {
   set +e
   trap - EXIT
   trap '' INT TERM
+  remove_fresh_container
   if [ -n "$INSTANCE" ] && [ -f "$INSTANCE/compose.yaml" ]; then
     # --kill-after: a `down` that ignores TERM is killed 10 s after the deadline.
     if ! (cd "$INSTANCE" && timeout --kill-after=10 "$CLEANUP_DEADLINE" docker compose down -v >/dev/null 2>&1); then
@@ -599,7 +619,7 @@ main() {
   # A refused value is never echoed: it may hold a newline and so a second, command-shaped line.
   case "$runs" in '' | *[!0-9]*) die "runs must be a whole number" ;; esac
   rounds="$(whole_number "$rounds" 20000)" || die "STRESS_ROUNDS must be a whole number from 1 to 20000"
-  starts="$(whole_number "$starts" 2000)" || die "FRESH_STARTS must be a whole number from 1 to 2000"
+  starts="$(whole_number "$starts" 1000)" || die "FRESH_STARTS must be a whole number from 1 to 1000"
   stress_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/server/prisma-stress.bun-check.ts"
   [ -f "$stress_file" ] || die "$stress_file is missing"
   wire_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/lib/problem-wire.ts"
