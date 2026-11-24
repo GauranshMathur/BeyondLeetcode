@@ -88,3 +88,23 @@ test('with JavaScript on, nothing chosen keeps focus on the first radio', async 
 		await context.close();
 	}
 });
+
+test('on a phone the button is as wide as the form', async ({ browser, baseURL }) => {
+	const context = await browser.newContext({
+		baseURL,
+		storageState: newLearner(),
+		viewport: { width: 390, height: 844 }
+	});
+	const page = await context.newPage();
+	try {
+		await page.goto('/language');
+		const form = await page.locator('main form').boundingBox();
+		const button = await page.getByRole('button', { name: 'Continue →' }).boundingBox();
+
+		expect(form).not.toBeNull();
+		expect(button?.width).toBeCloseTo(form?.width ?? -1, 0);
+		expect(button?.height).toBeGreaterThanOrEqual(44);
+	} finally {
+		await context.close();
+	}
+});

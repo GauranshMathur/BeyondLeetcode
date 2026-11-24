@@ -131,7 +131,7 @@ describe('headerFor', () => {
 			expect([routeId, at(routeId)]).toEqual([routeId, false]);
 	});
 
-	// Today's layout listed exactly these four; the route-policy table must give the same answers.
+	// Today's layout lists exactly these five; the route-policy table must give the same answers.
 	it.each(['/setup', '/signin', '/signup', '/invite/[token]', '/language'])(
 		'%s is bare: the wordmark alone',
 		(routeId) => {

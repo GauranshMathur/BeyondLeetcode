@@ -30,6 +30,7 @@ describe('gate', () => {
 		],
 		['not set up, api -> setup', request('/api/auth/[...all]', { mode: null }), redirect('/setup')],
 		['not set up, 404 -> setup', request(null, { mode: null }), redirect('/setup')],
+		['not set up, /language -> setup', request('/language', { mode: null }), redirect('/setup')],
 		['not set up, /setup -> pass', request('/setup', { mode: null }), pass],
 		// 2. set up, /setup
 		['local, /setup -> home', request('/setup', { mode: 'local', who: admin }), redirect('/')],
@@ -111,6 +112,11 @@ describe('gate', () => {
 			request('/account/password', { pathname: '/account/password' }),
 			redirect('/signin?next=%2Faccount%2Fpassword')
 		],
+		[
+			'multi nobody, /language -> signin with next',
+			request('/language', { pathname: '/language' }),
+			redirect('/signin?next=%2Flanguage')
+		],
 		// A path with no route is a private page: nobody learns from the 404 page which paths exist.
 		[
 			'multi nobody, unknown page -> signin with next',
@@ -126,6 +132,11 @@ describe('gate', () => {
 		[
 			'must change, home -> password',
 			request('/', { who: learner, mustChangePassword: true }),
+			redirect('/account/password')
+		],
+		[
+			'must change, /language -> password',
+			request('/language', { who: learner, mustChangePassword: true }),
 			redirect('/account/password')
 		],
 		[

@@ -1,4 +1,9 @@
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { loadCatalogue } from '#lib/server/content/catalogue.js';
+import { createLearningCore } from '#lib/server/learning/core.js';
+import { createScriptedRunner } from '#lib/server/runner/fake.js';
+import { createTestDb } from '#lib/server/test-db.js';
 import { actions, load } from './+page.server';
 
 function run(fields: Record<string, string>) {
@@ -65,6 +70,66 @@ describe('the starting-Language action', () => {
 		const { returned } = await outcome(result);
 
 		expect(returned).toMatchObject({ status: 400, data: { next: '/' } });
+	});
+});
+
+describe('what the action refuses or writes', () => {
+	it('throws when nobody is resolved, so nothing is written', async () => {
+		await expect(
+			Promise.resolve(
+				actions.default({
+					request: { formData: async () => new URLSearchParams({ language: 'go' }) },
+					locals: {}
+				} as never)
+			)
+		).rejects.toThrow('nobody resolved');
+	});
+
+	it.each([
+		['a file', () => new File(['go'], 'go.txt')],
+		['an oversized string', () => 'go'.repeat(100_000)]
+	])('answers 400 and stores nothing for %s as the language', async (_name, make) => {
+		const setStartingLanguage = vi.fn();
+		const form = new FormData();
+		form.set('language', make());
+		const returned = await actions.default({
+			request: { formData: async () => form },
+			locals: { identity: {}, learning: { setStartingLanguage } }
+		} as never);
+
+		expect(returned).toMatchObject({ status: 400 });
+		expect(setStartingLanguage).not.toHaveBeenCalled();
+	});
+
+	it('goes to an ASCII-only address when next holds Unicode, keeping its percent escapes', async () => {
+		const { result } = run({ language: 'go', next: '/problems/a?q=日本&r=%E6%97%A5 x' });
+		const { thrown } = await outcome(result);
+
+		const { location } = thrown as { location: string };
+		expect(location).toBe('/problems/a?q=%E6%97%A5%E6%9C%AC&r=%E6%97%A5%20x');
+		expect(/^[\u0020-\u007e]*$/.test(location)).toBe(true);
+	});
+
+	it('changes only the caller row when two Learners exist', async () => {
+		const catalogue = await loadCatalogue(
+			fileURLToPath(new URL('../../lib/server/content/fixture', import.meta.url))
+		);
+		const db = await createTestDb();
+		const core = createLearningCore({ catalogue, db, runner: createScriptedRunner({ tests: {} }) });
+		await db.learner.createMany({ data: [{ id: 'ann' }, { id: 'bob' }] });
+		const outcome2 = await actions
+			.default({
+				request: { formData: async () => new URLSearchParams({ language: 'go' }) },
+				locals: { identity: {}, learning: core.forLearner('ann') }
+			} as never)
+			.catch((e: unknown) => e);
+
+		expect(outcome2).toMatchObject({ status: 303 });
+		const rows = await db.learner.findMany({ orderBy: { id: 'asc' } });
+		expect(rows.map((r) => [r.id, r.startingLanguage])).toEqual([
+			['ann', 'go'],
+			['bob', null]
+		]);
 	});
 });
 

@@ -16,6 +16,8 @@ export const actions: Actions = {
 		const language = languageById(form.get('language'));
 		if (!language) return fail(400, { message: 'Choose a Language to continue.', next });
 		await withLearningErrors(() => signedIn(locals).learning.setStartingLanguage(language.id));
-		redirect(303, next);
+		// A Location header holds ASCII only, and `safeNext` lets other characters through: encode them, but keep
+		// the percent escapes the address already has (`encodeURI` alone would turn `%41` into `%2541`).
+		redirect(303, encodeURI(next).replace(/%25([0-9A-Fa-f]{2})/g, '%$1'));
 	}
 };

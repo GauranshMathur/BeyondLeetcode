@@ -42,7 +42,7 @@ const refused = $derived(form?.message !== undefined);
 				{/if}
 				{#each LANGUAGES as language (language.id)}
 					<label class="choice">
-						<!-- The board marks every radio invalid after a refusal, so a screen reader reads the group's error on each. -->
+						<!-- Every radio is marked invalid after a refusal, as the board draws it; the error text reaches a screen reader through the fieldset's aria-describedby. -->
 						<!-- svelte-ignore a11y_role_supports_aria_props_implicit -->
 						<input
 							type="radio"
@@ -232,6 +232,7 @@ const refused = $derived(form?.message !== undefined);
 			font-size: 22px;
 		}
 		button {
+			align-self: stretch;
 			height: 48px;
 			padding: 0 20px;
 			font-size: 14px;

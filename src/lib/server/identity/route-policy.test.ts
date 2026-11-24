@@ -42,6 +42,13 @@ describe('policyOf', () => {
 		expect(policyOf(id)).toEqual({ audience: 'signedIn', ...base });
 	});
 
+	it.each(['/language-x', '/languages', '/language/x'])(
+		'gives %s the default, not the bare row of /language',
+		(id) => {
+			expect(policyOf(id)).toEqual({ audience: 'signedIn', ...base });
+		}
+	);
+
 	it('has no referrer key on the default', () => {
 		expect('referrer' in policyOf('/')).toBe(false);
 	});
