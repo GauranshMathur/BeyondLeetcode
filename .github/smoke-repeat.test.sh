@@ -428,7 +428,7 @@ write_summary "$out" example:tag >/dev/null 2>&1
 status=$?
 [ "$status" = 2 ] && [ ! -e "$out/summary.md" ] && ok "a secret that survives redaction in a fresh-start section: no record" || bad "final secret check (exit $status)"
 
-# 27. The number of starts: digits only, no leading zero is kept, 1 to 2000; a refusal never echoes the value
+# 27. The number of starts: digits only, no leading zero is kept, 1 to 1000; a refusal never echoes the value
 [ "$(whole_number 8 1000)" = 8 ] && [ "$(whole_number 08 1000)" = 8 ] && [ "$(whole_number 1000 1000)" = 1000 ] \
   && ok "a whole number is read as decimal, a leading zero dropped" || bad "whole_number: '$(whole_number 08 1000)'"
 rejected=1
@@ -449,7 +449,7 @@ run_plan() { (cd "$work" && env -i PATH="$PATH" GITHUB_OUTPUT="$work/plan.out" I
 : >"$work/plan.out"
 run_plan IN_STARTS=08 IN_RUNS=08 IN_ROUNDS=0100 >"$work/plan.log"
 status=$?
-grep -qx 'starts=8' "$work/plan.out" && grep -qx 'runs=8' "$work/plan.out" && grep -qx 'rounds=100' "$work/plan.out" && grep -qx 'minutes=115' "$work/plan.out" \
+grep -qx 'starts=8' "$work/plan.out" && grep -qx 'runs=8' "$work/plan.out" && grep -qx 'rounds=100' "$work/plan.out" && grep -qx 'minutes=125' "$work/plan.out" \
   && ok "the plan step reads 08 as 8 and works the minutes out" || bad "plan with leading zeros (exit $status): $(cat "$work/plan.out" "$work/plan.log" | tr '\n' ' ')"
 : >"$work/plan.out"
 run_plan IN_STARTS=$'3\n::stop-commands::x' >"$work/plan.log"
@@ -491,7 +491,7 @@ got="$(log_fresh_line "$out/fresh-image.txt")"
 # so when it cannot
 : >"$work/cleanup.calls"
 docker() { printf '%s\n' "$*" >>"$work/cleanup.calls"; return "${DOCKER_RM_STATUS:-0}"; }
-timeout() { echo "timeout $1" >>"$work/cleanup.calls"; shift 1; "$@"; }
+timeout() { echo "timeout $1" >>"$work/cleanup.calls"; while case "$1" in -* | [0-9]*) true ;; *) false ;; esac; do shift; done; "$@"; }
 FRESH_CONTAINER="smoke-repeat-fresh-test"
 OUT_DIR=""
 INSTANCE=""
@@ -506,5 +506,56 @@ unset -f docker timeout
 
 # 32. The workflow's checkout pass goes through the shared job-log guard
 grep -q 'log_fresh_line' "$here/workflows/smoke-repeat.yml" && ok "the checkout pass prints through log_fresh_line" || bad "the workflow no longer calls log_fresh_line"
+
+# 33. A secret that straddles the 2000-character cut is redacted before the cut, in the record and in the job log
+out="$work/record-v"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+pad="$(head -c 1990 /dev/zero | tr '\0' 'y')"
+printf '%s%s tail\n' "$pad" "$runner_token" >"$out/facts.txt"
+write_summary "$out" example:tag >/dev/null 2>&1
+if grep -qF "${runner_token:0:8}" "$out/summary.md"; then bad "a part of the token survived the cut in the record"; else ok "a token spanning column 2000 leaves no part in the record"; fi
+SECRETS=("$runner_token" "$auth_secret")
+printf 'prisma-fresh-start starts=1 calls=1 errors=0 failed-starts=0 not-printed=0 %s%s\n' "${pad:0:1920}" "$runner_token" >"$out/fresh-image.txt"
+got="$(log_fresh_line "$out/fresh-image.txt")"
+if printf '%s\n' "$got" | grep -qF "${runner_token:0:8}"; then bad "a part of the token survived the cut in the job log"; else ok "a token spanning column 2000 leaves no part in the job log"; fi
+SECRETS=()
+
+# 34. The 137 sentence does not claim a deadline
+out="$work/record-w"
+mkdir -p "$out"
+printf 'RUNNER_TOKEN=%s\nBETTER_AUTH_SECRET=%s\n' "$runner_token" "$auth_secret" >"$out/.env"
+printf 'migrated\n' >"$out/fresh-checkout.txt"
+printf '137\n' >"$out/fresh-checkout.status"
+write_summary "$out" example:tag >/dev/null 2>&1
+grep -qi 'out-of-memory' "$out/summary.md" && ! grep -qi "deadline ended it" "$out/summary.md" \
+  && ok "status 137 is said to be a kill, the deadline's or the kernel's" || bad "137 text: $(grep -i -e killed -e deadline "$out/summary.md")"
+
+# 35. The container's name comes from the environment, is removed under a bounded form, and is kept when removal fails
+out="$work/record-x"
+mkdir -p "$out"
+: >"$work/fresh-docker.calls"; : >"$work/fresh-timeout.args"
+docker() { echo "$1" >>"$work/fresh-docker.calls"; if [ "$1" = run ]; then printf '%s\n' "$@" >"$work/fresh-docker.args"; return 0; fi; return "${DOCKER_RM_STATUS:-0}"; }
+timeout() { local a=""; while case "$1" in -* | [0-9]*) true ;; *) false ;; esac; do a="$a $1"; shift; done; echo "$a" >>"$work/fresh-timeout.args"; printf '%s\n' "$*" >>"$work/fresh-rm.args"; "$@"; }
+: >"$work/fresh-rm.args"
+FRESH_CONTAINER_NAME=smoke-repeat-fresh-1-2-3 fresh_in_image "$out" example:tag 5 /f /w /l
+grep -qxF 'smoke-repeat-fresh-1-2-3' "$work/fresh-docker.args" && grep -qx -- '--name' "$work/fresh-docker.args" \
+  && grep -qxF 'docker rm -f smoke-repeat-fresh-1-2-3' "$work/fresh-rm.args" && [ "$(grep -c -e '--kill-after=10 60' "$work/fresh-timeout.args")" -ge 1 ] \
+  && ok "the container name comes from the environment and its removal is bounded" || bad "container name or removal: $(cat "$work/fresh-docker.args" "$work/fresh-rm.args" | tr '\n' ' ')"
+FRESH_CONTAINER=kept-name
+DOCKER_RM_STATUS=1 remove_fresh_container 2>/dev/null
+[ "$FRESH_CONTAINER" = kept-name ] && ok "the name is kept after a failed removal" || bad "the name was forgotten after a failed removal"
+FRESH_CONTAINER=""
+unset -f docker timeout
+
+# 36. The plan step refuses a combination that does not fit in 350 minutes, without echoing a value
+: >"$work/plan.out"
+run_plan IN_RUNS=30 IN_ROUNDS=20000 IN_STARTS=1000 >"$work/plan.log"
+status=$?
+[ "$status" != 0 ] && grep -q '350' "$work/plan.log" && ! grep -q 'minutes=' "$work/plan.out" \
+  && ok "a combination over 350 minutes is refused, not capped" || bad "over-budget plan (exit $status): $(cat "$work/plan.log" "$work/plan.out" | tr '\n' ' ')"
+: >"$work/plan.out"
+run_plan IN_RUNS=10 IN_ROUNDS=500 IN_STARTS=100 >"$work/plan.log"
+[ "$?" = 0 ] && grep -qx 'minutes=154' "$work/plan.out" && ok "a fitting combination passes with its minutes" || bad "fitting plan: $(cat "$work/plan.log" "$work/plan.out" | tr '\n' ' ')"
 
 exit "$fail"

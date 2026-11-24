@@ -109,8 +109,7 @@ log_safe() {
 # indented past what a closing fence may have, so output from the image cannot end the block.
 fence_safe() {
   # A lone CR ends a line for a Markdown reader, so it is made a line break first.
-  # No line is longer than 2000 characters, whatever the image printed.
-  tr '\r' '\n' | cut -c1-2000 | sed -E 's/^([[:space:]]*)(```|~~~)/    \1\2/'
+  tr '\r' '\n' | sed -E 's/^([[:space:]]*)(```|~~~)/    \1\2/'
 }
 
 # first_match <pattern> <file>...: the first line of the first file that has the pattern, cut to 300 characters.
@@ -181,7 +180,8 @@ stress_section() {
   echo "Exit status: $status"
   echo
   case "$status" in
-    124 | 137) echo "The pass's own deadline ended it, or it was killed (exit status $status): that is not a finding about the image." ; echo ;;
+    124) echo "The pass's own deadline ended it (exit status 124): that is not a finding about the image."; echo ;;
+    137) echo "The pass was killed (exit status 137), by its deadline's kill or by the kernel's out-of-memory kill; the status alone does not say which."; echo ;;
   esac
   local summary
   summary="$(grep -F -- "$prefix" "$file" | grep -E "^${prefix}" | tail -n 1 || true)"
@@ -329,8 +329,10 @@ write_summary() {
         ;;
     esac
   done
-  # A lone CR ends a line for a reader, wherever it came from.
+  # A lone CR ends a line for a reader, wherever it came from. No line is longer than 2000 characters, whatever the
+  # image printed: cut only now, after every secret has been replaced in the whole text, so none can straddle the cut.
   content="${content//$'\r'/ }"
+  content="$(printf '%s\n' "$content" | cut -c1-2000)"
   printf '%s\n' "$content" >"$out/summary.md" || return 2
   verdict "$out"
 }
@@ -443,9 +445,13 @@ whole_number() {
 # It runs under a deadline with a kill-after (the starts' own time and a margin for the migration), and the container is
 # removed on every path, a timed-out one included.
 fresh_in_image() {
-  local out="$1" image="$2" starts="$3" file="$4" wire="$5" learner="$6" status name="smoke-repeat-fresh-$$"
- FRESH_CONTAINER="$name"
-  timeout --kill-after=30 "$((300 + 3 * starts))" docker run --rm --name "$name" --user bun --entrypoint sh \
+  local out="$1" image="$2" starts="$3" file="$4" wire="$5" learner="$6" status
+  # The workflow names the container, so its always() step can remove it when this script is cut short; the name is
+  # checked, since it ends up as an argument.
+  local name="${FRESH_CONTAINER_NAME:-smoke-repeat-fresh-$$}"
+  case "$name" in '' | *[!A-Za-z0-9_.-]*) name="smoke-repeat-fresh-$$" ;; esac
+  FRESH_CONTAINER="$name"
+  timeout --kill-after=30 "$((480 + 3 * starts))" docker run --rm --name "$name" --user bun --entrypoint sh \
     -e HOME=/home/bun -e DATABASE_URL=file:/tmp/fresh.db -e CONTENT_DIR=/app/content -e "FRESH_STARTS=$starts" \
     -v "$file:/app/src/lib/server/prisma-fresh-start.bun-check.ts:ro" \
     -v "$wire:/app/src/lib/problem-wire.ts:ro" \
@@ -463,16 +469,18 @@ FRESH_CONTAINER=""
 # remove_fresh_container: removes it under a deadline and says so, in fixed words, when it cannot.
 remove_fresh_container() {
   [ -n "$FRESH_CONTAINER" ] || return 0
-  if ! timeout 60 docker rm -f "$FRESH_CONTAINER" >/dev/null 2>&1; then
+  if timeout --kill-after=10 60 docker rm -f "$FRESH_CONTAINER" >/dev/null 2>&1; then
+    FRESH_CONTAINER=""
+  else
+    # The name is kept, so the clean-up trap can try again.
     echo "smoke-repeat: could not remove the fresh-start container" >&2
   fi
-  FRESH_CONTAINER=""
 }
 
 # log_fresh_line <output-file>: the fresh starts' summary line for the job log, through the same filter as every line
 # that came from the image.
 log_fresh_line() {
-  { grep -E '^prisma-fresh-start starts=' "$1" 2>/dev/null | tail -n 1 | cut -c1-2000 | log_safe; } || true
+  { grep -E '^prisma-fresh-start starts=' "$1" 2>/dev/null | tail -n 1 | log_safe | cut -c1-2002; } || true
 }
 
 compose() { (cd "$INSTANCE" && docker compose "$@"); }

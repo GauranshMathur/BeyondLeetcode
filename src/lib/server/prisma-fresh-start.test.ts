@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+	blockClasses,
 	Capture,
 	childEnv,
+	EXPECTED_CORE_CALLS,
 	isFailedStart,
 	KEEP_HEAD,
 	KEEP_TAIL,
@@ -163,5 +165,32 @@ describe('shouldStop', () => {
 	it('stops at the third timed-out start in a row', () => {
 		expect(shouldStop(2)).toBe(false);
 		expect(shouldStop(3)).toBe(true);
+	});
+});
+
+describe('blockClasses', () => {
+	it('reads the class of each error block a child printed before it died', () => {
+		const lines = [
+			'--- error: start 1, call reachChapterEnd dynamic-arrays-cpython-list',
+			'class: PrismaClientUnknownRequestError',
+			'message:',
+			'    Out of bounds memory access',
+			'--- end of error',
+			'error: attempted to take ownership of Rust value while it was borrowed'
+		];
+		expect(blockClasses(lines)).toEqual(['PrismaClientUnknownRequestError']);
+	});
+
+	it('does not count an indented look-alike', () => {
+		expect(blockClasses(['    --- error: start 1, call map', 'class: Error'])).toEqual([]);
+	});
+});
+
+describe('the Learning-core call bound', () => {
+	it('fails a start that made one call fewer than the flow has', () => {
+		const summary = parseSummary(
+			`prisma-fresh-start-child calls=45 core-calls=${EXPECTED_CORE_CALLS - 1} errors=0 other-errors=0 query-engine=0`
+		);
+		expect(isFailedStart(clean, summary)).toBe(true);
 	});
 });

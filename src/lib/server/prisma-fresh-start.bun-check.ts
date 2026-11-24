@@ -18,7 +18,7 @@
  * It sets no DEBUG variable and no Prisma `log` option.
  *
  * The parent's last line is `prisma-fresh-start starts=<n> calls=<n> errors=<n> failed-starts=<n> not-printed=<n>`
- * (and `not-run=<n>` when it stopped early) and `<class>=<count>` for each class. Exit 1 when any start saw a
+ * (and `not-run=<n>` when it stopped early) and `<class>=<count>` for each class (from each child's last line or, for a child that died before printing it, from the error blocks it printed; such a child's calls are not counted). Exit 1 when any start saw a
  * `PrismaClient*` error or failed, 0 otherwise. A refusal of the Learning core is counted by code and is not an
  * error. A start fails when its child was killed, timed out, printed no complete last line, caught an error that
  * is neither a Learning-core refusal nor a `PrismaClient*` error (those are counted as errors and fail the run
@@ -56,7 +56,6 @@ const AGGREGATE_PREFIX = 'prisma-fresh-start starts=';
 const REFUSALS_LINE = 'learning-core refusals (not errors) ';
 /** A refusal's code on a child's last line, so it is not read as an error class. */
 const REFUSED = 'refused-';
-/** The variables a child gets: what Bun needs to run and the stress's own settings, nothing else. */
 /**
  * What the child inherits: Bun's own needs and the stress's settings. It limits what the child receives; Bun may still
  * read a `.env` in its working directory, and neither the checkout nor the image has one.
@@ -76,7 +75,7 @@ const indent = (text: string, by = '    ') =>
 		.join('\n');
 
 /** The Learning-core calls the smoke flow makes: six requests, the three calls per Language, a switch and a Problem load per Language after the first, and the last Topic. */
-const EXPECTED_CORE_CALLS = 6 + LANGUAGES.length * 3 + (LANGUAGES.length - 1) * 2 + 1;
+export const EXPECTED_CORE_CALLS = 6 + LANGUAGES.length * 3 + (LANGUAGES.length - 1) * 2 + 1;
 
 // ---------------------------------------------------------------------------------------------------------------
 // The child: one fresh process, one start
@@ -385,6 +384,26 @@ export function parseSummary(last: string): Map<string, number> | null {
 	return REQUIRED.every((key) => found.has(key)) ? found : null;
 }
 
+/** The class of each error block a child printed: counted for a child that died before its last line. */
+export function blockClasses(lines: string[]): string[] {
+	const found: string[] = [];
+	for (const [i, line] of lines.entries()) {
+		const next = lines[i + 1] ?? '';
+		if (
+			line.startsWith('--- error: start ') &&
+			line.includes(', call ') &&
+			next.startsWith('class: ')
+		)
+			found.push(
+				next
+					.slice('class: '.length)
+					.replace(/[^A-Za-z0-9_$.]/g, '_')
+					.slice(0, 80)
+			);
+	}
+	return found;
+}
+
 /**
  * A child's lines as they are printed: a block cut by the omitted middle is closed before the note, and a line that
  * starts the parent's own summary is indented, so nothing a child printed can stand in for it.
@@ -407,7 +426,7 @@ export function printable(lines: string[]): string[] {
 	return out;
 }
 
-/** The one place the number of starts is read: digits only, no leading zero, 1 to 2000, or null. */
+/** The one place the number of starts is read: digits only, no leading zero, 1 to 1000, or null. */
 export function parseStarts(raw: string | undefined): number | null {
 	if (raw === undefined || !/^[1-9][0-9]{0,3}$/.test(raw)) return null;
 	const value = Number(raw);
@@ -505,6 +524,14 @@ async function runParent(): Promise<void> {
 				if ((REQUIRED as readonly string[]).includes(key)) continue;
 				if (key.startsWith(REFUSED)) bump(refusals, key.slice(REFUSED.length), count);
 				else bump(classes, key, count);
+			}
+		} else {
+			// The aggregate line never says errors=0 beside an error block the record shows: a child that died before
+			// its last line is counted from the blocks it printed (the calls it made are not known).
+			for (const name of blockClasses(lines)) {
+				errors++;
+				bump(classes, name);
+				if (name.startsWith('PrismaClient')) queryEngineSeen = true;
 			}
 		}
 		if (engine > 0) queryEngineSeen = true;
