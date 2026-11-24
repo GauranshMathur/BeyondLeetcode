@@ -14,7 +14,7 @@ export interface HeaderLink {
 /** What the bar draws: the wordmark, the links, whether Sign out shows, and whether the wordmark stands alone. */
 export interface Header {
 	wordmark: { href: string; label: string; phoneLabel: string };
-	/** The wordmark alone, with no links: before the Instance is set up or anyone is signed in. */
+	/** The wordmark alone, with no links: before the Instance is set up or anyone is signed in, and on the first-run starting-Language choice. */
 	bare: boolean;
 	/** The route's own screen draws the bar (through AppHeader's snippets), so the layout does not. */
 	inPage: boolean;

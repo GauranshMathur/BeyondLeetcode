@@ -44,6 +44,10 @@ const POLICIES: readonly { match: Match; policy: RoutePolicy }[] = [
 		policy: { audience: 'admin', multiOnly: true, noStore: true, bare: false }
 	},
 	{
+		match: { exact: '/language' },
+		policy: { audience: 'signedIn', multiOnly: false, noStore: false, bare: true }
+	},
+	{
 		match: { exact: '/account/password' },
 		policy: { audience: 'signedIn', multiOnly: true, noStore: false, bare: false }
 	}

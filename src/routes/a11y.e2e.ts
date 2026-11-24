@@ -19,6 +19,7 @@ const SCREENS: Screen[] = [
 	{ name: 'a Problem', path: '/problems/stacks-push' },
 	{ name: 'Settings', path: '/settings' },
 	{ name: 'the Guide', path: '/guide' },
+	{ name: 'the starting-Language choice', path: '/language' },
 	// The root error page, which no page file renders: an unknown path and a Locked Topic.
 	{ name: 'a Not Found error', path: '/no/such/page' },
 	{ name: 'a Locked Topic error', path: '/topics/queues' }
