@@ -1,9 +1,20 @@
 import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../../lib/e2e-learner.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../../lib/test/starting-language.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-settings') });
+
+// The tests below make their own contexts as this one Learner, so the choice is made once, for all of them.
+test.beforeAll(async ({ browser, baseURL }) => {
+	const context = await browser.newContext({ baseURL, storageState: asLearner('e2e-settings') });
+	try {
+		await chooseStartingLanguage(await context.newPage());
+	} finally {
+		await context.close();
+	}
+});
 
 const paper = (page: Page) => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 

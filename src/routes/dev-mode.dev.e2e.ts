@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
 import { phone } from '../lib/e2e-phone.ts';
 import { gotoHydrated } from '../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../lib/test/starting-language.ts';
 
 // Runs in the "dev" project, against a Local Instance started with the dev-mode switch (the fourth server).
 // This file acts as its own Learner, so it never depends on another file's leftovers.
@@ -11,6 +12,11 @@ import { gotoHydrated } from '../lib/test/hydrated.ts';
 // is off) and Sign in (Multi-user only, which refuses to start with the switch) cannot be reached either, so
 // the band is not asserted there. A second error screen stands in: an unknown Problem.
 test.use({ storageState: asLearner('e2e-dev-mode') });
+
+// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+test.beforeEach(async ({ page }) => {
+	await chooseStartingLanguage(page);
+});
 
 const SCREENS = [
 	{ name: 'the Map', path: '/', status: 200 },

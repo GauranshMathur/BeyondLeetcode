@@ -1,6 +1,7 @@
 import { test as base, expect, type Page } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
 import { phone } from '../lib/e2e-phone.ts';
+import { chooseStartingLanguage } from '../lib/test/starting-language.ts';
 import { type FreshServer, startFreshServer } from './signin/fresh-server.ts';
 
 // One table of every Local screen (each route under src/routes with a page) in light and dark, on a desktop
@@ -57,6 +58,11 @@ for (const theme of ['light', 'dark'] as const) {
 	] as const) {
 		test.describe(`${theme} on a ${size}`, () => {
 			test.use({ storageState: asLearner('e2e-a11y'), ...viewport });
+
+			// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+			test.beforeEach(async ({ page }) => {
+				await chooseStartingLanguage(page);
+			});
 
 			for (const screen of SCREENS) {
 				test(`${screen.name} has one main, a title and one h1`, async ({

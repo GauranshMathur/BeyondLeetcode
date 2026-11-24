@@ -3,12 +3,18 @@ import { asLearner } from '../../lib/e2e-learner.ts';
 import { expectNoSidewaysScroll, phone } from '../../lib/e2e-phone.ts';
 import { renderMarkdown } from '../../lib/server/markdown.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../../lib/test/starting-language.ts';
 
 // A code block or a table in a statement or a Solution scrolls sideways inside its own box on a phone, never
 // the page. The fixture Problems carry neither, so a code block and a table built by
 // renderMarkdown are added to the prose; the rest is the real page.
 // Not tagged @mobile: it is a layout check of the Problem's prose, run with the default project at the phone size.
 test.use({ storageState: asLearner('e2e-prose'), ...phone });
+
+// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+test.beforeEach(async ({ page }) => {
+	await chooseStartingLanguage(page);
+});
 
 const longLine = `bisect.insort(self.scores, (score, player))${'  # O(n) shift'.repeat(8)}`;
 const table = [

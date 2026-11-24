@@ -1,4 +1,4 @@
-import type { Action } from '@sveltejs/kit';
+import { type Action, redirect } from '@sveltejs/kit';
 import { languageById } from '#lib/languages.js';
 import type { BuildFiles } from '#lib/server/content/catalogue.js';
 import type { BuildRef, Learner } from '#lib/server/learning/core.js';
@@ -9,9 +9,17 @@ import { sectionOf } from './view';
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {
 	const tab = sectionOf(url.searchParams.get('tab'));
+	// The Problem is read first, so an unknown Problem is still 404 and a Locked Topic's 403.
+	const problem = await withLearningErrors(() =>
+		signedIn(locals).learning.problem(params.problemId)
+	);
+	// No Language is chosen for a Learner who has not chosen one: the choice comes first, and the Problem is where they return.
+	if ((await signedIn(locals).learning.startingLanguage()) === undefined) {
+		redirect(303, `/language?next=${encodeURIComponent(url.pathname + url.search)}`);
+	}
 	return {
 		tab,
-		problem: await withLearningErrors(() => signedIn(locals).learning.problem(params.problemId)),
+		problem,
 		// Only the revealed Hints, and only when the tab is open.
 		hints:
 			tab === 'hints'

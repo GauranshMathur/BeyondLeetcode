@@ -4,6 +4,7 @@ import { type Browser, expect, type Locator, type Page, test } from '@playwright
 import { phone, workspaceTab } from '../lib/e2e-phone.ts';
 import { LANGUAGES } from '../lib/languages.ts';
 import { gotoHydrated, reloadHydrated } from '../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../lib/test/starting-language.ts';
 
 // The walk .github/dev-run.sh runs against a real Local Instance: the built server, the real Runner and the real
 // content folder, started as docs/self-hosting.md says ("From a clone"). It sets no test cookie: it acts as the
@@ -209,6 +210,8 @@ test.describe('setup @setup', () => {
 		await expect(page).toHaveURL(/\/setup$/);
 		await page.getByRole('button', { name: 'Start in Local mode →' }).click();
 		await expect(page).toHaveURL(new URL('/', baseURL).href);
+		// The Instance's one Local Learner chooses a starting Language, so every later step opens its Problem.
+		await chooseStartingLanguage(page);
 	});
 });
 
