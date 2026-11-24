@@ -9,13 +9,16 @@ datasource db {
 
 // A person working through the Topic Map, in either mode (CONTEXT.md).
 model Learner {
-  id             String          @id @default(cuid())
-  createdAt      DateTime        @default(now())
-  chapterReads   ChapterRead[]
-  buildSteps     BuildStep[]
-  topicLanguages TopicLanguage[]
-  hintsRevealed  HintsRevealed[]
-  submissions    Submission[]
+  id               String          @id @default(cuid())
+  createdAt        DateTime        @default(now())
+  /// The Language a Topic not yet started opens in (`python`, `typescript` or `go`). Null until the
+  /// Learner chooses. A setting, not progress, so Reset progress keeps it.
+  startingLanguage String?
+  chapterReads     ChapterRead[]
+  buildSteps       BuildStep[]
+  topicLanguages   TopicLanguage[]
+  hintsRevealed    HintsRevealed[]
+  submissions      Submission[]
 }
 
 // A Learner has reached the end of a Chapter (CONTEXT.md: Read). Keyed by the stable content id.
@@ -45,8 +48,8 @@ model BuildStep {
   @@id([learnerId, topicId, language, problemId])
 }
 
-// The Language a Learner is building one Topic in. No row means Python. Switching changes only
-// this row: every Language keeps its own BuildSteps.
+// The Language a Learner is building one Topic in. With no row, the Learning core decides the
+// Topic's Language. Switching changes only this row: every Language keeps its own BuildSteps.
 model TopicLanguage {
   learnerId String
   topicId   String

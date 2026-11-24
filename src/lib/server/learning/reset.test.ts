@@ -70,6 +70,16 @@ describe('learner.resetProgress()', () => {
 		expect(await db.learner.count({ where: { id: 'a' } })).toBe(1);
 	});
 
+	it('keeps the starting Language, which is a setting and not progress', async () => {
+		const { core, db } = await setup();
+		await db.learner.create({ data: { id: 'a', startingLanguage: 'go' } });
+		await makeProgress({ core, db }, 'a');
+
+		await core.forLearner('a').resetProgress();
+
+		expect((await db.learner.findUnique({ where: { id: 'a' } }))?.startingLanguage).toBe('go');
+	});
+
 	it('is harmless for a Learner with no progress', async () => {
 		const { core } = await setup();
 		await expect(core.forLearner('nobody').resetProgress()).resolves.toBeUndefined();
