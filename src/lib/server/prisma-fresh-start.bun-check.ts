@@ -148,6 +148,10 @@ async function child(start: number): Promise<never> {
 		);
 	}
 
+	if (start === 2) {
+		console.log(`${'x'.repeat(99)}\n`.repeat(3000));
+		process.exit(1);
+	}
 	const catalogue = await attempt('loadCatalogue', () => loadCatalogue(contentDir));
 	const db = createDb(databaseUrl);
 	const finish = async (): Promise<never> => {
