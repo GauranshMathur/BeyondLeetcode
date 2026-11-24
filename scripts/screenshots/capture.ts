@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
+import { chooseStartingLanguage } from '../../src/lib/test/starting-language.ts';
 
 // Captures the README screenshots (C125) from the running app in Local Mode on the real content/. Run it with
 // `npx playwright test -c playwright.screenshots.config.ts`. The images are the app's own render: never edit them.
@@ -34,6 +35,9 @@ test('capture the Map, a Topic, a Chapter and a Problem in light and dark', asyn
 			await start.click();
 			await expect(page).not.toHaveURL(/\/setup/);
 		}
+		// The Local Learner chooses a starting Language (already chosen in the second context), so the Problem
+		// screenshots show the Problem and not the choice.
+		await chooseStartingLanguage(page);
 
 		for (const { name, path } of pages) {
 			await page.goto(path);

@@ -2,9 +2,15 @@ import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
 import { gotoHydrated } from '../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../lib/test/starting-language.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-sprint3-exit') });
+
+// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+test.beforeEach(async ({ page }) => {
+	await chooseStartingLanguage(page);
+});
 
 // Sprint 3 exit: a Learner in Local mode finishes a Topic and unlocks the next.
 // The Reference Code is read from the fixture on disk, not copied here.

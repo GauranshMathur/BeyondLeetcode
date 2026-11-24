@@ -2,11 +2,17 @@ import { expect, type Locator, type Page, type Route, test } from '@playwright/t
 import { asLearner } from '../../lib/e2e-learner.ts';
 import { expectNoSidewaysScroll, expectTargets, phone } from '../../lib/e2e-phone.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../../lib/test/starting-language.ts';
 
 // Runs in the "dev" project, against a Local Instance started with the dev-mode switch (the fourth server) and
 // the scripted Runner, which prints every expected output of a Problem's Reference Code in any Language, so
 // every row passes unless a test changes the answer. This file acts as its own Learner.
 test.use({ storageState: asLearner('e2e-problem-dev') });
+
+// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+test.beforeEach(async ({ page }) => {
+	await chooseStartingLanguage(page);
+});
 
 const consoleRegion = (page: Page) => page.getByRole('region', { name: 'Console' });
 const devButton = (page: Page) => page.getByRole('button', { name: 'Dev', exact: true });

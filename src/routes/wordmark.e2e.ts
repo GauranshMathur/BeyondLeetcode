@@ -2,9 +2,15 @@ import { expect, test } from '@playwright/test';
 import { asLearner } from '../lib/e2e-learner.ts';
 import { phone } from '../lib/e2e-phone.ts';
 import { gotoHydrated } from '../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../lib/test/starting-language.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-wordmark') });
+
+// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+test.beforeEach(async ({ page }) => {
+	await chooseStartingLanguage(page);
+});
 
 // Where the wordmark reads "BLC" its name starts with that text and says where it goes (WCAG 2.5.3).
 test.describe('on a phone', () => {

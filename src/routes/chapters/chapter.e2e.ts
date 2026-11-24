@@ -3,9 +3,15 @@ import { asLearner } from '../../lib/e2e-learner.ts';
 import { expectNoSidewaysScroll, expectTargets, phone, readToEnd } from '../../lib/e2e-phone.ts';
 import { renderMarkdown } from '../../lib/server/markdown.ts';
 import { gotoHydrated } from '../../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../../lib/test/starting-language.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-chapter') });
+
+// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+test.beforeEach(async ({ page }) => {
+	await chooseStartingLanguage(page);
+});
 
 test('reaching the end of a Chapter marks it Read on the Topic', async ({ page }) => {
 	await gotoHydrated(page, '/topics/stacks');

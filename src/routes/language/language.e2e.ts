@@ -108,3 +108,60 @@ test('on a phone the button is as wide as the form', async ({ browser, baseURL }
 		await context.close();
 	}
 });
+
+test('with JavaScript off, a Problem sends a new Learner to the choice, and Go lands back on it', async ({
+	browser,
+	baseURL
+}) => {
+	const { context, page } = await openAs(browser, baseURL, false);
+	try {
+		await page.goto('/problems/stacks-push');
+
+		await expect(page).toHaveURL(/\/language\?next=%2Fproblems%2Fstacks-push$/);
+		for (const name of ['Python', 'TypeScript', 'Go']) {
+			await expect(page.getByRole('radio', { name })).not.toBeChecked();
+		}
+		await page.getByRole('radio', { name: 'Go' }).check();
+		await page.getByRole('button', { name: 'Continue →' }).click();
+
+		await expect(page).toHaveURL(/\/problems\/stacks-push$/);
+		await expect(page.getByLabel('build language')).toHaveValue('go');
+	} finally {
+		await context.close();
+	}
+});
+
+test('with JavaScript on, the Problem link from a Topic leads to the choice and back in TypeScript', async ({
+	browser,
+	baseURL
+}) => {
+	const { context, page } = await openAs(browser, baseURL, true);
+	try {
+		await gotoHydrated(page, '/topics/stacks');
+		await page.locator('a[href="/problems/stacks-push"]').first().click();
+
+		await expect(page).toHaveURL(/\/language\?next=%2Fproblems%2Fstacks-push$/);
+		await page.getByRole('radio', { name: 'TypeScript' }).check();
+		await page.getByRole('button', { name: 'Continue →' }).click();
+
+		await expect(page).toHaveURL(/\/problems\/stacks-push$/);
+		await expect(page.getByLabel('build language')).toHaveValue('typescript');
+	} finally {
+		await context.close();
+	}
+});
+
+test('a Learner with no starting Language can still open the Map and Settings', async ({
+	browser,
+	baseURL
+}) => {
+	const { context, page } = await openAs(browser, baseURL, false);
+	try {
+		expect((await page.goto('/'))?.status()).toBe(200);
+		await expect(page).toHaveURL(/\/$/);
+		expect((await page.goto('/settings'))?.status()).toBe(200);
+		await expect(page).toHaveURL(/\/settings$/);
+	} finally {
+		await context.close();
+	}
+});

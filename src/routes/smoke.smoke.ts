@@ -35,7 +35,11 @@ test('Map to Topic to Chapter (Read) to Problem, then Run and Submit once per La
 	await page.locator('main').evaluate((el) => el.lastElementChild?.scrollIntoView());
 	await expect(page.locator('aside').getByText('read', { exact: true })).toBeVisible();
 
+	// A new Learner has no starting Language yet: the Problem sends them to choose, then returns.
 	await page.getByRole('link', { name: 'Append, get and length' }).click();
+	await expect(page).toHaveURL(/\/language\?next=/);
+	await page.getByRole('radio', { name: 'Python' }).check();
+	await page.getByRole('button', { name: 'Continue →' }).click();
 	await expect(page).toHaveURL('/problems/dynamic-arrays-append');
 
 	for (const [index, language] of LANGUAGES.entries()) {

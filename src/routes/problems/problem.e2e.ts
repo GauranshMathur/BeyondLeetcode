@@ -9,9 +9,15 @@ import {
 	workspaceTab
 } from '../../lib/e2e-phone.ts';
 import { gotoHydrated, reloadHydrated } from '../../lib/test/hydrated.ts';
+import { chooseStartingLanguage } from '../../lib/test/starting-language.ts';
 
 // This file acts as its own Learner, so it never depends on another file's leftovers.
 test.use({ storageState: asLearner('e2e-problem') });
+
+// A new Learner meets the starting-Language choice before a Problem opens: choose first, as they would.
+test.beforeEach(async ({ page }) => {
+	await chooseStartingLanguage(page);
+});
 
 // The Problem screen has two live regions: the console's and one that carries only the save states
 // that need action. The visible save status is plain text, so it is found by its class.
