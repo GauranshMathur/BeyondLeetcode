@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { Worker } from 'node:worker_threads';
+import { createClient } from '@libsql/client';
 import { expect, onTestFinished, test } from 'vitest';
 import { createDb } from './db';
 
@@ -59,3 +60,42 @@ test("a write through createDb waits for another process's write lock instead of
 
 	expect(await db.learner.count()).toBe(2);
 }, 30_000);
+
+test('a Learner from before the starting-Language migration holds python after it, and a new one holds none', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'beyondleetcode-db-'));
+	onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+	const url = `file:${join(dir, 'upgrade.db')}`;
+	const env = { ...process.env, DATABASE_URL: url };
+
+	// The migrations as an Instance had them before this one, applied by the same command the image runs.
+	const older = join(dir, 'migrations');
+	cpSync('prisma/migrations/migration_lock.toml', join(older, 'migration_lock.toml'), {
+		recursive: true
+	});
+	for (const name of readdirSync('prisma/migrations')) {
+		if (name === '20261124000000_starting_language' || name === 'migration_lock.toml') continue;
+		cpSync(join('prisma/migrations', name), join(older, name), { recursive: true });
+	}
+	const config = join(dir, 'prisma.config.mjs');
+	writeFileSync(
+		config,
+		`export default { schema: ${JSON.stringify(resolve('prisma/schema.prisma'))}, migrations: { path: ${JSON.stringify(older)} }, datasource: { url: process.env.DATABASE_URL } };`
+	);
+	execFileSync('node_modules/.bin/prisma', ['migrate', 'deploy', '--config', config], {
+		env,
+		stdio: 'pipe'
+	});
+
+	const client = createClient({ url });
+	await client.execute(`INSERT INTO "Learner" ("id","createdAt") VALUES ('before', 0)`);
+	client.close();
+
+	execFileSync('node_modules/.bin/prisma', ['migrate', 'deploy'], { env, stdio: 'pipe' });
+
+	const db = createDb(url);
+	onTestFinished(() => db.$disconnect());
+	expect((await db.learner.findUnique({ where: { id: 'before' } }))?.startingLanguage).toBe(
+		'python'
+	);
+	expect((await db.learner.create({ data: {} })).startingLanguage).toBeNull();
+}, 60_000);
